@@ -1,0 +1,7 @@
+pre-commit:
+  commands:
+    check:
+      run: just check
+      skip:
+        - merge
+        - rebase
