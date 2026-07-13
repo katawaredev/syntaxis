@@ -1,4 +1,4 @@
-/* Temporary styles for the disposable Files, Terminal, and Git mockups. */
+/* Focused styles for the remaining Files and Git mockups. */
 .eyebrow, .preview-label { color: var(--primary); font-size: 10px; font-weight: 750; letter-spacing: .14em; }
 
 .empty-icon { width: 54px; height: 54px; margin-bottom: 14px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 14px; color: var(--muted-foreground); background: var(--card); font-size: 25px; }
@@ -48,14 +48,6 @@
 .file-facts { margin-top: 16px; display: flex; gap: 8px; }
 .file-facts span { padding: 5px 8px; border-radius: 5px; color: var(--muted-foreground); background: var(--card); border: 1px solid var(--border); font-size: 10px; }
 
-/* Terminal mock output */
-.terminal-output pre { margin: 0; color: #c4c9ce; font: 12px/1.65 "SFMono-Regular", Consolas, monospace; }
-.ansi-muted { color: #707982; }.ansi-green { color: #65c998; }.ansi-blue { color: #6c9ee8; }.ansi-cyan { color: #61c4d2; }.ansi-yellow { color: #d8b65d; }
-.terminal-cursor { display: inline-block; width: 7px; height: 15px; vertical-align: -3px; background: #c4c9ce; animation: blink 1s steps(1) infinite; }
-.terminal-overlay, .terminal-failure { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 9px; color: var(--muted-foreground); background: #1f2021; }
-.terminal-failure strong { color: var(--destructive); font-size: 16px; }.terminal-failure p { margin-bottom: 8px; }
-.spinner { width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin .8s linear infinite; }
-
 /* Git mock diffs and details */
 .diff-titlebar { min-width: 660px; height: 52px; background: var(--card); }
 .diff-titlebar > div { display: flex; align-items: center; gap: 6px; }
@@ -76,9 +68,6 @@
 .commit-detail-header > div:last-child { display: flex; gap: 5px; }
 .commit-metadata, .comparison-summary { padding: 9px 20px; display: flex; gap: 18px; color: var(--muted-foreground); border-bottom: 1px solid var(--border); font-size: 10px; }
 .comparison-summary span { display: flex; align-items: center; gap: 4px; }
-
-@keyframes spin { to { transform: rotate(360deg); } }
-@keyframes blink { 50% { opacity: 0; } }
 
 @media (max-width: 767px) {
   .code-editor { padding-top: 10px; }

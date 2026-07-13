@@ -1,11 +1,10 @@
-mod api;
+pub(crate) mod api;
 mod client;
 mod events;
 mod home;
 mod project_icon;
 mod remote;
 mod shell;
-
 pub use events::WorkspaceEventState;
 pub use home::Home;
 pub use project_icon::ProjectIcon;

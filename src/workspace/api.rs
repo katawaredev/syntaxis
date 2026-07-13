@@ -9,25 +9,20 @@ use syntaxis_workspace::{
     ExecutionLocation, RelativePath, RuntimeCapabilities, RuntimeCapability, RuntimeIdentity,
     WorkspaceId,
 };
-
 #[cfg(feature = "server")]
 const DEFAULT_TEXT_LIMIT: u64 = 4 * 1024 * 1024;
-
 #[get("/api/workspaces")]
 pub async fn list_workspaces() -> Result<Vec<WorkspaceRecord>, ServerFnError> {
     server::list_workspaces().await
 }
-
 #[get("/api/workspaces/{workspace_id}")]
 pub async fn get_workspace(workspace_id: String) -> Result<WorkspaceRecord, ServerFnError> {
     server::get_workspace(&WorkspaceId::new(workspace_id)).await
 }
-
 #[post("/api/workspaces/register")]
 pub async fn register_workspace(absolute_path: String) -> Result<WorkspaceRecord, ServerFnError> {
     server::register_workspace(&absolute_path).await
 }
-
 #[post("/api/workspaces/remove")]
 pub async fn remove_workspace(
     workspace_id: String,
@@ -35,14 +30,12 @@ pub async fn remove_workspace(
 ) -> Result<(), ServerFnError> {
     server::remove_workspace(&WorkspaceId::new(workspace_id), delete_files).await
 }
-
 #[post("/api/workspaces/touch")]
 pub async fn touch_workspace(workspace_id: String) -> Result<(), ServerFnError> {
     server::touch_workspace(&WorkspaceId::new(workspace_id)).await
 }
-
 #[get("/api/runtime")]
-#[allow(clippy::unused_async)] // Dioxus server functions require an async signature.
+#[allow(clippy::unused_async)]
 pub async fn runtime_state() -> Result<RuntimeState, ServerFnError> {
     Ok(RuntimeState::Ready {
         identity: RuntimeIdentity {
@@ -50,23 +43,24 @@ pub async fn runtime_state() -> Result<RuntimeState, ServerFnError> {
             label: "Self-hosted runtime".into(),
         },
         capabilities: RuntimeCapabilities {
-            available: vec![RuntimeCapability::Filesystem, RuntimeCapability::FileEvents],
+            available: vec![
+                RuntimeCapability::Filesystem,
+                RuntimeCapability::FileEvents,
+                RuntimeCapability::Terminal,
+            ],
         },
     })
 }
-
 #[get("/api/workspace-roots")]
 pub async fn browse_workspace_roots() -> Result<Vec<BrowseRoot>, ServerFnError> {
     server::browse_roots().await
 }
-
 #[post("/api/workspace-roots/directories")]
 pub async fn browse_workspace_directories(
     absolute_path: String,
 ) -> Result<Vec<BrowseDirectory>, ServerFnError> {
     server::browse_directories(&absolute_path).await
 }
-
 #[post("/api/workspace-files/list")]
 pub async fn list_workspace_files(
     workspace_id: String,
@@ -74,7 +68,6 @@ pub async fn list_workspace_files(
 ) -> Result<Vec<FileEntry>, ServerFnError> {
     server::list_files(&WorkspaceId::new(workspace_id), parse_path(path)?).await
 }
-
 #[post("/api/workspace-files/stat")]
 pub async fn stat_workspace_file(
     workspace_id: String,
@@ -82,7 +75,6 @@ pub async fn stat_workspace_file(
 ) -> Result<FileEntry, ServerFnError> {
     server::stat_file(&WorkspaceId::new(workspace_id), parse_path(path)?).await
 }
-
 #[post("/api/workspace-files/read-text")]
 pub async fn read_workspace_text(
     workspace_id: String,
@@ -95,7 +87,6 @@ pub async fn read_workspace_text(
     )
     .await
 }
-
 #[post("/api/workspace-files/create-file")]
 pub async fn create_workspace_file(
     workspace_id: String,
@@ -103,7 +94,6 @@ pub async fn create_workspace_file(
 ) -> Result<FileEntry, ServerFnError> {
     server::create_file(&WorkspaceId::new(workspace_id), parse_path(path)?).await
 }
-
 #[post("/api/workspace-files/create-directory")]
 pub async fn create_workspace_directory(
     workspace_id: String,
@@ -111,7 +101,6 @@ pub async fn create_workspace_directory(
 ) -> Result<FileEntry, ServerFnError> {
     server::create_directory(&WorkspaceId::new(workspace_id), parse_path(path)?).await
 }
-
 #[post("/api/workspace-files/copy")]
 pub async fn copy_workspace_entry(
     workspace_id: String,
@@ -125,7 +114,6 @@ pub async fn copy_workspace_entry(
     )
     .await
 }
-
 #[post("/api/workspace-files/move")]
 pub async fn move_workspace_entry(
     workspace_id: String,
@@ -139,7 +127,6 @@ pub async fn move_workspace_entry(
     )
     .await
 }
-
 #[post("/api/workspace-files/delete")]
 pub async fn delete_workspace_entry(
     workspace_id: String,
@@ -147,7 +134,6 @@ pub async fn delete_workspace_entry(
 ) -> Result<(), ServerFnError> {
     server::delete(&WorkspaceId::new(workspace_id), parse_path(path)?).await
 }
-
 #[post("/api/workspace-files/write-text")]
 pub async fn write_workspace_text(
     workspace_id: String,
@@ -164,7 +150,6 @@ pub async fn write_workspace_text(
     )
     .await
 }
-
 #[get("/api/workspace-events/{workspace_id}")]
 pub async fn workspace_events(
     workspace_id: String,
@@ -172,12 +157,10 @@ pub async fn workspace_events(
 ) -> Result<Websocket<(), EventBatch>, ServerFnError> {
     server::workspace_events(WorkspaceId::new(workspace_id), options).await
 }
-
 #[cfg(feature = "server")]
 fn parse_path(path: String) -> Result<RelativePath, ServerFnError> {
     RelativePath::try_from(path).map_err(server_error)
 }
-
 #[cfg(feature = "server")]
 fn server_error(error: syntaxis_workspace::WorkspaceError) -> ServerFnError {
     ServerFnError::ServerError {
@@ -198,6 +181,5 @@ fn server_error(error: syntaxis_workspace::WorkspaceError) -> ServerFnError {
         details: None,
     }
 }
-
 #[cfg(feature = "server")]
 mod server;

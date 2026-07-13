@@ -392,7 +392,7 @@ pub fn Files(slug: String) -> Element {
                         }
                     }
                 }
-                div { class: "relative min-h-0 min-w-0 flex-1 overflow-auto bg-[#1f2021]",
+                div { class: "relative min-h-0 min-w-0 flex-1 overflow-auto bg-card",
                     if active_view() == "empty" {
                         div { class: "flex size-full flex-col items-center justify-center p-7 text-center",
                             h2 { class: "text-lg text-foreground", "No open files" }

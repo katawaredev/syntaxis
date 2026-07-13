@@ -42,6 +42,7 @@ pub fn TextInput(
     #[props(default)] required: bool,
     #[props(default)] oninput: EventHandler<FormEvent>,
     #[props(default)] onchange: EventHandler<FormEvent>,
+    #[props(default)] onkeydown: EventHandler<KeyboardEvent>,
 ) -> Element {
     let field = try_consume_context::<FieldContext>();
     let id = id.or_else(|| field.as_ref().map(|field| field.control_id.clone()));
@@ -71,6 +72,7 @@ pub fn TextInput(
             required,
             oninput: move |event| oninput.call(event),
             onchange: move |event| onchange.call(event),
+            onkeydown: move |event| onkeydown.call(event),
         }
     }
 }

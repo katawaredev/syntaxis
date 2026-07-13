@@ -1,15 +1,12 @@
+use super::{RuntimePresentation, WorkspaceListView};
+use crate::app::Route;
+use crate::workspace::ProjectIcon;
 use dioxus::prelude::*;
 use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem, DropdownMenuTrigger};
 use syntaxis_ui::prelude::{
     AppIcon, Button, ButtonKind, Icon, IconButton, MenuContent, StatusBadge, Tone,
 };
-
-use crate::app::Route;
 use syntaxis_workspace::{WorkspaceAvailability, WorkspaceRecord};
-
-use super::{RuntimePresentation, WorkspaceListView};
-use crate::workspace::ProjectIcon;
-
 #[component]
 pub(super) fn RecentProjects(
     view: Signal<WorkspaceListView>,
@@ -24,6 +21,7 @@ pub(super) fn RecentProjects(
     on_notice: EventHandler<String>,
     on_refresh: EventHandler<()>,
 ) -> Element {
+    let recent_description = runtime.recent_description.clone();
     rsx! {
         section { "aria-labelledby": "recent-title",
             div { class: "mb-2.5 flex items-end justify-between max-md:items-start",
@@ -33,9 +31,7 @@ pub(super) fn RecentProjects(
                         id: "recent-title",
                         "Recent projects"
                     }
-                    p { class: "mt-1 text-xs text-muted-foreground",
-                        {runtime.recent_description.clone()}
-                    }
+                    p { class: "mt-1 text-xs text-muted-foreground", "{recent_description}" }
                 }
                 div { class: "flex items-center gap-0.5 max-md:-mt-1 max-md:flex-col max-md:items-end",
                     StateMenu { view, on_change: on_view_change }
@@ -51,7 +47,6 @@ pub(super) fn RecentProjects(
                     }
                 }
             }
-
             match view() {
                 WorkspaceListView::Ready => rsx! {
                     if backend_loading {
@@ -82,7 +77,6 @@ pub(super) fn RecentProjects(
         }
     }
 }
-
 #[component]
 fn StateMenu(
     view: Signal<WorkspaceListView>,
@@ -132,7 +126,6 @@ fn StateMenu(
         }
     }
 }
-
 #[component]
 fn StateOption(
     value: WorkspaceListView,
@@ -157,7 +150,6 @@ fn StateOption(
         }
     }
 }
-
 #[component]
 fn WorkspaceRows(workspaces: Vec<WorkspaceRecord>, on_delete: EventHandler<usize>) -> Element {
     rsx! {
@@ -168,7 +160,6 @@ fn WorkspaceRows(workspaces: Vec<WorkspaceRecord>, on_delete: EventHandler<usize
         }
     }
 }
-
 #[component]
 fn WorkspaceRow(
     workspace: WorkspaceRecord,
@@ -212,10 +203,9 @@ fn WorkspaceRow(
         }
     }
 }
-
 fn recent_label(timestamp: i64) -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
+    let now = web_time::SystemTime::now()
+        .duration_since(web_time::UNIX_EPOCH)
         .ok()
         .and_then(|duration| i64::try_from(duration.as_millis()).ok())
         .unwrap_or(timestamp);
@@ -227,7 +217,6 @@ fn recent_label(timestamp: i64) -> String {
         _ => format!("{}d ago", elapsed_minutes / 1_440),
     }
 }
-
 #[component]
 fn LoadingWorkspaces(on_finish: EventHandler<()>) -> Element {
     rsx! {
@@ -252,7 +241,6 @@ fn LoadingWorkspaces(on_finish: EventHandler<()>) -> Element {
         }
     }
 }
-
 #[component]
 fn EmptyWorkspaces() -> Element {
     rsx! {
@@ -267,7 +255,6 @@ fn EmptyWorkspaces() -> Element {
         }
     }
 }
-
 #[component]
 fn WorkspaceError(on_retry: EventHandler<()>) -> Element {
     rsx! {
