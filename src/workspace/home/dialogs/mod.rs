@@ -6,6 +6,7 @@ use dioxus::prelude::*;
 
 use self::{delete::DeleteWorkspaceDialog, git_url::GitUrlDialog, local::LocalFolderDialog};
 use super::HomeDialog;
+use syntaxis_workspace::WorkspaceRecord;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum RequestState {
@@ -17,12 +18,13 @@ pub(super) enum RequestState {
 #[component]
 pub(super) fn HomeDialogs(
     dialog: Signal<HomeDialog>,
-    hidden_workspace: Signal<Option<usize>>,
+    workspaces: Vec<WorkspaceRecord>,
     on_notice: EventHandler<String>,
+    on_changed: EventHandler<()>,
 ) -> Element {
     rsx! {
         if dialog() == HomeDialog::Local {
-            LocalFolderDialog { dialog, on_notice }
+            LocalFolderDialog { dialog, on_notice, on_changed }
         }
         if dialog() == HomeDialog::Git {
             GitUrlDialog { dialog, on_notice }
@@ -31,8 +33,9 @@ pub(super) fn HomeDialogs(
             DeleteWorkspaceDialog {
                 index,
                 dialog,
-                hidden_workspace,
+                workspaces,
                 on_notice,
+                on_changed,
             }
         }
     }

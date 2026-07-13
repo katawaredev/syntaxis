@@ -4,22 +4,24 @@ use syntaxis_ui::prelude::{
     AppIcon, Button, ButtonKind, Icon, IconButton, MenuContent, StatusBadge, Tone,
 };
 
-use crate::{
-    app::Route,
-    mock::{WorkspaceState, WORKSPACES},
-};
+use crate::app::Route;
+use syntaxis_workspace::{WorkspaceAvailability, WorkspaceRecord};
 
 use super::WorkspaceListView;
+use crate::workspace::ProjectIcon;
 
 #[component]
 pub(super) fn RecentProjects(
     view: Signal<WorkspaceListView>,
-    hidden_workspace: Signal<Option<usize>>,
+    workspaces: Vec<WorkspaceRecord>,
+    backend_loading: bool,
+    backend_error: bool,
     on_view_change: EventHandler<WorkspaceListView>,
     on_open_local: EventHandler<()>,
     on_open_git: EventHandler<()>,
     on_delete: EventHandler<usize>,
     on_notice: EventHandler<String>,
+    on_refresh: EventHandler<()>,
 ) -> Element {
     rsx! {
         section { "aria-labelledby": "recent-title",
@@ -42,6 +44,7 @@ pub(super) fn RecentProjects(
                         onclick: move |_| {
                             on_view_change.call(WorkspaceListView::Loading);
                             on_notice.call("Refreshing workspace list…".into());
+                            on_refresh.call(());
                         },
                         "↻ Refresh"
                     }
@@ -50,10 +53,23 @@ pub(super) fn RecentProjects(
 
             match view() {
                 WorkspaceListView::Ready => rsx! {
-                    WorkspaceRows { hidden_workspace, on_delete }
+                    if backend_loading {
+                        LoadingWorkspaces { on_finish: move |()| on_refresh.call(()) }
+                    } else if backend_error {
+                        WorkspaceError { on_retry: move |()| on_refresh.call(()) }
+                    } else if workspaces.is_empty() {
+                        EmptyWorkspaces { on_open_local, on_open_git }
+                    } else {
+                        WorkspaceRows { workspaces, on_delete }
+                    }
                 },
                 WorkspaceListView::Loading => rsx! {
-                    LoadingWorkspaces { on_finish: move |()| on_view_change.call(WorkspaceListView::Ready) }
+                    LoadingWorkspaces {
+                        on_finish: move |()| {
+                            on_refresh.call(());
+                            on_view_change.call(WorkspaceListView::Ready);
+                        },
+                    }
                 },
                 WorkspaceListView::Empty => rsx! {
                     EmptyWorkspaces { on_open_local, on_open_git }
@@ -142,57 +158,72 @@ fn StateOption(
 }
 
 #[component]
-fn WorkspaceRows(
-    hidden_workspace: Signal<Option<usize>>,
-    on_delete: EventHandler<usize>,
-) -> Element {
+fn WorkspaceRows(workspaces: Vec<WorkspaceRecord>, on_delete: EventHandler<usize>) -> Element {
     rsx! {
         div { class: "overflow-hidden rounded-xl border border-border bg-card shadow-sm",
-            for (index, workspace) in WORKSPACES.iter().enumerate() {
-                if hidden_workspace() != Some(index) {
-                    article { class: if workspace.state == WorkspaceState::Missing { "flex min-h-17.5 min-w-0 items-center border-b border-border opacity-65 last:border-b-0 hover:bg-accent/60" } else { "flex min-h-17.5 min-w-0 items-center border-b border-border last:border-b-0 hover:bg-accent/60" },
-                        Link {
-                            class: "grid min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5 max-md:grid-cols-[auto_minmax(0,1fr)]",
-                            to: Route::Files {
-                                slug: workspace.slug.to_string(),
-                            },
-                            onclick: move |event: MouseEvent| {
-                                if workspace.state == WorkspaceState::Missing {
-                                    event.prevent_default();
-                                }
-                            },
-                            div { class: "grid size-10 shrink-0 place-items-center rounded-lg bg-linear-to-br from-primary to-primary/60 font-bold text-primary-foreground shadow-md",
-                                {workspace.icon}
-                            }
-                            div { class: "min-w-0",
-                                div { class: "flex items-center gap-2",
-                                    h3 { class: "text-sm font-semibold text-foreground",
-                                        {workspace.name}
-                                    }
-                                    if workspace.state == WorkspaceState::Missing {
-                                        StatusBadge {
-                                            label: "Missing",
-                                            tone: Tone::Destructive,
-                                        }
-                                    }
-                                }
-                                p { class: "mt-1 truncate font-mono text-[11px] text-muted-foreground max-md:max-w-[65vw] max-[420px]:max-w-[55vw]",
-                                    {workspace.path}
-                                }
-                            }
-                            time { class: "whitespace-nowrap pr-2 text-[11px] text-muted-foreground max-md:hidden",
-                                {workspace.recent}
-                            }
-                        }
-                        IconButton {
-                            label: format!("Remove {}", workspace.name),
-                            icon: AppIcon::Close,
-                            onclick: move |_| on_delete.call(index),
-                        }
-                    }
-                }
+            for (index, workspace) in workspaces.into_iter().enumerate() {
+                WorkspaceRow { workspace, index, on_delete }
             }
         }
+    }
+}
+
+#[component]
+fn WorkspaceRow(
+    workspace: WorkspaceRecord,
+    index: usize,
+    on_delete: EventHandler<usize>,
+) -> Element {
+    let availability = workspace.availability;
+    rsx! {
+        article { class: if availability == WorkspaceAvailability::Missing { "flex min-h-17.5 min-w-0 items-center border-b border-border opacity-65 last:border-b-0 hover:bg-accent/60" } else { "flex min-h-17.5 min-w-0 items-center border-b border-border last:border-b-0 hover:bg-accent/60" },
+            Link {
+                class: "grid min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5 max-md:grid-cols-[auto_minmax(0,1fr)]",
+                to: Route::Files {
+                    slug: workspace.slug.clone(),
+                },
+                onclick: move |event: MouseEvent| {
+                    if availability == WorkspaceAvailability::Missing {
+                        event.prevent_default();
+                    }
+                },
+                ProjectIcon { icon: workspace.icon.clone() }
+                div { class: "min-w-0",
+                    div { class: "flex items-center gap-2",
+                        h3 { class: "text-sm font-semibold text-foreground", "{workspace.name}" }
+                        if availability == WorkspaceAvailability::Missing {
+                            StatusBadge { label: "Missing", tone: Tone::Destructive }
+                        }
+                    }
+                    p { class: "mt-1 truncate font-mono text-[11px] text-muted-foreground max-md:max-w-[65vw] max-[420px]:max-w-[55vw]",
+                        "{workspace.root}"
+                    }
+                }
+                time { class: "whitespace-nowrap pr-2 text-[11px] text-muted-foreground max-md:hidden",
+                    {recent_label(workspace.last_opened_unix_ms)}
+                }
+            }
+            IconButton {
+                label: format!("Remove {}", workspace.name),
+                icon: AppIcon::Close,
+                onclick: move |_| on_delete.call(index),
+            }
+        }
+    }
+}
+
+fn recent_label(timestamp: i64) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|duration| i64::try_from(duration.as_millis()).ok())
+        .unwrap_or(timestamp);
+    let elapsed_minutes = now.saturating_sub(timestamp) / 60_000;
+    match elapsed_minutes {
+        0 => "Just now".into(),
+        1..=59 => format!("{elapsed_minutes}m ago"),
+        60..=1_439 => format!("{}h ago", elapsed_minutes / 60),
+        _ => format!("{}d ago", elapsed_minutes / 1_440),
     }
 }
 

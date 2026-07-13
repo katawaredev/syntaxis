@@ -1,9 +1,10 @@
 use dioxus::prelude::*;
 use syntaxis_ui::prelude::{Button, ButtonKind, Checkbox, DialogActions, DialogForm, Modal};
 
-use crate::mock::WORKSPACES;
+use syntaxis_workspace::WorkspaceRecord;
 
 use super::{mock_request_delay, RequestState};
+use crate::workspace::client::remove_workspace;
 use crate::workspace::home::HomeDialog;
 
 const DELETE_FILES_ERROR: &str =
@@ -13,8 +14,9 @@ const DELETE_FILES_ERROR: &str =
 pub(super) fn DeleteWorkspaceDialog(
     index: usize,
     mut dialog: Signal<HomeDialog>,
-    mut hidden_workspace: Signal<Option<usize>>,
+    workspaces: Vec<WorkspaceRecord>,
     on_notice: EventHandler<String>,
+    on_changed: EventHandler<()>,
 ) -> Element {
     let mut delete_files = use_signal(|| false);
     let mut request = use_signal(|| RequestState::Idle);
@@ -22,7 +24,7 @@ pub(super) fn DeleteWorkspaceDialog(
 
     rsx! {
         Modal {
-            title: format!("Remove {}?", WORKSPACES[index].name),
+            title: format!("Remove {}?", workspaces[index].name),
             description: "The workspace will be removed from your recent projects.",
             on_close: move |()| {
                 if !pending {
@@ -50,7 +52,7 @@ pub(super) fn DeleteWorkspaceDialog(
                 }
                 if delete_files() {
                     p { class: "rounded-md border border-destructive/35 bg-destructive/10 px-2.5 py-2 text-xs leading-relaxed text-destructive",
-                        "All files inside {WORKSPACES[index].path} will be permanently deleted."
+                        "All files inside {workspaces[index].root} will be permanently deleted."
                     }
                 }
                 match request() {
@@ -85,15 +87,32 @@ pub(super) fn DeleteWorkspaceDialog(
                         onclick: move |_| {
                             let should_delete_files = delete_files();
                             let remove_entry_only = request() == RequestState::Error(DELETE_FILES_ERROR);
+                            let workspace_id = workspaces[index].id.0.clone();
                             request.set(RequestState::Pending);
                             spawn(async move {
                                 mock_request_delay().await;
-                                if index == 3 && should_delete_files && !remove_entry_only {
-                                    request.set(RequestState::Error(DELETE_FILES_ERROR));
-                                } else {
-                                    hidden_workspace.set(Some(index));
-                                    dialog.set(HomeDialog::None);
-                                    on_notice.call("Workspace removed".into());
+                                match remove_workspace(
+                                        workspace_id,
+                                        should_delete_files && !remove_entry_only,
+                                    )
+                                    .await
+                                {
+                                    Ok(()) => {
+                                        dialog.set(HomeDialog::None);
+                                        on_notice.call("Workspace removed".into());
+                                        on_changed.call(());
+                                    }
+                                    Err(_) if should_delete_files && !remove_entry_only => {
+                                        request.set(RequestState::Error(DELETE_FILES_ERROR));
+                                    }
+                                    Err(_) => {
+                                        request
+                                            .set(
+                                                RequestState::Error(
+                                                    "The workspace entry could not be removed.",
+                                                ),
+                                            );
+                                    }
                                 }
                             });
                         },

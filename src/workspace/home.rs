@@ -6,8 +6,9 @@ use dioxus::prelude::*;
 use syntaxis_ui::prelude::{AppIcon, Icon, Toast};
 
 use self::{dialogs::HomeDialogs, recent::RecentProjects};
+use super::client::list_workspaces;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(super) enum HomeDialog {
     None,
     Local,
@@ -38,8 +39,20 @@ impl WorkspaceListView {
 pub fn Home() -> Element {
     let mut dialog = use_signal(|| HomeDialog::None);
     let mut list_view = use_signal(|| WorkspaceListView::Ready);
-    let hidden_workspace = use_signal(|| None::<usize>);
     let mut toast = use_signal(|| None::<String>);
+    let mut refresh_key = use_signal(|| 0_u64);
+    let workspaces = use_resource(move || async move {
+        let _ = refresh_key();
+        list_workspaces().await
+    });
+    let workspace_result = workspaces();
+    let workspace_records = workspace_result
+        .as_ref()
+        .and_then(|result| result.as_ref().ok())
+        .cloned()
+        .unwrap_or_default();
+    let workspace_loading = workspace_result.is_none();
+    let workspace_error = workspace_result.is_some_and(|result| result.is_err());
 
     rsx! {
         main { class: "relative size-full overflow-x-hidden overflow-y-auto bg-background",
@@ -78,12 +91,15 @@ pub fn Home() -> Element {
 
                 RecentProjects {
                     view: list_view,
-                    hidden_workspace,
+                    workspaces: workspace_records.clone(),
+                    backend_loading: workspace_loading,
+                    backend_error: workspace_error,
                     on_view_change: move |next| list_view.set(next),
                     on_open_local: move |()| dialog.set(HomeDialog::Local),
                     on_open_git: move |()| dialog.set(HomeDialog::Git),
                     on_delete: move |index| dialog.set(HomeDialog::Delete(index)),
                     on_notice: move |message| toast.set(Some(message)),
+                    on_refresh: move |()| *refresh_key.write() += 1,
                 }
                 footer { class: "mt-auto pt-10 text-center text-[11px] text-muted-foreground/65",
                     "Syntaxis UI preview · Local runtime"
@@ -93,8 +109,9 @@ pub fn Home() -> Element {
 
         HomeDialogs {
             dialog,
-            hidden_workspace,
+            workspaces: workspace_records,
             on_notice: move |message| toast.set(Some(message)),
+            on_changed: move |()| *refresh_key.write() += 1,
         }
         if let Some(message) = toast() {
             Toast { message, on_close: move |()| toast.set(None) }

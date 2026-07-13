@@ -2,6 +2,11 @@ use dioxus::prelude::*;
 use syntaxis_ui::prelude::{AppIcon, EmptyState, Icon, StatusBadge, Tone};
 
 use crate::{app::Route, mock::WORKSPACES};
+use syntaxis_workspace::{RuntimeKind, RuntimeState};
+
+use super::client::{list_workspaces, runtime_state};
+use super::ProjectIcon;
+use super::{events::WorkspaceEventBridge, WorkspaceEventState};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Module {
@@ -14,6 +19,11 @@ enum Module {
 
 #[component]
 pub fn WorkspaceShell() -> Element {
+    let event_state = WorkspaceEventState {
+        latest: use_signal(|| None),
+        revision: use_signal(|| 0),
+    };
+    use_context_provider(|| event_state);
     let route = use_route::<Route>();
     let (slug, active) = match route {
         Route::Files { slug } => (slug, Module::Files),
@@ -23,13 +33,52 @@ pub fn WorkspaceShell() -> Element {
         Route::Ai { slug } => (slug, Module::Ai),
         Route::Home {} => ("syntaxis".into(), Module::Files),
     };
-    let project_name = WORKSPACES
-        .iter()
-        .find(|workspace| workspace.slug == slug)
-        .map_or("Syntaxis", |workspace| workspace.name);
+    let workspaces = use_resource(list_workspaces);
+    let runtime = use_resource(runtime_state);
+    let registered_workspace = workspaces()
+        .as_ref()
+        .and_then(|result| result.as_ref().ok())
+        .and_then(|workspaces| workspaces.iter().find(|workspace| workspace.slug == slug))
+        .cloned();
+    let project_name = registered_workspace.as_ref().map_or_else(
+        || {
+            WORKSPACES
+                .iter()
+                .find(|workspace| workspace.slug == slug)
+                .map_or("Syntaxis", |workspace| workspace.name)
+        },
+        |workspace| workspace.name.as_str(),
+    );
+    let runtime_snapshot = runtime()
+        .as_ref()
+        .and_then(|result| result.as_ref().ok())
+        .cloned();
+    let (runtime_label, runtime_message, runtime_ready) = match runtime_snapshot {
+        Some(RuntimeState::Ready { identity, .. }) => (
+            match identity.kind {
+                RuntimeKind::Local => "Local",
+                RuntimeKind::Remote => "Remote",
+            },
+            format!("{} ready", identity.label),
+            true,
+        ),
+        Some(RuntimeState::Unavailable { message }) => ("Offline", message, false),
+        Some(RuntimeState::Connecting) | None => {
+            ("Connecting", "Connecting to runtime".into(), false)
+        }
+    };
+    let event_revision = (event_state.revision)();
+    let runtime_message = if event_revision == 0 {
+        runtime_message
+    } else {
+        format!("{runtime_message} · file state {event_revision}")
+    };
 
     rsx! {
         main { class: "flex h-svh w-full flex-col overflow-hidden",
+            if let Some(workspace) = registered_workspace.clone() {
+                WorkspaceEventBridge { workspace, state: event_state }
+            }
             header { class: "flex h-11.5 min-h-11.5 items-center gap-2 border-b border-border bg-background px-2.5 max-md:h-12 max-md:min-h-12",
                 Link {
                     class: "inline-flex size-8.5 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground",
@@ -38,16 +87,20 @@ pub fn WorkspaceShell() -> Element {
                     "aria-label": "Back to projects",
                     "←"
                 }
-                div { class: "grid size-7 shrink-0 place-items-center rounded-md bg-linear-to-br from-primary to-primary/60 text-xs font-bold text-primary-foreground",
-                    "S"
+                if let Some(workspace) = registered_workspace.as_ref() {
+                    ProjectIcon { icon: workspace.icon.clone(), compact: true }
+                } else {
+                    div { class: "grid size-7 shrink-0 place-items-center rounded-md bg-linear-to-br from-primary to-primary/60 text-xs font-bold text-primary-foreground",
+                        "S"
+                    }
                 }
                 div { class: "flex min-w-0 items-center gap-2",
                     strong { class: "truncate text-[13px]", {project_name} }
-                    StatusBadge { label: "Local", tone: Tone::Neutral }
+                    StatusBadge { label: runtime_label, tone: Tone::Neutral }
                 }
                 div { class: "ml-auto flex items-center gap-2 pr-2 text-[11px] text-muted-foreground",
-                    span { class: "size-2 rounded-full bg-success shadow-[0_0_0.5rem_color-mix(in_oklch,var(--success),transparent_20%)]" }
-                    span { class: "max-md:hidden", "Runtime ready" }
+                    span { class: if runtime_ready { "size-2 rounded-full bg-success shadow-[0_0_0.5rem_color-mix(in_oklch,var(--success),transparent_20%)]" } else { "size-2 rounded-full bg-warning" } }
+                    span { class: "max-md:hidden", {runtime_message} }
                 }
             }
             div { class: "min-h-0 flex-1 overflow-hidden", Outlet::<Route> {} }

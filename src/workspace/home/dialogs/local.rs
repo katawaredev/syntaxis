@@ -4,26 +4,43 @@ use syntaxis_ui::prelude::{
 };
 
 use super::{mock_request_delay, RequestState};
+use crate::workspace::client::register_workspace;
+use crate::workspace::client::{browse_workspace_directories, browse_workspace_roots};
 use crate::workspace::home::HomeDialog;
 
 const MISSING_FOLDER_ERROR: &str =
     "That folder is no longer available. Choose another project directory.";
 const PERMISSION_ERROR: &str =
     "Syntaxis does not have permission to open that folder. Check its permissions and try again.";
+const OUTSIDE_ROOT_ERROR: &str =
+    "That folder is outside the roots exposed by the connected runtime.";
 
 #[component]
 pub(super) fn LocalFolderDialog(
     mut dialog: Signal<HomeDialog>,
     on_notice: EventHandler<String>,
+    on_changed: EventHandler<()>,
 ) -> Element {
-    let mut local_path = use_signal(|| "/home/alex/projects/".to_string());
+    let mut local_path = use_signal(String::new);
+    let mut browse_path = use_signal(String::new);
     let mut request = use_signal(|| RequestState::Idle);
+    let roots = use_resource(browse_workspace_roots);
+    let directories = use_resource(move || {
+        let path = browse_path();
+        async move {
+            if path.is_empty() {
+                Ok(Vec::new())
+            } else {
+                browse_workspace_directories(path).await
+            }
+        }
+    });
     let pending = request() == RequestState::Pending;
 
     rsx! {
         Modal {
             title: "Open local folder",
-            description: "Register an existing project directory.",
+            description: "Register an absolute directory exposed by the connected runtime.",
             on_close: move |()| {
                 if !pending {
                     dialog.set(HomeDialog::None);
@@ -47,42 +64,67 @@ pub(super) fn LocalFolderDialog(
                         },
                     }
                 }
-                div {
-                    class: "max-h-36 overflow-y-auto rounded-md border border-border bg-background p-1.5",
-                    "aria-label": "Mock project folders",
+                p { class: "rounded-md border border-border bg-background px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground",
+                    "Web clients can only register folders beneath SYNTAXIS_WORKSPACE_ROOTS on the self-hosted runtime. Local desktop builds can use arbitrary folders."
+                }
+                div { class: "max-h-44 overflow-y-auto rounded-md border border-border bg-background p-1.5",
                     p { class: "px-2 py-1 text-[10px] font-bold tracking-widest text-muted-foreground",
-                        "PROJECTS"
+                        if browse_path().is_empty() {
+                            "RUNTIME ROOTS"
+                        } else {
+                            "DIRECTORIES"
+                        }
                     }
-                    FolderChoice {
-                        label: "▾ projects",
-                        path: "/home/alex/projects/",
-                        disabled: pending,
-                        local_path,
-                        request,
+                    if browse_path().is_empty() {
+                        if let Some(Ok(roots)) = roots() {
+                            for root in roots {
+                                BrowserChoice {
+                                    label: root.name,
+                                    path: root.path,
+                                    local_path,
+                                    browse_path,
+                                    request,
+                                }
+                            }
+                        }
+                        if let Some(Err(error)) = roots() {
+                            p {
+                                class: "px-2 py-1.5 text-xs text-destructive",
+                                role: "alert",
+                                "{error}"
+                            }
+                        }
+                    } else {
+                        button {
+                            class: "w-full rounded-sm bg-transparent px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent",
+                            onclick: move |_| browse_path.set(String::new()),
+                            "← Runtime roots"
+                        }
+                        if let Some(Ok(directories)) = directories() {
+                            for directory in directories {
+                                BrowserChoice {
+                                    label: directory.name,
+                                    path: directory.path,
+                                    local_path,
+                                    browse_path,
+                                    request,
+                                }
+                            }
+                        }
+                        if let Some(Err(error)) = directories() {
+                            p {
+                                class: "px-2 py-1.5 text-xs text-destructive",
+                                role: "alert",
+                                "{error}"
+                            }
+                        }
                     }
-                    FolderChoice {
-                        label: "▣ syntaxis",
-                        path: "/home/alex/projects/syntaxis",
-                        nested: true,
-                        disabled: pending,
-                        local_path,
-                        request,
-                    }
-                    FolderChoice {
-                        label: "▣ atlas-api",
-                        path: "/home/alex/projects/atlas-api",
-                        nested: true,
-                        disabled: pending,
-                        local_path,
-                        request,
-                    }
-                    FolderChoice {
-                        label: "▧ missing-project",
-                        path: "/home/alex/projects/missing-project",
-                        nested: true,
-                        disabled: pending,
-                        local_path,
-                        request,
+                    if !local_path().is_empty() && browse_path().is_empty() {
+                        button {
+                            class: "w-full rounded-sm bg-transparent px-2 py-1.5 text-left text-xs text-primary hover:bg-accent",
+                            onclick: move |_| browse_path.set(local_path()),
+                            "Browse entered path"
+                        }
                     }
                 }
                 RequestFeedback {
@@ -105,18 +147,22 @@ pub(super) fn LocalFolderDialog(
                             request.set(RequestState::Pending);
                             spawn(async move {
                                 mock_request_delay().await;
-                                let error = if path.contains("missing") {
-                                    Some(MISSING_FOLDER_ERROR)
-                                } else if path.contains("denied") {
-                                    Some(PERMISSION_ERROR)
-                                } else {
-                                    None
-                                };
-                                if let Some(message) = error {
-                                    request.set(RequestState::Error(message));
-                                } else {
-                                    dialog.set(HomeDialog::None);
-                                    on_notice.call("Workspace registered".into());
+                                match register_workspace(path).await {
+                                    Ok(_) => {
+                                        dialog.set(HomeDialog::None);
+                                        on_notice.call("Workspace registered".into());
+                                        on_changed.call(());
+                                    }
+                                    Err(error) => {
+                                        let message = if error.contains("outside") {
+                                            OUTSIDE_ROOT_ERROR
+                                        } else if error.contains("permission") {
+                                            PERMISSION_ERROR
+                                        } else {
+                                            MISSING_FOLDER_ERROR
+                                        };
+                                        request.set(RequestState::Error(message));
+                                    }
                                 }
                             });
                         },
@@ -128,23 +174,24 @@ pub(super) fn LocalFolderDialog(
 }
 
 #[component]
-fn FolderChoice(
-    label: &'static str,
-    path: &'static str,
-    #[props(default = false)] nested: bool,
-    disabled: bool,
+fn BrowserChoice(
+    label: String,
+    path: String,
     mut local_path: Signal<String>,
+    mut browse_path: Signal<String>,
     mut request: Signal<RequestState>,
 ) -> Element {
+    let selected_path = path.clone();
     rsx! {
         button {
-            class: if nested { "w-full rounded-sm bg-transparent py-1.5 pr-2 pl-7 text-left hover:bg-accent" } else { "w-full rounded-sm bg-transparent px-2 py-1.5 text-left hover:bg-accent" },
-            disabled,
+            class: "w-full rounded-sm bg-transparent px-2 py-1.5 text-left text-xs hover:bg-accent",
+            title: path,
             onclick: move |_| {
-                local_path.set(path.into());
+                local_path.set(selected_path.clone());
+                browse_path.set(selected_path.clone());
                 request.set(RequestState::Idle);
             },
-            {label}
+            "▣ {label}"
         }
     }
 }
