@@ -110,9 +110,9 @@ pub fn Files(slug: String) -> Element {
     let mut toast = use_signal(|| None::<String>);
 
     rsx! {
-        div { class: if sidebar_open() { "files-layout" } else { "files-layout sidebar-closed" },
+        div { class: if sidebar_open() { "grid size-full min-h-0 min-w-0 grid-cols-[248px_minmax(0,1fr)] overflow-hidden max-md:block" } else { "grid size-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] overflow-hidden max-md:block" },
             if sidebar_open() {
-                aside { class: "explorer desktop-explorer",
+                aside { class: "min-h-0 min-w-0 border-r border-border bg-background max-md:hidden",
                     Explorer {
                         selected,
                         search,
@@ -144,7 +144,7 @@ pub fn Files(slug: String) -> Element {
                 Drawer {
                     title: "Explorer",
                     label: "Workspace file explorer",
-                    content_class: "explorer drawer",
+                    content_class: "h-full w-[min(330px,88vw)] justify-self-start border-0 border-r border-border bg-background shadow-[15px_0_50px_#0008]",
                     restore_focus: "button[aria-label='Open explorer']",
                     on_close: move |()| drawer.set(false),
                     Explorer {
@@ -175,9 +175,9 @@ pub fn Files(slug: String) -> Element {
                     }
                 }
             }
-            section { class: "editor-panel",
-                div { class: "editor-header",
-                    div { class: "desktop-sidebar-toggle",
+            section { class: "flex min-h-0 min-w-0 flex-col overflow-hidden max-md:h-full",
+                div { class: "relative flex h-10 min-h-10 items-center gap-1.5 border-b border-border bg-background px-1.75 max-md:h-13 max-md:min-h-13 max-md:gap-1.75 max-[420px]:gap-0.75 max-[420px]:px-1",
+                    div { class: "shrink-0 max-md:hidden",
                         IconButton {
                             label: if sidebar_open() { "Hide file browser" } else { "Show file browser" },
                             icon: AppIcon::Explorer,
@@ -185,14 +185,16 @@ pub fn Files(slug: String) -> Element {
                             onclick: move |_| sidebar_open.toggle(),
                         }
                     }
-                    div { class: "mobile-sidebar-toggle",
+                    div { class: "hidden shrink-0 max-md:block",
                         IconButton {
                             label: "Open explorer",
                             icon: AppIcon::Explorer,
                             onclick: move |_| drawer.set(true),
                         }
                     }
-                    div { class: "editor-tabs", role: "tablist",
+                    div {
+                        class: "flex h-8.5 min-w-0 flex-1 gap-0.5 overflow-x-auto overflow-y-hidden bg-background [scrollbar-width:none] max-md:hidden",
+                        role: "tablist",
                         for file in open_files() {
                             EditorTab {
                                 label: file.label,
@@ -207,33 +209,35 @@ pub fn Files(slug: String) -> Element {
                         }
                     }
                     DropdownMenu {
-                        class: "mobile-tabs",
+                        class: "relative hidden min-w-0 flex-1 max-md:block",
                         open: mobile_tabs_open(),
                         on_open_change: move |open: bool| mobile_tabs_open.set(open),
                         DropdownMenuTrigger {
-                            class: "mobile-tabs-trigger",
+                            class: "flex h-10 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-left text-xs text-foreground hover:bg-accent data-[state=open]:bg-accent",
                             "aria-label": "Open file tabs",
                             "aria-expanded": mobile_tabs_open(),
-                            span { class: "mobile-tabs-value",
+                            span { class: "flex min-w-0 items-center gap-1 overflow-hidden [&>span:first-child]:truncate",
                                 if let Some(file) = open_files.read().iter().find(|file| file.label == selected()) {
                                     span { "{file.label}" }
                                     if file.dirty {
-                                        span { class: "mobile-tab-dirty", "*" }
+                                        span { class: "shrink-0 text-primary", "*" }
                                     }
                                 } else {
                                     "No file open"
                                 }
                             }
-                            span { class: "mobile-tabs-chevron", "⌄" }
+                            span { class: "shrink-0 text-muted-foreground", "⌄" }
                         }
-                        DropdownMenuContent { class: "dropdown mobile-tabs-dropdown",
+                        DropdownMenuContent { class: "absolute top-[calc(100%+4px)] right-2 left-2 z-80 w-auto rounded-lg border border-border bg-popover p-0.75 shadow-2xl [&_button]:flex [&_button]:min-h-8 [&_button]:w-full [&_button]:items-center [&_button]:justify-between [&_button]:gap-3 [&_button]:rounded-sm [&_button]:px-2 [&_button]:py-1.5 [&_button]:text-left [&_button]:text-xs [&_button]:hover:bg-accent",
                             if open_files.read().is_empty() {
-                                div { class: "mobile-tabs-empty", "No file open" }
+                                div { class: "p-2.5 text-xs text-muted-foreground",
+                                    "No file open"
+                                }
                             }
                             for (index, file) in open_files().into_iter().enumerate() {
-                                div { class: if selected() == file.label { "mobile-tab-option active" } else { "mobile-tab-option" },
+                                div { class: if selected() == file.label { "flex h-11 min-w-0 items-stretch rounded-md border border-border bg-accent text-foreground not-first:mt-0.5" } else { "flex h-11 min-w-0 items-stretch rounded-md border border-border bg-background text-muted-foreground not-first:mt-0.5" },
                                     DropdownMenuItem::<String> {
-                                        class: "mobile-tab-select",
+                                        class: "min-h-10.5 min-w-0 flex-1 justify-start gap-1 rounded-r-none px-2 text-inherit",
                                         value: file.label.to_string(),
                                         index,
                                         on_select: move |path| {
@@ -247,13 +251,13 @@ pub fn Files(slug: String) -> Element {
                                                 mobile_tabs_open.set(false);
                                             }
                                         },
-                                        span { class: "mobile-tab-label", "{file.label}" }
+                                        span { class: "truncate", "{file.label}" }
                                         if file.dirty {
-                                            span { class: "mobile-tab-dirty", "*" }
+                                            span { class: "shrink-0 text-primary", "*" }
                                         }
                                     }
                                     button {
-                                        class: "mobile-tab-close",
+                                        class: "min-h-10.5 w-10.5 min-w-10.5 justify-center rounded-l-none p-0 text-muted-foreground",
                                         "aria-label": "Close {file.label}",
                                         title: "Close {file.label}",
                                         onclick: move |event| {
@@ -267,7 +271,7 @@ pub fn Files(slug: String) -> Element {
                             }
                         }
                     }
-                    div { class: "toolbar-actions",
+                    div { class: "flex items-center gap-1",
                         IconButton {
                             label: "Find in file",
                             icon: AppIcon::Search,
@@ -275,7 +279,7 @@ pub fn Files(slug: String) -> Element {
                             onclick: move |_| toast.set(Some("Find opened".into())),
                         }
                         DropdownMenu {
-                            class: "menu-anchor",
+                            class: "relative",
                             open: editor_menu(),
                             on_open_change: move |open: bool| editor_menu.set(open),
                             MenuTrigger {
@@ -283,7 +287,7 @@ pub fn Files(slug: String) -> Element {
                                 icon: AppIcon::Menu,
                                 open: editor_menu(),
                             }
-                            DropdownMenuContent { class: "dropdown align-right",
+                            DropdownMenuContent { class: "absolute top-[calc(100%+5px)] right-0 z-80 w-47.5 rounded-lg border border-border bg-popover p-1.25 shadow-2xl [&_button]:flex [&_button]:min-h-8 [&_button]:w-full [&_button]:items-center [&_button]:justify-between [&_button]:gap-3 [&_button]:rounded-sm [&_button]:px-2 [&_button]:py-1.5 [&_button]:text-left [&_button]:text-xs [&_button]:hover:bg-accent [&_hr]:-mx-1.25 [&_hr]:my-1 [&_hr]:h-px [&_hr]:border-0 [&_hr]:bg-border [&_kbd]:text-[9px] [&_kbd]:text-muted-foreground",
                                 DropdownMenuItem::<EditorAction> {
                                     value: EditorAction::GoToLine,
                                     index: 0_usize,
@@ -373,7 +377,7 @@ pub fn Files(slug: String) -> Element {
                                 DropdownMenuItem::<EditorAction> {
                                     value: EditorAction::Revert,
                                     index: 9_usize,
-                                    class: "destructive-text",
+                                    class: "!text-destructive",
                                     on_select: move |_| toast.set(Some("Unsaved changes reverted".into())),
                                     "Revert Unsaved Changes"
                                 }
@@ -387,11 +391,13 @@ pub fn Files(slug: String) -> Element {
                         }
                     }
                 }
-                div { class: "editor-content",
+                div { class: "relative min-h-0 min-w-0 flex-1 overflow-auto bg-[#1f2021]",
                     if active_view() == "empty" {
-                        div { class: "empty-state",
-                            h2 { "No open files" }
-                            p { "Choose a file from the explorer to open it." }
+                        div { class: "flex size-full flex-col items-center justify-center p-7 text-center",
+                            h2 { class: "text-lg text-foreground", "No open files" }
+                            p { class: "mt-1.75 max-w-97.5 leading-normal text-muted-foreground",
+                                "Choose a file from the explorer to open it."
+                            }
                         }
                     } else if diff() && active_view() == "code" {
                         DiffEditor { on_close: move |()| diff.set(false) }
@@ -407,14 +413,14 @@ pub fn Files(slug: String) -> Element {
                         CodePlaceholder { wrap: wrap(), line_numbers: line_numbers() }
                     }
                 }
-                footer { class: "editor-statusbar",
-                    div {
-                        span { class: "status-light" }
+                footer { class: "flex h-6.25 min-h-6.25 items-center justify-between border-t border-border bg-background px-2.5 text-[9px] text-muted-foreground",
+                    div { class: "flex items-center gap-3.25",
+                        span { class: "size-2 rounded-full bg-success" }
                         "Mock buffer"
                     }
-                    div {
-                        span { "Ln 18, Col 24" }
-                        span { "Spaces: 4" }
+                    div { class: "flex items-center gap-3.25",
+                        span { class: "max-md:hidden", "Ln 18, Col 24" }
+                        span { class: "max-md:hidden", "Spaces: 4" }
                         span { "UTF-8" }
                         span { "Rust" }
                     }
@@ -534,10 +540,10 @@ fn Explorer(
     on_notice: EventHandler<String>,
 ) -> Element {
     rsx! {
-        div { class: "explorer-inner",
-            div { class: "explorer-toolbar",
+        div { class: "flex h-full min-h-0 flex-col",
+            div { class: "flex h-10.5 min-h-10.5 items-center border-b border-border px-1.25",
                 DropdownMenu {
-                    class: "menu-anchor",
+                    class: "relative",
                     open: menu(),
                     on_open_change: move |open: bool| menu.set(open),
                     MenuTrigger {
@@ -545,7 +551,7 @@ fn Explorer(
                         icon: AppIcon::Menu,
                         open: menu(),
                     }
-                    DropdownMenuContent { class: "dropdown",
+                    DropdownMenuContent { class: "absolute top-[calc(100%+5px)] left-0 z-80 w-47.5 rounded-lg border border-border bg-popover p-1.25 shadow-2xl [&_button]:flex [&_button]:min-h-8 [&_button]:w-full [&_button]:items-center [&_button]:justify-between [&_button]:gap-3 [&_button]:rounded-sm [&_button]:px-2 [&_button]:py-1.5 [&_button]:text-left [&_button]:text-xs [&_button]:hover:bg-accent [&_hr]:-mx-1.25 [&_hr]:my-1 [&_hr]:h-px [&_hr]:border-0 [&_hr]:bg-border",
                         DropdownMenuItem::<FileDialog> {
                             value: FileDialog::CreateFile,
                             index: 0_usize,
@@ -574,7 +580,7 @@ fn Explorer(
                         DropdownMenuItem::<FileDialog> {
                             value: FileDialog::Delete,
                             index: 4_usize,
-                            class: "destructive-text",
+                            class: "!text-destructive",
                             on_select: move |action| on_action.call(action),
                             "Delete selected"
                         }
@@ -586,7 +592,7 @@ fn Explorer(
                     pressed: search(),
                     onclick: move |_| search.toggle(),
                 }
-                span { class: "toolbar-spacer" }
+                span { class: "flex-1" }
                 IconButton {
                     label: "Refresh files",
                     icon: AppIcon::Refresh,
@@ -594,15 +600,16 @@ fn Explorer(
                 }
             }
             if search() {
-                div { class: "explorer-search",
+                div { class: "border-b border-border p-1.75",
                     input {
+                        class: "h-7.75 w-full rounded-md border border-input bg-background/95 px-2 py-1.25 text-xs placeholder:text-muted-foreground/70",
                         placeholder: "Search files…",
                         "aria-label": "Search files",
                         autofocus: true,
                     }
                 }
             }
-            div { class: "explorer-label",
+            div { class: "flex h-7.75 min-h-7.75 items-center justify-between px-2.75 text-[10px] font-bold tracking-[0.08em] text-muted-foreground",
                 if git_filter() {
                     "GIT CHANGES"
                 } else {
@@ -610,7 +617,7 @@ fn Explorer(
                 }
             }
             div {
-                class: "file-tree",
+                class: "min-h-0 flex-1 overflow-y-auto px-1.25",
                 role: "tree",
                 "aria-label": "Workspace files",
                 for (name, kind, status) in FILES {
@@ -620,7 +627,7 @@ fn Explorer(
                                 || (name == "app.css" && assets_expanded())))
                     {
                         button {
-                            class: if selected() == name { "tree-row selected {kind}" } else { "tree-row {kind}" },
+                            class: if selected() == name { "flex h-7.25 w-full items-center gap-1.5 rounded-sm bg-accent px-1.5 text-left text-xs text-foreground [&.nested]:pl-4.75 {kind}" } else { "flex h-7.25 w-full items-center gap-1.5 rounded-sm bg-transparent px-1.5 text-left text-xs text-foreground/90 hover:bg-accent/65 [&.nested]:pl-4.75 {kind}" },
                             role: "treeitem",
                             "aria-selected": selected() == name,
                             "aria-expanded": if kind == "folder" { Some(if name == "src" { src_expanded() } else { assets_expanded() }) } else { None },
@@ -633,7 +640,7 @@ fn Explorer(
                                     on_select.call(name);
                                 }
                             },
-                            span { class: "chevron",
+                            span { class: "w-2.25 text-[9px] text-muted-foreground",
                                 if kind == "folder" {
                                     if (name == "src" && src_expanded()) || (name == "assets" && assets_expanded()) {
                                         "▾"
@@ -644,38 +651,38 @@ fn Explorer(
                                     ""
                                 }
                             }
-                            span { class: "tree-icon",
+                            span { class: if kind == "folder" { "w-3.25 text-warning" } else { "w-3.25 text-primary" },
                                 if kind == "folder" {
                                     "▣"
                                 } else {
                                     "◇"
                                 }
                             }
-                            span { class: "tree-name", {name} }
+                            span { class: "flex-1 truncate", {name} }
                             if !status.is_empty() {
-                                span { class: "tree-status", {status} }
+                                span { class: "text-[10px] font-bold text-warning", {status} }
                             }
                         }
                     }
                 }
             }
-            div { class: "explorer-footer",
+            div { class: "flex h-7.25 min-h-7.25 items-center justify-between border-t border-border px-2.5 text-[10px] text-muted-foreground",
                 DropdownMenu {
-                    class: "footer-branch menu-anchor",
+                    class: "relative min-w-0",
                     open: branch_menu(),
                     on_open_change: move |open: bool| branch_menu.set(open),
                     DropdownMenuTrigger {
-                        class: "branch-footer-button",
+                        class: "flex h-5.75 max-w-33.75 items-center gap-1.25 rounded-sm bg-transparent px-1.25 text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground [&_span]:truncate",
                         "aria-label": "Current branch: {current_branch}",
                         title: "Switch or manage branch",
                         Icon { icon: AppIcon::GitBranch, size: 11 }
                         span { "{current_branch}" }
                     }
-                    DropdownMenuContent { class: "dropdown explorer-branch-dropdown",
+                    DropdownMenuContent { class: "absolute bottom-[calc(100%+5px)] left-0 z-80 w-58.75 rounded-lg border border-border bg-popover p-1.25 shadow-2xl [&_button]:flex [&_button]:min-h-8 [&_button]:w-full [&_button]:items-center [&_button]:justify-between [&_button]:gap-3 [&_button]:rounded-sm [&_button]:px-2 [&_button]:py-1.5 [&_button]:text-left [&_button]:text-xs [&_button]:hover:bg-accent [&_hr]:-mx-1.25 [&_hr]:my-1 [&_hr]:h-px [&_hr]:border-0 [&_hr]:bg-border",
                         DropdownMenuItem::<ExplorerBranchAction> {
                             value: ExplorerBranchAction::Main,
                             index: 0_usize,
-                            class: if current_branch() == "main" { "selected-menu-item" } else { "" },
+                            class: if current_branch() == "main" { "text-primary" } else { "" },
                             on_select: move |_| {
                                 current_branch.set("main".into());
                                 on_notice.call("Switched to main".into());
@@ -688,7 +695,7 @@ fn Explorer(
                         DropdownMenuItem::<ExplorerBranchAction> {
                             value: ExplorerBranchAction::Workspace,
                             index: 1_usize,
-                            class: if current_branch() == "feature/workspace-ui" { "selected-menu-item" } else { "" },
+                            class: if current_branch() == "feature/workspace-ui" { "text-primary" } else { "" },
                             on_select: move |_| {
                                 current_branch.set("feature/workspace-ui".into());
                                 on_notice.call("Switched to feature/workspace-ui".into());
@@ -701,7 +708,7 @@ fn Explorer(
                         DropdownMenuItem::<ExplorerBranchAction> {
                             value: ExplorerBranchAction::Runtime,
                             index: 2_usize,
-                            class: if current_branch() == "fix/runtime-status" { "selected-menu-item" } else { "" },
+                            class: if current_branch() == "fix/runtime-status" { "text-primary" } else { "" },
                             on_select: move |_| {
                                 current_branch.set("fix/runtime-status".into());
                                 on_notice.call("Switched to fix/runtime-status".into());
@@ -727,7 +734,7 @@ fn Explorer(
                     }
                 }
                 button {
-                    class: if git_filter() { "changes-filter active" } else { "changes-filter" },
+                    class: if git_filter() { "rounded-sm bg-accent px-1.25 py-0.75 text-[10px] text-foreground" } else { "rounded-sm bg-transparent px-1.25 py-0.75 text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground" },
                     "aria-label": if git_filter() { "Show all files" } else { "Show Git changed files" },
                     "aria-pressed": git_filter(),
                     title: if git_filter() { "Show all files" } else { "Show Git changed files" },
@@ -759,15 +766,16 @@ fn ExplorerBranchActionDialog(
             title: if is_create { "Create branch" } else { "Rename branch" },
             description: if is_create { "Create and switch to a new local branch." } else { "Rename the current branch {current_branch}." },
             on_close: move |()| on_close.call(()),
-            div { class: "form-stack",
+            div { class: "flex flex-col gap-2.25 px-5 pt-3 pb-5",
                 label { r#for: "explorer-branch-name", "Branch name" }
                 input {
+                    class: "w-full rounded-md border border-input bg-background/95 px-2.75 py-2.25 placeholder:text-muted-foreground/70",
                     id: "explorer-branch-name",
                     value,
                     autofocus: true,
                     oninput: move |event| value.set(event.value()),
                 }
-                div { class: "modal-actions",
+                div { class: "mt-2.5 flex justify-end gap-1.75",
                     Button {
                         label: "Cancel",
                         kind: ButtonKind::Ghost,
@@ -802,24 +810,24 @@ fn EditorTab(
         _ => "◇",
     };
     rsx! {
-        div { class: if active { "editor-tab active" } else { "editor-tab" },
+        div { class: if active { "flex h-8.5 min-w-max items-center gap-0.5 rounded-md border border-transparent bg-muted pr-0.75 text-[11px] text-foreground" } else { "flex h-8.5 min-w-max items-center gap-0.5 rounded-md border border-border bg-background pr-0.75 text-[11px] text-muted-foreground" },
             button {
-                class: "tab-select",
+                class: "flex h-full items-center gap-1.75 bg-transparent pr-1.25 pl-2.5 text-inherit",
                 role: "tab",
                 "aria-selected": active,
                 onclick: move |event| onclick.call(event),
-                span { class: "file-glyph", {glyph} }
+                span { class: "text-[9px] font-extrabold text-primary", {glyph} }
                 span { {label} }
             }
             if dirty {
                 span {
-                    class: "dirty-dot",
+                    class: "size-1.75 rounded-full bg-foreground",
                     title: "Unsaved changes",
                     "aria-label": "Unsaved changes",
                 }
             }
             button {
-                class: "tab-close",
+                class: "grid size-5.75 shrink-0 place-items-center rounded-sm bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground",
                 "aria-label": "Close {label}",
                 title: "Close {label}",
                 onclick: move |_| onclose.call(()),
@@ -985,19 +993,22 @@ fn FileActionDialog(
             title,
             description,
             on_close: move |()| on_close.call(()),
-            div { class: "form-stack",
+            div { class: "flex flex-col gap-2.25 px-5 pt-3 pb-5 [&>label]:mt-0.75 [&>label]:text-xs [&>label]:font-semibold [&>label]:text-foreground/80",
                 if !dangerous {
                     label { r#for: "file-action-input", "Name or path" }
                     input {
+                        class: "w-full rounded-md border border-input bg-background/95 px-2.75 py-2.25 placeholder:text-muted-foreground/70",
                         id: "file-action-input",
                         value: if action == FileDialog::Duplicate { "app-copy.rs" } else { "" },
                         placeholder: "src/new_file.rs",
                         autofocus: true,
                     }
                 } else {
-                    p { class: "danger-note", "The file will be removed from this workspace." }
+                    p { class: "rounded-md border border-destructive/35 bg-destructive/10 px-2.5 py-2.25 text-xs leading-snug text-destructive",
+                        "The file will be removed from this workspace."
+                    }
                 }
-                div { class: "modal-actions",
+                div { class: "mt-2.5 flex justify-end gap-1.75",
                     Button {
                         label: "Cancel",
                         kind: ButtonKind::Ghost,

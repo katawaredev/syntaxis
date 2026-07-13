@@ -27,9 +27,14 @@ pub(super) fn GitUrlDialog(
                     dialog.set(HomeDialog::None);
                 }
             },
-            div { class: "form-stack",
-                label { r#for: "git-url", "Repository URL" }
+            div { class: "flex flex-col gap-2 px-5 pt-3 pb-5",
+                label {
+                    class: "mt-1 text-xs font-semibold text-foreground",
+                    r#for: "git-url",
+                    "Repository URL"
+                }
                 input {
+                    class: "w-full rounded-md border border-input bg-background/95 px-2.75 py-2.25 placeholder:text-muted-foreground/70 disabled:opacity-50",
                     id: "git-url",
                     r#type: "text",
                     placeholder: "https://github.com/owner/repository.git",
@@ -42,10 +47,12 @@ pub(super) fn GitUrlDialog(
                         request.set(RequestState::Idle);
                     },
                 }
-                p { class: "form-hint", "Target: /home/alex/projects/repository" }
+                p { class: "text-[11px] text-muted-foreground",
+                    "Target: /home/alex/projects/repository"
+                }
                 if request() == RequestState::Idle {
                     button {
-                        class: "example-value",
+                        class: "self-start bg-transparent py-0.5 text-[10px] text-muted-foreground underline underline-offset-3 hover:text-foreground",
                         onclick: move |_| git_url.set("https://example.invalid/unavailable.git".into()),
                         "Use an unavailable URL to preview an error"
                     }
@@ -53,16 +60,22 @@ pub(super) fn GitUrlDialog(
                 match request() {
                     RequestState::Idle => rsx! {},
                     RequestState::Pending => rsx! {
-                        p { class: "request-progress", role: "status",
-                            span { class: "spinner small" }
+                        p {
+                            class: "flex min-h-9 items-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-2.5 py-2 text-[11px] text-primary",
+                            role: "status",
+                            span { class: "size-3.5 shrink-0 animate-spin rounded-full border-2 border-primary/30 border-t-primary" }
                             "Resolving repository and preparing clone…"
                         }
                     },
                     RequestState::Error(message) => rsx! {
-                        p { class: "form-error", role: "alert", {message} }
+                        p {
+                            class: "rounded-md border border-destructive/35 bg-destructive/10 px-2.5 py-2 text-xs leading-relaxed text-destructive",
+                            role: "alert",
+                            {message}
+                        }
                     },
                 }
-                div { class: "modal-actions",
+                div { class: "mt-2.5 flex justify-end gap-2",
                     Button {
                         label: "Cancel",
                         kind: ButtonKind::Ghost,

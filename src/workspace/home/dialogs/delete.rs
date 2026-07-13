@@ -31,9 +31,10 @@ pub(super) fn DeleteWorkspaceDialog(
                     dialog.set(HomeDialog::None);
                 }
             },
-            div { class: "form-stack",
-                label { class: "check-row",
+            div { class: "flex flex-col gap-2 px-5 pt-3 pb-5",
+                label { class: "flex items-start gap-2.5 rounded-lg border border-border p-3",
                     input {
+                        class: "mt-0.5 size-4 w-4 shrink-0 p-0 accent-primary",
                         r#type: "checkbox",
                         checked: delete_files(),
                         disabled: pending,
@@ -43,28 +44,36 @@ pub(super) fn DeleteWorkspaceDialog(
                         },
                     }
                     span {
-                        strong { "Also delete project files" }
-                        small { "This cannot be undone." }
+                        strong { class: "block", "Also delete project files" }
+                        small { class: "mt-1 block text-[11px] text-muted-foreground",
+                            "This cannot be undone."
+                        }
                     }
                 }
                 if delete_files() {
-                    p { class: "danger-note",
+                    p { class: "rounded-md border border-destructive/35 bg-destructive/10 px-2.5 py-2 text-xs leading-relaxed text-destructive",
                         "All files inside {WORKSPACES[index].path} will be permanently deleted."
                     }
                 }
                 match request() {
                     RequestState::Idle => rsx! {},
                     RequestState::Pending => rsx! {
-                        p { class: "request-progress", role: "status",
-                            span { class: "spinner small" }
+                        p {
+                            class: "flex min-h-9 items-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-2.5 py-2 text-[11px] text-primary",
+                            role: "status",
+                            span { class: "size-3.5 shrink-0 animate-spin rounded-full border-2 border-primary/30 border-t-primary" }
                             "Removing workspace safely…"
                         }
                     },
                     RequestState::Error(message) => rsx! {
-                        p { class: "form-error", role: "alert", {message} }
+                        p {
+                            class: "rounded-md border border-destructive/35 bg-destructive/10 px-2.5 py-2 text-xs leading-relaxed text-destructive",
+                            role: "alert",
+                            {message}
+                        }
                     },
                 }
-                div { class: "modal-actions",
+                div { class: "mt-2.5 flex justify-end gap-2",
                     Button {
                         label: "Cancel",
                         kind: ButtonKind::Ghost,

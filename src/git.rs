@@ -61,22 +61,22 @@ pub fn Git(slug: String) -> Element {
     let mut merge_in_progress = use_signal(|| true);
 
     rsx! {
-        div { class: "git-layout",
-            section { class: "git-main",
-                header { class: "git-header",
-                    div { class: "git-header-left",
+        div { class: "grid size-full min-h-0 grid-cols-[minmax(0,1fr)_310px] overflow-hidden max-md:block",
+            section { class: "flex min-h-0 min-w-0 flex-col overflow-hidden max-md:h-full",
+                header { class: "flex min-h-13 items-center justify-between gap-2.5 border-b border-border bg-card py-1.75 pr-2 pl-3.25 max-md:pl-1.5",
+                    div { class: "flex min-w-0 items-center gap-1.5",
                         IconButton {
                             label: "Open Git sidebar",
                             icon: AppIcon::Explorer,
                             onclick: move |_| drawer.set(true),
                         }
-                        div { class: "repo-title",
+                        div { class: "flex min-w-0 items-center gap-1.75",
                             DropdownMenu {
-                                class: "branch-control menu-anchor",
+                                class: "relative",
                                 open: branch_menu(),
                                 on_open_change: move |open: bool| branch_menu.set(open),
                                 DropdownMenuTrigger {
-                                    class: "branch-button",
+                                    class: "flex h-7.75 items-center gap-1.75 rounded-md border border-border bg-secondary px-2 text-xs hover:bg-accent",
                                     "aria-label": "Current branch: {current_branch}",
                                     Icon { icon: AppIcon::GitBranch }
                                     span { "{current_branch}" }
@@ -104,7 +104,7 @@ pub fn Git(slug: String) -> Element {
                                     },
                                 }
                             }
-                            span { class: "upstream", "origin/main" }
+                            span { class: "text-[10px] text-muted-foreground", "origin/main" }
                         }
                         StatusBadge {
                             label: format!("{} changes", change_count()),
@@ -114,7 +114,7 @@ pub fn Git(slug: String) -> Element {
                             StatusBadge { label: "Merge in progress", tone: "danger" }
                         }
                     }
-                    div { class: "git-header-actions",
+                    div { class: "flex min-w-0 items-center gap-1.5",
                         Button {
                             label: "Commit",
                             kind: ButtonKind::Primary,
@@ -131,7 +131,7 @@ pub fn Git(slug: String) -> Element {
                             onclick: move |_| dialog.set(GitDialog::ForcePush),
                         }
                         DropdownMenu {
-                            class: "menu-anchor",
+                            class: "relative",
                             open: action_menu(),
                             on_open_change: move |open: bool| action_menu.set(open),
                             MenuTrigger {
@@ -139,7 +139,7 @@ pub fn Git(slug: String) -> Element {
                                 icon: AppIcon::More,
                                 open: action_menu(),
                             }
-                            DropdownMenuContent { class: "dropdown align-right wide-dropdown",
+                            DropdownMenuContent { class: "absolute top-[calc(100%+5px)] right-0 z-80 w-56.25 rounded-lg border border-border bg-popover p-1.25 shadow-2xl [&_button]:flex [&_button]:min-h-8 [&_button]:w-full [&_button]:items-center [&_button]:justify-between [&_button]:gap-3 [&_button]:rounded-sm [&_button]:px-2 [&_button]:py-1.5 [&_button]:text-left [&_button]:text-xs [&_button]:hover:bg-accent [&_hr]:-mx-1.25 [&_hr]:my-1 [&_hr]:h-px [&_hr]:border-0 [&_hr]:bg-border",
                                 GitMenuItem {
                                     action: GitDialog::CreateTag,
                                     index: 0,
@@ -183,7 +183,7 @@ pub fn Git(slug: String) -> Element {
                         }
                     }
                 }
-                div { class: "git-content",
+                div { class: "min-h-0 min-w-0 flex-1 overflow-auto bg-background",
                     if view() == SidebarView::History {
                         CommitDetail {
                             hash: selected_commit(),
@@ -207,7 +207,7 @@ pub fn Git(slug: String) -> Element {
                     }
                 }
             }
-            aside { class: "git-sidebar desktop-git-sidebar",
+            aside { class: "min-h-0 min-w-0 border-l border-border bg-sidebar max-md:hidden",
                 GitSidebar {
                     view,
                     selected,
@@ -222,7 +222,7 @@ pub fn Git(slug: String) -> Element {
                 Drawer {
                     title: "Repository",
                     label: "Git repository sidebar",
-                    content_class: "git-sidebar drawer",
+                    content_class: "h-full w-[min(330px,88vw)] justify-self-start border-0 border-r border-border bg-sidebar shadow-[15px_0_50px_#0008]",
                     restore_focus: "button[aria-label='Open Git sidebar']",
                     on_close: move |()| drawer.set(false),
                     GitSidebar {
@@ -296,11 +296,11 @@ fn BranchMenu(
     on_action: EventHandler<BranchAction>,
 ) -> Element {
     rsx! {
-        DropdownMenuContent { class: "dropdown branch-dropdown",
+        DropdownMenuContent { class: "absolute top-[calc(100%+5px)] left-0 z-80 w-58.75 rounded-lg border border-border bg-popover p-1.25 shadow-2xl max-md:fixed max-md:top-26 max-md:left-12 [&_button]:flex [&_button]:min-h-8 [&_button]:w-full [&_button]:items-center [&_button]:justify-between [&_button]:gap-3 [&_button]:rounded-sm [&_button]:px-2 [&_button]:py-1.5 [&_button]:text-left [&_button]:text-xs [&_button]:hover:bg-accent [&_hr]:-mx-1.25 [&_hr]:my-1 [&_hr]:h-px [&_hr]:border-0 [&_hr]:bg-border",
             DropdownMenuItem::<BranchAction> {
                 value: BranchAction::SwitchMain,
                 index: 0_usize,
-                class: if current_branch == "main" { "selected-menu-item" } else { "" },
+                class: if current_branch == "main" { "text-primary" } else { "" },
                 on_select: move |action| on_action.call(action),
                 span { "main" }
                 if current_branch == "main" {
@@ -310,14 +310,14 @@ fn BranchMenu(
             DropdownMenuItem::<BranchAction> {
                 value: BranchAction::SwitchWorkspace,
                 index: 1_usize,
-                class: if current_branch == "feature/workspace-ui" { "selected-menu-item" } else { "" },
+                class: if current_branch == "feature/workspace-ui" { "text-primary" } else { "" },
                 on_select: move |action| on_action.call(action),
                 "feature/workspace-ui"
             }
             DropdownMenuItem::<BranchAction> {
                 value: BranchAction::SwitchRuntime,
                 index: 2_usize,
-                class: if current_branch == "fix/runtime-status" { "selected-menu-item" } else { "" },
+                class: if current_branch == "fix/runtime-status" { "text-primary" } else { "" },
                 on_select: move |action| on_action.call(action),
                 "fix/runtime-status"
             }
@@ -375,7 +375,7 @@ fn GitMenuItem(
         DropdownMenuItem::<GitDialog> {
             value: action,
             index,
-            class: if destructive { "destructive-text" } else { "" },
+            class: if destructive { "!text-destructive" } else { "" },
             on_select: move |next| on_select.call(next),
             {label}
         }
@@ -393,27 +393,29 @@ fn GitSidebar(
     on_notice: EventHandler<String>,
 ) -> Element {
     rsx! {
-        div { class: "git-sidebar-inner",
-            div { class: "sidebar-tabs", role: "tablist",
+        div { class: "flex h-full min-h-0 flex-col",
+            div {
+                class: "grid h-10.5 min-h-10.5 grid-cols-3 items-center border-b border-border px-1.25 [&_button]:flex [&_button]:h-7.75 [&_button]:items-center [&_button]:justify-center [&_button]:gap-1.25 [&_button]:rounded-md [&_button]:bg-transparent [&_button]:text-[11px] [&_button]:text-muted-foreground [&_button_span]:min-w-4.25 [&_button_span]:rounded-full [&_button_span]:bg-secondary [&_button_span]:px-1 [&_button_span]:py-px [&_button_span]:text-[9px]",
+                role: "tablist",
                 button {
-                    class: if view() == SidebarView::Changes { "active" } else { "" },
+                    class: if view() == SidebarView::Changes { "!bg-accent !text-foreground" } else { "" },
                     onclick: move |_| on_view.call(SidebarView::Changes),
                     "Changes"
                     span { "6" }
                 }
                 button {
-                    class: if view() == SidebarView::History { "active" } else { "" },
+                    class: if view() == SidebarView::History { "!bg-accent !text-foreground" } else { "" },
                     onclick: move |_| on_view.call(SidebarView::History),
                     "History"
                 }
                 button {
-                    class: if view() == SidebarView::Compare { "active" } else { "" },
+                    class: if view() == SidebarView::Compare { "!bg-accent !text-foreground" } else { "" },
                     onclick: move |_| on_view.call(SidebarView::Compare),
                     "Compare"
                 }
             }
             if view() == SidebarView::Changes {
-                div { class: "change-scroll",
+                div { class: "min-h-0 flex-1 overflow-y-auto",
                     ChangeSection {
                         title: "CONFLICTS",
                         count: 1,
@@ -442,16 +444,21 @@ fn GitSidebar(
                         on_notice,
                     }
                 }
-                div { class: "commit-summary",
+                div { class: "border-t border-border p-2.25",
                     textarea {
+                        class: "min-h-15.25 w-full resize-none rounded-md border border-input bg-background/95 px-2.75 py-2.25 text-[11px] placeholder:text-muted-foreground/70",
                         "aria-label": "Commit message",
                         placeholder: "Commit message",
                         rows: 3,
                     }
-                    button { onclick: move |_| on_commit.call(()), "Commit staged changes" }
+                    button {
+                        class: "mt-1.5 h-7.75 w-full rounded-md bg-primary text-[11px] font-semibold text-primary-foreground hover:bg-primary/90",
+                        onclick: move |_| on_commit.call(()),
+                        "Commit staged changes"
+                    }
                 }
             } else if view() == SidebarView::History {
-                div { class: "history-list",
+                div { class: "min-h-0 overflow-y-auto p-1.25",
                     CommitRow {
                         hash: "d8f07a1",
                         title: "Build responsive Phase 1 shell",
@@ -482,24 +489,32 @@ fn GitSidebar(
                     }
                 }
             } else {
-                div { class: "compare-form",
+                div { class: "px-3 py-3.5 [&>label]:my-1.25 [&>label]:block [&>label]:text-[10px] [&>label]:text-muted-foreground",
                     label { r#for: "base-branch", "Base" }
-                    select { id: "base-branch",
+                    select {
+                        class: "h-8.25 w-full rounded-md border border-input bg-background/95 px-2 py-1.25 text-[11px]",
+                        id: "base-branch",
                         option { "main" }
                         option { "origin/main" }
                     }
-                    div { class: "compare-arrow", "↓" }
+                    div { class: "pt-2 text-center text-muted-foreground", "↓" }
                     label { r#for: "compare-branch", "Compare" }
-                    select { id: "compare-branch",
+                    select {
+                        class: "h-8.25 w-full rounded-md border border-input bg-background/95 px-2 py-1.25 text-[11px]",
+                        id: "compare-branch",
                         option { "feature/workspace-ui" }
                         option { "fix/runtime-status" }
                     }
-                    button { onclick: move |_| on_notice.call("Comparison refreshed".into()),
+                    button {
+                        class: "mt-1.5 h-7.75 w-full rounded-md bg-primary text-[11px] font-semibold text-primary-foreground hover:bg-primary/90",
+                        onclick: move |_| on_notice.call("Comparison refreshed".into()),
                         "Compare branches"
                     }
-                    div { class: "compare-stats",
-                        strong { "feature/workspace-ui" }
-                        p { "+428 −96 across 12 files" }
+                    div { class: "mt-3.5 rounded-md border border-border bg-card p-2.5",
+                        strong { class: "text-[11px]", "feature/workspace-ui" }
+                        p { class: "mt-1 text-[10px] text-muted-foreground",
+                            "+428 −96 across 12 files"
+                        }
                     }
                 }
             }
@@ -518,21 +533,27 @@ fn ChangeSection(
     on_notice: EventHandler<String>,
 ) -> Element {
     rsx! {
-        section { class: "change-section",
-            header {
+        section { class: "border-b border-border",
+            header { class: "flex h-7.75 items-center justify-between px-2 pr-2 pl-2.75 text-[9px] font-bold tracking-[0.05em] text-muted-foreground",
                 span { "{title} ({count})" }
-                button { onclick: move |_| on_notice.call(format!("{action} completed (mock)")),
+                button {
+                    class: "bg-transparent p-1 text-[9px] font-medium tracking-normal text-muted-foreground hover:text-primary",
+                    onclick: move |_| on_notice.call(format!("{action} completed (mock)")),
                     {action}
                 }
             }
             for change in changes {
                 button {
-                    class: if selected() == change.path { "change-row selected" } else { "change-row" },
+                    class: if selected() == change.path { "grid min-h-9.75 w-full grid-cols-[16px_minmax(0,1fr)_15px] items-center gap-1.5 bg-accent px-2.25 py-1 text-left text-foreground" } else { "grid min-h-9.75 w-full grid-cols-[16px_minmax(0,1fr)_15px] items-center gap-1.5 bg-transparent px-2.25 py-1 text-left text-foreground hover:bg-accent/65" },
                     onclick: move |_| on_select.call(change.path),
-                    span { class: "change-file-icon", "◇" }
-                    span { class: "change-path",
-                        strong { {change.path.rsplit('/').next().unwrap_or(change.path)} }
-                        small { {change.path} }
+                    span { class: "text-primary", "◇" }
+                    span { class: "min-w-0",
+                        strong { class: "block truncate text-[11px] font-medium",
+                            {change.path.rsplit('/').next().unwrap_or(change.path)}
+                        }
+                        small { class: "mt-px block truncate text-[8px] text-muted-foreground",
+                            {change.path}
+                        }
                     }
                     span { class: change.kind.class(), {change.kind.label()} }
                 }
@@ -551,12 +572,14 @@ fn CommitRow(
 ) -> Element {
     rsx! {
         button {
-            class: if active { "commit-row active" } else { "commit-row" },
+            class: if active { "relative flex w-full gap-2.25 rounded-md bg-accent py-2.25 pr-1.75 pl-6 text-left before:absolute before:top-0 before:bottom-0 before:left-3.25 before:w-px before:bg-border" } else { "relative flex w-full gap-2.25 rounded-md bg-transparent py-2.25 pr-1.75 pl-6 text-left before:absolute before:top-0 before:bottom-0 before:left-3.25 before:w-px before:bg-border hover:bg-accent" },
             onclick: move |_| onclick.call(()),
-            span { class: "commit-node" }
+            span { class: "absolute top-4 left-2.5 size-1.75 rounded-full border-2 border-primary bg-sidebar" }
             span {
-                strong { {title} }
-                small { "{hash} · {meta}" }
+                strong { class: "block text-[11px] leading-snug", {title} }
+                small { class: "mt-1 block font-mono text-[8px] text-muted-foreground",
+                    "{hash} · {meta}"
+                }
             }
         }
     }
@@ -785,8 +808,8 @@ fn ComparisonDetail(on_notice: EventHandler<String>) -> Element {
                     strong { "12" }
                     " files changed"
                 }
-                span { class: "change-added", "+428" }
-                span { class: "change-deleted", "−96" }
+                span { class: "text-success", "+428" }
+                span { class: "text-destructive", "−96" }
             }
             WorkingDiff {
                 path: "src/workspace.rs",
@@ -893,22 +916,27 @@ fn GitActionDialog(
             title,
             description,
             on_close: move |()| on_close.call(()),
-            div { class: "form-stack",
+            div { class: "flex flex-col gap-2.25 px-5 pt-3 pb-5 [&>label:not(.compact)]:mt-0.75 [&>label:not(.compact)]:text-xs [&>label:not(.compact)]:font-semibold [&>label:not(.compact)]:text-foreground/80",
                 if let Some(label) = input_label {
                     label { r#for: "git-action-input", {label} }
                     if action == GitDialog::Commit {
                         textarea {
+                            class: "w-full resize-y rounded-md border border-input bg-background/95 px-2.75 py-2.25 leading-normal placeholder:text-muted-foreground/70",
                             id: "git-action-input",
                             rows: 4,
                             placeholder: "Describe your changes",
                             autofocus: true,
                         }
-                        label { class: "check-row compact",
-                            input { r#type: "checkbox" }
+                        label { class: "compact flex items-center gap-2.5 py-1.75",
+                            input {
+                                class: "m-0 size-3.75 accent-primary",
+                                r#type: "checkbox",
+                            }
                             span { "Amend previous commit" }
                         }
                     } else {
                         input {
+                            class: "w-full rounded-md border border-input bg-background/95 px-2.75 py-2.25 placeholder:text-muted-foreground/70",
                             id: "git-action-input",
                             r#type: if action == GitDialog::SigningRetry { "password" } else { "text" },
                             placeholder: if action == GitDialog::CreateTag { "v0.1.0" } else { "feature/name" },
@@ -917,17 +945,20 @@ fn GitActionDialog(
                     }
                 }
                 if dangerous {
-                    p { class: "danger-note",
+                    p { class: "rounded-md border border-destructive/35 bg-destructive/10 px-2.5 py-2.25 text-xs leading-snug text-destructive",
                         "Review this destructive operation carefully before continuing."
                     }
                 }
                 if action == GitDialog::ForcePush {
-                    label { class: "check-row compact",
-                        input { r#type: "checkbox" }
+                    label { class: "compact flex items-center gap-2.5 py-1.75",
+                        input {
+                            class: "m-0 size-3.75 accent-primary",
+                            r#type: "checkbox",
+                        }
                         span { "I understand remote commits may be replaced" }
                     }
                 }
-                div { class: "modal-actions",
+                div { class: "mt-2.5 flex justify-end gap-1.75",
                     Button {
                         label: "Cancel",
                         kind: ButtonKind::Ghost,

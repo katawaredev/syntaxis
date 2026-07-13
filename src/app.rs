@@ -8,6 +8,7 @@ use crate::{
 };
 
 const APP_CSS: Asset = asset!("/assets/app.css");
+const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 const GEIST_FONT: Asset = asset!("/assets/geist-latin-wght-normal.woff2");
 const UI_SCRIPT: Asset = asset!("/assets/ui.js");
@@ -45,6 +46,7 @@ pub fn App() -> Element {
             crossorigin: "anonymous",
         }
         document::Style { {geist_font_face} }
+        document::Stylesheet { href: TAILWIND_CSS }
         document::Stylesheet { href: APP_CSS }
         document::Script { src: UI_SCRIPT }
         Router::<Route> {}

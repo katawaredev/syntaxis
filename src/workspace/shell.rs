@@ -32,27 +32,31 @@ pub fn WorkspaceShell() -> Element {
         .map_or("Syntaxis", |workspace| workspace.name);
 
     rsx! {
-        main { class: "workspace-shell",
-            header { class: "topbar",
+        main { class: "flex h-svh w-full flex-col overflow-hidden",
+            header { class: "flex h-11.5 min-h-11.5 items-center gap-2 border-b border-border bg-background px-2.5 max-md:h-12 max-md:min-h-12",
                 Link {
-                    class: "icon-button",
+                    class: "inline-flex size-8.5 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground",
                     to: Route::Home {},
                     title: "Back to projects",
                     "aria-label": "Back to projects",
                     "←"
                 }
-                div { class: "project-icon small", "S" }
-                div { class: "topbar-project",
-                    strong { {project_name} }
+                div { class: "grid size-7 shrink-0 place-items-center rounded-md bg-linear-to-br from-primary to-primary/60 text-xs font-bold text-primary-foreground",
+                    "S"
+                }
+                div { class: "flex min-w-0 items-center gap-2",
+                    strong { class: "truncate text-[13px]", {project_name} }
                     StatusBadge { label: "Local", tone: "neutral" }
                 }
-                div { class: "runtime-status",
-                    span { class: "status-light" }
-                    "Runtime ready"
+                div { class: "ml-auto flex items-center gap-2 pr-2 text-[11px] text-muted-foreground",
+                    span { class: "size-2 rounded-full bg-success shadow-[0_0_0.5rem_color-mix(in_oklch,var(--success),transparent_20%)]" }
+                    span { class: "max-md:hidden", "Runtime ready" }
                 }
             }
-            div { class: "module-surface", Outlet::<Route> {} }
-            nav { class: "bottom-nav", "aria-label": "Workspace modules",
+            div { class: "min-h-0 flex-1 overflow-hidden", Outlet::<Route> {} }
+            nav {
+                class: "flex h-14.5 min-h-14.5 items-stretch justify-center border-t border-border bg-background max-md:h-15.5 max-md:min-h-15.5",
+                "aria-label": "Workspace modules",
                 NavItem {
                     label: "Files",
                     icon: AppIcon::Folder,
@@ -74,18 +78,18 @@ pub fn WorkspaceShell() -> Element {
                     to: Route::Git { slug: slug.clone() },
                 }
                 button {
-                    class: "nav-item",
+                    class: "flex w-26 flex-col items-center justify-center gap-1 border-t-2 border-transparent bg-transparent px-2.5 pt-2 pb-1.5 text-muted-foreground max-md:w-1/5 max-md:pb-2",
                     disabled: true,
                     title: "Preview unavailable",
-                    span { "◫" }
-                    small { "Preview" }
+                    span { class: "h-5 text-base leading-5", "◫" }
+                    small { class: "text-[10px]", "Preview" }
                 }
                 button {
-                    class: "nav-item",
+                    class: "flex w-26 flex-col items-center justify-center gap-1 border-t-2 border-transparent bg-transparent px-2.5 pt-2 pb-1.5 text-muted-foreground max-md:w-1/5 max-md:pb-2",
                     disabled: true,
                     title: "AI unavailable",
-                    span { "✦" }
-                    small { "AI" }
+                    span { class: "h-5 text-base leading-5", "✦" }
+                    small { class: "text-[10px]", "AI" }
                 }
             }
         }
@@ -96,13 +100,13 @@ pub fn WorkspaceShell() -> Element {
 fn NavItem(label: String, icon: AppIcon, active: bool, to: Route) -> Element {
     rsx! {
         Link {
-            class: if active { "nav-item active" } else { "nav-item" },
+            class: if active { "flex w-26 flex-col items-center justify-center gap-1 border-t-2 border-transparent bg-transparent px-2.5 pt-2 pb-1.5 text-foreground max-md:w-1/5 max-md:pb-2" } else { "flex w-26 flex-col items-center justify-center gap-1 border-t-2 border-transparent bg-transparent px-2.5 pt-2 pb-1.5 text-muted-foreground hover:bg-accent/50 hover:text-foreground max-md:w-1/5 max-md:pb-2" },
             "aria-current": if active { "page" },
             to,
-            span {
+            span { class: "h-5 text-base leading-5",
                 Icon { icon, size: 18 }
             }
-            small { {label} }
+            small { class: "text-[10px]", {label} }
         }
     }
 }

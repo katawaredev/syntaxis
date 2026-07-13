@@ -42,19 +42,26 @@ pub fn Home() -> Element {
     let mut toast = use_signal(|| None::<String>);
 
     rsx! {
-        main { class: "home-page",
-            div { class: "home-glow" }
-            section { class: "home-content",
-                header { class: "home-header",
-                    div { class: "brand-mark", "S" }
+        main { class: "relative size-full overflow-x-hidden overflow-y-auto bg-background",
+            section { class: "mx-auto flex min-h-full w-[calc(100%-2.5rem)] max-w-205 flex-col pt-[9vh] pb-6 max-md:w-[calc(100%-1.5rem)] max-md:max-w-155 max-md:pt-8.5",
+                header { class: "mb-9.5 flex items-center gap-4.5 max-md:mb-6.5 max-md:items-start",
+                    div { class: "grid size-12.5 shrink-0 place-items-center rounded-xl bg-linear-to-br from-primary to-primary/60 text-[22px] font-bold text-primary-foreground shadow-lg max-md:size-11",
+                        "S"
+                    }
                     div {
-                        p { class: "eyebrow", "LOCAL-FIRST WORKSPACE" }
-                        h1 { "Welcome to Syntaxis" }
-                        p { "Pick up where you left off or open another project." }
+                        p { class: "text-[10px] font-bold tracking-[0.14em] text-primary max-[420px]:hidden",
+                            "LOCAL-FIRST WORKSPACE"
+                        }
+                        h1 { class: "mt-1 text-4xl font-semibold tracking-tight text-foreground max-md:text-3xl max-[420px]:mt-0 max-[420px]:text-2xl",
+                            "Welcome to Syntaxis"
+                        }
+                        p { class: "mt-1 text-[15px] text-muted-foreground max-[420px]:text-[13px]",
+                            "Pick up where you left off or open another project."
+                        }
                     }
                 }
 
-                div { class: "source-actions",
+                div { class: "mb-10.5 grid grid-cols-2 gap-3 max-md:mb-8 max-md:grid-cols-1",
                     SourceAction {
                         icon: AppIcon::Folder,
                         title: "Open local folder",
@@ -78,7 +85,9 @@ pub fn Home() -> Element {
                     on_delete: move |index| dialog.set(HomeDialog::Delete(index)),
                     on_notice: move |message| toast.set(Some(message)),
                 }
-                footer { class: "home-footer", "Syntaxis UI preview · Local runtime" }
+                footer { class: "mt-auto pt-10 text-center text-[11px] text-muted-foreground/65",
+                    "Syntaxis UI preview · Local runtime"
+                }
             }
         }
 
@@ -101,15 +110,17 @@ fn SourceAction(
     onclick: EventHandler<MouseEvent>,
 ) -> Element {
     rsx! {
-        button { class: "source-card", onclick: move |event| onclick.call(event),
-            span { class: "source-icon",
+        button {
+            class: "grid min-w-0 grid-cols-[auto_1fr_auto] items-center gap-3 rounded-xl border border-border bg-card p-4 text-left shadow-sm transition-colors hover:border-primary/60 hover:bg-accent/80 max-[420px]:p-3.5",
+            onclick: move |event| onclick.call(event),
+            span { class: "grid size-9 place-items-center rounded-lg bg-primary/10 text-primary",
                 Icon { icon, size: 22 }
             }
             span {
-                strong { {title} }
-                small { {description} }
+                strong { class: "mb-1 block text-foreground", {title} }
+                small { class: "block truncate text-muted-foreground", {description} }
             }
-            span { class: "source-arrow", "→" }
+            span { class: "text-lg text-muted-foreground", "→" }
         }
     }
 }

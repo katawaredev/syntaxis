@@ -71,10 +71,10 @@ impl ChangeKind {
 
     pub const fn class(self) -> &'static str {
         match self {
-            Self::Modified => "change-modified",
-            Self::Added => "change-added",
-            Self::Deleted | Self::Conflicted => "change-deleted",
-            Self::Untracked => "change-untracked",
+            Self::Modified => "text-warning",
+            Self::Added => "text-success",
+            Self::Deleted | Self::Conflicted => "text-destructive",
+            Self::Untracked => "text-primary",
         }
     }
 }

@@ -74,13 +74,15 @@ pub fn Terminal(slug: String) -> Element {
     let mut toast = use_signal(|| None::<String>);
 
     rsx! {
-        section { class: "terminal-layout",
-            div { class: "terminal-header",
-                div { class: "terminal-tabs", role: "tablist",
+        section { class: "flex size-full min-h-0 flex-col bg-background",
+            div { class: "relative flex h-10 min-h-10 items-center gap-1.25 border-b border-border bg-background px-1.75 max-md:h-13 max-md:min-h-13 max-md:gap-1.75 max-[420px]:gap-0.75 max-[420px]:px-1",
+                div {
+                    class: "flex h-8.5 min-w-0 flex-1 gap-0.5 overflow-x-auto bg-background [scrollbar-width:none] max-md:hidden",
+                    role: "tablist",
                     for session in sessions() {
-                        div { class: if active() == Some(session.id) { "terminal-tab active" } else { "terminal-tab" },
+                        div { class: if active() == Some(session.id) { "flex h-8.5 min-w-33 max-w-47.5 items-center rounded-md border border-transparent bg-muted pr-0.75 text-[11px] text-foreground" } else { "flex h-8.5 min-w-33 max-w-47.5 items-center rounded-md border border-border bg-background pr-0.75 text-[11px] text-muted-foreground" },
                             button {
-                                class: "tab-select",
+                                class: "flex h-full min-w-0 flex-1 items-center gap-1.75 bg-transparent pr-1.25 pl-2.5 text-inherit [&>span:nth-child(2)]:flex-1 [&>span:nth-child(2)]:truncate [&>span:nth-child(2)]:text-left",
                                 role: "tab",
                                 "aria-selected": active() == Some(session.id),
                                 onclick: move |_| active.set(Some(session.id)),
@@ -88,7 +90,7 @@ pub fn Terminal(slug: String) -> Element {
                                 span { {session.name.clone()} }
                             }
                             button {
-                                class: "tab-close",
+                                class: "grid size-5.75 shrink-0 place-items-center rounded-sm bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground",
                                 "aria-label": "Close {session.name}",
                                 title: "Close {session.name}",
                                 onclick: move |_| close_terminal(session.id, &session.name, sessions, active, toast),
@@ -98,14 +100,14 @@ pub fn Terminal(slug: String) -> Element {
                     }
                 }
                 DropdownMenu {
-                    class: "mobile-terminal-tabs",
+                    class: "relative hidden min-w-0 flex-1 max-md:block",
                     open: mobile_tabs_open(),
                     on_open_change: move |open: bool| mobile_tabs_open.set(open),
                     DropdownMenuTrigger {
-                        class: "mobile-terminal-tabs-trigger",
+                        class: "flex h-10 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-left text-xs text-foreground hover:bg-accent data-[state=open]:bg-accent",
                         "aria-label": "Open terminal tabs",
                         "aria-expanded": mobile_tabs_open(),
-                        span { class: "mobile-terminal-value",
+                        span { class: "flex min-w-0 items-center gap-2 overflow-hidden [&>span:last-child]:truncate",
                             if let Some(session) = sessions
                                 .read()
                                 .iter()
@@ -117,16 +119,16 @@ pub fn Terminal(slug: String) -> Element {
                                 "No terminal"
                             }
                         }
-                        span { class: "mobile-tabs-chevron", "⌄" }
+                        span { class: "shrink-0 text-muted-foreground", "⌄" }
                     }
-                    DropdownMenuContent { class: "dropdown mobile-terminal-tabs-dropdown",
+                    DropdownMenuContent { class: "absolute top-[calc(100%+4px)] right-2 left-2 z-80 w-auto rounded-lg border border-border bg-popover p-0.75 shadow-2xl [&_button]:flex [&_button]:min-h-8 [&_button]:w-full [&_button]:items-center [&_button]:justify-between [&_button]:gap-3 [&_button]:rounded-sm [&_button]:px-2 [&_button]:py-1.5 [&_button]:text-left [&_button]:text-xs [&_button]:hover:bg-accent",
                         if sessions.read().is_empty() {
-                            div { class: "mobile-tabs-empty", "No terminal sessions" }
+                            div { class: "p-2.5 text-xs text-muted-foreground", "No terminal sessions" }
                         }
                         for (index, session) in sessions().into_iter().enumerate() {
-                            div { class: if active() == Some(session.id) { "mobile-terminal-option active" } else { "mobile-terminal-option" },
+                            div { class: if active() == Some(session.id) { "flex h-11 min-w-0 items-stretch rounded-md border border-border bg-accent text-foreground not-first:mt-0.5" } else { "flex h-11 min-w-0 items-stretch rounded-md border border-border bg-background text-muted-foreground not-first:mt-0.5" },
                                 DropdownMenuItem::<u32> {
-                                    class: "mobile-terminal-select",
+                                    class: "min-h-10.5 min-w-0 flex-1 justify-start gap-2 rounded-r-none px-2 text-inherit",
                                     value: session.id,
                                     index,
                                     on_select: move |id| {
@@ -134,10 +136,10 @@ pub fn Terminal(slug: String) -> Element {
                                         mobile_tabs_open.set(false);
                                     },
                                     span { class: terminal_dot_class(session.status) }
-                                    span { class: "mobile-terminal-label", "{session.name}" }
+                                    span { class: "truncate", "{session.name}" }
                                 }
                                 button {
-                                    class: "mobile-terminal-close",
+                                    class: "min-h-10.5 w-10.5 min-w-10.5 justify-center rounded-l-none p-0 text-muted-foreground",
                                     "aria-label": "Close {session.name}",
                                     title: "Close {session.name}",
                                     onclick: move |event| {
@@ -152,14 +154,14 @@ pub fn Terminal(slug: String) -> Element {
                     }
                 }
                 button {
-                    class: "new-tab",
+                    class: "h-7.25 w-7.25 min-w-7.25 shrink-0 rounded-md bg-transparent text-lg text-muted-foreground hover:bg-accent hover:text-foreground",
                     "aria-label": "New terminal",
                     title: "New terminal",
                     onclick: move |_| new_dialog.set(true),
                     "+"
                 }
                 DropdownMenu {
-                    class: "terminal-play menu-anchor",
+                    class: "relative shrink-0",
                     open: play_menu(),
                     on_open_change: move |open: bool| play_menu.set(open),
                     MenuTrigger {
@@ -167,7 +169,7 @@ pub fn Terminal(slug: String) -> Element {
                         icon: AppIcon::Play,
                         open: play_menu(),
                     }
-                    DropdownMenuContent { class: "dropdown align-right terminal-play-dropdown",
+                    DropdownMenuContent { class: "absolute top-[calc(100%+5px)] right-0 z-80 w-63.75 rounded-lg border border-border bg-popover p-1.25 shadow-2xl [&_button]:flex [&_button]:min-h-8 [&_button]:w-full [&_button]:items-center [&_button]:justify-between [&_button]:gap-3 [&_button]:rounded-sm [&_button]:px-2 [&_button]:py-1.5 [&_button]:text-left [&_button]:text-xs [&_button]:hover:bg-accent [&_hr]:-mx-1.25 [&_hr]:my-1 [&_hr]:h-px [&_hr]:border-0 [&_hr]:bg-border",
                         DropdownMenuItem::<QuickCommandAction> {
                             value: QuickCommandAction::Ci,
                             index: 0_usize,
@@ -176,9 +178,11 @@ pub fn Terminal(slug: String) -> Element {
                                 command_text.set("npm run ci".into());
                                 command_dialog.set(true);
                             },
-                            div { class: "terminal-command-entry",
-                                span { class: "terminal-command-label", "npm run ci" }
-                                span { class: "terminal-command-meta", "Run CI checks in a new terminal" }
+                            div { class: "flex min-w-0 flex-col gap-0.5 text-left",
+                                span { class: "truncate", "npm run ci" }
+                                span { class: "truncate text-[10px] text-muted-foreground",
+                                    "Run CI checks in a new terminal"
+                                }
                             }
                         }
                         DropdownMenuItem::<QuickCommandAction> {
@@ -189,9 +193,9 @@ pub fn Terminal(slug: String) -> Element {
                                 command_text.set("cargo test --workspace".into());
                                 command_dialog.set(true);
                             },
-                            div { class: "terminal-command-entry",
-                                span { class: "terminal-command-label", "cargo test --workspace" }
-                                span { class: "terminal-command-meta",
+                            div { class: "flex min-w-0 flex-col gap-0.5 text-left",
+                                span { class: "truncate", "cargo test --workspace" }
+                                span { class: "truncate text-[10px] text-muted-foreground",
                                     "Execute the workspace test suite"
                                 }
                             }
@@ -204,9 +208,11 @@ pub fn Terminal(slug: String) -> Element {
                                 command_text.set("cargo build --workspace".into());
                                 command_dialog.set(true);
                             },
-                            div { class: "terminal-command-entry",
-                                span { class: "terminal-command-label", "cargo build --workspace" }
-                                span { class: "terminal-command-meta", "Compile the current workspace" }
+                            div { class: "flex min-w-0 flex-col gap-0.5 text-left",
+                                span { class: "truncate", "cargo build --workspace" }
+                                span { class: "truncate text-[10px] text-muted-foreground",
+                                    "Compile the current workspace"
+                                }
                             }
                         }
                         DropdownMenuItem::<QuickCommandAction> {
@@ -217,9 +223,9 @@ pub fn Terminal(slug: String) -> Element {
                                 command_text.set("npm run dev".into());
                                 command_dialog.set(true);
                             },
-                            div { class: "terminal-command-entry",
-                                span { class: "terminal-command-label", "npm run dev" }
-                                span { class: "terminal-command-meta",
+                            div { class: "flex min-w-0 flex-col gap-0.5 text-left",
+                                span { class: "truncate", "npm run dev" }
+                                span { class: "truncate text-[10px] text-muted-foreground",
                                     "Start a local development server"
                                 }
                             }
@@ -238,7 +244,7 @@ pub fn Terminal(slug: String) -> Element {
                     }
                 }
                 DropdownMenu {
-                    class: "terminal-actions menu-anchor",
+                    class: "relative shrink-0",
                     open: menu(),
                     on_open_change: move |open: bool| menu.set(open),
                     MenuTrigger {
@@ -246,7 +252,7 @@ pub fn Terminal(slug: String) -> Element {
                         icon: AppIcon::Menu,
                         open: menu(),
                     }
-                    DropdownMenuContent { class: "dropdown align-right terminal-actions-dropdown",
+                    DropdownMenuContent { class: "absolute top-[calc(100%+5px)] right-0 z-80 w-53.75 rounded-lg border border-border bg-popover p-1.25 shadow-2xl [&_button]:flex [&_button]:min-h-8 [&_button]:w-full [&_button]:items-center [&_button]:justify-between [&_button]:gap-3 [&_button]:rounded-sm [&_button]:px-2 [&_button]:py-1.5 [&_button]:text-left [&_button]:text-xs [&_button]:hover:bg-accent [&_button[data-disabled=true]]:cursor-not-allowed [&_button[data-disabled=true]]:opacity-40 [&_hr]:-mx-1.25 [&_hr]:my-1 [&_hr]:h-px [&_hr]:border-0 [&_hr]:bg-border",
                         DropdownMenuItem::<TerminalAction> {
                             value: TerminalAction::Copy,
                             index: 0_usize,
@@ -290,7 +296,7 @@ pub fn Terminal(slug: String) -> Element {
                         DropdownMenuItem::<TerminalAction> {
                             value: TerminalAction::Close,
                             index: 5_usize,
-                            class: "destructive-text",
+                            class: "!text-destructive",
                             disabled: active().is_none(),
                             on_select: move |_| {
                                 if let Some(active_id) = active() {
@@ -306,7 +312,7 @@ pub fn Terminal(slug: String) -> Element {
                         DropdownMenuItem::<TerminalAction> {
                             value: TerminalAction::CloseOthers,
                             index: 6_usize,
-                            class: "destructive-text",
+                            class: "!text-destructive",
                             disabled: active().is_none() || sessions.read().len() <= 1,
                             on_select: move |_| {
                                 if let Some(active_id) = active() {
@@ -320,7 +326,7 @@ pub fn Terminal(slug: String) -> Element {
                 }
             }
             div {
-                class: "terminal-screen",
+                class: "terminal-output relative min-h-0 flex-1 overflow-auto bg-[#1f2021] px-4.75 py-4.25 max-md:p-3.25",
                 role: "log",
                 "aria-label": "Mock terminal output",
                 if active().is_none() {
@@ -376,7 +382,7 @@ pub fn Terminal(slug: String) -> Element {
                     }
                 }
             }
-            footer { class: "terminal-footer",
+            footer { class: "flex h-6.25 min-h-6.25 items-center justify-between border-t border-border bg-background px-2.75 text-[9px] text-muted-foreground",
                 span { "Mock terminal · input disabled" }
                 span { "80 × 24" }
             }
@@ -387,20 +393,22 @@ pub fn Terminal(slug: String) -> Element {
                 title: "New terminal",
                 description: "Start a mock session in this workspace.",
                 on_close: move |()| new_dialog.set(false),
-                div { class: "form-stack",
+                div { class: "flex flex-col gap-2.25 px-5 pt-3 pb-5 [&>label]:mt-0.75 [&>label]:text-xs [&>label]:font-semibold [&>label]:text-foreground/80",
                     label { r#for: "terminal-name", "Session name" }
                     input {
+                        class: "w-full rounded-md border border-input bg-background/95 px-2.75 py-2.25 placeholder:text-muted-foreground/70",
                         id: "terminal-name",
                         placeholder: "shell",
                         autofocus: true,
                     }
                     label { r#for: "terminal-command", "Startup command" }
                     input {
+                        class: "w-full rounded-md border border-input bg-background/95 px-2.75 py-2.25 disabled:opacity-50",
                         id: "terminal-command",
                         value: "/bin/bash",
                         disabled: true,
                     }
-                    div { class: "modal-actions",
+                    div { class: "mt-2.5 flex justify-end gap-1.75",
                         Button {
                             label: "Cancel",
                             kind: ButtonKind::Ghost,
@@ -433,16 +441,17 @@ pub fn Terminal(slug: String) -> Element {
                 title: if command_is_new() { String::from("New command") } else { String::from("Run command") },
                 description: if command_is_new() { String::from("Create a reusable mock command for this workspace.") } else { String::from("Open a new terminal and run this command (mock).") },
                 on_close: move |()| command_dialog.set(false),
-                div { class: "form-stack",
+                div { class: "flex flex-col gap-2.25 px-5 pt-3 pb-5 [&>label]:mt-0.75 [&>label]:text-xs [&>label]:font-semibold [&>label]:text-foreground/80",
                     label { r#for: "terminal-command-text", "Command" }
                     input {
+                        class: "w-full rounded-md border border-input bg-background/95 px-2.75 py-2.25 placeholder:text-muted-foreground/70",
                         id: "terminal-command-text",
                         placeholder: "npm run ci",
                         value: "{command_text}",
                         autofocus: true,
                         oninput: move |event| command_text.set(event.value()),
                     }
-                    div { class: "modal-actions",
+                    div { class: "mt-2.5 flex justify-end gap-1.75",
                         Button {
                             label: "Cancel",
                             kind: ButtonKind::Ghost,
@@ -475,10 +484,10 @@ pub fn Terminal(slug: String) -> Element {
 
 const fn terminal_dot_class(status: TerminalStatus) -> &'static str {
     match status {
-        TerminalStatus::Ready => "terminal-dot ready",
-        TerminalStatus::Connecting => "terminal-dot connecting",
-        TerminalStatus::Exited => "terminal-dot exited",
-        TerminalStatus::Failed => "terminal-dot failed",
+        TerminalStatus::Ready => "size-1.75 shrink-0 rounded-full bg-success",
+        TerminalStatus::Connecting => "size-1.75 shrink-0 rounded-full bg-warning",
+        TerminalStatus::Exited => "size-1.75 shrink-0 rounded-full bg-muted-foreground",
+        TerminalStatus::Failed => "size-1.75 shrink-0 rounded-full bg-destructive",
     }
 }
 

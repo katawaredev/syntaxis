@@ -22,16 +22,22 @@ pub(super) fn RecentProjects(
     on_notice: EventHandler<String>,
 ) -> Element {
     rsx! {
-        section { class: "recent-section", "aria-labelledby": "recent-title",
-            div { class: "section-heading",
+        section { "aria-labelledby": "recent-title",
+            div { class: "mb-2.5 flex items-end justify-between max-md:items-start",
                 div {
-                    h2 { id: "recent-title", "Recent projects" }
-                    p { "Your registered local workspaces" }
+                    h2 {
+                        class: "text-[17px] font-semibold text-muted-foreground",
+                        id: "recent-title",
+                        "Recent projects"
+                    }
+                    p { class: "mt-1 text-xs text-muted-foreground",
+                        "Your registered local workspaces"
+                    }
                 }
-                div { class: "recent-actions",
+                div { class: "flex items-center gap-0.5 max-md:-mt-1 max-md:flex-col max-md:items-end",
                     StateMenu { view, on_change: on_view_change }
                     button {
-                        class: "text-button",
+                        class: "rounded-md bg-transparent px-2 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground",
                         disabled: view() == WorkspaceListView::Loading,
                         onclick: move |_| {
                             on_view_change.call(WorkspaceListView::Loading);
@@ -68,15 +74,15 @@ fn StateMenu(
     let mut open = use_signal(|| false);
     rsx! {
         DropdownMenu {
-            class: "menu-anchor state-menu",
+            class: "relative",
             open: open(),
             on_open_change: move |next: bool| open.set(next),
             DropdownMenuTrigger {
-                class: "text-button state-menu-trigger",
+                class: "min-w-28 rounded-md bg-transparent px-2 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground max-md:min-w-0",
                 "aria-label": "Preview workspace list state",
                 "State: {view().label()} ⌄"
             }
-            DropdownMenuContent { class: "dropdown align-right",
+            DropdownMenuContent { class: "absolute top-[calc(100%+0.25rem)] right-0 z-80 w-48 rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-xl",
                 StateOption {
                     value: WorkspaceListView::Ready,
                     index: 0_usize,
@@ -120,13 +126,14 @@ fn StateOption(
 ) -> Element {
     rsx! {
         DropdownMenuItem::<WorkspaceListView> {
+            class: "flex min-h-8 w-full cursor-pointer items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-xs hover:bg-accent focus-visible:bg-accent focus-visible:outline-none",
             value,
             index,
             "aria-checked": selected,
             on_select: move |next| on_select.call(next),
             span { {label} }
             if selected {
-                span { class: "menu-check",
+                span { class: "font-bold text-primary",
                     Icon { icon: AppIcon::Check, size: 14 }
                 }
             }
@@ -140,12 +147,12 @@ fn WorkspaceRows(
     on_delete: EventHandler<usize>,
 ) -> Element {
     rsx! {
-        div { class: "workspace-list",
+        div { class: "overflow-hidden rounded-xl border border-border bg-card shadow-sm",
             for (index, workspace) in WORKSPACES.iter().enumerate() {
                 if hidden_workspace() != Some(index) {
-                    article { class: if workspace.state == WorkspaceState::Missing { "workspace-row is-missing" } else { "workspace-row" },
+                    article { class: if workspace.state == WorkspaceState::Missing { "flex min-h-17.5 min-w-0 items-center border-b border-border opacity-65 last:border-b-0 hover:bg-accent/60" } else { "flex min-h-17.5 min-w-0 items-center border-b border-border last:border-b-0 hover:bg-accent/60" },
                         Link {
-                            class: "workspace-main",
+                            class: "grid min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5 max-md:grid-cols-[auto_minmax(0,1fr)]",
                             to: Route::Files {
                                 slug: workspace.slug.to_string(),
                             },
@@ -154,17 +161,25 @@ fn WorkspaceRows(
                                     event.prevent_default();
                                 }
                             },
-                            div { class: "project-icon", {workspace.icon} }
-                            div { class: "workspace-copy",
-                                div { class: "workspace-title-line",
-                                    h3 { {workspace.name} }
+                            div { class: "grid size-10 shrink-0 place-items-center rounded-lg bg-linear-to-br from-primary to-primary/60 font-bold text-primary-foreground shadow-md",
+                                {workspace.icon}
+                            }
+                            div { class: "min-w-0",
+                                div { class: "flex items-center gap-2",
+                                    h3 { class: "text-sm font-semibold text-foreground",
+                                        {workspace.name}
+                                    }
                                     if workspace.state == WorkspaceState::Missing {
                                         StatusBadge { label: "Missing", tone: "danger" }
                                     }
                                 }
-                                p { {workspace.path} }
+                                p { class: "mt-1 truncate font-mono text-[11px] text-muted-foreground max-md:max-w-[65vw] max-[420px]:max-w-[55vw]",
+                                    {workspace.path}
+                                }
                             }
-                            time { {workspace.recent} }
+                            time { class: "whitespace-nowrap pr-2 text-[11px] text-muted-foreground max-md:hidden",
+                                {workspace.recent}
+                            }
                         }
                         IconButton {
                             label: format!("Remove {}", workspace.name),
@@ -182,34 +197,39 @@ fn WorkspaceRows(
 fn LoadingWorkspaces(on_finish: EventHandler<()>) -> Element {
     rsx! {
         div {
-            class: "workspace-list workspace-skeleton",
+            class: "overflow-hidden rounded-xl border border-border bg-card shadow-sm",
             "aria-busy": "true",
             "aria-label": "Loading recent projects",
             for index in 0..4 {
-                div { class: "skeleton-row",
-                    span { class: "skeleton-block skeleton-icon" }
-                    span { class: "skeleton-copy",
-                        span {
-                            class: "skeleton-block skeleton-title",
-                            style: "width: {52 + index * 7}%",
-                        }
-                        span { class: "skeleton-block skeleton-path" }
+                div { class: "flex h-17.5 items-center gap-3 border-b border-border px-3 py-2.5 last:border-b-0",
+                    span { class: "size-10 shrink-0 animate-pulse rounded-lg bg-secondary" }
+                    span { class: "min-w-0 flex-1",
+                        span { class: if index % 2 == 0 { "mb-2 block h-3 w-1/2 animate-pulse rounded-md bg-secondary" } else { "mb-2 block h-3 w-2/3 animate-pulse rounded-md bg-secondary" } }
+                        span { class: "block h-2 w-3/4 animate-pulse rounded-md bg-secondary" }
                     }
                 }
             }
         }
-        button { class: "state-helper", onclick: move |_| on_finish.call(()), "Finish mock refresh" }
+        button {
+            class: "mx-auto mt-2 block rounded-md bg-transparent px-2 py-1 text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground",
+            onclick: move |_| on_finish.call(()),
+            "Finish mock refresh"
+        }
     }
 }
 
 #[component]
 fn EmptyWorkspaces(on_open_local: EventHandler<()>, on_open_git: EventHandler<()>) -> Element {
     rsx! {
-        div { class: "workspace-state-card",
-            div { class: "state-illustration", "◇" }
-            h3 { "No recent projects" }
-            p { "Open a local folder or clone a Git repository to get started." }
-            div { class: "state-actions",
+        div { class: "flex min-h-70 flex-col items-center justify-center rounded-xl border border-border bg-card/90 px-5.5 py-9 text-center max-md:min-h-62.5",
+            div { class: "mb-3 grid size-11.5 place-items-center rounded-xl bg-primary/10 text-[22px] text-primary",
+                "◇"
+            }
+            h3 { class: "text-[15px] font-semibold text-foreground", "No recent projects" }
+            p { class: "mt-1.5 max-w-96 text-xs leading-relaxed text-muted-foreground",
+                "Open a local folder or clone a Git repository to get started."
+            }
+            div { class: "mt-4.5 flex gap-1.5",
                 Button {
                     label: "Open local folder",
                     kind: ButtonKind::Primary,
@@ -228,14 +248,22 @@ fn EmptyWorkspaces(on_open_local: EventHandler<()>, on_open_git: EventHandler<()
 #[component]
 fn WorkspaceError(on_retry: EventHandler<()>) -> Element {
     rsx! {
-        div { class: "workspace-state-card error-state", role: "alert",
-            div { class: "state-illustration", "!" }
-            h3 { "Recent projects are unavailable" }
-            p { "The local workspace registry could not be read. Your project files were not affected." }
-            Button {
-                label: "Try again",
-                kind: ButtonKind::Secondary,
-                onclick: move |_| on_retry.call(()),
+        div {
+            class: "flex min-h-70 flex-col items-center justify-center rounded-xl border border-border bg-card/90 px-5.5 py-9 text-center max-md:min-h-62.5",
+            role: "alert",
+            div { class: "mb-3 grid size-11.5 place-items-center rounded-xl bg-destructive/10 text-[22px] text-destructive",
+                "!"
+            }
+            h3 { class: "text-[15px] font-semibold text-foreground", "Recent projects are unavailable" }
+            p { class: "mt-1.5 max-w-96 text-xs leading-relaxed text-muted-foreground",
+                "The local workspace registry could not be read. Your project files were not affected."
+            }
+            div { class: "mt-4",
+                Button {
+                    label: "Try again",
+                    kind: ButtonKind::Secondary,
+                    onclick: move |_| on_retry.call(()),
+                }
             }
         }
     }
