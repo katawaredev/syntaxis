@@ -4,16 +4,106 @@ mod recent;
 use dioxus::prelude::*;
 
 use syntaxis_ui::prelude::{AppIcon, Icon, Toast};
+use syntaxis_workspace::{ExecutionLocation, RuntimeCapability, RuntimeState};
 
 use self::{dialogs::HomeDialogs, recent::RecentProjects};
-use super::client::list_workspaces;
+use super::client::{list_workspaces, runtime_state};
 
 #[derive(Clone, PartialEq, Eq)]
 pub(super) enum HomeDialog {
     None,
-    Local,
+    WorkspaceFolder,
     Git,
     Delete(usize),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct RuntimePresentation {
+    eyebrow: String,
+    folder_action_title: String,
+    folder_action_description: String,
+    recent_description: String,
+    footer: String,
+    folder_dialog_title: String,
+    folder_dialog_description: String,
+    folder_policy_note: String,
+}
+
+impl RuntimePresentation {
+    fn from_state(state: Option<&RuntimeState>) -> Self {
+        let Some(RuntimeState::Ready {
+            identity,
+            capabilities,
+        }) = state
+        else {
+            let footer = match state {
+                Some(RuntimeState::Unavailable { .. }) => {
+                    "Syntaxis UI preview · Runtime unavailable"
+                }
+                _ => "Syntaxis UI preview · Connecting to runtime",
+            };
+            return Self {
+                eyebrow: "WORKSPACE DEVELOPMENT".into(),
+                folder_action_title: "Open workspace folder".into(),
+                folder_action_description: "Choose a project exposed by the connected runtime"
+                    .into(),
+                recent_description: "Your registered workspaces".into(),
+                footer: footer.into(),
+                folder_dialog_title: "Open workspace folder".into(),
+                folder_dialog_description:
+                    "Register an absolute directory exposed by the connected runtime.".into(),
+                folder_policy_note: "Available workspace roots depend on the connected runtime."
+                    .into(),
+            };
+        };
+
+        let unrestricted = capabilities.supports(RuntimeCapability::UnrestrictedWorkspaceRoots);
+        let local = identity.location == ExecutionLocation::Local;
+        Self {
+            eyebrow: if local {
+                "LOCAL WORKSPACES".into()
+            } else {
+                "CONNECTED WORKSPACES".into()
+            },
+            folder_action_title: if unrestricted {
+                "Open folder".into()
+            } else {
+                "Open workspace folder".into()
+            },
+            folder_action_description: if local {
+                "Choose an existing project on this device".into()
+            } else {
+                format!("Choose a project exposed by {}", identity.label)
+            },
+            recent_description: if local {
+                "Workspaces on this device".into()
+            } else {
+                format!("Workspaces on {}", identity.label)
+            },
+            footer: format!("Syntaxis UI preview · {}", identity.label),
+            folder_dialog_title: if unrestricted {
+                "Open folder".into()
+            } else {
+                "Open workspace folder".into()
+            },
+            folder_dialog_description: if local {
+                "Register an absolute directory on this device.".into()
+            } else {
+                format!(
+                    "Register an absolute directory exposed by {}.",
+                    identity.label
+                )
+            },
+            folder_policy_note: if unrestricted {
+                "This runtime can register any folder available to the application.".into()
+            } else {
+                format!(
+                    "This client can register folders only beneath roots exposed by {}.",
+                    identity.label
+                )
+            },
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -41,6 +131,7 @@ pub fn Home() -> Element {
     let mut list_view = use_signal(|| WorkspaceListView::Ready);
     let mut toast = use_signal(|| None::<String>);
     let mut refresh_key = use_signal(|| 0_u64);
+    let runtime = use_resource(runtime_state);
     let workspaces = use_resource(move || async move {
         let _ = refresh_key();
         list_workspaces().await
@@ -53,6 +144,11 @@ pub fn Home() -> Element {
         .unwrap_or_default();
     let workspace_loading = workspace_result.is_none();
     let workspace_error = workspace_result.is_some_and(|result| result.is_err());
+    let runtime_snapshot = runtime()
+        .as_ref()
+        .and_then(|result| result.as_ref().ok())
+        .cloned();
+    let runtime_presentation = RuntimePresentation::from_state(runtime_snapshot.as_ref());
 
     rsx! {
         main { class: "relative size-full overflow-x-hidden overflow-y-auto bg-background",
@@ -63,7 +159,7 @@ pub fn Home() -> Element {
                     }
                     div {
                         p { class: "text-[10px] font-bold tracking-[0.14em] text-primary max-[420px]:hidden",
-                            "LOCAL-FIRST WORKSPACE"
+                            {runtime_presentation.eyebrow.clone()}
                         }
                         h1 { class: "mt-1 text-4xl font-semibold tracking-tight text-foreground max-md:text-3xl max-[420px]:mt-0 max-[420px]:text-2xl",
                             "Welcome to Syntaxis"
@@ -77,14 +173,14 @@ pub fn Home() -> Element {
                 div { class: "mb-10.5 grid grid-cols-2 gap-3 max-md:mb-8 max-md:grid-cols-1",
                     SourceAction {
                         icon: AppIcon::Folder,
-                        title: "Open local folder",
-                        description: "Choose an existing project on this machine",
-                        onclick: move |_| dialog.set(HomeDialog::Local),
+                        title: runtime_presentation.folder_action_title.clone(),
+                        description: runtime_presentation.folder_action_description.clone(),
+                        onclick: move |_| dialog.set(HomeDialog::WorkspaceFolder),
                     }
                     SourceAction {
                         icon: AppIcon::Command,
-                        title: "Open Git URL",
-                        description: "Clone a repository into your workspace",
+                        title: "Open Git URL".to_owned(),
+                        description: "Clone a repository into the active runtime".to_owned(),
                         onclick: move |_| dialog.set(HomeDialog::Git),
                     }
                 }
@@ -92,17 +188,18 @@ pub fn Home() -> Element {
                 RecentProjects {
                     view: list_view,
                     workspaces: workspace_records.clone(),
+                    runtime: runtime_presentation.clone(),
                     backend_loading: workspace_loading,
                     backend_error: workspace_error,
                     on_view_change: move |next| list_view.set(next),
-                    on_open_local: move |()| dialog.set(HomeDialog::Local),
+                    on_open_folder: move |()| dialog.set(HomeDialog::WorkspaceFolder),
                     on_open_git: move |()| dialog.set(HomeDialog::Git),
                     on_delete: move |index| dialog.set(HomeDialog::Delete(index)),
                     on_notice: move |message| toast.set(Some(message)),
                     on_refresh: move |()| *refresh_key.write() += 1,
                 }
                 footer { class: "mt-auto pt-10 text-center text-[11px] text-muted-foreground/65",
-                    "Syntaxis UI preview · Local runtime"
+                    {runtime_presentation.footer.clone()}
                 }
             }
         }
@@ -110,6 +207,7 @@ pub fn Home() -> Element {
         HomeDialogs {
             dialog,
             workspaces: workspace_records,
+            runtime: runtime_presentation,
             on_notice: move |message| toast.set(Some(message)),
             on_changed: move |()| *refresh_key.write() += 1,
         }
@@ -122,8 +220,8 @@ pub fn Home() -> Element {
 #[component]
 fn SourceAction(
     icon: AppIcon,
-    title: &'static str,
-    description: &'static str,
+    title: String,
+    description: String,
     onclick: EventHandler<MouseEvent>,
 ) -> Element {
     rsx! {
@@ -144,7 +242,11 @@ fn SourceAction(
 
 #[cfg(test)]
 mod tests {
-    use super::WorkspaceListView;
+    use syntaxis_workspace::{
+        ExecutionLocation, RuntimeCapabilities, RuntimeIdentity, RuntimeState,
+    };
+
+    use super::{RuntimePresentation, WorkspaceListView};
 
     #[test]
     fn every_workspace_list_state_has_a_clear_preview_label() {
@@ -156,5 +258,30 @@ mod tests {
         ];
 
         assert_eq!(labels, ["Available", "Loading", "Empty", "Error"]);
+    }
+
+    #[test]
+    fn remote_runtime_presentation_never_calls_server_folders_local() {
+        let state = RuntimeState::Ready {
+            identity: RuntimeIdentity {
+                location: ExecutionLocation::Remote,
+                label: "Self-hosted runtime".into(),
+            },
+            capabilities: RuntimeCapabilities::default(),
+        };
+
+        let presentation = RuntimePresentation::from_state(Some(&state));
+        let rendered_copy = format!(
+            "{} {} {} {} {}",
+            presentation.eyebrow,
+            presentation.folder_action_title,
+            presentation.folder_action_description,
+            presentation.recent_description,
+            presentation.footer,
+        )
+        .to_lowercase();
+
+        assert!(!rendered_copy.contains("local"));
+        assert!(rendered_copy.contains("self-hosted runtime"));
     }
 }

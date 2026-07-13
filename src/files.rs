@@ -859,7 +859,7 @@ fn MarkdownPreview() -> Element {
         article { class: "preview markdown-preview",
             p { class: "preview-label", "MARKDOWN PREVIEW" }
             h1 { "Syntaxis" }
-            p { "A local-first workspace for focused software development." }
+            p { "A connected workspace for focused software development." }
             h2 { "Getting started" }
             p { "Run the responsive Dioxus interface with:" }
             pre {

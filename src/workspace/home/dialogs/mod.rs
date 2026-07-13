@@ -1,11 +1,11 @@
 mod delete;
+mod folder;
 mod git_url;
-mod local;
 
 use dioxus::prelude::*;
 
-use self::{delete::DeleteWorkspaceDialog, git_url::GitUrlDialog, local::LocalFolderDialog};
-use super::HomeDialog;
+use self::{delete::DeleteWorkspaceDialog, folder::WorkspaceFolderDialog, git_url::GitUrlDialog};
+use super::{HomeDialog, RuntimePresentation};
 use syntaxis_workspace::WorkspaceRecord;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -19,12 +19,18 @@ pub(super) enum RequestState {
 pub(super) fn HomeDialogs(
     dialog: Signal<HomeDialog>,
     workspaces: Vec<WorkspaceRecord>,
+    runtime: RuntimePresentation,
     on_notice: EventHandler<String>,
     on_changed: EventHandler<()>,
 ) -> Element {
     rsx! {
-        if dialog() == HomeDialog::Local {
-            LocalFolderDialog { dialog, on_notice, on_changed }
+        if dialog() == HomeDialog::WorkspaceFolder {
+            WorkspaceFolderDialog {
+                dialog,
+                runtime,
+                on_notice,
+                on_changed,
+            }
         }
         if dialog() == HomeDialog::Git {
             GitUrlDialog { dialog, on_notice }

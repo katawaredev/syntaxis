@@ -1,5 +1,5 @@
 use dioxus::prelude::*;
-use syntaxis_workspace::{EventBatch, WorkspaceRecord};
+use syntaxis_workspace::{EventBatch, ExecutionLocation, WorkspaceRecord};
 
 #[derive(Clone, Copy, PartialEq)]
 pub struct WorkspaceEventState {
@@ -10,26 +10,29 @@ pub struct WorkspaceEventState {
 #[component]
 pub(super) fn WorkspaceEventBridge(
     workspace: WorkspaceRecord,
+    location: ExecutionLocation,
     mut state: WorkspaceEventState,
 ) -> Element {
-    #[cfg(any(target_arch = "wasm32", feature = "mobile"))]
-    use_remote_events(workspace.id.0, state);
-
-    #[cfg(feature = "desktop")]
-    use_local_events(workspace, state);
-
-    rsx! {}
+    match location {
+        ExecutionLocation::Remote => rsx! {
+            RemoteWorkspaceEvents { workspace_id: workspace.id.0, state }
+        },
+        ExecutionLocation::Local => rsx! {
+            HostWorkspaceEvents { workspace, state }
+        },
+    }
 }
 
-#[cfg(any(target_arch = "wasm32", feature = "mobile"))]
-fn use_remote_events(workspace_id: String, state: WorkspaceEventState) {
+#[component]
+fn RemoteWorkspaceEvents(workspace_id: String, state: WorkspaceEventState) -> Element {
     use dioxus::fullstack::WebSocketOptions;
 
     let _events = use_resource(move || {
         let workspace_id = workspace_id.clone();
         async move {
-            let socket =
-                super::api::workspace_events(workspace_id, WebSocketOptions::new()).await?;
+            let socket = super::api::workspace_events(workspace_id, WebSocketOptions::new())
+                .await
+                .map_err(|error| error.to_string())?;
             loop {
                 let batch = socket.recv().await.map_err(|error| error.to_string())?;
                 state.latest.set(Some(batch));
@@ -39,10 +42,13 @@ fn use_remote_events(workspace_id: String, state: WorkspaceEventState) {
             Ok::<(), String>(())
         }
     });
+
+    rsx! {}
 }
 
 #[cfg(feature = "desktop")]
-fn use_local_events(workspace: WorkspaceRecord, mut state: WorkspaceEventState) {
+#[component]
+fn HostWorkspaceEvents(workspace: WorkspaceRecord, mut state: WorkspaceEventState) -> Element {
     use std::{
         sync::{Arc, Mutex},
         time::Duration,
@@ -51,7 +57,7 @@ fn use_local_events(workspace: WorkspaceRecord, mut state: WorkspaceEventState) 
     let _events = use_resource(move || {
         let workspace = workspace.clone();
         async move {
-            let watcher = syntaxis_workspace_local::WorkspaceWatcher::start(
+            let watcher = syntaxis_workspace_host::WorkspaceWatcher::start(
                 workspace.id,
                 workspace.root,
                 Duration::from_millis(75),
@@ -79,4 +85,13 @@ fn use_local_events(workspace: WorkspaceRecord, mut state: WorkspaceEventState) 
             Ok::<(), String>(())
         }
     });
+
+    rsx! {}
+}
+
+#[cfg(not(feature = "desktop"))]
+#[component]
+fn HostWorkspaceEvents(workspace: WorkspaceRecord, state: WorkspaceEventState) -> Element {
+    let _ = (workspace, state);
+    rsx! {}
 }

@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 use syntaxis_ui::prelude::{AppIcon, EmptyState, Icon, StatusBadge, Tone};
 
 use crate::{app::Route, mock::WORKSPACES};
-use syntaxis_workspace::{RuntimeKind, RuntimeState};
+use syntaxis_workspace::{ExecutionLocation, RuntimeState};
 
 use super::client::{list_workspaces, runtime_state};
 use super::ProjectIcon;
@@ -53,18 +53,19 @@ pub fn WorkspaceShell() -> Element {
         .as_ref()
         .and_then(|result| result.as_ref().ok())
         .cloned();
-    let (runtime_label, runtime_message, runtime_ready) = match runtime_snapshot {
+    let (runtime_label, runtime_message, runtime_ready, runtime_location) = match runtime_snapshot {
         Some(RuntimeState::Ready { identity, .. }) => (
-            match identity.kind {
-                RuntimeKind::Local => "Local",
-                RuntimeKind::Remote => "Remote",
+            match identity.location {
+                ExecutionLocation::Local => "Local",
+                ExecutionLocation::Remote => "Remote",
             },
             format!("{} ready", identity.label),
             true,
+            Some(identity.location),
         ),
-        Some(RuntimeState::Unavailable { message }) => ("Offline", message, false),
+        Some(RuntimeState::Unavailable { message }) => ("Offline", message, false, None),
         Some(RuntimeState::Connecting) | None => {
-            ("Connecting", "Connecting to runtime".into(), false)
+            ("Connecting", "Connecting to runtime".into(), false, None)
         }
     };
     let event_revision = (event_state.revision)();
@@ -76,8 +77,12 @@ pub fn WorkspaceShell() -> Element {
 
     rsx! {
         main { class: "flex h-svh w-full flex-col overflow-hidden",
-            if let Some(workspace) = registered_workspace.clone() {
-                WorkspaceEventBridge { workspace, state: event_state }
+            if let (Some(workspace), Some(location)) = (
+                registered_workspace.clone(),
+                runtime_location,
+            )
+            {
+                WorkspaceEventBridge { workspace, location, state: event_state }
             }
             header { class: "flex h-11.5 min-h-11.5 items-center gap-2 border-b border-border bg-background px-2.5 max-md:h-12 max-md:min-h-12",
                 Link {

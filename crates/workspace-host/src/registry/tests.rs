@@ -10,14 +10,15 @@ fn registry_persists_and_reports_missing_workspaces() {
     let data = tempdir().unwrap();
     let project = tempdir().unwrap();
     let database = data.path().join("workspaces.sqlite3");
-    let store = WorkspaceRegistryStore::open(&database, RegistrationPolicy::Local).unwrap();
+    let store = WorkspaceRegistryStore::open(&database, RegistrationPolicy::Unrestricted).unwrap();
     let registered =
         futures_lite::future::block_on(store.register(project.path().to_str().unwrap())).unwrap();
     drop(store);
 
     let project_path = project.keep();
     fs::remove_dir_all(project_path).unwrap();
-    let reopened = WorkspaceRegistryStore::open(&database, RegistrationPolicy::Local).unwrap();
+    let reopened =
+        WorkspaceRegistryStore::open(&database, RegistrationPolicy::Unrestricted).unwrap();
     let records = futures_lite::future::block_on(reopened.list()).unwrap();
     assert_eq!(records[0].id, registered.id);
     assert_eq!(
@@ -48,15 +49,17 @@ fn allowlist_rejects_parent_and_symlink_escapes() {
 }
 
 #[test]
-fn allowlisted_registry_hides_rows_created_by_a_local_runtime() {
+fn allowlisted_registry_hides_rows_created_by_an_unrestricted_runtime() {
     let data = tempdir().unwrap();
     let allowed = tempdir().unwrap();
     let outside = tempdir().unwrap();
     let database = data.path().join("workspaces.sqlite3");
-    let local = WorkspaceRegistryStore::open(&database, RegistrationPolicy::Local).unwrap();
+    let unrestricted =
+        WorkspaceRegistryStore::open(&database, RegistrationPolicy::Unrestricted).unwrap();
     let registered =
-        futures_lite::future::block_on(local.register(outside.path().to_str().unwrap())).unwrap();
-    drop(local);
+        futures_lite::future::block_on(unrestricted.register(outside.path().to_str().unwrap()))
+            .unwrap();
+    drop(unrestricted);
 
     let remote = WorkspaceRegistryStore::open(
         &database,

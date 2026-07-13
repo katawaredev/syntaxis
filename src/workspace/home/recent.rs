@@ -7,17 +7,18 @@ use syntaxis_ui::prelude::{
 use crate::app::Route;
 use syntaxis_workspace::{WorkspaceAvailability, WorkspaceRecord};
 
-use super::WorkspaceListView;
+use super::{RuntimePresentation, WorkspaceListView};
 use crate::workspace::ProjectIcon;
 
 #[component]
 pub(super) fn RecentProjects(
     view: Signal<WorkspaceListView>,
     workspaces: Vec<WorkspaceRecord>,
+    runtime: RuntimePresentation,
     backend_loading: bool,
     backend_error: bool,
     on_view_change: EventHandler<WorkspaceListView>,
-    on_open_local: EventHandler<()>,
+    on_open_folder: EventHandler<()>,
     on_open_git: EventHandler<()>,
     on_delete: EventHandler<usize>,
     on_notice: EventHandler<String>,
@@ -33,7 +34,7 @@ pub(super) fn RecentProjects(
                         "Recent projects"
                     }
                     p { class: "mt-1 text-xs text-muted-foreground",
-                        "Your registered local workspaces"
+                        {runtime.recent_description.clone()}
                     }
                 }
                 div { class: "flex items-center gap-0.5 max-md:-mt-1 max-md:flex-col max-md:items-end",
@@ -58,7 +59,7 @@ pub(super) fn RecentProjects(
                     } else if backend_error {
                         WorkspaceError { on_retry: move |()| on_refresh.call(()) }
                     } else if workspaces.is_empty() {
-                        EmptyWorkspaces { on_open_local, on_open_git }
+                        EmptyWorkspaces {}
                     } else {
                         WorkspaceRows { workspaces, on_delete }
                     }
@@ -72,7 +73,7 @@ pub(super) fn RecentProjects(
                     }
                 },
                 WorkspaceListView::Empty => rsx! {
-                    EmptyWorkspaces { on_open_local, on_open_git }
+                    EmptyWorkspaces {}
                 },
                 WorkspaceListView::Error => rsx! {
                     WorkspaceError { on_retry: move |()| on_view_change.call(WorkspaceListView::Ready) }
@@ -253,7 +254,7 @@ fn LoadingWorkspaces(on_finish: EventHandler<()>) -> Element {
 }
 
 #[component]
-fn EmptyWorkspaces(on_open_local: EventHandler<()>, on_open_git: EventHandler<()>) -> Element {
+fn EmptyWorkspaces() -> Element {
     rsx! {
         div { class: "flex min-h-70 flex-col items-center justify-center rounded-xl border border-border bg-card/90 px-5.5 py-9 text-center max-md:min-h-62.5",
             div { class: "mb-3 grid size-11.5 place-items-center rounded-xl bg-primary/10 text-[22px] text-primary",
@@ -261,19 +262,7 @@ fn EmptyWorkspaces(on_open_local: EventHandler<()>, on_open_git: EventHandler<()
             }
             h3 { class: "text-[15px] font-semibold text-foreground", "No recent projects" }
             p { class: "mt-1.5 max-w-96 text-xs leading-relaxed text-muted-foreground",
-                "Open a local folder or clone a Git repository to get started."
-            }
-            div { class: "mt-4.5 flex gap-1.5",
-                Button {
-                    label: "Open local folder",
-                    kind: ButtonKind::Primary,
-                    onclick: move |_| on_open_local.call(()),
-                }
-                Button {
-                    label: "Open Git URL",
-                    kind: ButtonKind::Ghost,
-                    onclick: move |_| on_open_git.call(()),
-                }
+                "Open a workspace folder or clone a Git repository to get started."
             }
         }
     }
@@ -290,7 +279,7 @@ fn WorkspaceError(on_retry: EventHandler<()>) -> Element {
             }
             h3 { class: "text-[15px] font-semibold text-foreground", "Recent projects are unavailable" }
             p { class: "mt-1.5 max-w-96 text-xs leading-relaxed text-muted-foreground",
-                "The local workspace registry could not be read. Your project files were not affected."
+                "The workspace registry could not be read. Your project files were not affected."
             }
             div { class: "mt-4",
                 Button {

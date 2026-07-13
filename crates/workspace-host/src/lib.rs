@@ -1,4 +1,4 @@
-//! Native Linux/server implementation of the workspace operation boundaries.
+//! Direct host-OS implementation of the workspace operation boundaries.
 
 #![cfg(not(target_arch = "wasm32"))]
 
@@ -13,8 +13,8 @@ mod record;
 mod registry;
 mod watcher;
 
-pub use browser::LocalWorkspaceBrowser;
-pub use files::LocalWorkspaceFiles;
+pub use browser::HostWorkspaceBrowser;
+pub use files::HostWorkspaceFiles;
 pub use icon::detect_workspace_icon;
 pub use policy::RegistrationPolicy;
 pub use registry::WorkspaceRegistryStore;

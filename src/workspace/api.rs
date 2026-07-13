@@ -6,7 +6,8 @@ use syntaxis_workspace::{
 };
 #[cfg(feature = "server")]
 use syntaxis_workspace::{
-    RelativePath, RuntimeCapabilities, RuntimeCapability, RuntimeIdentity, RuntimeKind, WorkspaceId,
+    ExecutionLocation, RelativePath, RuntimeCapabilities, RuntimeCapability, RuntimeIdentity,
+    WorkspaceId,
 };
 
 #[cfg(feature = "server")]
@@ -45,7 +46,7 @@ pub async fn touch_workspace(workspace_id: String) -> Result<(), ServerFnError> 
 pub async fn runtime_state() -> Result<RuntimeState, ServerFnError> {
     Ok(RuntimeState::Ready {
         identity: RuntimeIdentity {
-            kind: RuntimeKind::Remote,
+            location: ExecutionLocation::Remote,
             label: "Self-hosted runtime".into(),
         },
         capabilities: RuntimeCapabilities {

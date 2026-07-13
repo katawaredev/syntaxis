@@ -13,8 +13,8 @@ use syntaxis_workspace::{
     BrowseDirectory, BrowseRoot, EventBatch, FileEntry, FileVersion, RelativePath, TextFile,
     WorkspaceBrowser, WorkspaceFiles, WorkspaceId, WorkspaceRecord, WorkspaceRegistry,
 };
-use syntaxis_workspace_local::{
-    LocalWorkspaceBrowser, LocalWorkspaceFiles, RegistrationPolicy, WorkspaceRegistryStore,
+use syntaxis_workspace_host::{
+    HostWorkspaceBrowser, HostWorkspaceFiles, RegistrationPolicy, WorkspaceRegistryStore,
     WorkspaceWatcher,
 };
 
@@ -73,7 +73,7 @@ pub(super) async fn list_files(
     id: &WorkspaceId,
     path: RelativePath,
 ) -> Result<Vec<FileEntry>, ServerFnError> {
-    LocalWorkspaceFiles
+    HostWorkspaceFiles
         .list(&workspace(id).await?, &path)
         .await
         .map_err(server_error)
@@ -83,7 +83,7 @@ pub(super) async fn stat_file(
     id: &WorkspaceId,
     path: RelativePath,
 ) -> Result<FileEntry, ServerFnError> {
-    LocalWorkspaceFiles
+    HostWorkspaceFiles
         .stat(&workspace(id).await?, &path)
         .await
         .map_err(server_error)
@@ -94,7 +94,7 @@ pub(super) async fn read_text(
     path: RelativePath,
     max_bytes: u64,
 ) -> Result<TextFile, ServerFnError> {
-    LocalWorkspaceFiles
+    HostWorkspaceFiles
         .read_text(&workspace(id).await?, &path, max_bytes)
         .await
         .map_err(server_error)
@@ -104,7 +104,7 @@ pub(super) async fn create_file(
     id: &WorkspaceId,
     path: RelativePath,
 ) -> Result<FileEntry, ServerFnError> {
-    LocalWorkspaceFiles
+    HostWorkspaceFiles
         .create_file(&workspace(id).await?, &path)
         .await
         .map_err(server_error)
@@ -114,7 +114,7 @@ pub(super) async fn create_directory(
     id: &WorkspaceId,
     path: RelativePath,
 ) -> Result<FileEntry, ServerFnError> {
-    LocalWorkspaceFiles
+    HostWorkspaceFiles
         .create_directory(&workspace(id).await?, &path)
         .await
         .map_err(server_error)
@@ -125,7 +125,7 @@ pub(super) async fn copy(
     source: RelativePath,
     destination: RelativePath,
 ) -> Result<(), ServerFnError> {
-    LocalWorkspaceFiles
+    HostWorkspaceFiles
         .copy(&workspace(id).await?, &source, &destination)
         .await
         .map_err(server_error)
@@ -136,14 +136,14 @@ pub(super) async fn move_entry(
     source: RelativePath,
     destination: RelativePath,
 ) -> Result<(), ServerFnError> {
-    LocalWorkspaceFiles
+    HostWorkspaceFiles
         .move_entry(&workspace(id).await?, &source, &destination)
         .await
         .map_err(server_error)
 }
 
 pub(super) async fn delete(id: &WorkspaceId, path: RelativePath) -> Result<(), ServerFnError> {
-    LocalWorkspaceFiles
+    HostWorkspaceFiles
         .delete(&workspace(id).await?, &path)
         .await
         .map_err(server_error)
@@ -156,7 +156,7 @@ pub(super) async fn write_text(
     expected: Option<&FileVersion>,
     max_bytes: u64,
 ) -> Result<FileVersion, ServerFnError> {
-    LocalWorkspaceFiles
+    HostWorkspaceFiles
         .write_text(&workspace(id).await?, &path, content, expected, max_bytes)
         .await
         .map_err(server_error)
@@ -201,8 +201,8 @@ fn registry() -> Result<&'static WorkspaceRegistryStore, ServerFnError> {
         .map_err(|error| server_error(error.clone()))
 }
 
-fn browser() -> Result<LocalWorkspaceBrowser, ServerFnError> {
-    LocalWorkspaceBrowser::new(RegistrationPolicy::Allowlisted {
+fn browser() -> Result<HostWorkspaceBrowser, ServerFnError> {
+    HostWorkspaceBrowser::new(RegistrationPolicy::Allowlisted {
         roots: configured_roots(),
     })
     .map_err(server_error)

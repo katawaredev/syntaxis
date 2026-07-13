@@ -9,10 +9,10 @@ use syntaxis_workspace::{
 use super::api;
 
 #[derive(Clone, Copy, Debug, Default)]
-pub struct DioxusWorkspaceOperations;
+pub struct RemoteWorkspaceOperations;
 
 #[async_trait(?Send)]
-impl WorkspaceBrowser for DioxusWorkspaceOperations {
+impl WorkspaceBrowser for RemoteWorkspaceOperations {
     async fn roots(&self) -> WorkspaceResult<Vec<BrowseRoot>> {
         api::browse_workspace_roots()
             .await
@@ -27,7 +27,7 @@ impl WorkspaceBrowser for DioxusWorkspaceOperations {
 }
 
 #[async_trait(?Send)]
-impl WorkspaceRegistry for DioxusWorkspaceOperations {
+impl WorkspaceRegistry for RemoteWorkspaceOperations {
     async fn list(&self) -> WorkspaceResult<Vec<WorkspaceRecord>> {
         api::list_workspaces().await.map_err(map_server_error)
     }
@@ -58,7 +58,7 @@ impl WorkspaceRegistry for DioxusWorkspaceOperations {
 }
 
 #[async_trait(?Send)]
-impl WorkspaceFiles for DioxusWorkspaceOperations {
+impl WorkspaceFiles for RemoteWorkspaceOperations {
     async fn list(
         &self,
         workspace: &WorkspaceRecord,

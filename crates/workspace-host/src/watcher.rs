@@ -37,7 +37,7 @@ impl WorkspaceWatcher {
     ///
     /// # Errors
     ///
-    /// Returns an error if the root is unavailable or the native watcher cannot start.
+    /// Returns an error if the root is unavailable or the host watcher cannot start.
     pub fn start(
         workspace_id: WorkspaceId,
         root: impl AsRef<Path>,
@@ -63,7 +63,7 @@ impl WorkspaceWatcher {
     ///
     /// # Errors
     ///
-    /// Returns an error if the native watcher reports a failure or disconnects.
+    /// Returns an error if the host watcher reports a failure or disconnects.
     pub fn receive_batch(&mut self, timeout: Duration) -> WorkspaceResult<EventBatch> {
         let first = match self.receiver.recv_timeout(timeout) {
             Ok(event) => event.map_err(|_| WorkspaceError::internal())?,

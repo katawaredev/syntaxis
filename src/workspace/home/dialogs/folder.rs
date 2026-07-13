@@ -6,7 +6,7 @@ use syntaxis_ui::prelude::{
 use super::{mock_request_delay, RequestState};
 use crate::workspace::client::register_workspace;
 use crate::workspace::client::{browse_workspace_directories, browse_workspace_roots};
-use crate::workspace::home::HomeDialog;
+use crate::workspace::home::{HomeDialog, RuntimePresentation};
 
 const MISSING_FOLDER_ERROR: &str =
     "That folder is no longer available. Choose another project directory.";
@@ -16,12 +16,13 @@ const OUTSIDE_ROOT_ERROR: &str =
     "That folder is outside the roots exposed by the connected runtime.";
 
 #[component]
-pub(super) fn LocalFolderDialog(
+pub(super) fn WorkspaceFolderDialog(
     mut dialog: Signal<HomeDialog>,
+    runtime: RuntimePresentation,
     on_notice: EventHandler<String>,
     on_changed: EventHandler<()>,
 ) -> Element {
-    let mut local_path = use_signal(String::new);
+    let mut workspace_path = use_signal(String::new);
     let mut browse_path = use_signal(String::new);
     let mut request = use_signal(|| RequestState::Idle);
     let roots = use_resource(browse_workspace_roots);
@@ -39,8 +40,8 @@ pub(super) fn LocalFolderDialog(
 
     rsx! {
         Modal {
-            title: "Open local folder",
-            description: "Register an absolute directory exposed by the connected runtime.",
+            title: runtime.folder_dialog_title,
+            description: runtime.folder_dialog_description,
             on_close: move |()| {
                 if !pending {
                     dialog.set(HomeDialog::None);
@@ -48,24 +49,24 @@ pub(super) fn LocalFolderDialog(
             },
             DialogForm {
                 Field {
-                    control_id: "local-path",
+                    control_id: "workspace-path",
                     label: "Folder path",
                     error: match request() {
                         RequestState::Error(message) => Some(message.to_string()),
                         _ => None,
                     },
                     TextInput {
-                        value: "{local_path}",
+                        value: "{workspace_path}",
                         autofocus: true,
                         disabled: pending,
                         oninput: move |event: FormEvent| {
-                            local_path.set(event.value());
+                            workspace_path.set(event.value());
                             request.set(RequestState::Idle);
                         },
                     }
                 }
                 p { class: "rounded-md border border-border bg-background px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground",
-                    "Web clients can only register folders beneath SYNTAXIS_WORKSPACE_ROOTS on the self-hosted runtime. Local desktop builds can use arbitrary folders."
+                    {runtime.folder_policy_note}
                 }
                 div { class: "max-h-44 overflow-y-auto rounded-md border border-border bg-background p-1.5",
                     p { class: "px-2 py-1 text-[10px] font-bold tracking-widest text-muted-foreground",
@@ -81,7 +82,7 @@ pub(super) fn LocalFolderDialog(
                                 BrowserChoice {
                                     label: root.name,
                                     path: root.path,
-                                    local_path,
+                                    workspace_path,
                                     browse_path,
                                     request,
                                 }
@@ -105,7 +106,7 @@ pub(super) fn LocalFolderDialog(
                                 BrowserChoice {
                                     label: directory.name,
                                     path: directory.path,
-                                    local_path,
+                                    workspace_path,
                                     browse_path,
                                     request,
                                 }
@@ -119,10 +120,10 @@ pub(super) fn LocalFolderDialog(
                             }
                         }
                     }
-                    if !local_path().is_empty() && browse_path().is_empty() {
+                    if !workspace_path().is_empty() && browse_path().is_empty() {
                         button {
                             class: "w-full rounded-sm bg-transparent px-2 py-1.5 text-left text-xs text-primary hover:bg-accent",
-                            onclick: move |_| browse_path.set(local_path()),
+                            onclick: move |_| browse_path.set(workspace_path()),
                             "Browse entered path"
                         }
                     }
@@ -141,9 +142,9 @@ pub(super) fn LocalFolderDialog(
                     Button {
                         label: if pending { "Opening…" } else if matches!(request(), RequestState::Error(_)) { "Try again" } else { "Open workspace" },
                         kind: ButtonKind::Primary,
-                        disabled: pending || local_path().trim().is_empty(),
+                        disabled: pending || workspace_path().trim().is_empty(),
                         onclick: move |_| {
-                            let path = local_path();
+                            let path = workspace_path();
                             request.set(RequestState::Pending);
                             spawn(async move {
                                 mock_request_delay().await;
@@ -177,7 +178,7 @@ pub(super) fn LocalFolderDialog(
 fn BrowserChoice(
     label: String,
     path: String,
-    mut local_path: Signal<String>,
+    mut workspace_path: Signal<String>,
     mut browse_path: Signal<String>,
     mut request: Signal<RequestState>,
 ) -> Element {
@@ -187,7 +188,7 @@ fn BrowserChoice(
             class: "w-full rounded-sm bg-transparent px-2 py-1.5 text-left text-xs hover:bg-accent",
             title: path,
             onclick: move |_| {
-                local_path.set(selected_path.clone());
+                workspace_path.set(selected_path.clone());
                 browse_path.set(selected_path.clone());
                 request.set(RequestState::Idle);
             },

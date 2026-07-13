@@ -20,7 +20,7 @@ pub use mock_browser::MockWorkspaceBrowser;
 pub use mock_files::MockWorkspaceFiles;
 pub use operations::{WorkspaceFiles, WorkspaceRegistry};
 pub use runtime::{
-    RuntimeCapabilities, RuntimeCapability, RuntimeIdentity, RuntimeKind, RuntimeState,
+    ExecutionLocation, RuntimeCapabilities, RuntimeCapability, RuntimeIdentity, RuntimeState,
 };
 pub use workspace::{
     WorkspaceAvailability, WorkspaceIcon, WorkspaceIconSymbol, WorkspaceId, WorkspaceRecord,

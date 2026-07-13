@@ -622,7 +622,7 @@ fn ConflictView(on_resolve: EventHandler<String>) -> Element {
                         }
                     }
                     pre {
-                        code { "pub fn runtime_label() -> &'static str {{\n    \"Local runtime\"\n}}" }
+                        code { "pub fn runtime_label() -> &'static str {{\n    \"Connected runtime\"\n}}" }
                     }
                 }
                 section {
@@ -648,7 +648,7 @@ fn ConflictView(on_resolve: EventHandler<String>) -> Element {
                 }
                 pre {
                     code {
-                        "pub fn runtime_label(ready: bool) -> String {{\n    if ready {{ \"Local runtime\".into() }} else {{ \"Offline\".into() }}\n}}"
+                        "pub fn runtime_label(ready: bool) -> String {{\n    if ready {{ \"Connected runtime\".into() }} else {{ \"Offline\".into() }}\n}}"
                     }
                 }
             }

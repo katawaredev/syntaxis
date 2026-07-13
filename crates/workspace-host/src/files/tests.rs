@@ -7,7 +7,7 @@ use syntaxis_workspace::{
 };
 use tempfile::tempdir;
 
-use super::LocalWorkspaceFiles;
+use super::HostWorkspaceFiles;
 
 fn record(root: &std::path::Path) -> WorkspaceRecord {
     WorkspaceRecord {
@@ -31,7 +31,7 @@ fn atomic_write_detects_external_version_conflicts() {
     fs::write(&file, "first").unwrap();
     let workspace = record(directory.path());
     let path = RelativePath::try_from("notes.txt").unwrap();
-    let service = LocalWorkspaceFiles;
+    let service = HostWorkspaceFiles;
     let original = block_on(service.read_text(&workspace, &path, 1024)).unwrap();
 
     thread::sleep(Duration::from_millis(2));
@@ -56,7 +56,7 @@ fn atomic_write_replaces_content_and_advances_the_version() {
     fs::write(&file, "before").unwrap();
     let workspace = record(directory.path());
     let path = RelativePath::try_from("notes.txt").unwrap();
-    let files = LocalWorkspaceFiles;
+    let files = HostWorkspaceFiles;
     let before = block_on(files.read_text(&workspace, &path, 1024)).unwrap();
 
     let after = block_on(files.write_text(
@@ -81,7 +81,7 @@ fn rejected_write_preserves_the_existing_file() {
     let workspace = record(directory.path());
     let path = RelativePath::try_from("notes.txt").unwrap();
 
-    let error = block_on(LocalWorkspaceFiles.write_text(&workspace, &path, "too large", None, 2))
+    let error = block_on(HostWorkspaceFiles.write_text(&workspace, &path, "too large", None, 2))
         .unwrap_err();
 
     assert_eq!(error.code, ErrorCode::TooLarge);
@@ -92,8 +92,7 @@ fn rejected_write_preserves_the_existing_file() {
 fn destructive_operations_reject_the_workspace_root() {
     let directory = tempdir().unwrap();
     let workspace = record(directory.path());
-    let error =
-        block_on(LocalWorkspaceFiles.delete(&workspace, &RelativePath::root())).unwrap_err();
+    let error = block_on(HostWorkspaceFiles.delete(&workspace, &RelativePath::root())).unwrap_err();
     assert_eq!(error.code, ErrorCode::RootOperationRejected);
 }
 
@@ -108,6 +107,6 @@ fn file_operations_reject_symlink_escapes() {
     symlink(outside.path(), directory.path().join("escape")).unwrap();
     let workspace = record(directory.path());
     let path = RelativePath::try_from("escape/secret.txt").unwrap();
-    let error = block_on(LocalWorkspaceFiles.read_text(&workspace, &path, 1024)).unwrap_err();
+    let error = block_on(HostWorkspaceFiles.read_text(&workspace, &path, 1024)).unwrap_err();
     assert_eq!(error.code, ErrorCode::OutsideAllowedRoot);
 }

@@ -1,69 +1,81 @@
+#[cfg(feature = "desktop")]
+use syntaxis_workspace::ExecutionLocation;
 use syntaxis_workspace::{BrowseDirectory, BrowseRoot, RuntimeState, WorkspaceRecord};
 
-pub async fn list_workspaces() -> Result<Vec<WorkspaceRecord>, String> {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[allow(dead_code)] // Phase 6 will make the compiled remote/host choice user-selectable.
+enum RuntimeTarget {
+    Remote,
+    #[cfg(feature = "desktop")]
+    DesktopLocal,
+}
+
+const fn selected_runtime() -> RuntimeTarget {
     #[cfg(feature = "desktop")]
     {
-        use syntaxis_workspace::WorkspaceRegistry;
-        return local_registry()?
-            .list()
-            .await
-            .map_err(|error| error.message);
+        RuntimeTarget::DesktopLocal
     }
     #[cfg(not(feature = "desktop"))]
     {
-        use syntaxis_workspace::WorkspaceRegistry;
-        super::remote::DioxusWorkspaceOperations
+        RuntimeTarget::Remote
+    }
+}
+
+pub async fn list_workspaces() -> Result<Vec<WorkspaceRecord>, String> {
+    use syntaxis_workspace::WorkspaceRegistry;
+
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::remote::RemoteWorkspaceOperations
             .list()
             .await
-            .map_err(|error| error.message)
+            .map_err(|error| error.message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => host_registry()?.list().await.map_err(|error| error.message),
     }
 }
 
 pub async fn register_workspace(absolute_path: String) -> Result<WorkspaceRecord, String> {
-    #[cfg(feature = "desktop")]
-    {
-        use syntaxis_workspace::WorkspaceRegistry;
-        return local_registry()?
+    use syntaxis_workspace::WorkspaceRegistry;
+
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::remote::RemoteWorkspaceOperations
             .register(&absolute_path)
             .await
-            .map_err(|error| error.message);
-    }
-    #[cfg(not(feature = "desktop"))]
-    {
-        use syntaxis_workspace::WorkspaceRegistry;
-        super::remote::DioxusWorkspaceOperations
+            .map_err(|error| error.message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => host_registry()?
             .register(&absolute_path)
             .await
-            .map_err(|error| error.message)
+            .map_err(|error| error.message),
     }
 }
 
 pub async fn remove_workspace(workspace_id: String, delete_files: bool) -> Result<(), String> {
-    #[cfg(feature = "desktop")]
-    {
-        use syntaxis_workspace::{WorkspaceId, WorkspaceRegistry};
+    use syntaxis_workspace::{WorkspaceId, WorkspaceRegistry};
 
-        let id = WorkspaceId::new(workspace_id);
-        if delete_files {
-            local_registry()?
-                .delete_project_files(&id, true)
-                .map_err(|error| error.message)?;
+    match selected_runtime() {
+        RuntimeTarget::Remote => {
+            if delete_files {
+                super::api::remove_workspace(workspace_id, true)
+                    .await
+                    .map_err(|error| error.to_string())
+            } else {
+                super::remote::RemoteWorkspaceOperations
+                    .remove(&WorkspaceId::new(workspace_id))
+                    .await
+                    .map_err(|error| error.message)
+            }
         }
-        return local_registry()?
-            .remove(&id)
-            .await
-            .map_err(|error| error.message);
-    }
-    #[cfg(not(feature = "desktop"))]
-    {
-        if delete_files {
-            super::api::remove_workspace(workspace_id, true)
-                .await
-                .map_err(|error| error.to_string())
-        } else {
-            use syntaxis_workspace::{WorkspaceId, WorkspaceRegistry};
-            super::remote::DioxusWorkspaceOperations
-                .remove(&WorkspaceId::new(workspace_id))
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => {
+            let id = WorkspaceId::new(workspace_id);
+            if delete_files {
+                host_registry()?
+                    .delete_project_files(&id, true)
+                    .map_err(|error| error.message)?;
+            }
+            host_registry()?
+                .remove(&id)
                 .await
                 .map_err(|error| error.message)
         }
@@ -72,74 +84,70 @@ pub async fn remove_workspace(workspace_id: String, delete_files: bool) -> Resul
 
 #[allow(clippy::unused_async)] // The desktop and remote implementations share one async API.
 pub async fn runtime_state() -> Result<RuntimeState, String> {
-    #[cfg(feature = "desktop")]
-    {
-        Ok(RuntimeState::Ready {
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::api::runtime_state()
+            .await
+            .map_err(|error| error.to_string()),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => Ok(RuntimeState::Ready {
             identity: syntaxis_workspace::RuntimeIdentity {
-                kind: syntaxis_workspace::RuntimeKind::Local,
-                label: "Local runtime".into(),
+                location: ExecutionLocation::Local,
+                label: "Desktop runtime".into(),
             },
             capabilities: syntaxis_workspace::RuntimeCapabilities {
                 available: vec![
                     syntaxis_workspace::RuntimeCapability::Filesystem,
                     syntaxis_workspace::RuntimeCapability::FileEvents,
-                    syntaxis_workspace::RuntimeCapability::ArbitraryLocalFolders,
+                    syntaxis_workspace::RuntimeCapability::UnrestrictedWorkspaceRoots,
                 ],
             },
-        })
+        }),
     }
-    #[cfg(not(feature = "desktop"))]
-    super::api::runtime_state()
-        .await
-        .map_err(|error| error.to_string())
 }
 
 #[allow(clippy::unused_async)] // The desktop and remote implementations share one async API.
 pub async fn browse_workspace_roots() -> Result<Vec<BrowseRoot>, String> {
-    #[cfg(feature = "desktop")]
-    {
-        Ok(Vec::new())
-    }
-    #[cfg(not(feature = "desktop"))]
-    {
-        use syntaxis_workspace::WorkspaceBrowser;
-        super::remote::DioxusWorkspaceOperations
+    use syntaxis_workspace::WorkspaceBrowser;
+
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::remote::RemoteWorkspaceOperations
             .roots()
             .await
-            .map_err(|error| error.message)
+            .map_err(|error| error.message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => Ok(Vec::new()),
     }
 }
 
 pub async fn browse_workspace_directories(
     absolute_path: String,
 ) -> Result<Vec<BrowseDirectory>, String> {
-    #[cfg(feature = "desktop")]
-    {
-        use syntaxis_workspace::WorkspaceBrowser;
-        let browser = syntaxis_workspace_local::LocalWorkspaceBrowser::new(
-            syntaxis_workspace_local::RegistrationPolicy::Local,
-        )
-        .map_err(|error| error.message)?;
-        return browser
+    use syntaxis_workspace::WorkspaceBrowser;
+
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::remote::RemoteWorkspaceOperations
             .directories(&absolute_path)
             .await
-            .map_err(|error| error.message);
-    }
-    #[cfg(not(feature = "desktop"))]
-    {
-        use syntaxis_workspace::WorkspaceBrowser;
-        super::remote::DioxusWorkspaceOperations
-            .directories(&absolute_path)
-            .await
-            .map_err(|error| error.message)
+            .map_err(|error| error.message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => {
+            let browser = syntaxis_workspace_host::HostWorkspaceBrowser::new(
+                syntaxis_workspace_host::RegistrationPolicy::Unrestricted,
+            )
+            .map_err(|error| error.message)?;
+            browser
+                .directories(&absolute_path)
+                .await
+                .map_err(|error| error.message)
+        }
     }
 }
 
 #[cfg(feature = "desktop")]
-fn local_registry() -> Result<&'static syntaxis_workspace_local::WorkspaceRegistryStore, String> {
+fn host_registry() -> Result<&'static syntaxis_workspace_host::WorkspaceRegistryStore, String> {
     use std::{env, path::PathBuf, sync::OnceLock};
 
-    use syntaxis_workspace_local::{RegistrationPolicy, WorkspaceRegistryStore};
+    use syntaxis_workspace_host::{RegistrationPolicy, WorkspaceRegistryStore};
 
     static REGISTRY: OnceLock<Result<WorkspaceRegistryStore, String>> = OnceLock::new();
     REGISTRY
@@ -157,7 +165,7 @@ fn local_registry() -> Result<&'static syntaxis_workspace_local::WorkspaceRegist
             std::fs::create_dir_all(&data_directory).map_err(|error| error.to_string())?;
             WorkspaceRegistryStore::open(
                 data_directory.join("workspaces.sqlite3"),
-                RegistrationPolicy::Local,
+                RegistrationPolicy::Unrestricted,
             )
             .map_err(|error| error.message)
         })

@@ -20,9 +20,9 @@ use crate::{
 };
 
 #[derive(Clone, Copy, Debug, Default)]
-pub struct LocalWorkspaceFiles;
+pub struct HostWorkspaceFiles;
 
-impl LocalWorkspaceFiles {
+impl HostWorkspaceFiles {
     fn list_entries(
         workspace: &WorkspaceRecord,
         relative: &RelativePath,
@@ -210,7 +210,7 @@ impl LocalWorkspaceFiles {
 }
 
 #[async_trait(?Send)]
-impl WorkspaceFiles for LocalWorkspaceFiles {
+impl WorkspaceFiles for HostWorkspaceFiles {
     async fn list(
         &self,
         workspace: &WorkspaceRecord,

@@ -8,11 +8,11 @@ use syntaxis_workspace::{
 use crate::{error::map_io_error, RegistrationPolicy};
 
 #[derive(Clone, Debug)]
-pub struct LocalWorkspaceBrowser {
+pub struct HostWorkspaceBrowser {
     policy: RegistrationPolicy,
 }
 
-impl LocalWorkspaceBrowser {
+impl HostWorkspaceBrowser {
     /// Creates a browser constrained by the supplied registration policy.
     ///
     /// # Errors
@@ -43,7 +43,7 @@ impl LocalWorkspaceBrowser {
 }
 
 #[async_trait(?Send)]
-impl WorkspaceBrowser for LocalWorkspaceBrowser {
+impl WorkspaceBrowser for HostWorkspaceBrowser {
     async fn roots(&self) -> WorkspaceResult<Vec<BrowseRoot>> {
         Ok(self
             .policy
@@ -88,13 +88,13 @@ mod tests {
     use syntaxis_workspace::{ErrorCode, WorkspaceBrowser};
     use tempfile::tempdir;
 
-    use crate::{LocalWorkspaceBrowser, RegistrationPolicy};
+    use crate::{HostWorkspaceBrowser, RegistrationPolicy};
 
     #[test]
     fn browser_cannot_leave_allowlisted_roots() {
         let allowed = tempdir().unwrap();
         let outside = tempdir().unwrap();
-        let browser = LocalWorkspaceBrowser::new(RegistrationPolicy::Allowlisted {
+        let browser = HostWorkspaceBrowser::new(RegistrationPolicy::Allowlisted {
             roots: vec![allowed.path().to_owned()],
         })
         .unwrap();

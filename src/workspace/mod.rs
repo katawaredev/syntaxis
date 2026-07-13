@@ -3,7 +3,6 @@ mod client;
 mod events;
 mod home;
 mod project_icon;
-#[cfg(not(feature = "desktop"))]
 mod remote;
 mod shell;
 
