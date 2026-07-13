@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
-
-use crate::ui::{Button, ButtonKind, Modal};
+use syntaxis_ui::prelude::{
+    Button, ButtonKind, DialogActions, DialogForm, Field, Modal, TextInput, TextInputType,
+};
 
 use super::{mock_request_delay, RequestState};
 use crate::workspace::home::HomeDialog;
@@ -27,28 +28,26 @@ pub(super) fn GitUrlDialog(
                     dialog.set(HomeDialog::None);
                 }
             },
-            div { class: "flex flex-col gap-2 px-5 pt-3 pb-5",
-                label {
-                    class: "mt-1 text-xs font-semibold text-foreground",
-                    r#for: "git-url",
-                    "Repository URL"
-                }
-                input {
-                    class: "w-full rounded-md border border-input bg-background/95 px-2.75 py-2.25 placeholder:text-muted-foreground/70 disabled:opacity-50",
-                    id: "git-url",
-                    r#type: "text",
-                    placeholder: "https://github.com/owner/repository.git",
-                    value: "{git_url}",
-                    autofocus: true,
-                    disabled: pending,
-                    "aria-invalid": matches!(request(), RequestState::Error(_)),
-                    oninput: move |event| {
-                        git_url.set(event.value());
-                        request.set(RequestState::Idle);
+            DialogForm {
+                Field {
+                    control_id: "git-url",
+                    label: "Repository URL",
+                    description: "Target: /home/alex/projects/repository",
+                    error: match request() {
+                        RequestState::Error(message) => Some(message.to_string()),
+                        _ => None,
                     },
-                }
-                p { class: "text-[11px] text-muted-foreground",
-                    "Target: /home/alex/projects/repository"
+                    TextInput {
+                        input_type: TextInputType::Url,
+                        placeholder: "https://github.com/owner/repository.git",
+                        value: "{git_url}",
+                        autofocus: true,
+                        disabled: pending,
+                        oninput: move |event: FormEvent| {
+                            git_url.set(event.value());
+                            request.set(RequestState::Idle);
+                        },
+                    }
                 }
                 if request() == RequestState::Idle {
                     button {
@@ -67,15 +66,9 @@ pub(super) fn GitUrlDialog(
                             "Resolving repository and preparing clone…"
                         }
                     },
-                    RequestState::Error(message) => rsx! {
-                        p {
-                            class: "rounded-md border border-destructive/35 bg-destructive/10 px-2.5 py-2 text-xs leading-relaxed text-destructive",
-                            role: "alert",
-                            {message}
-                        }
-                    },
+                    RequestState::Error(_) => rsx! {},
                 }
-                div { class: "mt-2.5 flex justify-end gap-2",
+                DialogActions {
                     Button {
                         label: "Cancel",
                         kind: ButtonKind::Ghost,

@@ -1,9 +1,10 @@
 use dioxus::prelude::*;
-use dioxus_primitives::dropdown_menu::{
-    DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem, DropdownMenuTrigger};
+use syntaxis_ui::prelude::{
+    AppIcon, Button, ButtonKind, ControlSize, DialogActions, DialogForm, Field, IconButton,
+    MenuContent, MenuTrigger, Modal, PanelHeader, PanelTab, PanelTabIndicator, PanelTabList,
+    PanelTabWidth, TextInput, Toast, Tone,
 };
-
-use crate::ui::{AppIcon, Button, ButtonKind, MenuTrigger, Modal, Toast};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum TerminalStatus {
@@ -75,27 +76,16 @@ pub fn Terminal(slug: String) -> Element {
 
     rsx! {
         section { class: "flex size-full min-h-0 flex-col bg-background",
-            div { class: "relative flex h-10 min-h-10 items-center gap-1.25 border-b border-border bg-background px-1.75 max-md:h-13 max-md:min-h-13 max-md:gap-1.75 max-[420px]:gap-0.75 max-[420px]:px-1",
-                div {
-                    class: "flex h-8.5 min-w-0 flex-1 gap-0.5 overflow-x-auto bg-background [scrollbar-width:none] max-md:hidden",
-                    role: "tablist",
+            PanelHeader {
+                PanelTabList {
                     for session in sessions() {
-                        div { class: if active() == Some(session.id) { "flex h-8.5 min-w-33 max-w-47.5 items-center rounded-md border border-transparent bg-muted pr-0.75 text-[11px] text-foreground" } else { "flex h-8.5 min-w-33 max-w-47.5 items-center rounded-md border border-border bg-background pr-0.75 text-[11px] text-muted-foreground" },
-                            button {
-                                class: "flex h-full min-w-0 flex-1 items-center gap-1.75 bg-transparent pr-1.25 pl-2.5 text-inherit [&>span:nth-child(2)]:flex-1 [&>span:nth-child(2)]:truncate [&>span:nth-child(2)]:text-left",
-                                role: "tab",
-                                "aria-selected": active() == Some(session.id),
-                                onclick: move |_| active.set(Some(session.id)),
-                                span { class: terminal_dot_class(session.status) }
-                                span { {session.name.clone()} }
-                            }
-                            button {
-                                class: "grid size-5.75 shrink-0 place-items-center rounded-sm bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground",
-                                "aria-label": "Close {session.name}",
-                                title: "Close {session.name}",
-                                onclick: move |_| close_terminal(session.id, &session.name, sessions, active, toast),
-                                crate::ui::Icon { icon: AppIcon::Close, size: 12 }
-                            }
+                        PanelTab {
+                            label: session.name.clone(),
+                            active: active() == Some(session.id),
+                            width: PanelTabWidth::Session,
+                            indicator: PanelTabIndicator::Dot(terminal_tone(session.status)),
+                            on_select: move |_| active.set(Some(session.id)),
+                            on_close: move |()| close_terminal(session.id, &session.name, sessions, active, toast),
                         }
                     }
                 }
@@ -121,7 +111,7 @@ pub fn Terminal(slug: String) -> Element {
                         }
                         span { class: "shrink-0 text-muted-foreground", "⌄" }
                     }
-                    DropdownMenuContent { class: "absolute top-[calc(100%+4px)] right-2 left-2 z-80 w-auto rounded-lg border border-border bg-popover p-0.75 shadow-2xl [&_button]:flex [&_button]:min-h-8 [&_button]:w-full [&_button]:items-center [&_button]:justify-between [&_button]:gap-3 [&_button]:rounded-sm [&_button]:px-2 [&_button]:py-1.5 [&_button]:text-left [&_button]:text-xs [&_button]:hover:bg-accent",
+                    MenuContent { class: "!top-[calc(100%+4px)] right-2 left-2 w-auto !p-0.75",
                         if sessions.read().is_empty() {
                             div { class: "p-2.5 text-xs text-muted-foreground", "No terminal sessions" }
                         }
@@ -147,18 +137,17 @@ pub fn Terminal(slug: String) -> Element {
                                         close_terminal(session.id, &session.name, sessions, active, toast);
                                         mobile_tabs_open.set(false);
                                     },
-                                    crate::ui::Icon { icon: AppIcon::Close, size: 15 }
+                                    syntaxis_ui::Icon { icon: AppIcon::Close, size: 15 }
                                 }
                             }
                         }
                     }
                 }
-                button {
-                    class: "h-7.25 w-7.25 min-w-7.25 shrink-0 rounded-md bg-transparent text-lg text-muted-foreground hover:bg-accent hover:text-foreground",
-                    "aria-label": "New terminal",
-                    title: "New terminal",
+                IconButton {
+                    label: "New terminal",
+                    icon: AppIcon::Plus,
+                    size: ControlSize::Small,
                     onclick: move |_| new_dialog.set(true),
-                    "+"
                 }
                 DropdownMenu {
                     class: "relative shrink-0",
@@ -169,7 +158,7 @@ pub fn Terminal(slug: String) -> Element {
                         icon: AppIcon::Play,
                         open: play_menu(),
                     }
-                    DropdownMenuContent { class: "absolute top-[calc(100%+5px)] right-0 z-80 w-63.75 rounded-lg border border-border bg-popover p-1.25 shadow-2xl [&_button]:flex [&_button]:min-h-8 [&_button]:w-full [&_button]:items-center [&_button]:justify-between [&_button]:gap-3 [&_button]:rounded-sm [&_button]:px-2 [&_button]:py-1.5 [&_button]:text-left [&_button]:text-xs [&_button]:hover:bg-accent [&_hr]:-mx-1.25 [&_hr]:my-1 [&_hr]:h-px [&_hr]:border-0 [&_hr]:bg-border",
+                    MenuContent { class: "right-0 w-63.75",
                         DropdownMenuItem::<QuickCommandAction> {
                             value: QuickCommandAction::Ci,
                             index: 0_usize,
@@ -252,7 +241,7 @@ pub fn Terminal(slug: String) -> Element {
                         icon: AppIcon::Menu,
                         open: menu(),
                     }
-                    DropdownMenuContent { class: "absolute top-[calc(100%+5px)] right-0 z-80 w-53.75 rounded-lg border border-border bg-popover p-1.25 shadow-2xl [&_button]:flex [&_button]:min-h-8 [&_button]:w-full [&_button]:items-center [&_button]:justify-between [&_button]:gap-3 [&_button]:rounded-sm [&_button]:px-2 [&_button]:py-1.5 [&_button]:text-left [&_button]:text-xs [&_button]:hover:bg-accent [&_button[data-disabled=true]]:cursor-not-allowed [&_button[data-disabled=true]]:opacity-40 [&_hr]:-mx-1.25 [&_hr]:my-1 [&_hr]:h-px [&_hr]:border-0 [&_hr]:bg-border",
+                    MenuContent { class: "right-0 w-53.75",
                         DropdownMenuItem::<TerminalAction> {
                             value: TerminalAction::Copy,
                             index: 0_usize,
@@ -393,22 +382,16 @@ pub fn Terminal(slug: String) -> Element {
                 title: "New terminal",
                 description: "Start a mock session in this workspace.",
                 on_close: move |()| new_dialog.set(false),
-                div { class: "flex flex-col gap-2.25 px-5 pt-3 pb-5 [&>label]:mt-0.75 [&>label]:text-xs [&>label]:font-semibold [&>label]:text-foreground/80",
-                    label { r#for: "terminal-name", "Session name" }
-                    input {
-                        class: "w-full rounded-md border border-input bg-background/95 px-2.75 py-2.25 placeholder:text-muted-foreground/70",
-                        id: "terminal-name",
-                        placeholder: "shell",
-                        autofocus: true,
+                DialogForm {
+                    Field { control_id: "terminal-name", label: "Session name",
+                        TextInput { placeholder: "shell", autofocus: true }
                     }
-                    label { r#for: "terminal-command", "Startup command" }
-                    input {
-                        class: "w-full rounded-md border border-input bg-background/95 px-2.75 py-2.25 disabled:opacity-50",
-                        id: "terminal-command",
-                        value: "/bin/bash",
-                        disabled: true,
+                    Field {
+                        control_id: "terminal-command",
+                        label: "Startup command",
+                        TextInput { value: "/bin/bash", disabled: true }
                     }
-                    div { class: "mt-2.5 flex justify-end gap-1.75",
+                    DialogActions {
                         Button {
                             label: "Cancel",
                             kind: ButtonKind::Ghost,
@@ -441,17 +424,16 @@ pub fn Terminal(slug: String) -> Element {
                 title: if command_is_new() { String::from("New command") } else { String::from("Run command") },
                 description: if command_is_new() { String::from("Create a reusable mock command for this workspace.") } else { String::from("Open a new terminal and run this command (mock).") },
                 on_close: move |()| command_dialog.set(false),
-                div { class: "flex flex-col gap-2.25 px-5 pt-3 pb-5 [&>label]:mt-0.75 [&>label]:text-xs [&>label]:font-semibold [&>label]:text-foreground/80",
-                    label { r#for: "terminal-command-text", "Command" }
-                    input {
-                        class: "w-full rounded-md border border-input bg-background/95 px-2.75 py-2.25 placeholder:text-muted-foreground/70",
-                        id: "terminal-command-text",
-                        placeholder: "npm run ci",
-                        value: "{command_text}",
-                        autofocus: true,
-                        oninput: move |event| command_text.set(event.value()),
+                DialogForm {
+                    Field { control_id: "terminal-command-text", label: "Command",
+                        TextInput {
+                            placeholder: "npm run ci",
+                            value: "{command_text}",
+                            autofocus: true,
+                            oninput: move |event: FormEvent| command_text.set(event.value()),
+                        }
                     }
-                    div { class: "mt-2.5 flex justify-end gap-1.75",
+                    DialogActions {
                         Button {
                             label: "Cancel",
                             kind: ButtonKind::Ghost,
@@ -488,6 +470,15 @@ const fn terminal_dot_class(status: TerminalStatus) -> &'static str {
         TerminalStatus::Connecting => "size-1.75 shrink-0 rounded-full bg-warning",
         TerminalStatus::Exited => "size-1.75 shrink-0 rounded-full bg-muted-foreground",
         TerminalStatus::Failed => "size-1.75 shrink-0 rounded-full bg-destructive",
+    }
+}
+
+const fn terminal_tone(status: TerminalStatus) -> Tone {
+    match status {
+        TerminalStatus::Ready => Tone::Success,
+        TerminalStatus::Connecting => Tone::Warning,
+        TerminalStatus::Exited => Tone::Neutral,
+        TerminalStatus::Failed => Tone::Destructive,
     }
 }
 

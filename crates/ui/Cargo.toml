@@ -1,0 +1,15 @@
+[package]
+name = "syntaxis-ui"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+readme = "README.md"
+
+[dependencies]
+dioxus = "0.7.1"
+dioxus-icons = "=0.1.0"
+dioxus-primitives = { git = "https://github.com/DioxusLabs/dioxus-components", rev = "bf007c15d0cf4d04d3181cc46cf12325aa773955" }
+
+[lints]
+workspace = true

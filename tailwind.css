@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @source "./src/**/*.rs";
+@source "./crates/ui/src/**/*.rs";
 
 @theme inline {
   --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
@@ -113,15 +114,6 @@
     @apply m-0;
   }
 
-  input,
-  textarea,
-  select {
-    @apply w-full rounded-md border border-input bg-background px-3 py-2 placeholder:text-muted-foreground/70;
-  }
-
-  textarea {
-    @apply resize-y leading-relaxed;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

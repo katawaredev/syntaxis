@@ -3,7 +3,7 @@ mod recent;
 
 use dioxus::prelude::*;
 
-use crate::ui::{AppIcon, Icon, Toast};
+use syntaxis_ui::prelude::{AppIcon, Icon, Toast};
 
 use self::{dialogs::HomeDialogs, recent::RecentProjects};
 

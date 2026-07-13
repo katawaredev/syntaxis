@@ -1,10 +1,11 @@
 use dioxus::prelude::*;
 use dioxus_code::{code, Code, Theme};
-use dioxus_primitives::dropdown_menu::{
-    DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem, DropdownMenuTrigger};
+use syntaxis_ui::prelude::{
+    AppIcon, Button, ButtonKind, ControlSize, DangerNote, DialogActions, DialogForm, Drawer, Field,
+    Icon, IconButton, MenuContent, MenuTrigger, Modal, PanelHeader, PanelTab, PanelTabIndicator,
+    PanelTabList, PanelTabWidth, TextInput, TextInputType, Toast,
 };
-
-use crate::ui::{AppIcon, Button, ButtonKind, Drawer, Icon, IconButton, MenuTrigger, Modal, Toast};
 
 const FILES: [(&str, &str, &str); 8] = [
     ("src", "folder", ""),
@@ -176,7 +177,7 @@ pub fn Files(slug: String) -> Element {
                 }
             }
             section { class: "flex min-h-0 min-w-0 flex-col overflow-hidden max-md:h-full",
-                div { class: "relative flex h-10 min-h-10 items-center gap-1.5 border-b border-border bg-background px-1.75 max-md:h-13 max-md:min-h-13 max-md:gap-1.75 max-[420px]:gap-0.75 max-[420px]:px-1",
+                PanelHeader {
                     div { class: "shrink-0 max-md:hidden",
                         IconButton {
                             label: if sidebar_open() { "Hide file browser" } else { "Show file browser" },
@@ -192,19 +193,19 @@ pub fn Files(slug: String) -> Element {
                             onclick: move |_| drawer.set(true),
                         }
                     }
-                    div {
-                        class: "flex h-8.5 min-w-0 flex-1 gap-0.5 overflow-x-auto overflow-y-hidden bg-background [scrollbar-width:none] max-md:hidden",
-                        role: "tablist",
+                    PanelTabList {
                         for file in open_files() {
-                            EditorTab {
-                                label: file.label,
+                            PanelTab {
+                                label: file.label.to_string(),
                                 dirty: file.dirty,
                                 active: selected() == file.label,
-                                onclick: move |_| {
+                                width: PanelTabWidth::Content,
+                                indicator: PanelTabIndicator::Glyph(file_glyph(file.label).into()),
+                                on_select: move |_| {
                                     selected.set(file.label);
                                     active_view.set(view_for_file(file.label));
                                 },
-                                onclose: move |()| close_file(file.label, open_files, selected, active_view, toast),
+                                on_close: move |()| close_file(file.label, open_files, selected, active_view, toast),
                             }
                         }
                     }
@@ -228,7 +229,7 @@ pub fn Files(slug: String) -> Element {
                             }
                             span { class: "shrink-0 text-muted-foreground", "⌄" }
                         }
-                        DropdownMenuContent { class: "absolute top-[calc(100%+4px)] right-2 left-2 z-80 w-auto rounded-lg border border-border bg-popover p-0.75 shadow-2xl [&_button]:flex [&_button]:min-h-8 [&_button]:w-full [&_button]:items-center [&_button]:justify-between [&_button]:gap-3 [&_button]:rounded-sm [&_button]:px-2 [&_button]:py-1.5 [&_button]:text-left [&_button]:text-xs [&_button]:hover:bg-accent",
+                        MenuContent { class: "!top-[calc(100%+4px)] right-2 left-2 w-auto !p-0.75",
                             if open_files.read().is_empty() {
                                 div { class: "p-2.5 text-xs text-muted-foreground",
                                     "No file open"
@@ -265,7 +266,7 @@ pub fn Files(slug: String) -> Element {
                                             close_file(file.label, open_files, selected, active_view, toast);
                                             mobile_tabs_open.set(false);
                                         },
-                                        crate::ui::Icon { icon: AppIcon::Close, size: 15 }
+                                        Icon { icon: AppIcon::Close, size: 15 }
                                     }
                                 }
                             }
@@ -287,7 +288,7 @@ pub fn Files(slug: String) -> Element {
                                 icon: AppIcon::Menu,
                                 open: editor_menu(),
                             }
-                            DropdownMenuContent { class: "absolute top-[calc(100%+5px)] right-0 z-80 w-47.5 rounded-lg border border-border bg-popover p-1.25 shadow-2xl [&_button]:flex [&_button]:min-h-8 [&_button]:w-full [&_button]:items-center [&_button]:justify-between [&_button]:gap-3 [&_button]:rounded-sm [&_button]:px-2 [&_button]:py-1.5 [&_button]:text-left [&_button]:text-xs [&_button]:hover:bg-accent [&_hr]:-mx-1.25 [&_hr]:my-1 [&_hr]:h-px [&_hr]:border-0 [&_hr]:bg-border [&_kbd]:text-[9px] [&_kbd]:text-muted-foreground",
+                            MenuContent { class: "right-0 w-47.5",
                                 DropdownMenuItem::<EditorAction> {
                                     value: EditorAction::GoToLine,
                                     index: 0_usize,
@@ -551,7 +552,7 @@ fn Explorer(
                         icon: AppIcon::Menu,
                         open: menu(),
                     }
-                    DropdownMenuContent { class: "absolute top-[calc(100%+5px)] left-0 z-80 w-47.5 rounded-lg border border-border bg-popover p-1.25 shadow-2xl [&_button]:flex [&_button]:min-h-8 [&_button]:w-full [&_button]:items-center [&_button]:justify-between [&_button]:gap-3 [&_button]:rounded-sm [&_button]:px-2 [&_button]:py-1.5 [&_button]:text-left [&_button]:text-xs [&_button]:hover:bg-accent [&_hr]:-mx-1.25 [&_hr]:my-1 [&_hr]:h-px [&_hr]:border-0 [&_hr]:bg-border",
+                    MenuContent { class: "left-0 w-47.5",
                         DropdownMenuItem::<FileDialog> {
                             value: FileDialog::CreateFile,
                             index: 0_usize,
@@ -601,10 +602,11 @@ fn Explorer(
             }
             if search() {
                 div { class: "border-b border-border p-1.75",
-                    input {
-                        class: "h-7.75 w-full rounded-md border border-input bg-background/95 px-2 py-1.25 text-xs placeholder:text-muted-foreground/70",
+                    TextInput {
+                        size: ControlSize::Small,
+                        input_type: TextInputType::Search,
                         placeholder: "Search files…",
-                        "aria-label": "Search files",
+                        aria_label: "Search files",
                         autofocus: true,
                     }
                 }
@@ -678,7 +680,7 @@ fn Explorer(
                         Icon { icon: AppIcon::GitBranch, size: 11 }
                         span { "{current_branch}" }
                     }
-                    DropdownMenuContent { class: "absolute bottom-[calc(100%+5px)] left-0 z-80 w-58.75 rounded-lg border border-border bg-popover p-1.25 shadow-2xl [&_button]:flex [&_button]:min-h-8 [&_button]:w-full [&_button]:items-center [&_button]:justify-between [&_button]:gap-3 [&_button]:rounded-sm [&_button]:px-2 [&_button]:py-1.5 [&_button]:text-left [&_button]:text-xs [&_button]:hover:bg-accent [&_hr]:-mx-1.25 [&_hr]:my-1 [&_hr]:h-px [&_hr]:border-0 [&_hr]:bg-border",
+                    MenuContent { class: "!top-auto bottom-[calc(100%+5px)] left-0 w-58.75",
                         DropdownMenuItem::<ExplorerBranchAction> {
                             value: ExplorerBranchAction::Main,
                             index: 0_usize,
@@ -766,16 +768,15 @@ fn ExplorerBranchActionDialog(
             title: if is_create { "Create branch" } else { "Rename branch" },
             description: if is_create { "Create and switch to a new local branch." } else { "Rename the current branch {current_branch}." },
             on_close: move |()| on_close.call(()),
-            div { class: "flex flex-col gap-2.25 px-5 pt-3 pb-5",
-                label { r#for: "explorer-branch-name", "Branch name" }
-                input {
-                    class: "w-full rounded-md border border-input bg-background/95 px-2.75 py-2.25 placeholder:text-muted-foreground/70",
-                    id: "explorer-branch-name",
-                    value,
-                    autofocus: true,
-                    oninput: move |event| value.set(event.value()),
+            DialogForm {
+                Field { control_id: "explorer-branch-name", label: "Branch name",
+                    TextInput {
+                        value: value(),
+                        autofocus: true,
+                        oninput: move |event: FormEvent| value.set(event.value()),
+                    }
                 }
-                div { class: "mt-2.5 flex justify-end gap-1.75",
+                DialogActions {
                     Button {
                         label: "Cancel",
                         kind: ButtonKind::Ghost,
@@ -793,47 +794,14 @@ fn ExplorerBranchActionDialog(
     }
 }
 
-#[component]
-fn EditorTab(
-    label: &'static str,
-    dirty: bool,
-    active: bool,
-    onclick: EventHandler<MouseEvent>,
-    onclose: EventHandler<()>,
-) -> Element {
-    let glyph = match std::path::Path::new(label)
+fn file_glyph(label: &str) -> &'static str {
+    match std::path::Path::new(label)
         .extension()
         .and_then(std::ffi::OsStr::to_str)
     {
         Some(extension) if extension.eq_ignore_ascii_case("rs") => "R",
         Some(extension) if extension.eq_ignore_ascii_case("md") => "M",
         _ => "◇",
-    };
-    rsx! {
-        div { class: if active { "flex h-8.5 min-w-max items-center gap-0.5 rounded-md border border-transparent bg-muted pr-0.75 text-[11px] text-foreground" } else { "flex h-8.5 min-w-max items-center gap-0.5 rounded-md border border-border bg-background pr-0.75 text-[11px] text-muted-foreground" },
-            button {
-                class: "flex h-full items-center gap-1.75 bg-transparent pr-1.25 pl-2.5 text-inherit",
-                role: "tab",
-                "aria-selected": active,
-                onclick: move |event| onclick.call(event),
-                span { class: "text-[9px] font-extrabold text-primary", {glyph} }
-                span { {label} }
-            }
-            if dirty {
-                span {
-                    class: "size-1.75 rounded-full bg-foreground",
-                    title: "Unsaved changes",
-                    "aria-label": "Unsaved changes",
-                }
-            }
-            button {
-                class: "grid size-5.75 shrink-0 place-items-center rounded-sm bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground",
-                "aria-label": "Close {label}",
-                title: "Close {label}",
-                onclick: move |_| onclose.call(()),
-                crate::ui::Icon { icon: AppIcon::Close, size: 12 }
-            }
-        }
     }
 }
 
@@ -993,22 +961,21 @@ fn FileActionDialog(
             title,
             description,
             on_close: move |()| on_close.call(()),
-            div { class: "flex flex-col gap-2.25 px-5 pt-3 pb-5 [&>label]:mt-0.75 [&>label]:text-xs [&>label]:font-semibold [&>label]:text-foreground/80",
+            DialogForm {
                 if !dangerous {
-                    label { r#for: "file-action-input", "Name or path" }
-                    input {
-                        class: "w-full rounded-md border border-input bg-background/95 px-2.75 py-2.25 placeholder:text-muted-foreground/70",
-                        id: "file-action-input",
-                        value: if action == FileDialog::Duplicate { "app-copy.rs" } else { "" },
-                        placeholder: "src/new_file.rs",
-                        autofocus: true,
+                    Field {
+                        control_id: "file-action-input",
+                        label: "Name or path",
+                        TextInput {
+                            value: if action == FileDialog::Duplicate { "app-copy.rs" } else { "" },
+                            placeholder: "src/new_file.rs",
+                            autofocus: true,
+                        }
                     }
                 } else {
-                    p { class: "rounded-md border border-destructive/35 bg-destructive/10 px-2.5 py-2.25 text-xs leading-snug text-destructive",
-                        "The file will be removed from this workspace."
-                    }
+                    DangerNote { message: "The file will be removed from this workspace." }
                 }
-                div { class: "mt-2.5 flex justify-end gap-1.75",
+                DialogActions {
                     Button {
                         label: "Cancel",
                         kind: ButtonKind::Ghost,

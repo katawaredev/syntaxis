@@ -1,12 +1,12 @@
 use dioxus::prelude::*;
-use dioxus_primitives::dropdown_menu::{
-    DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem, DropdownMenuTrigger};
+use syntaxis_ui::prelude::{
+    AppIcon, Button, ButtonKind, Icon, IconButton, MenuContent, StatusBadge, Tone,
 };
 
 use crate::{
     app::Route,
     mock::{WorkspaceState, WORKSPACES},
-    ui::{AppIcon, Button, ButtonKind, Icon, IconButton, StatusBadge},
 };
 
 use super::WorkspaceListView;
@@ -82,7 +82,7 @@ fn StateMenu(
                 "aria-label": "Preview workspace list state",
                 "State: {view().label()} ⌄"
             }
-            DropdownMenuContent { class: "absolute top-[calc(100%+0.25rem)] right-0 z-80 w-48 rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-xl",
+            MenuContent { class: "right-0 w-48 !p-1",
                 StateOption {
                     value: WorkspaceListView::Ready,
                     index: 0_usize,
@@ -170,7 +170,10 @@ fn WorkspaceRows(
                                         {workspace.name}
                                     }
                                     if workspace.state == WorkspaceState::Missing {
-                                        StatusBadge { label: "Missing", tone: "danger" }
+                                        StatusBadge {
+                                            label: "Missing",
+                                            tone: Tone::Destructive,
+                                        }
                                     }
                                 }
                                 p { class: "mt-1 truncate font-mono text-[11px] text-muted-foreground max-md:max-w-[65vw] max-[420px]:max-w-[55vw]",

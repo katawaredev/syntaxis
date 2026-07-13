@@ -1,10 +1,7 @@
 use dioxus::prelude::*;
+use syntaxis_ui::prelude::{AppIcon, EmptyState, Icon, StatusBadge, Tone};
 
-use crate::{
-    app::Route,
-    mock::WORKSPACES,
-    ui::{AppIcon, EmptyState, Icon, StatusBadge},
-};
+use crate::{app::Route, mock::WORKSPACES};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Module {
@@ -46,7 +43,7 @@ pub fn WorkspaceShell() -> Element {
                 }
                 div { class: "flex min-w-0 items-center gap-2",
                     strong { class: "truncate text-[13px]", {project_name} }
-                    StatusBadge { label: "Local", tone: "neutral" }
+                    StatusBadge { label: "Local", tone: Tone::Neutral }
                 }
                 div { class: "ml-auto flex items-center gap-2 pr-2 text-[11px] text-muted-foreground",
                     span { class: "size-2 rounded-full bg-success shadow-[0_0_0.5rem_color-mix(in_oklch,var(--success),transparent_20%)]" }

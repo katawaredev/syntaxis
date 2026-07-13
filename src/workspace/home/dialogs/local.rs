@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
-
-use crate::ui::{Button, ButtonKind, Modal};
+use syntaxis_ui::prelude::{
+    Button, ButtonKind, DialogActions, DialogForm, Field, Modal, TextInput,
+};
 
 use super::{mock_request_delay, RequestState};
 use crate::workspace::home::HomeDialog;
@@ -28,23 +29,23 @@ pub(super) fn LocalFolderDialog(
                     dialog.set(HomeDialog::None);
                 }
             },
-            div { class: "flex flex-col gap-2 px-5 pt-3 pb-5",
-                label {
-                    class: "mt-1 text-xs font-semibold text-foreground",
-                    r#for: "local-path",
-                    "Folder path"
-                }
-                input {
-                    class: "w-full rounded-md border border-input bg-background/95 px-2.75 py-2.25 placeholder:text-muted-foreground/70 disabled:opacity-50",
-                    id: "local-path",
-                    value: "{local_path}",
-                    autofocus: true,
-                    disabled: pending,
-                    "aria-invalid": matches!(request(), RequestState::Error(_)),
-                    oninput: move |event| {
-                        local_path.set(event.value());
-                        request.set(RequestState::Idle);
+            DialogForm {
+                Field {
+                    control_id: "local-path",
+                    label: "Folder path",
+                    error: match request() {
+                        RequestState::Error(message) => Some(message.to_string()),
+                        _ => None,
                     },
+                    TextInput {
+                        value: "{local_path}",
+                        autofocus: true,
+                        disabled: pending,
+                        oninput: move |event: FormEvent| {
+                            local_path.set(event.value());
+                            request.set(RequestState::Idle);
+                        },
+                    }
                 }
                 div {
                     class: "max-h-36 overflow-y-auto rounded-md border border-border bg-background p-1.5",
@@ -88,7 +89,7 @@ pub(super) fn LocalFolderDialog(
                     request,
                     pending_label: "Checking folder and registering workspace…",
                 }
-                div { class: "mt-2.5 flex justify-end gap-2",
+                DialogActions {
                     Button {
                         label: "Cancel",
                         kind: ButtonKind::Ghost,
@@ -161,13 +162,7 @@ fn RequestFeedback(request: Signal<RequestState>, pending_label: &'static str) -
                     {pending_label}
                 }
             },
-            RequestState::Error(message) => rsx! {
-                p {
-                    class: "rounded-md border border-destructive/35 bg-destructive/10 px-2.5 py-2 text-xs leading-relaxed text-destructive",
-                    role: "alert",
-                    {message}
-                }
-            },
+            RequestState::Error(_) => rsx! {},
         }
     }
 }

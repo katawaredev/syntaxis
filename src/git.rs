@@ -1,15 +1,12 @@
 use dioxus::prelude::*;
-use dioxus_primitives::dropdown_menu::{
-    DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem, DropdownMenuTrigger};
+use syntaxis_ui::prelude::{
+    AppIcon, Button, ButtonKind, Checkbox, ControlSize, DangerNote, DialogActions, DialogForm,
+    Drawer, Field, Icon, IconButton, MenuContent, MenuTrigger, Modal, PanelHeader, PanelHeaderKind,
+    Select, StatusBadge, TextArea, TextAreaResize, TextInput, TextInputType, Toast, Tone,
 };
 
-use crate::{
-    mock::{MockChange, CHANGES, CONFLICTS, STAGED},
-    ui::{
-        AppIcon, Button, ButtonKind, Drawer, Icon, IconButton, MenuTrigger, Modal, StatusBadge,
-        Toast,
-    },
-};
+use crate::mock::{MockChange, CHANGES, CONFLICTS, STAGED};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SidebarView {
@@ -63,7 +60,7 @@ pub fn Git(slug: String) -> Element {
     rsx! {
         div { class: "grid size-full min-h-0 grid-cols-[minmax(0,1fr)_310px] overflow-hidden max-md:block",
             section { class: "flex min-h-0 min-w-0 flex-col overflow-hidden max-md:h-full",
-                header { class: "flex min-h-13 items-center justify-between gap-2.5 border-b border-border bg-card py-1.75 pr-2 pl-3.25 max-md:pl-1.5",
+                PanelHeader { kind: PanelHeaderKind::Repository,
                     div { class: "flex min-w-0 items-center gap-1.5",
                         IconButton {
                             label: "Open Git sidebar",
@@ -108,10 +105,13 @@ pub fn Git(slug: String) -> Element {
                         }
                         StatusBadge {
                             label: format!("{} changes", change_count()),
-                            tone: "warning",
+                            tone: Tone::Warning,
                         }
                         if merge_in_progress() {
-                            StatusBadge { label: "Merge in progress", tone: "danger" }
+                            StatusBadge {
+                                label: "Merge in progress",
+                                tone: Tone::Destructive,
+                            }
                         }
                     }
                     div { class: "flex min-w-0 items-center gap-1.5",
@@ -139,7 +139,7 @@ pub fn Git(slug: String) -> Element {
                                 icon: AppIcon::More,
                                 open: action_menu(),
                             }
-                            DropdownMenuContent { class: "absolute top-[calc(100%+5px)] right-0 z-80 w-56.25 rounded-lg border border-border bg-popover p-1.25 shadow-2xl [&_button]:flex [&_button]:min-h-8 [&_button]:w-full [&_button]:items-center [&_button]:justify-between [&_button]:gap-3 [&_button]:rounded-sm [&_button]:px-2 [&_button]:py-1.5 [&_button]:text-left [&_button]:text-xs [&_button]:hover:bg-accent [&_hr]:-mx-1.25 [&_hr]:my-1 [&_hr]:h-px [&_hr]:border-0 [&_hr]:bg-border",
+                            MenuContent { class: "right-0 w-56.25",
                                 GitMenuItem {
                                     action: GitDialog::CreateTag,
                                     index: 0,
@@ -296,7 +296,7 @@ fn BranchMenu(
     on_action: EventHandler<BranchAction>,
 ) -> Element {
     rsx! {
-        DropdownMenuContent { class: "absolute top-[calc(100%+5px)] left-0 z-80 w-58.75 rounded-lg border border-border bg-popover p-1.25 shadow-2xl max-md:fixed max-md:top-26 max-md:left-12 [&_button]:flex [&_button]:min-h-8 [&_button]:w-full [&_button]:items-center [&_button]:justify-between [&_button]:gap-3 [&_button]:rounded-sm [&_button]:px-2 [&_button]:py-1.5 [&_button]:text-left [&_button]:text-xs [&_button]:hover:bg-accent [&_hr]:-mx-1.25 [&_hr]:my-1 [&_hr]:h-px [&_hr]:border-0 [&_hr]:bg-border",
+        MenuContent { class: "left-0 w-58.75 max-md:fixed max-md:top-26 max-md:left-12",
             DropdownMenuItem::<BranchAction> {
                 value: BranchAction::SwitchMain,
                 index: 0_usize,
@@ -445,9 +445,11 @@ fn GitSidebar(
                     }
                 }
                 div { class: "border-t border-border p-2.25",
-                    textarea {
-                        class: "min-h-15.25 w-full resize-none rounded-md border border-input bg-background/95 px-2.75 py-2.25 text-[11px] placeholder:text-muted-foreground/70",
-                        "aria-label": "Commit message",
+                    TextArea {
+                        class: "min-h-15.25",
+                        size: ControlSize::Small,
+                        resize: TextAreaResize::None,
+                        aria_label: "Commit message",
                         placeholder: "Commit message",
                         rows: 3,
                     }
@@ -489,21 +491,19 @@ fn GitSidebar(
                     }
                 }
             } else {
-                div { class: "px-3 py-3.5 [&>label]:my-1.25 [&>label]:block [&>label]:text-[10px] [&>label]:text-muted-foreground",
-                    label { r#for: "base-branch", "Base" }
-                    select {
-                        class: "h-8.25 w-full rounded-md border border-input bg-background/95 px-2 py-1.25 text-[11px]",
-                        id: "base-branch",
-                        option { "main" }
-                        option { "origin/main" }
+                div { class: "flex flex-col gap-2 px-3 py-3.5",
+                    Field { control_id: "base-branch", label: "Base",
+                        Select { size: ControlSize::Small,
+                            option { "main" }
+                            option { "origin/main" }
+                        }
                     }
                     div { class: "pt-2 text-center text-muted-foreground", "↓" }
-                    label { r#for: "compare-branch", "Compare" }
-                    select {
-                        class: "h-8.25 w-full rounded-md border border-input bg-background/95 px-2 py-1.25 text-[11px]",
-                        id: "compare-branch",
-                        option { "feature/workspace-ui" }
-                        option { "fix/runtime-status" }
+                    Field { control_id: "compare-branch", label: "Compare",
+                        Select { size: ControlSize::Small,
+                            option { "feature/workspace-ui" }
+                            option { "fix/runtime-status" }
+                        }
                     }
                     button {
                         class: "mt-1.5 h-7.75 w-full rounded-md bg-primary text-[11px] font-semibold text-primary-foreground hover:bg-primary/90",
@@ -592,20 +592,23 @@ fn ConflictView(on_resolve: EventHandler<String>) -> Element {
             div { class: "diff-titlebar",
                 div {
                     strong { "src/workspace.rs" }
-                    StatusBadge { label: "Conflicted", tone: "danger" }
+                    StatusBadge { label: "Conflicted", tone: Tone::Destructive }
                 }
                 div {
                     Button {
                         label: "Accept incoming",
+                        size: ControlSize::Small,
                         onclick: move |_| on_resolve.call("Accepted incoming changes".into()),
                     }
                     Button {
                         label: "Keep current",
+                        size: ControlSize::Small,
                         onclick: move |_| on_resolve.call("Kept current changes".into()),
                     }
                     Button {
                         label: "Merge both",
                         kind: ButtonKind::Primary,
+                        size: ControlSize::Small,
                         onclick: move |_| on_resolve.call("Merged both conflict blocks".into()),
                     }
                 }
@@ -666,11 +669,13 @@ fn WorkingDiff(path: &'static str, on_notice: EventHandler<String>) -> Element {
                     Button {
                         label: "Discard",
                         kind: ButtonKind::Ghost,
+                        size: ControlSize::Small,
                         onclick: move |_| on_notice.call("File changes discarded (mock)".into()),
                     }
                     Button {
                         label: "Stage file",
                         kind: ButtonKind::Primary,
+                        size: ControlSize::Small,
                         onclick: move |_| on_notice.call("File staged".into()),
                     }
                 }
@@ -772,11 +777,13 @@ fn CommitDetail(
                 div {
                     Button {
                         label: "Checkout",
+                        size: ControlSize::Small,
                         onclick: move |_| on_dialog.call(GitDialog::CheckoutCommit),
                     }
                     Button {
                         label: "Revert",
                         kind: ButtonKind::Ghost,
+                        size: ControlSize::Small,
                         onclick: move |_| on_dialog.call(GitDialog::RevertCommit),
                     }
                 }
@@ -826,6 +833,8 @@ fn GitActionDialog(
     on_close: EventHandler<()>,
     on_submit: EventHandler<String>,
 ) -> Element {
+    let mut amend = use_signal(|| false);
+    let mut force_push_acknowledged = use_signal(|| false);
     let (title, description, confirm, dangerous) = match action {
         GitDialog::Commit => (
             "Commit staged changes",
@@ -916,49 +925,48 @@ fn GitActionDialog(
             title,
             description,
             on_close: move |()| on_close.call(()),
-            div { class: "flex flex-col gap-2.25 px-5 pt-3 pb-5 [&>label:not(.compact)]:mt-0.75 [&>label:not(.compact)]:text-xs [&>label:not(.compact)]:font-semibold [&>label:not(.compact)]:text-foreground/80",
+            DialogForm {
                 if let Some(label) = input_label {
-                    label { r#for: "git-action-input", {label} }
-                    if action == GitDialog::Commit {
-                        textarea {
-                            class: "w-full resize-y rounded-md border border-input bg-background/95 px-2.75 py-2.25 leading-normal placeholder:text-muted-foreground/70",
-                            id: "git-action-input",
-                            rows: 4,
-                            placeholder: "Describe your changes",
-                            autofocus: true,
+                    Field { control_id: "git-action-input", label,
+                        if action == GitDialog::Commit {
+                            TextArea {
+                                rows: 4,
+                                placeholder: "Describe your changes",
+                                autofocus: true,
+                            }
+                        } else {
+                            TextInput {
+                                input_type: if action == GitDialog::SigningRetry { TextInputType::Password } else { TextInputType::Text },
+                                placeholder: if action == GitDialog::CreateTag { "v0.1.0" } else { "feature/name" },
+                                autofocus: true,
+                            }
                         }
+                    }
+                    if action == GitDialog::Commit {
                         label { class: "compact flex items-center gap-2.5 py-1.75",
-                            input {
-                                class: "m-0 size-3.75 accent-primary",
-                                r#type: "checkbox",
+                            Checkbox {
+                                checked: amend(),
+                                aria_label: "Amend previous commit",
+                                on_checked_change: move |checked| amend.set(checked),
                             }
                             span { "Amend previous commit" }
-                        }
-                    } else {
-                        input {
-                            class: "w-full rounded-md border border-input bg-background/95 px-2.75 py-2.25 placeholder:text-muted-foreground/70",
-                            id: "git-action-input",
-                            r#type: if action == GitDialog::SigningRetry { "password" } else { "text" },
-                            placeholder: if action == GitDialog::CreateTag { "v0.1.0" } else { "feature/name" },
-                            autofocus: true,
                         }
                     }
                 }
                 if dangerous {
-                    p { class: "rounded-md border border-destructive/35 bg-destructive/10 px-2.5 py-2.25 text-xs leading-snug text-destructive",
-                        "Review this destructive operation carefully before continuing."
-                    }
+                    DangerNote { message: "Review this destructive operation carefully before continuing." }
                 }
                 if action == GitDialog::ForcePush {
                     label { class: "compact flex items-center gap-2.5 py-1.75",
-                        input {
-                            class: "m-0 size-3.75 accent-primary",
-                            r#type: "checkbox",
+                        Checkbox {
+                            checked: force_push_acknowledged(),
+                            aria_label: "I understand remote commits may be replaced",
+                            on_checked_change: move |checked| force_push_acknowledged.set(checked),
                         }
                         span { "I understand remote commits may be replaced" }
                     }
                 }
-                div { class: "mt-2.5 flex justify-end gap-1.75",
+                DialogActions {
                     Button {
                         label: "Cancel",
                         kind: ButtonKind::Ghost,

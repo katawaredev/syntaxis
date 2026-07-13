@@ -1,9 +1,7 @@
 use dioxus::prelude::*;
+use syntaxis_ui::prelude::{Button, ButtonKind, Checkbox, DialogActions, DialogForm, Modal};
 
-use crate::{
-    mock::WORKSPACES,
-    ui::{Button, ButtonKind, Modal},
-};
+use crate::mock::WORKSPACES;
 
 use super::{mock_request_delay, RequestState};
 use crate::workspace::home::HomeDialog;
@@ -31,15 +29,15 @@ pub(super) fn DeleteWorkspaceDialog(
                     dialog.set(HomeDialog::None);
                 }
             },
-            div { class: "flex flex-col gap-2 px-5 pt-3 pb-5",
+            DialogForm {
                 label { class: "flex items-start gap-2.5 rounded-lg border border-border p-3",
-                    input {
-                        class: "mt-0.5 size-4 w-4 shrink-0 p-0 accent-primary",
-                        r#type: "checkbox",
+                    Checkbox {
+                        class: "mt-0.5",
                         checked: delete_files(),
                         disabled: pending,
-                        onchange: move |event| {
-                            delete_files.set(event.checked());
+                        aria_label: "Also delete project files",
+                        on_checked_change: move |checked| {
+                            delete_files.set(checked);
                             request.set(RequestState::Idle);
                         },
                     }
@@ -73,7 +71,7 @@ pub(super) fn DeleteWorkspaceDialog(
                         }
                     },
                 }
-                div { class: "mt-2.5 flex justify-end gap-2",
+                DialogActions {
                     Button {
                         label: "Cancel",
                         kind: ButtonKind::Ghost,
