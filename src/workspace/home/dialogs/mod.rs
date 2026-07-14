@@ -33,7 +33,7 @@ pub(super) fn HomeDialogs(
             }
         }
         if dialog() == HomeDialog::Git {
-            GitUrlDialog { dialog, on_notice }
+            GitUrlDialog { dialog, on_notice, on_changed }
         }
         if let HomeDialog::Delete(index) = dialog() {
             DeleteWorkspaceDialog {

@@ -16,7 +16,7 @@ pub fn PanelHeader(#[props(default)] kind: PanelHeaderKind, children: Element) -
             "relative flex h-10 min-h-10 items-center gap-1.5 border-b border-border bg-background px-1.75 max-md:h-13 max-md:min-h-13 max-md:gap-1.75 max-[420px]:gap-0.75 max-[420px]:px-1"
         }
         PanelHeaderKind::Repository => {
-            "flex min-h-13 items-center justify-between gap-2.5 border-b border-border bg-card py-1.75 pr-2 pl-3.25 max-md:pl-1.5"
+            "flex h-10 min-h-10 items-center justify-between gap-2 border-b border-border bg-background px-2 max-md:h-13 max-md:min-h-13 max-md:px-1.5"
         }
     };
     rsx! {

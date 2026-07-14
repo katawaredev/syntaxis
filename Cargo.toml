@@ -7,6 +7,8 @@ license = "MIT"
 
 [workspace]
 members = [
+    "crates/git",
+    "crates/git-host",
     "crates/terminal",
     "crates/terminal-host",
     "crates/ui",
@@ -27,6 +29,8 @@ dioxus-sdk-time = "0.7.0"
 futures-util = "0.3.31"
 serde = { version = "1.0.219", features = ["derive"] }
 syntaxis-ui = { path = "crates/ui" }
+syntaxis-git = { path = "crates/git" }
+syntaxis-git-host = { path = "crates/git-host", optional = true }
 syntaxis-terminal = { path = "crates/terminal" }
 syntaxis-workspace = { path = "crates/workspace" }
 syntaxis-workspace-host = { path = "crates/workspace-host", optional = true }
@@ -38,6 +42,7 @@ gloo-timers = { version = "0.3.0", features = ["futures"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { version = "1.46.1", features = ["macros", "rt", "sync", "time"], optional = true }
+tokio-util = { version = "0.7.15", features = ["rt"], optional = true }
 
 [dev-dependencies]
 tempfile = "3.20.0"
@@ -49,9 +54,11 @@ desktop = ["dioxus/desktop", "dep:syntaxis-workspace-host", "dep:tokio"]
 mobile = ["dioxus/mobile"]
 server = [
     "dioxus/server",
+    "dep:syntaxis-git-host",
     "dep:syntaxis-terminal-host",
     "dep:syntaxis-workspace-host",
     "dep:tokio",
+    "dep:tokio-util",
 ]
 
 [lints]

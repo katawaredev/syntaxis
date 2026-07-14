@@ -5773,6 +5773,8 @@ dependencies = [
  "futures-util",
  "gloo-timers",
  "serde",
+ "syntaxis-git",
+ "syntaxis-git-host",
  "syntaxis-terminal",
  "syntaxis-terminal-host",
  "syntaxis-ui",
@@ -5780,7 +5782,31 @@ dependencies = [
  "syntaxis-workspace-host",
  "tempfile",
  "tokio",
+ "tokio-util",
  "web-time",
+]
+
+[[package]]
+name = "syntaxis-git"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde",
+ "syntaxis-workspace",
+]
+
+[[package]]
+name = "syntaxis-git-host"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "syntaxis-git",
+ "syntaxis-workspace",
+ "syntaxis-workspace-host",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "zeroize",
 ]
 
 [[package]]
@@ -6081,6 +6107,7 @@ dependencies = [
  "libc",
  "mio",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2",
  "tokio-macros",
  "windows-sys 0.61.2",

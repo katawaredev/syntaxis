@@ -47,6 +47,7 @@ pub async fn runtime_state() -> Result<RuntimeState, ServerFnError> {
                 RuntimeCapability::Filesystem,
                 RuntimeCapability::FileEvents,
                 RuntimeCapability::Terminal,
+                RuntimeCapability::Git,
             ],
         },
     })
@@ -162,7 +163,7 @@ fn parse_path(path: String) -> Result<RelativePath, ServerFnError> {
     RelativePath::try_from(path).map_err(server_error)
 }
 #[cfg(feature = "server")]
-fn server_error(error: syntaxis_workspace::WorkspaceError) -> ServerFnError {
+pub(crate) fn server_error(error: syntaxis_workspace::WorkspaceError) -> ServerFnError {
     ServerFnError::ServerError {
         message: error.message,
         code: match error.code {
@@ -182,4 +183,4 @@ fn server_error(error: syntaxis_workspace::WorkspaceError) -> ServerFnError {
     }
 }
 #[cfg(feature = "server")]
-mod server;
+pub(crate) mod server;

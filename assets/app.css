@@ -22,7 +22,7 @@
 .code-editor.wrap .dxc { white-space: pre-wrap; overflow-wrap: anywhere; }
 .code-editor.wrap li { white-space: pre-wrap; overflow-wrap: anywhere; }
 .diff-editor, .working-diff { min-width: 660px; font: 11px/1.65 ui-monospace, monospace; }
-.diff-editor > header, .diff-titlebar { min-height: 46px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--border); font-family: Geist, sans-serif; }
+.diff-editor > header, .diff-titlebar { min-height: 56px; padding: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--border); font-family: Geist, sans-serif; }
 .diff-editor > header button { color: var(--muted-foreground); background: transparent; }
 .diff-meta, .hunk-header { padding: 7px 13px; color: oklch(.72 .08 260); background: oklch(.25 .025 264); border-bottom: 1px solid var(--border); }
 .diff-line { min-height: 23px; display: grid; grid-template-columns: 50px 1fr; }
@@ -49,20 +49,11 @@
 .file-facts span { padding: 5px 8px; border-radius: 5px; color: var(--muted-foreground); background: var(--card); border: 1px solid var(--border); font-size: 10px; }
 
 /* Git mock diffs and details */
-.diff-titlebar { min-width: 660px; height: 52px; background: var(--card); }
+.diff-titlebar { position: sticky; top: 0; z-index: 10; min-width: 660px; background: color-mix(in oklch, var(--background), transparent 5%); backdrop-filter: blur(8px); }
 .diff-titlebar > div { display: flex; align-items: center; gap: 6px; }
 .diff-stats { color: var(--muted-foreground); font-size: 10px; }
 .hunk-header { display: flex; align-items: center; justify-content: space-between; }
 .hunk-header button { padding: 3px 7px; border: 1px solid color-mix(in oklch, var(--primary), transparent 50%); border-radius: 4px; color: color-mix(in oklch, var(--primary), white 20%); background: transparent; font-size: 9px; }
-.conflict-view { min-width: 700px; min-height: 100%; }
-.conflict-columns { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--border); }
-.conflict-columns section:first-child { border-right: 1px solid var(--border); }
-.conflict-columns header, .conflict-result header { height: 38px; padding: 0 10px; display: flex; align-items: center; justify-content: space-between; color: var(--muted-foreground); border-bottom: 1px solid var(--border); background: var(--card); font-size: 9px; }
-.conflict-columns header button, .conflict-result header button { padding: 4px 7px; border-radius: 4px; color: var(--primary); background: color-mix(in oklch, var(--primary), transparent 90%); }
-.conflict-columns pre, .conflict-result pre { min-height: 145px; margin: 0; padding: 16px; color: oklch(.8 .025 248); background: #13171b; font: 11px/1.7 ui-monospace, monospace; }
-.conflict-columns section:first-child pre { background: color-mix(in oklch, var(--diff-removed), #13171b 80%); }
-.conflict-columns section:last-child pre { background: color-mix(in oklch, var(--diff-added), #13171b 80%); }
-.conflict-result { margin: 16px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
 .commit-detail-header, .comparison-detail > header { padding: 20px; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--border); background: var(--card); }
 .commit-detail-header h2, .comparison-detail h2 { margin: 5px 0; color: oklch(.92 0 0); font-size: 19px; }.commit-detail-header p:last-child, .comparison-detail header p:last-child { color: var(--muted-foreground); font-size: 11px; }
 .commit-detail-header > div:last-child { display: flex; gap: 5px; }
@@ -72,8 +63,6 @@
 @media (max-width: 767px) {
   .code-editor { padding-top: 10px; }
   .code-editor li { grid-template-columns: 45px 1fr; }
-  .diff-titlebar { height: auto; min-height: 52px; padding: 7px 10px; }
+  .diff-titlebar { min-height: 52px; padding: 8px 10px; }
   .commit-detail-header, .comparison-detail > header { padding: 14px; flex-direction: column; }
-  .conflict-columns { grid-template-columns: 1fr; }
-  .conflict-columns section:first-child { border-right: 0; border-bottom: 1px solid var(--border); }
 }

@@ -1,7 +1,8 @@
 use dioxus::prelude::*;
 use dioxus_icons::lucide::{
-    ArrowDown, ArrowUp, Check, Command, Ellipsis, FolderOpen, GitBranch, Menu, PanelLeftOpen, Play,
-    Plus, RefreshCw, Save, Search, X,
+    ArrowDown, ArrowUp, Check, Command, Ellipsis, EllipsisVertical, FolderOpen, GitBranch,
+    GitCommitHorizontal, ListChevronsDownUp, ListChevronsUpDown, Menu, PanelLeftOpen, Play, Plus,
+    RefreshCw, Save, Search, X,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -9,18 +10,22 @@ pub enum AppIcon {
     Check,
     Close,
     Command,
+    Commit,
+    Collapse,
     Explorer,
     Fetch,
     Folder,
     GitBranch,
     Menu,
     More,
+    MoreVertical,
     Play,
     Plus,
     Push,
     Refresh,
     Save,
     Search,
+    Expand,
 }
 
 #[component]
@@ -34,6 +39,12 @@ pub fn Icon(icon: AppIcon, #[props(default = 16)] size: u32) -> Element {
         },
         AppIcon::Command => rsx! {
             Command { size }
+        },
+        AppIcon::Commit => rsx! {
+            GitCommitHorizontal { size }
+        },
+        AppIcon::Collapse => rsx! {
+            ListChevronsDownUp { size }
         },
         AppIcon::Explorer => rsx! {
             PanelLeftOpen { size }
@@ -53,6 +64,9 @@ pub fn Icon(icon: AppIcon, #[props(default = 16)] size: u32) -> Element {
         AppIcon::More => rsx! {
             Ellipsis { size }
         },
+        AppIcon::MoreVertical => rsx! {
+            EllipsisVertical { size }
+        },
         AppIcon::Play => rsx! {
             Play { size }
         },
@@ -70,6 +84,9 @@ pub fn Icon(icon: AppIcon, #[props(default = 16)] size: u32) -> Element {
         },
         AppIcon::Search => rsx! {
             Search { size }
+        },
+        AppIcon::Expand => rsx! {
+            ListChevronsUpDown { size }
         },
     }
 }

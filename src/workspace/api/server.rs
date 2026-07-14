@@ -31,7 +31,7 @@ pub(super) async fn get_workspace(id: &WorkspaceId) -> Result<WorkspaceRecord, S
     registry()?.get(id).await.map_err(server_error)
 }
 
-pub(super) async fn register_workspace(
+pub(crate) async fn register_workspace(
     absolute_path: &str,
 ) -> Result<WorkspaceRecord, ServerFnError> {
     registry()?
@@ -60,7 +60,7 @@ pub(super) async fn browse_roots() -> Result<Vec<BrowseRoot>, ServerFnError> {
     browser()?.roots().await.map_err(server_error)
 }
 
-pub(super) async fn browse_directories(
+pub(crate) async fn browse_directories(
     absolute_path: &str,
 ) -> Result<Vec<BrowseDirectory>, ServerFnError> {
     browser()?
@@ -192,6 +192,20 @@ pub(super) async fn workspace_events(
 
 async fn workspace(id: &WorkspaceId) -> Result<WorkspaceRecord, ServerFnError> {
     registry()?.get(id).await.map_err(server_error)
+}
+
+pub(crate) async fn workspace_by_slug(slug: &str) -> Result<WorkspaceRecord, ServerFnError> {
+    registry()?
+        .list()
+        .await
+        .map_err(server_error)?
+        .into_iter()
+        .find(|workspace| workspace.slug == slug)
+        .ok_or_else(|| ServerFnError::ServerError {
+            message: "The workspace is not registered.".into(),
+            code: 404,
+            details: None,
+        })
 }
 
 fn registry() -> Result<&'static WorkspaceRegistryStore, ServerFnError> {
