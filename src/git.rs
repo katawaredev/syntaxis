@@ -2651,6 +2651,13 @@ fn SigningDialog(
     on_submit: EventHandler<String>,
 ) -> Element {
     let mut passphrase = use_signal(String::new);
+    let submit = EventHandler::new(move |()| {
+        if pending || passphrase().is_empty() {
+            return;
+        }
+        let secret = std::mem::take(&mut *passphrase.write());
+        on_submit.call(secret);
+    });
     rsx! {
         Modal {
             title: "Signing passphrase required",
@@ -2666,6 +2673,12 @@ fn SigningDialog(
                         autofocus: true,
                         disabled: pending,
                         oninput: move |event: FormEvent| passphrase.set(event.value()),
+                        onkeydown: move |event: KeyboardEvent| {
+                            if event.key() == Key::Enter {
+                                event.prevent_default();
+                                submit.call(());
+                            }
+                        },
                     }
                 }
                 if let Some(error) = error {
@@ -2682,10 +2695,7 @@ fn SigningDialog(
                         label: if pending { "Signing…" } else { "Retry signed commit" },
                         kind: ButtonKind::Primary,
                         disabled: pending || passphrase().is_empty(),
-                        onclick: move |_| {
-                            let secret = std::mem::take(&mut *passphrase.write());
-                            on_submit.call(secret);
-                        },
+                        onclick: move |_| submit.call(()),
                     }
                 }
             }
