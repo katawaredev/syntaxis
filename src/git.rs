@@ -215,6 +215,15 @@ pub fn Git(slug: String) -> Element {
     let on_mutation = EventHandler::new(move |mutation: Mutation| {
         let slug = mutation_slug.clone();
         let closes_dialog = matches!(&mutation, Mutation::DiscardAll(_));
+        let show_success_toast = !matches!(
+            &mutation,
+            Mutation::Stage(_)
+                | Mutation::Unstage(_)
+                | Mutation::Hunk {
+                    action: HunkAction::Stage | HunkAction::Unstage,
+                    ..
+                }
+        );
         let selection_after = match &mutation {
             Mutation::Hunk { path, kind, .. } => Some(SelectedChange {
                 path: path.clone(),
@@ -279,7 +288,9 @@ pub fn Git(slug: String) -> Element {
                         dialog.set(GitDialog::None);
                     }
                     *refresh_key.write() += 1;
-                    toast.set(Some((action.into(), Tone::Success)));
+                    if show_success_toast {
+                        toast.set(Some((action.into(), Tone::Success)));
+                    }
                 }
                 Err(error) => operation_error.set(Some(server_error_message(error))),
             }

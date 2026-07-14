@@ -95,6 +95,7 @@ impl HostGit {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
+        clear_inherited_command_config(&mut command);
         for (name, value) in environment {
             command.env(name, value);
         }
@@ -168,6 +169,7 @@ impl HostGit {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
+        clear_inherited_command_config(&mut command);
         for (name, value) in environment {
             command.env(name, value);
         }
@@ -205,6 +207,19 @@ impl HostGit {
             Ok(result)
         } else {
             Err(command_error(&result))
+        }
+    }
+}
+
+fn clear_inherited_command_config(command: &mut Command) {
+    for (name, _) in std::env::vars_os() {
+        let name_text = name.to_string_lossy();
+        if name_text == "GIT_CONFIG_PARAMETERS"
+            || name_text == "GIT_CONFIG_COUNT"
+            || name_text.starts_with("GIT_CONFIG_KEY_")
+            || name_text.starts_with("GIT_CONFIG_VALUE_")
+        {
+            command.env_remove(name);
         }
     }
 }
