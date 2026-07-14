@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 use dioxus_icons::lucide::{
     ArrowDown, ArrowUp, Check, Command, Ellipsis, EllipsisVertical, FolderOpen, GitBranch,
     GitCommitHorizontal, ListChevronsDownUp, ListChevronsUpDown, Menu, PanelLeftOpen, Play, Plus,
-    RefreshCw, Save, Search, X,
+    RefreshCw, Save, Search, SquareTerminal, X,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -10,6 +10,7 @@ pub enum AppIcon {
     Check,
     Close,
     Command,
+    Terminal,
     Commit,
     Collapse,
     Explorer,
@@ -39,6 +40,9 @@ pub fn Icon(icon: AppIcon, #[props(default = 16)] size: u32) -> Element {
         },
         AppIcon::Command => rsx! {
             Command { size }
+        },
+        AppIcon::Terminal => rsx! {
+            SquareTerminal { size }
         },
         AppIcon::Commit => rsx! {
             GitCommitHorizontal { size }

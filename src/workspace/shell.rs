@@ -122,7 +122,7 @@ pub fn WorkspaceShell() -> Element {
                 }
                 NavItem {
                     label: "Terminal",
-                    icon: AppIcon::Command,
+                    icon: AppIcon::Terminal,
                     active: active == Module::Terminal,
                     to: Route::Terminal {
                         slug: slug.clone(),
