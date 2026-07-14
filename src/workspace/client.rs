@@ -1,6 +1,9 @@
 #[cfg(feature = "desktop")]
 use syntaxis_workspace::ExecutionLocation;
-use syntaxis_workspace::{BrowseDirectory, BrowseRoot, RuntimeState, WorkspaceRecord};
+use syntaxis_workspace::{
+    BinaryFile, BrowseDirectory, BrowseRoot, FileEntry, FileVersion, RelativePath, RuntimeState,
+    TextFile, WorkspaceRecord,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[allow(dead_code)] // Phase 6 will make the compiled remote/host choice user-selectable.
@@ -31,6 +34,180 @@ pub async fn list_workspaces() -> Result<Vec<WorkspaceRecord>, String> {
             .map_err(|error| error.message),
         #[cfg(feature = "desktop")]
         RuntimeTarget::DesktopLocal => host_registry()?.list().await.map_err(|error| error.message),
+    }
+}
+
+pub async fn workspace_by_slug(slug: String) -> Result<WorkspaceRecord, String> {
+    list_workspaces()
+        .await?
+        .into_iter()
+        .find(|workspace| workspace.slug == slug)
+        .ok_or_else(|| "The workspace is not registered.".to_owned())
+}
+
+pub async fn list_files(
+    workspace: WorkspaceRecord,
+    path: RelativePath,
+) -> Result<Vec<FileEntry>, String> {
+    use syntaxis_workspace::WorkspaceFiles;
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::remote::RemoteWorkspaceOperations
+            .list(&workspace, &path)
+            .await
+            .map_err(|error| error.message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => syntaxis_workspace_host::HostWorkspaceFiles
+            .list(&workspace, &path)
+            .await
+            .map_err(|error| error.message),
+    }
+}
+
+pub async fn read_text(
+    workspace: WorkspaceRecord,
+    path: RelativePath,
+    max_bytes: u64,
+) -> Result<TextFile, String> {
+    use syntaxis_workspace::WorkspaceFiles;
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::remote::RemoteWorkspaceOperations
+            .read_text(&workspace, &path, max_bytes)
+            .await
+            .map_err(|error| error.message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => syntaxis_workspace_host::HostWorkspaceFiles
+            .read_text(&workspace, &path, max_bytes)
+            .await
+            .map_err(|error| error.message),
+    }
+}
+
+pub async fn read_binary(
+    workspace: WorkspaceRecord,
+    path: RelativePath,
+    max_bytes: u64,
+) -> Result<BinaryFile, String> {
+    use syntaxis_workspace::WorkspaceFiles;
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::remote::RemoteWorkspaceOperations
+            .read_binary(&workspace, &path, max_bytes)
+            .await
+            .map_err(|error| error.message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => syntaxis_workspace_host::HostWorkspaceFiles
+            .read_binary(&workspace, &path, max_bytes)
+            .await
+            .map_err(|error| error.message),
+    }
+}
+
+pub async fn create_file(
+    workspace: WorkspaceRecord,
+    path: RelativePath,
+) -> Result<FileEntry, String> {
+    use syntaxis_workspace::WorkspaceFiles;
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::remote::RemoteWorkspaceOperations
+            .create_file(&workspace, &path)
+            .await
+            .map_err(|error| error.message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => syntaxis_workspace_host::HostWorkspaceFiles
+            .create_file(&workspace, &path)
+            .await
+            .map_err(|error| error.message),
+    }
+}
+
+pub async fn create_directory(
+    workspace: WorkspaceRecord,
+    path: RelativePath,
+) -> Result<FileEntry, String> {
+    use syntaxis_workspace::WorkspaceFiles;
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::remote::RemoteWorkspaceOperations
+            .create_directory(&workspace, &path)
+            .await
+            .map_err(|error| error.message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => syntaxis_workspace_host::HostWorkspaceFiles
+            .create_directory(&workspace, &path)
+            .await
+            .map_err(|error| error.message),
+    }
+}
+
+pub async fn copy_entry(
+    workspace: WorkspaceRecord,
+    source: RelativePath,
+    destination: RelativePath,
+) -> Result<(), String> {
+    use syntaxis_workspace::WorkspaceFiles;
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::remote::RemoteWorkspaceOperations
+            .copy(&workspace, &source, &destination)
+            .await
+            .map_err(|error| error.message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => syntaxis_workspace_host::HostWorkspaceFiles
+            .copy(&workspace, &source, &destination)
+            .await
+            .map_err(|error| error.message),
+    }
+}
+
+pub async fn move_entry(
+    workspace: WorkspaceRecord,
+    source: RelativePath,
+    destination: RelativePath,
+) -> Result<(), String> {
+    use syntaxis_workspace::WorkspaceFiles;
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::remote::RemoteWorkspaceOperations
+            .move_entry(&workspace, &source, &destination)
+            .await
+            .map_err(|error| error.message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => syntaxis_workspace_host::HostWorkspaceFiles
+            .move_entry(&workspace, &source, &destination)
+            .await
+            .map_err(|error| error.message),
+    }
+}
+
+pub async fn delete_entry(workspace: WorkspaceRecord, path: RelativePath) -> Result<(), String> {
+    use syntaxis_workspace::WorkspaceFiles;
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::remote::RemoteWorkspaceOperations
+            .delete(&workspace, &path)
+            .await
+            .map_err(|error| error.message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => syntaxis_workspace_host::HostWorkspaceFiles
+            .delete(&workspace, &path)
+            .await
+            .map_err(|error| error.message),
+    }
+}
+
+pub async fn write_text(
+    workspace: WorkspaceRecord,
+    path: RelativePath,
+    content: String,
+    expected: FileVersion,
+    max_bytes: u64,
+) -> Result<FileVersion, String> {
+    use syntaxis_workspace::WorkspaceFiles;
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::remote::RemoteWorkspaceOperations
+            .write_text(&workspace, &path, &content, Some(&expected), max_bytes)
+            .await
+            .map_err(|error| error.message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => syntaxis_workspace_host::HostWorkspaceFiles
+            .write_text(&workspace, &path, &content, Some(&expected), max_bytes)
+            .await
+            .map_err(|error| error.message),
     }
 }
 

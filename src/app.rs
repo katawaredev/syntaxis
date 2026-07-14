@@ -10,6 +10,13 @@ const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 const GEIST_FONT: Asset = asset!("/assets/geist-latin-wght-normal.woff2");
 const UI_SCRIPT: Asset = asset!("/assets/ui.js");
+
+// TODO(route-splitting): Enable Dioxus WASM splitting for these routes once the
+// upstream fix ships. The 0.7 splitter discovers all six route modules, but
+// currently panics in Walrus while emitting the main module with
+// `assertion failed: !self.dead.contains(&id)`, so one application bundle is
+// still shipped. Track https://github.com/DioxusLabs/dioxus/issues/4769 and
+// https://github.com/DioxusLabs/dioxus/pull/5668.
 #[derive(Debug, Clone, Routable, PartialEq)]
 #[rustfmt::skip]
 pub enum Route {

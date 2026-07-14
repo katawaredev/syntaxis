@@ -3,8 +3,8 @@ use std::{collections::HashMap, sync::Mutex};
 use async_trait::async_trait;
 
 use crate::{
-    EntryKind, ErrorCode, FileEntry, FileVersion, RelativePath, TextFile, WorkspaceError,
-    WorkspaceFiles, WorkspaceRecord, WorkspaceResult,
+    BinaryFile, EntryKind, ErrorCode, FileEntry, FileVersion, RelativePath, TextFile,
+    WorkspaceError, WorkspaceFiles, WorkspaceRecord, WorkspaceResult,
 };
 
 #[derive(Clone, Debug)]
@@ -121,6 +121,19 @@ impl WorkspaceFiles for MockWorkspaceFiles {
             )),
             None => Err(not_found()),
         }
+    }
+
+    async fn read_binary(
+        &self,
+        workspace: &WorkspaceRecord,
+        path: &RelativePath,
+        max_bytes: u64,
+    ) -> WorkspaceResult<BinaryFile> {
+        let text = self.read_text(workspace, path, max_bytes).await?;
+        Ok(BinaryFile {
+            content: text.content.into_bytes(),
+            version: text.version,
+        })
     }
 
     async fn create_file(

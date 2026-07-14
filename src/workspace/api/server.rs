@@ -1,6 +1,6 @@
 use std::{
     env,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex, OnceLock},
     time::Duration,
 };
@@ -10,8 +10,8 @@ use dioxus::{
     prelude::ServerFnError,
 };
 use syntaxis_workspace::{
-    BrowseDirectory, BrowseRoot, EventBatch, FileEntry, FileVersion, RelativePath, TextFile,
-    WorkspaceBrowser, WorkspaceFiles, WorkspaceId, WorkspaceRecord, WorkspaceRegistry,
+    BinaryFile, BrowseDirectory, BrowseRoot, EventBatch, FileEntry, FileVersion, RelativePath,
+    TextFile, WorkspaceBrowser, WorkspaceFiles, WorkspaceId, WorkspaceRecord, WorkspaceRegistry,
 };
 use syntaxis_workspace_host::{
     HostWorkspaceBrowser, HostWorkspaceFiles, RegistrationPolicy, WorkspaceRegistryStore,
@@ -96,6 +96,17 @@ pub(super) async fn read_text(
 ) -> Result<TextFile, ServerFnError> {
     HostWorkspaceFiles
         .read_text(&workspace(id).await?, &path, max_bytes)
+        .await
+        .map_err(server_error)
+}
+
+pub(super) async fn read_binary(
+    id: &WorkspaceId,
+    path: RelativePath,
+    max_bytes: u64,
+) -> Result<BinaryFile, ServerFnError> {
+    HostWorkspaceFiles
+        .read_binary(&workspace(id).await?, &path, max_bytes)
         .await
         .map_err(server_error)
 }
@@ -236,9 +247,45 @@ fn open_registry() -> Result<WorkspaceRegistryStore, syntaxis_workspace::Workspa
 
 fn configured_roots() -> Vec<PathBuf> {
     env::var_os("SYNTAXIS_WORKSPACE_ROOTS").map_or_else(
-        || vec![env::current_dir().unwrap_or_else(|_| PathBuf::from("."))],
+        || vec![resolve_default_projects_root()],
         |roots| env::split_paths(&roots).collect(),
     )
+}
+
+fn resolve_default_projects_root() -> PathBuf {
+    default_projects_root_from(
+        env::var_os("SYNTAXIS_PROJECTS_ROOT").map(PathBuf::from),
+        env::var_os("XDG_PROJECTS_DIR").map(PathBuf::from),
+        env::var_os("HOME").map(PathBuf::from),
+        env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+    )
+}
+
+fn default_projects_root_from(
+    configured: Option<PathBuf>,
+    xdg_projects: Option<PathBuf>,
+    home: Option<PathBuf>,
+    current_directory: PathBuf,
+) -> PathBuf {
+    if let Some(configured) = configured {
+        return configured;
+    }
+    if let Some(xdg_projects) = xdg_projects.filter(|path| is_usable_directory(path)) {
+        return xdg_projects;
+    }
+    if let Some(home_projects) = home
+        .map(|home| home.join("Projects"))
+        .filter(|path| is_usable_directory(path))
+    {
+        return home_projects;
+    }
+    current_directory
+        .parent()
+        .map_or(current_directory.clone(), Path::to_path_buf)
+}
+
+fn is_usable_directory(path: &Path) -> bool {
+    path.metadata().is_ok_and(|metadata| metadata.is_dir())
 }
 
 fn data_directory() -> PathBuf {
@@ -252,4 +299,75 @@ fn data_directory() -> PathBuf {
         || PathBuf::from(".syntaxis"),
         |home| PathBuf::from(home).join(".local/share/syntaxis"),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::tempdir;
+
+    use super::default_projects_root_from;
+
+    #[test]
+    fn configured_projects_root_takes_priority_without_needing_to_exist() {
+        let root = tempdir().unwrap();
+        let configured = root.path().join("configured");
+
+        assert_eq!(
+            default_projects_root_from(
+                Some(configured.clone()),
+                Some(root.path().to_owned()),
+                Some(root.path().to_owned()),
+                root.path().join("syntaxis"),
+            ),
+            configured
+        );
+    }
+
+    #[test]
+    fn existing_xdg_projects_directory_precedes_home_projects() {
+        let root = tempdir().unwrap();
+        let xdg_projects = root.path().join("xdg-projects");
+        let home = root.path().join("home");
+        std::fs::create_dir_all(&xdg_projects).unwrap();
+        std::fs::create_dir_all(home.join("Projects")).unwrap();
+
+        assert_eq!(
+            default_projects_root_from(
+                None,
+                Some(xdg_projects.clone()),
+                Some(home),
+                root.path().join("syntaxis"),
+            ),
+            xdg_projects
+        );
+    }
+
+    #[test]
+    fn home_projects_is_used_when_xdg_projects_is_unusable() {
+        let root = tempdir().unwrap();
+        let home = root.path().join("home");
+        let home_projects = home.join("Projects");
+        std::fs::create_dir_all(&home_projects).unwrap();
+
+        assert_eq!(
+            default_projects_root_from(
+                None,
+                Some(root.path().join("missing")),
+                Some(home),
+                root.path().join("syntaxis"),
+            ),
+            home_projects
+        );
+    }
+
+    #[test]
+    fn current_directory_parent_is_the_final_fallback() {
+        let root = tempdir().unwrap();
+        let current_directory = root.path().join("syntaxis");
+
+        assert_eq!(
+            default_projects_root_from(None, None, None, current_directory),
+            root.path()
+        );
+    }
 }

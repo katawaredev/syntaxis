@@ -7,6 +7,8 @@ license = "MIT"
 
 [workspace]
 members = [
+    "crates/editor",
+    "crates/code-editor",
     "crates/git",
     "crates/git-host",
     "crates/terminal",
@@ -21,14 +23,50 @@ resolver = "2"
 
 [dependencies]
 async-trait = "0.1.89"
+base64 = "0.22.1"
 bytes = "1.10.1"
 dioxus = { version = "0.7.1", features = ["router", "fullstack"] }
-dioxus-code = { git = "https://github.com/DioxusLabs/dioxus-code", rev = "928568e248ebcda602ee0c071af44dfef849ec15", default-features = false, features = ["macro"] }
+dioxus-code = { git = "https://github.com/DioxusLabs/dioxus-code", rev = "928568e248ebcda602ee0c071af44dfef849ec15", default-features = false, features = [
+    "macro",
+    "runtime",
+    "lang-bash",
+    "lang-c",
+    "lang-c-sharp",
+    "lang-cpp",
+    "lang-css",
+    "lang-dart",
+    "lang-diff",
+    "lang-dockerfile",
+    "lang-go",
+    "lang-html",
+    "lang-ini",
+    "lang-java",
+    "lang-javascript",
+    "lang-json",
+    "lang-kotlin",
+    "lang-lua",
+    "lang-markdown",
+    "lang-nginx",
+    "lang-php",
+    "lang-powershell",
+    "lang-python",
+    "lang-ruby",
+    "lang-scss",
+    "lang-sql",
+    "lang-toml",
+    "lang-tsx",
+    "lang-typescript",
+    "lang-xml",
+    "lang-yaml",
+] }
+dioxus-code-editor = { path = "crates/code-editor" }
+dioxus-icons = "0.1.0"
 dioxus-primitives = { git = "https://github.com/DioxusLabs/dioxus-components", rev = "bf007c15d0cf4d04d3181cc46cf12325aa773955" }
 dioxus-sdk-time = "0.7.0"
 futures-util = "0.3.31"
 serde = { version = "1.0.219", features = ["derive"] }
 syntaxis-ui = { path = "crates/ui" }
+syntaxis-editor = { path = "crates/editor" }
 syntaxis-git = { path = "crates/git" }
 syntaxis-git-host = { path = "crates/git-host", optional = true }
 syntaxis-terminal = { path = "crates/terminal" }
@@ -46,6 +84,9 @@ tokio-util = { version = "0.7.15", features = ["rt"], optional = true }
 
 [dev-dependencies]
 tempfile = "3.20.0"
+
+[build-dependencies]
+cc = "1.2.30"
 
 [features]
 default = ["web"]

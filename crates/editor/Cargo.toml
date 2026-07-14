@@ -1,0 +1,12 @@
+[package]
+name = "syntaxis-editor"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[dependencies]
+syntaxis-workspace = { path = "../workspace" }
+
+[lints]
+workspace = true

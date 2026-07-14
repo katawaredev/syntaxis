@@ -14,7 +14,7 @@ mod workspace;
 pub use browser::{BrowseDirectory, BrowseRoot, WorkspaceBrowser};
 pub use error::{ErrorCode, WorkspaceError, WorkspaceResult};
 pub use events::{ChangeKind, EventBatch, WorkspaceChange};
-pub use filesystem::{EntryKind, FileEntry, FileVersion, RelativePath, TextFile};
+pub use filesystem::{BinaryFile, EntryKind, FileEntry, FileVersion, RelativePath, TextFile};
 pub use mock::MockWorkspaceRegistry;
 pub use mock_browser::MockWorkspaceBrowser;
 pub use mock_files::MockWorkspaceFiles;

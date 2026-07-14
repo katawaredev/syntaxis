@@ -1,0 +1,151 @@
+.dxc-editor.dxc-editor {
+    --dxc-editor-font-size: 14px;
+    --dxc-editor-line-height: 21px;
+    --dxc-editor-selection: color-mix(
+        in oklch,
+        var(--primary) 32%,
+        transparent
+    );
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    min-height: 100%;
+    min-width: 100%;
+    overflow: auto;
+    background: var(--card);
+    color: var(--foreground);
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: var(--dxc-editor-font-size);
+    line-height: var(--dxc-editor-line-height);
+    tab-size: var(--dxc-editor-tab-width, 4);
+}
+
+.dxc-editor *,
+.dxc-editor *::before,
+.dxc-editor *::after {
+    box-sizing: border-box;
+}
+.dxc-editor-viewport {
+    position: relative;
+    height: max-content;
+    min-height: 100%;
+    min-width: 100%;
+    width: max-content;
+}
+.dxc-editor-gutter,
+.dxc-editor-highlight,
+.dxc-editor-range-overlay,
+.dxc-editor-input {
+    min-height: 100%;
+}
+.dxc-editor-highlight,
+.dxc-editor-range-overlay,
+.dxc-editor-input {
+    padding: 14px 22px 80px 0;
+    white-space: pre;
+    line-height: var(--dxc-editor-line-height);
+    tab-size: inherit;
+}
+.dxc-editor-gutter {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    padding: 14px 0 80px;
+    border-right: 1px solid var(--border);
+    background: var(--background);
+    color: var(--muted-foreground);
+    pointer-events: none;
+    user-select: none;
+}
+.dxc-editor-gutter-line {
+    min-width: 52px;
+    height: var(--dxc-editor-line-height);
+    padding: 0 13px;
+    text-align: right;
+    line-height: var(--dxc-editor-line-height);
+}
+.dxc-editor-highlight {
+    min-width: 100%;
+    pointer-events: none;
+}
+.dxc-editor-range-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    min-width: 100%;
+    overflow: hidden;
+    color: transparent;
+    pointer-events: none;
+}
+.dxc-editor-range-overlay mark {
+    color: transparent;
+}
+.dxc-editor-search-match {
+    border-radius: 2px;
+    background: color-mix(in oklch, var(--warning) 32%, transparent);
+    box-shadow: inset 0 0 0 1px
+        color-mix(in oklch, var(--warning) 58%, transparent);
+}
+.dxc-editor-search-match.dxc-editor-range-active {
+    background: color-mix(in oklch, var(--primary) 42%, transparent);
+    box-shadow: inset 0 0 0 1px
+        color-mix(in oklch, var(--primary) 72%, transparent);
+}
+.dxc-editor-multi-selection {
+    border-radius: 2px;
+    background: var(--dxc-editor-selection);
+}
+.dxc-editor-line {
+    min-height: var(--dxc-editor-line-height);
+    line-height: var(--dxc-editor-line-height);
+}
+.dxc-editor-highlight span {
+    font-style: normal !important;
+}
+.dxc-editor-input {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: block;
+    width: 100%;
+    margin: 0;
+    overflow: clip;
+    resize: none;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: transparent;
+    caret-color: var(--foreground);
+    font: inherit;
+    letter-spacing: 0;
+}
+.dxc-editor-input::selection {
+    background: var(--dxc-editor-selection);
+    color: transparent;
+}
+.dxc-editor-input::placeholder {
+    color: var(--muted-foreground);
+}
+.dxc-editor-no-gutter {
+    grid-template-columns: minmax(0, 1fr);
+}
+.dxc-editor-no-gutter .dxc-editor-highlight,
+.dxc-editor-no-gutter .dxc-editor-range-overlay,
+.dxc-editor-no-gutter .dxc-editor-input {
+    padding-left: 20px;
+}
+.dxc-editor-wrap .dxc-editor-viewport {
+    width: 100%;
+}
+.dxc-editor-wrap .dxc-editor-highlight,
+.dxc-editor-wrap .dxc-editor-range-overlay,
+.dxc-editor-wrap .dxc-editor-input,
+.dxc-editor-wrap .dxc-editor-line {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.dxc-editor:focus-within {
+    box-shadow: inset 0 0 0 1px
+        color-mix(in oklch, var(--primary) 38%, transparent);
+}

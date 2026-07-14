@@ -1,5 +1,5 @@
 pub(crate) mod api;
-mod client;
+pub(crate) mod client;
 mod events;
 mod home;
 mod project_icon;

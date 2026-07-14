@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 
 use crate::{
-    FileEntry, FileVersion, RelativePath, TextFile, WorkspaceId, WorkspaceRecord, WorkspaceResult,
+    BinaryFile, FileEntry, FileVersion, RelativePath, TextFile, WorkspaceId, WorkspaceRecord,
+    WorkspaceResult,
 };
 
 #[async_trait(?Send)]
@@ -33,6 +34,13 @@ pub trait WorkspaceFiles: Send + Sync {
         path: &RelativePath,
         max_bytes: u64,
     ) -> WorkspaceResult<TextFile>;
+
+    async fn read_binary(
+        &self,
+        workspace: &WorkspaceRecord,
+        path: &RelativePath,
+        max_bytes: u64,
+    ) -> WorkspaceResult<BinaryFile>;
 
     async fn create_file(
         &self,

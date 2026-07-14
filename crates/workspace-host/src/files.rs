@@ -5,8 +5,8 @@ use std::{
 
 use async_trait::async_trait;
 use syntaxis_workspace::{
-    ErrorCode, FileEntry, FileVersion, RelativePath, TextFile, WorkspaceError, WorkspaceFiles,
-    WorkspaceRecord, WorkspaceResult,
+    BinaryFile, ErrorCode, FileEntry, FileVersion, RelativePath, TextFile, WorkspaceError,
+    WorkspaceFiles, WorkspaceRecord, WorkspaceResult,
 };
 use tempfile::NamedTempFile;
 
@@ -92,6 +92,30 @@ impl HostWorkspaceFiles {
             )
         })?;
         Ok(TextFile {
+            content,
+            version: version_from_metadata(&metadata)?,
+        })
+    }
+
+    fn read_binary_file(
+        workspace: &WorkspaceRecord,
+        relative: &RelativePath,
+        max_bytes: u64,
+    ) -> WorkspaceResult<BinaryFile> {
+        let scope = PathScope::for_workspace(workspace)?;
+        let path = scope.existing(relative)?;
+        let metadata = path.metadata().map_err(map_io_error)?;
+        require_regular_file(&metadata)?;
+        require_size(metadata.len(), max_bytes)?;
+        let capacity = usize::try_from(metadata.len()).map_err(|_| too_large(max_bytes))?;
+        let mut content = Vec::with_capacity(capacity);
+        File::open(path)
+            .map_err(map_io_error)?
+            .take(max_bytes.saturating_add(1))
+            .read_to_end(&mut content)
+            .map_err(map_io_error)?;
+        require_size(content.len() as u64, max_bytes)?;
+        Ok(BinaryFile {
             content,
             version: version_from_metadata(&metadata)?,
         })
@@ -234,6 +258,15 @@ impl WorkspaceFiles for HostWorkspaceFiles {
         max_bytes: u64,
     ) -> WorkspaceResult<TextFile> {
         Self::read_text_file(workspace, path, max_bytes)
+    }
+
+    async fn read_binary(
+        &self,
+        workspace: &WorkspaceRecord,
+        path: &RelativePath,
+        max_bytes: u64,
+    ) -> WorkspaceResult<BinaryFile> {
+        Self::read_binary_file(workspace, path, max_bytes)
     }
 
     async fn create_file(

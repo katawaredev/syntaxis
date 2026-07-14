@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use dioxus::prelude::ServerFnError;
 use syntaxis_workspace::{
-    BrowseDirectory, BrowseRoot, ErrorCode, FileEntry, FileVersion, RelativePath, TextFile,
-    WorkspaceBrowser, WorkspaceError, WorkspaceFiles, WorkspaceId, WorkspaceRecord,
+    BinaryFile, BrowseDirectory, BrowseRoot, ErrorCode, FileEntry, FileVersion, RelativePath,
+    TextFile, WorkspaceBrowser, WorkspaceError, WorkspaceFiles, WorkspaceId, WorkspaceRecord,
     WorkspaceRegistry, WorkspaceResult,
 };
 
@@ -86,6 +86,25 @@ impl WorkspaceFiles for RemoteWorkspaceOperations {
         max_bytes: u64,
     ) -> WorkspaceResult<TextFile> {
         let file = api::read_workspace_text(workspace.id.0.clone(), path.as_str().to_owned())
+            .await
+            .map_err(map_server_error)?;
+        if u64::try_from(file.content.len()).unwrap_or(u64::MAX) > max_bytes {
+            Err(WorkspaceError::new(
+                ErrorCode::TooLarge,
+                "The remote file exceeds the requested limit.",
+            ))
+        } else {
+            Ok(file)
+        }
+    }
+
+    async fn read_binary(
+        &self,
+        workspace: &WorkspaceRecord,
+        path: &RelativePath,
+        max_bytes: u64,
+    ) -> WorkspaceResult<BinaryFile> {
+        let file = api::read_workspace_binary(workspace.id.0.clone(), path.as_str().to_owned())
             .await
             .map_err(map_server_error)?;
         if u64::try_from(file.content.len()).unwrap_or(u64::MAX) > max_bytes {

@@ -1,8 +1,8 @@
 use dioxus::fullstack::{WebSocketOptions, Websocket};
 use dioxus::prelude::*;
 use syntaxis_workspace::{
-    BrowseDirectory, BrowseRoot, EventBatch, FileEntry, FileVersion, RuntimeState, TextFile,
-    WorkspaceRecord,
+    BinaryFile, BrowseDirectory, BrowseRoot, EventBatch, FileEntry, FileVersion, RuntimeState,
+    TextFile, WorkspaceRecord,
 };
 #[cfg(feature = "server")]
 use syntaxis_workspace::{
@@ -82,6 +82,18 @@ pub async fn read_workspace_text(
     path: String,
 ) -> Result<TextFile, ServerFnError> {
     server::read_text(
+        &WorkspaceId::new(workspace_id),
+        parse_path(path)?,
+        DEFAULT_TEXT_LIMIT,
+    )
+    .await
+}
+#[post("/api/workspace-files/read-binary")]
+pub async fn read_workspace_binary(
+    workspace_id: String,
+    path: String,
+) -> Result<BinaryFile, ServerFnError> {
+    server::read_binary(
         &WorkspaceId::new(workspace_id),
         parse_path(path)?,
         DEFAULT_TEXT_LIMIT,

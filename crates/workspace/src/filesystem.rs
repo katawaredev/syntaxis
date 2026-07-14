@@ -94,6 +94,12 @@ pub struct TextFile {
     pub version: FileVersion,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct BinaryFile {
+    pub content: Vec<u8>,
+    pub version: FileVersion,
+}
+
 #[cfg(test)]
 mod tests {
     use super::RelativePath;

@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 use syntaxis_ui::prelude::{AppIcon, EmptyState, Icon, StatusBadge, Tone};
 
-use crate::{app::Route, mock::WORKSPACES};
+use crate::{app::Route, files::use_files_session, mock::WORKSPACES};
 use syntaxis_workspace::{ExecutionLocation, RuntimeState};
 
 use super::client::{list_workspaces, runtime_state};
@@ -19,6 +19,8 @@ enum Module {
 
 #[component]
 pub fn WorkspaceShell() -> Element {
+    let files_session = use_files_session();
+    use_context_provider(|| files_session);
     let event_state = WorkspaceEventState {
         latest: use_signal(|| None),
         revision: use_signal(|| 0),
