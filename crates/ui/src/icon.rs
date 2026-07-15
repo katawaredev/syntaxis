@@ -4,7 +4,8 @@ use dioxus_icons::lucide::{
     Ellipsis, EllipsisVertical, Eye, FileDiff, FileInput, FileMinus, FilePlus, FolderOpen,
     FolderPlus, GitBranch, GitCommitHorizontal, Hash, ListChevronsDownUp, ListChevronsUpDown,
     ListOrdered, Menu, PanelLeftOpen, Play, Plus, RefreshCw, Regex, Repeat1, Replace, ReplaceAll,
-    RotateCcw, Save, Search, SquareTerminal, Trash2, Type, WholeWord, X,
+    RotateCcw, Save, Search, Send, Sparkles, Square, SquarePen, SquareTerminal, Trash2, Type,
+    WholeWord, X,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -46,6 +47,10 @@ pub enum AppIcon {
     Revert,
     Save,
     Search,
+    Send,
+    Sparkles,
+    Stop,
+    NewChat,
     Next,
     ToggleReplace,
     WordWrap,
@@ -165,6 +170,18 @@ pub fn Icon(icon: AppIcon, #[props(default = 16)] size: u32) -> Element {
         },
         AppIcon::Search => rsx! {
             Search { size }
+        },
+        AppIcon::Send => rsx! {
+            Send { size }
+        },
+        AppIcon::Sparkles => rsx! {
+            Sparkles { size }
+        },
+        AppIcon::Stop => rsx! {
+            Square { size }
+        },
+        AppIcon::NewChat => rsx! {
+            SquarePen { size }
         },
         AppIcon::Next => rsx! {
             ChevronRight { size }

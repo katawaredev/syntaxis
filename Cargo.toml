@@ -7,6 +7,8 @@ license = "MIT"
 
 [workspace]
 members = [
+    "crates/agent",
+    "crates/agent-host",
     "crates/editor",
     "crates/code-editor",
     "crates/git",
@@ -68,6 +70,9 @@ futures-util = "0.3.31"
 pulldown-cmark = { version = "0.13.4", default-features = false, features = ["html"] }
 regex = "1.13.0"
 serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+syntaxis-agent = { path = "crates/agent" }
+syntaxis-agent-host = { path = "crates/agent-host", optional = true }
 syntaxis-ui = { path = "crates/ui" }
 syntaxis-editor = { path = "crates/editor" }
 syntaxis-git = { path = "crates/git" }
@@ -82,7 +87,7 @@ web-time = "1.1.0"
 gloo-timers = { version = "0.3.0", features = ["futures"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-tokio = { version = "1.46.1", features = ["macros", "rt", "sync", "time"], optional = true }
+tokio = { version = "1.46.1", features = ["io-util", "macros", "process", "rt", "sync", "time"], optional = true }
 tokio-util = { version = "0.7.15", features = ["rt"], optional = true }
 
 [dev-dependencies]
@@ -98,6 +103,7 @@ desktop = ["dioxus/desktop", "dep:syntaxis-workspace-host", "dep:tokio"]
 mobile = ["dioxus/mobile"]
 server = [
     "dioxus/server",
+    "dep:syntaxis-agent-host",
     "dep:syntaxis-git-host",
     "dep:syntaxis-terminal-host",
     "dep:syntaxis-workspace-host",

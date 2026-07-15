@@ -1,3 +1,27 @@
+# Syntaxis
+
+Syntaxis is a mobile-first development workspace built with Dioxus. Its workspace includes files,
+a code editor, terminal sessions, Git tools, and a focused chat interface for the
+[Pi coding agent](https://pi.dev/).
+
+## Pi coding agent
+
+The AI workspace uses Pi directly through its native RPC mode. Install and authenticate Pi on the
+machine running the Syntaxis server before opening the AI tab:
+
+```bash
+curl -fsSL https://pi.dev/install.sh | sh
+pi
+```
+
+Use Pi's `/login` flow or configure one of its supported provider API keys. Each chat has its own
+long-lived `pi --mode rpc` process, so multiple chats and projects can work in parallel even after
+you leave the AI screen. The sidebar is rebuilt from Pi's own persisted sessions after a Syntaxis
+server restart; selecting a saved chat resumes its transcript with Pi directly.
+
+If `pi` is not on the server's `PATH`, set `SYNTAXIS_PI_COMMAND` to the executable path. Syntaxis does
+not embed a model provider, store API keys, or route the AI section through ACP or another agent SDK.
+
 # Development
 
 Your new bare-bones project includes minimal organization with a single `main.rs` file and a few assets.
@@ -47,4 +71,3 @@ To run for a different platform, use the `--platform platform` flag. E.g.
 ```bash
 dx serve --platform desktop
 ```
-

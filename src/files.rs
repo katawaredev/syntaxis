@@ -31,7 +31,7 @@ mod documents;
 mod editor_ui;
 mod explorer;
 mod git_actions;
-mod preview;
+pub(crate) mod preview;
 
 use dialogs::{DirtyClosePrompt, FileMutationDialog, GitDiscardPrompt, GoToLineDialog};
 use documents::{

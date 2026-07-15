@@ -1,14 +1,16 @@
 use crate::{
+    ai::Ai,
     files::Files,
     git::Git,
     terminal::Terminal,
-    workspace::{Ai, Home, Preview, WorkspaceShell},
+    workspace::{Home, Preview, WorkspaceShell},
 };
 use dioxus::prelude::*;
 const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 const GEIST_FONT: Asset = asset!("/assets/geist-latin-wght-normal.woff2");
 const UI_SCRIPT: Asset = asset!("/assets/ui.js");
+const AI_CHAT_SCRIPT: Asset = asset!("/assets/ai-chat.js");
 
 // TODO(route-splitting): Enable Dioxus WASM splitting for these routes once the
 // upstream fix ships. The 0.7 splitter discovers all six route modules, but
@@ -50,6 +52,7 @@ pub fn App() -> Element {
         document::Style { {geist_font_face} }
         document::Stylesheet { href: TAILWIND_CSS }
         document::Script { src: UI_SCRIPT }
+        document::Script { src: AI_CHAT_SCRIPT }
         Router::<Route> {}
     }
 }

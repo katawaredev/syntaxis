@@ -279,9 +279,11 @@ fn default_projects_root_from(
     {
         return home_projects;
     }
-    current_directory
-        .parent()
-        .map_or(current_directory.clone(), Path::to_path_buf)
+    if let Some(parent) = current_directory.parent() {
+        parent.to_path_buf()
+    } else {
+        current_directory
+    }
 }
 
 fn is_usable_directory(path: &Path) -> bool {

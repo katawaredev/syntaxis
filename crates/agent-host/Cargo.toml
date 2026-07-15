@@ -1,0 +1,19 @@
+[package]
+name = "syntaxis-agent-host"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+serde_json = "1.0.140"
+syntaxis-agent = { path = "../agent" }
+syntaxis-workspace = { path = "../workspace" }
+tokio = { version = "1.46.1", features = ["io-util", "macros", "process", "rt", "sync"] }
+uuid = { version = "1.17.0", features = ["v4"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+tempfile = "3.20.0"
+
+[lints]
+workspace = true

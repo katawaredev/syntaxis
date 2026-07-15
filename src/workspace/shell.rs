@@ -141,12 +141,11 @@ pub fn WorkspaceShell() -> Element {
                     span { class: "h-5 text-base leading-5", "◫" }
                     small { class: "text-[10px]", "Preview" }
                 }
-                button {
-                    class: "flex w-26 flex-col items-center justify-center gap-1 border-t-2 border-transparent bg-transparent px-2.5 pt-2 pb-1.5 text-muted-foreground max-md:w-1/5 max-md:pb-2",
-                    disabled: true,
-                    title: "AI unavailable",
-                    span { class: "h-5 text-base leading-5", "✦" }
-                    small { class: "text-[10px]", "AI" }
+                NavItem {
+                    label: "AI",
+                    icon: AppIcon::Sparkles,
+                    active: active == Module::Ai,
+                    to: Route::Ai { slug: slug.clone() },
                 }
             }
         }
@@ -176,18 +175,6 @@ pub fn Preview(slug: String) -> Element {
             icon: "◫",
             title: "Preview is unavailable",
             description: "Application previews will arrive in a later phase.",
-        }
-    }
-}
-
-#[component]
-pub fn Ai(slug: String) -> Element {
-    let _ = slug;
-    rsx! {
-        EmptyState {
-            icon: "✦",
-            title: "AI is unavailable",
-            description: "AI-assisted workflows are not enabled in this build.",
         }
     }
 }

@@ -6216,6 +6216,9 @@ dependencies = [
  "pulldown-cmark",
  "regex",
  "serde",
+ "serde_json",
+ "syntaxis-agent",
+ "syntaxis-agent-host",
  "syntaxis-editor",
  "syntaxis-git",
  "syntaxis-git-host",
@@ -6228,6 +6231,26 @@ dependencies = [
  "tokio",
  "tokio-util",
  "web-time",
+]
+
+[[package]]
+name = "syntaxis-agent"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "syntaxis-agent-host"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "syntaxis-agent",
+ "syntaxis-workspace",
+ "tempfile",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

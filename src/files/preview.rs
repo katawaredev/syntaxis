@@ -116,7 +116,7 @@ pub(super) fn MarkdownPreview(source: String) -> Element {
     }
 }
 
-fn render_markdown(source: &str) -> String {
+pub(crate) fn render_markdown(source: &str) -> String {
     let options = Options::ENABLE_GFM
         | Options::ENABLE_STRIKETHROUGH
         | Options::ENABLE_TABLES

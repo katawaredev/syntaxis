@@ -8,4 +8,4 @@ mod shell;
 pub use events::WorkspaceEventState;
 pub use home::Home;
 pub use project_icon::ProjectIcon;
-pub use shell::{Ai, Preview, WorkspaceShell};
+pub use shell::{Preview, WorkspaceShell};
