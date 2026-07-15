@@ -26,6 +26,7 @@ const redoStack = [];
 const historyLimit = 200;
 const historyByteLimit = 16 * 1024 * 1024;
 let pendingHistory = null;
+let caretScrollFrame = null;
 const cloneRanges = source => source.map(([start, end]) => [start, end]);
 const captureHistory = () => ({
     value: input.value,
@@ -63,15 +64,61 @@ const commitHistory = before => {
     redoStack.length = 0;
 };
 const byteOffset = codeUnits => encoder.encode(input.value.slice(0, codeUnits)).length;
+const keepCaretLineVisible = lineIndex => {
+    const editor = input.closest(".dxc-editor");
+    const highlight = input.parentElement?.querySelector(":scope > .dxc-editor-highlight");
+    if (!(editor instanceof HTMLElement) || !(highlight instanceof HTMLElement)) return;
+    const lines = highlight.querySelectorAll(":scope > .dxc-editor-line");
+    if (lines.length === 0) return;
+    const lineHeight = Number.parseFloat(getComputedStyle(input).lineHeight) || 22;
+    const target = lines[Math.min(lineIndex, lines.length - 1)];
+    if (!(target instanceof HTMLElement)) return;
+
+    const editorRect = editor.getBoundingClientRect();
+    const viewport = window.visualViewport;
+    const visibleTop = Math.max(editorRect.top, viewport?.offsetTop ?? 0);
+    const visibleBottom = Math.min(
+        editorRect.bottom,
+        (viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight),
+    );
+    if (visibleBottom <= visibleTop) return;
+
+    const targetRect = target.getBoundingClientRect();
+    const missingLines = Math.max(0, lineIndex - (lines.length - 1));
+    const top = targetRect.top + (missingLines === 0 ? 0 : targetRect.height + (missingLines - 1) * lineHeight);
+    const height = missingLines === 0 ? Math.max(targetRect.height, lineHeight) : lineHeight;
+    // A wrapped logical line can be taller than the viewport. Without exact
+    // textarea caret geometry, moving it wholesale would cause a jump.
+    if (height > visibleBottom - visibleTop) return;
+    const margin = lineHeight;
+    if (top + height + margin > visibleBottom) {
+        editor.scrollTop += top + height + margin - visibleBottom;
+    } else if (top - margin < visibleTop) {
+        editor.scrollTop -= visibleTop - (top - margin);
+    }
+};
+const queueCaretVisibility = lineIndex => {
+    keepCaretLineVisible(lineIndex);
+    if (caretScrollFrame !== null) cancelAnimationFrame(caretScrollFrame);
+    caretScrollFrame = requestAnimationFrame(() => {
+        keepCaretLineVisible(lineIndex);
+        caretScrollFrame = requestAnimationFrame(() => {
+            keepCaretLineVisible(lineIndex);
+            caretScrollFrame = null;
+        });
+    });
+};
 const emit = () => {
     const start = input.selectionStart ?? 0;
     const end = input.selectionEnd ?? start;
     const before = input.value.slice(0, start);
     const lineStart = before.lastIndexOf("\n") + 1;
+    const line = before.split("\n").length;
+    queueCaretVisibility(line - 1);
     dioxus.send({
         start: byteOffset(start),
         end: byteOffset(end),
-        line: before.split("\n").length,
+        line,
         column: start - lineStart + 1,
         selection_count: Math.max(1, ranges.length),
         ranges: ranges.map(([rangeStart, rangeEnd]) => ({
@@ -137,8 +184,6 @@ const applyCommand = command => {
         }
         input.focus();
         input.setSelectionRange(offset, offset);
-        const lineHeight = Number.parseFloat(getComputedStyle(input).lineHeight) || 22;
-        input.scrollTop = Math.max(0, (line - 3) * lineHeight);
         input.dispatchEvent(new Event("select", { bubbles: true }));
     }
 };
@@ -332,6 +377,9 @@ const onInput = () => {
     const before = pendingHistory;
     pendingHistory = null;
     commitHistory(before);
+    // Software keyboards do not reliably emit keyup. Report the updated caret
+    // directly from input so mobile completion can react to typing.
+    emit();
 };
 const onSelection = () => {
     if (!input.matches(":focus")) return;
@@ -357,3 +405,4 @@ input.removeEventListener("input", onInput);
 input.removeEventListener("select", onSelection);
 input.removeEventListener("keyup", onSelection);
 input.removeEventListener("click", onSelection);
+if (caretScrollFrame !== null) cancelAnimationFrame(caretScrollFrame);

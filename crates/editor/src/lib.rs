@@ -1,11 +1,13 @@
 //! Platform-neutral file-editor state and configuration.
 
 mod buffer;
+mod completion;
 mod config;
 mod language;
 mod tree;
 
 pub use buffer::{BufferStatus, EditorBuffer, ExternalChange};
+pub use completion::{complete_any_word, complete_with_words, WordCompletions};
 pub use config::{
     apply_editor_config, resolve_editor_config, EditorConfig, EditorConfigSource, IndentStyle,
     LineEnding,

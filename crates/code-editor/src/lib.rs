@@ -102,7 +102,9 @@ pub struct CodeEditorProps {
     #[props(into, default)]
     pub id: String,
     #[props(default)]
-    pub command: Option<ReadSignal<Option<EditorCommand>>>,
+    /// One-shot command channel. Commands are cleared after they are delivered
+    /// so a remounted editor cannot replay stale mutations.
+    pub command: Option<Signal<Option<EditorCommand>>>,
     #[props(default)]
     pub search_matches: Vec<EditorRange>,
     #[props(default)]
@@ -189,18 +191,26 @@ pub fn CodeEditor(props: CodeEditorProps) -> Element {
         if let Some(events) = event_bridge() {
             let _ = events.send(true);
         }
+        if let Some(mut command) = props.command {
+            command.set(None);
+        }
     });
     use_effect(move || {
         if diff_mode {
             return;
         }
-        let Some(command) = props.command.and_then(|command| command()) else {
+        let Some(mut command_signal) = props.command else {
+            return;
+        };
+        let Some(command) = command_signal() else {
             return;
         };
         let Some(events) = event_bridge() else {
             return;
         };
-        let _ = events.send(command);
+        if events.send(command).is_ok() {
+            command_signal.set(None);
+        }
     });
 
     let class = editor_class(

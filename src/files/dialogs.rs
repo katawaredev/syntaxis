@@ -117,11 +117,10 @@ pub(super) fn DirtyCloseDialog(
 ) -> Element {
     rsx! {
         Modal {
-            title: "Unsaved changes",
-            description: if count == 1 { "Save this file before closing it?".into() } else { format!("Save changed files before closing {count} tabs?") },
+            title: "Save changes?",
+            description: if count == 1 { "This file has unsaved changes.".into() } else { format!("{count} files have unsaved changes.") },
             on_close: move |()| on_cancel.call(()),
             DialogForm {
-                DangerNote { message: "Closing without saving discards editor changes." }
                 DialogActions {
                     Button {
                         label: "Cancel",
@@ -130,7 +129,7 @@ pub(super) fn DirtyCloseDialog(
                     }
                     Button {
                         label: "Discard",
-                        kind: ButtonKind::Danger,
+                        kind: ButtonKind::Secondary,
                         onclick: move |_| on_discard.call(()),
                     }
                     Button {
@@ -155,9 +154,16 @@ pub(super) fn DirtyClosePrompt(
 ) -> Element {
     let discard_paths = request.paths.clone();
     let save_paths = request.paths.clone();
+    let dirty_count = documents
+        .read()
+        .iter()
+        .filter(|document| {
+            request.paths.iter().any(|path| path == document.path()) && document.is_dirty()
+        })
+        .count();
     rsx! {
         DirtyCloseDialog {
-            count: request.paths.len(),
+            count: dirty_count,
             on_cancel: move |()| close_request.set(None),
             on_discard: move |()| {
                 close_documents(&discard_paths, documents, active_path);

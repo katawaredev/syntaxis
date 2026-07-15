@@ -8,8 +8,9 @@ use dioxus_code_editor::{
 };
 use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem, DropdownMenuTrigger};
 use syntaxis_editor::{
-    apply_editor_config, language_label_for_path, language_slug_for_path, resolve_editor_config,
-    BufferStatus, EditorBuffer, EditorConfigSource, ExplorerTree, ExternalChange, IndentStyle,
+    apply_editor_config, complete_any_word, complete_with_words, language_label_for_path,
+    language_slug_for_path, resolve_editor_config, BufferStatus, EditorBuffer, EditorConfigSource,
+    ExplorerTree, ExternalChange, IndentStyle,
 };
 use syntaxis_git::{ChangeKind as GitChangeKind, DiffKind, RepositoryStatus, UnifiedDiff};
 use syntaxis_ui::prelude::{
@@ -40,8 +41,8 @@ use documents::{
 use editor_ui::{
     apply_completion, copy_editor_reference, find_matches, format_editor_reference,
     handle_editor_shortcut, issue_command, language_for_path, render_tab,
-    replace_all_search_matches, replace_search_match, text_document_contents, CompletionMenu,
-    EditorMenuItem, MobileTabs, SearchOptions, SearchPanel,
+    replace_all_search_matches, replace_search_match, should_open_completions,
+    text_document_contents, CompletionMenu, EditorMenuItem, MobileTabs, SearchOptions, SearchPanel,
 };
 use explorer::{expand_directory, Explorer, ExplorerView};
 use git_actions::{
@@ -234,7 +235,10 @@ pub fn Files(slug: String) -> Element {
     let mut editor_selection = use_signal(EditorSelection::default);
     let editor_command = use_signal(|| None::<EditorCommand>);
     let command_revision = use_signal(|| 0_u64);
+    let mut autocomplete_enabled = use_signal(|| true);
     let mut autocomplete = use_signal(|| false);
+    let mut completion_after_input = use_signal(|| false);
+    let mut suppress_next_completion = use_signal(|| false);
     let diff = use_signal(|| None::<UnifiedDiff>);
     let pending = use_signal(|| false);
     let mut file_dialog = use_signal(|| None::<FileActionDialog>);
@@ -549,9 +553,23 @@ pub fn Files(slug: String) -> Element {
                                     checked: line_numbers(),
                                     onclick: move |()| line_numbers.toggle(),
                                 }
-                                hr {}
                                 EditorMenuItem {
                                     index: 4,
+                                    icon: AppIcon::Code,
+                                    label: "Autocomplete",
+                                    suffix: "Mod Space",
+                                    checked: autocomplete_enabled(),
+                                    onclick: move |()| {
+                                        autocomplete_enabled.toggle();
+                                        if !autocomplete_enabled() {
+                                            autocomplete.set(false);
+                                            completion_after_input.set(false);
+                                        }
+                                    },
+                                }
+                                hr {}
+                                EditorMenuItem {
+                                    index: 5,
                                     icon: AppIcon::Save,
                                     label: "Save All",
                                     suffix: "Mod Shift S",
@@ -559,7 +577,7 @@ pub fn Files(slug: String) -> Element {
                                     onclick: move |()| save_all(workspace().as_ref(), documents, toast),
                                 }
                                 EditorMenuItem {
-                                    index: 5,
+                                    index: 6,
                                     icon: AppIcon::Close,
                                     label: "Close All",
                                     disabled: documents.read().is_empty(),
@@ -570,7 +588,7 @@ pub fn Files(slug: String) -> Element {
                                     ),
                                 }
                                 EditorMenuItem {
-                                    index: 6,
+                                    index: 7,
                                     icon: AppIcon::Close,
                                     label: "Close Others",
                                     disabled: active_path().is_none(),
@@ -591,14 +609,14 @@ pub fn Files(slug: String) -> Element {
                                 }
                                 hr {}
                                 EditorMenuItem {
-                                    index: 7,
+                                    index: 8,
                                     icon: AppIcon::FileDiff,
                                     label: if diff().is_some() { "Hide Changes" } else { "View Changes" },
                                     disabled: active_changed.as_ref().is_none_or(|change| !change.is_unstaged()),
                                     onclick: move |()| toggle_diff(diff_slug.clone(), active_path(), diff, toast),
                                 }
                                 EditorMenuItem {
-                                    index: 8,
+                                    index: 9,
                                     icon: if active_changed.as_ref().is_some_and(syntaxis_git::FileChange::is_unstaged) { AppIcon::FilePlus } else { AppIcon::FileMinus },
                                     label: if active_changed.as_ref().is_some_and(syntaxis_git::FileChange::is_unstaged) { "Stage File" } else { "Unstage File" },
                                     disabled: active_changed.is_none(),
@@ -606,7 +624,7 @@ pub fn Files(slug: String) -> Element {
                                 }
                                 hr {}
                                 EditorMenuItem {
-                                    index: 9,
+                                    index: 10,
                                     icon: AppIcon::Revert,
                                     label: active_revert_action.map_or("Revert File", RevertAction::label),
                                     disabled: active_revert_action.is_none(),
@@ -775,6 +793,7 @@ pub fn Files(slug: String) -> Element {
                             let path = buffer.path.clone();
                             let reload_path = path.clone();
                             let input_path = path.clone();
+                            let selection_path = path.clone();
                             let shortcut_path = path.clone();
                             let completion_path = path.clone();
                             let diff_original = diff().and_then(|diff| diff.original);
@@ -806,12 +825,47 @@ pub fn Files(slug: String) -> Element {
                                         tab_width: config.tab_width,
                                         indent_width: config.indent_size,
                                         indent_with_tabs: config.indent_style == IndentStyle::Tabs,
-                                        command: Some(editor_command.into()),
+                                        command: Some(editor_command),
                                         search_matches: if search_panel() { editor_search_matches.clone() } else { Vec::new() },
                                         active_search_match,
                                         diff_original,
-                                        onselection: move |selection| editor_selection.set(selection),
-                                        oninput: move |contents| edit_document(&input_path, contents, documents),
+                                        onselection: move |selection: EditorSelection| {
+                                            let previous = editor_selection();
+                                            editor_selection.set(selection.clone());
+                                            if completion_after_input() {
+                                                completion_after_input.set(false);
+                                                let should_open = autocomplete_enabled()
+                                                    && documents
+                                                        .peek()
+                                                        .iter()
+                                                        .find_map(|document| match document {
+                                                            OpenDocument::Text(buffer)
+                                                                if buffer.path == selection_path =>
+                                                            {
+                                                                Some(should_open_completions(buffer, selection.start))
+                                                            }
+                                                            _ => None,
+                                                        })
+                                                        .unwrap_or(false);
+                                                autocomplete.set(should_open);
+                                            } else if autocomplete()
+                                                && (previous.start != selection.start || previous.end != selection.end)
+                                            {
+                                                autocomplete.set(false);
+                                            }
+                                        },
+                                        oninput: move |contents| {
+                                            edit_document(&input_path, contents, documents);
+                                            if suppress_next_completion() {
+                                                suppress_next_completion.set(false);
+                                                completion_after_input.set(false);
+                                            } else if !autocomplete_enabled() {
+                                                completion_after_input.set(false);
+                                                autocomplete.set(false);
+                                            } else {
+                                                completion_after_input.set(true);
+                                            }
+                                        },
                                         onkeydown: move |event| handle_editor_shortcut(
                                             &event,
                                             workspace(),
@@ -820,6 +874,7 @@ pub fn Files(slug: String) -> Element {
                                             toast,
                                             search_panel,
                                             go_to_line,
+                                            autocomplete_enabled(),
                                             autocomplete,
                                         ),
                                     }
@@ -828,6 +883,7 @@ pub fn Files(slug: String) -> Element {
                                             buffer: buffer.clone(),
                                             selection: editor_selection(),
                                             on_select: move |completion: String| {
+                                                suppress_next_completion.set(true);
                                                 apply_completion(
                                                     &completion_path,
                                                     &completion,

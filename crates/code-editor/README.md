@@ -11,7 +11,8 @@ highlighting, but not the imperative and selection APIs required by Syntaxis.
 This fork adds:
 
 - controlled values and edit events with incremental highlighting;
-- cursor/selection reporting, focus, go-to-line, and select commands;
+- cursor/selection reporting, caret-follow scrolling, focus, go-to-line, and
+  select commands;
 - Tab/Shift-Tab indentation, enter indentation, paired delimiters, and pair
   deletion/skip behavior;
 - textarea-backed next/all-occurrence cursors and vertical rectangular cursors;
@@ -19,9 +20,16 @@ This fork adds:
 - deterministic event-listener cleanup when the component is dropped.
 
 History is maintained beside the browser textarea so editor commands such as
-search replacement join typing in the same undo/redo stack. Search, selection
+search replacement join typing in the same undo/redo stack. Imperative commands
+are consumed once, preventing mutations from replaying when an editor remounts.
+Search, selection
 matching, and completion UI are application-owned because they need workspace
-state. A focused test exercises an incremental edit in a roughly
+state. Completion candidates combine cached, word-like terminals from the same
+enabled Arborium grammar with identifiers near the cursor, so language updates
+do not require hand-maintained keyword tables. Suggestions open directly from
+the input/selection bridge, including software-keyboard input, while
+`Ctrl`/`Cmd`+`Space` remains available. Semantic, project-aware completion
+remains an LSP concern. A focused test exercises an incremental edit in a roughly
 500 KiB highlighted Rust buffer; the product separately refuses text files over
 4 MiB and renders a clear large-file state.
 

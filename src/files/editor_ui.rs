@@ -1,23 +1,30 @@
 #[allow(unused_imports)] // Dioxus expands the parent glob for RSX hot-reload analysis.
 use super::{
-    component, dioxus_core, dioxus_elements, dioxus_signals, document, file_glyph,
-    language_slug_for_path, request_close, rsx, save_path, set_error, set_success, spawn,
-    ActionCallback, AnyStorage, AppIcon, ButtonExtension, CanvasExtension, CloseRequest,
-    ControlSize, DataExtension, DetailsExtension, DialogExtension, DropdownMenu, DropdownMenuItem,
-    DropdownMenuTrigger, EditorBuffer, EditorCommand, EditorCommandKind, EditorSelection, Element,
-    EmbedExtension, EventHandler, FieldsetExtension, FormEvent, GlobalAttributesExtension,
-    HasAttributes, HasFormData, HasKeyboardData, HasPointerData, History, Icon, IframeExtension,
-    ImgExtension, InputExtension, Key, KeyboardEvent, Language, LiExtension, LinkExtension,
-    MenuContent, MeterExtension, Modifiers, ModifiersInteraction, MpaddedExtension,
-    MspaceExtension, ObjectExtension, OlExtension, OpenDocument, OpenTab, OptgroupExtension,
-    OptionExtension, PanelTab, PanelTabIndicator, PanelTabWidth, ParamExtension, ProgressExtension,
-    Props, ReadableExt, ReadableHashMapExt, ReadableHashSetExt, ReadableOptionExt,
-    ReadableResultExt, ReadableStrExt, ReadableVecExt, SelectExtension, Signal, Storage,
-    SvgAttributesExtension, TextInput, TextInputType, TextareaExtension, ToastState,
-    TrackExtension, UnifiedDiff, VideoExtension, WorkspaceRecord, WritableExt, WritableStringExt,
-    WritableVecExt,
+    complete_any_word, complete_with_words, component, dioxus_core, dioxus_elements,
+    dioxus_signals, document, file_glyph, language_slug_for_path, request_close, rsx, save_path,
+    set_error, set_success, spawn, ActionCallback, AnyStorage, AppIcon, ButtonExtension,
+    CanvasExtension, CloseRequest, ControlSize, DataExtension, DetailsExtension, DialogExtension,
+    DropdownMenu, DropdownMenuItem, DropdownMenuTrigger, EditorBuffer, EditorCommand,
+    EditorCommandKind, EditorSelection, Element, EmbedExtension, EventHandler, FieldsetExtension,
+    FormEvent, GlobalAttributesExtension, HasAttributes, HasFormData, HasKeyboardData,
+    HasPointerData, History, Icon, IframeExtension, ImgExtension, InputExtension, Key,
+    KeyboardEvent, Language, LiExtension, LinkExtension, MenuContent, MeterExtension, Modifiers,
+    ModifiersInteraction, MpaddedExtension, MspaceExtension, ObjectExtension, OlExtension,
+    OpenDocument, OpenTab, OptgroupExtension, OptionExtension, PanelTab, PanelTabIndicator,
+    PanelTabWidth, ParamExtension, ProgressExtension, Props, ReadableExt, ReadableHashMapExt,
+    ReadableHashSetExt, ReadableOptionExt, ReadableResultExt, ReadableStrExt, ReadableVecExt,
+    SelectExtension, Signal, Storage, SvgAttributesExtension, TextInput, TextInputType,
+    TextareaExtension, ToastState, TrackExtension, UnifiedDiff, VideoExtension, WorkspaceRecord,
+    WritableExt, WritableStringExt, WritableVecExt,
 };
 use regex::RegexBuilder;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex, OnceLock},
+};
+
+type CompletionDictionary = Arc<[String]>;
+type CompletionDictionaryCache = Mutex<HashMap<&'static str, CompletionDictionary>>;
 
 pub(super) fn render_tab(
     tab: OpenTab,
@@ -225,6 +232,7 @@ pub(super) fn handle_editor_shortcut(
     toast: Signal<Option<ToastState>>,
     mut search_panel: Signal<bool>,
     mut go_to_line: Signal<bool>,
+    autocomplete_enabled: bool,
     mut autocomplete: Signal<bool>,
 ) {
     let modifiers = event.modifiers();
@@ -245,7 +253,7 @@ pub(super) fn handle_editor_shortcut(
             event.prevent_default();
             go_to_line.set(true);
         }
-        Key::Character(value) if value == " " => {
+        Key::Character(value) if value == " " && autocomplete_enabled => {
             event.prevent_default();
             autocomplete.set(true);
         }
@@ -603,19 +611,24 @@ pub(super) fn CompletionMenu(
     let completions = completions_for(&buffer, selection.start);
     rsx! {
         div {
-            class: "absolute top-4 right-4 z-20 w-48 rounded-md border border-border bg-popover p-1 text-xs shadow-xl",
+            class: "absolute top-2 right-2 z-20 max-h-[50dvh] w-64 max-w-[calc(100%-1rem)] overflow-y-auto rounded-md border border-border bg-popover p-1 text-sm shadow-xl",
             role: "listbox",
             "aria-label": "Code completions",
-            div { class: "flex items-center justify-between px-2 py-1 text-[9px] text-muted-foreground",
+            div { class: "sticky top-0 flex min-h-9 items-center justify-between bg-popover px-2 py-1 text-[10px] text-muted-foreground",
                 span { "COMPLETIONS" }
-                button { onclick: move |_| on_close.call(()), "×" }
+                button {
+                    class: "flex size-9 items-center justify-center rounded-sm text-base hover:bg-accent",
+                    "aria-label": "Close completions",
+                    onclick: move |_| on_close.call(()),
+                    "×"
+                }
             }
             if completions.is_empty() {
-                div { class: "px-2 py-1.5 text-muted-foreground", "No suggestions" }
+                div { class: "px-2 py-2 text-muted-foreground", "No suggestions" }
             }
             for completion in completions {
                 button {
-                    class: "block w-full rounded-sm px-2 py-1.5 text-left text-foreground hover:bg-accent",
+                    class: "block min-h-11 w-full rounded-sm px-3 py-2 text-left text-foreground hover:bg-accent active:bg-accent",
                     role: "option",
                     onclick: move |_| on_select.call(completion.clone()),
                     "{completion}"
@@ -626,80 +639,81 @@ pub(super) fn CompletionMenu(
 }
 
 pub(super) fn completions_for(buffer: &EditorBuffer, cursor: usize) -> Vec<String> {
-    let start = word_start(&buffer.contents, cursor.min(buffer.contents.len()));
-    let prefix = &buffer.contents[start..cursor.min(buffer.contents.len())];
-    language_completions(language_slug_for_path(&buffer.path))
-        .iter()
-        .filter(|candidate| candidate.starts_with(prefix) && **candidate != prefix)
-        .take(8)
-        .map(|candidate| (*candidate).to_owned())
-        .collect()
+    let words = grammar_completion_words(language_slug_for_path(&buffer.path));
+    complete_with_words(&buffer.contents, cursor, &words, 8).options
 }
 
-pub(super) fn language_completions(language: &str) -> &'static [&'static str] {
-    match language {
-        "rust" => &[
-            "async", "await", "const", "enum", "fn", "impl", "let", "match", "move", "pub",
-            "Result", "Self", "struct", "trait", "use",
-        ],
-        "javascript" | "typescript" | "tsx" => &[
-            "async",
-            "await",
-            "const",
-            "export",
-            "function",
-            "import",
-            "interface",
-            "let",
-            "return",
-            "type",
-        ],
-        "python" => &[
-            "async", "await", "class", "def", "from", "import", "return", "with", "yield",
-        ],
-        _ => &["false", "null", "true"],
+pub(super) fn should_open_completions(buffer: &EditorBuffer, cursor: usize) -> bool {
+    let cursor = cursor.min(buffer.contents.len());
+    let words = grammar_completion_words(language_slug_for_path(&buffer.path));
+    let completions = complete_with_words(&buffer.contents, cursor, &words, 8);
+    completions.from < cursor && !completions.options.is_empty()
+}
+
+fn grammar_completion_words(language: &'static str) -> CompletionDictionary {
+    static CACHE: OnceLock<CompletionDictionaryCache> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut cache = cache
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(words) = cache.get(language) {
+        return Arc::clone(words);
     }
+
+    let mut words = arborium::get_language(language).map_or_else(Vec::new, |grammar| {
+        (0..grammar.node_kind_count())
+            .filter_map(|id| u16::try_from(id).ok())
+            .filter(|id| !grammar.node_kind_is_named(*id))
+            .filter_map(|id| grammar.node_kind_for_id(id))
+            .filter(|word| is_grammar_word(word))
+            .map(str::to_owned)
+            .collect::<Vec<_>>()
+    });
+    words.sort_unstable();
+    words.dedup();
+    let words = Arc::<[String]>::from(words);
+    cache.insert(language, Arc::clone(&words));
+    words
+}
+
+fn is_grammar_word(word: &str) -> bool {
+    word.chars()
+        .next()
+        .is_some_and(|character| character.is_alphabetic() || character == '_')
+        && word
+            .chars()
+            .all(|character| character.is_alphanumeric() || character == '_')
 }
 
 pub(super) fn apply_completion(
     path: &str,
     completion: &str,
     selection: &EditorSelection,
-    mut documents: Signal<Vec<OpenDocument>>,
+    documents: Signal<Vec<OpenDocument>>,
     revision: Signal<u64>,
     command: Signal<Option<EditorCommand>>,
 ) {
-    if let Some(OpenDocument::Text(buffer)) = documents
-        .write()
-        .iter_mut()
-        .find(|document| document.path() == path)
-    {
-        let cursor = selection.start.min(buffer.contents.len());
-        let start = word_start(&buffer.contents, cursor);
-        let mut next = buffer.contents.clone();
-        next.replace_range(start..cursor, completion);
-        buffer.edit(next);
-        let caret = start + completion.len();
-        issue_command(
-            revision,
-            command,
-            EditorCommandKind::Select {
-                start: caret,
-                end: caret,
-            },
-        );
-    }
+    let Some(source) = text_document_contents(path, documents) else {
+        return;
+    };
+    issue_command(
+        revision,
+        command,
+        completion_command(&source, completion, selection.start),
+    );
 }
 
-pub(super) fn word_start(source: &str, cursor: usize) -> usize {
-    source[..cursor]
-        .char_indices()
-        .rev()
-        .find_map(|(index, character)| {
-            (!character.is_alphanumeric() && character != '_')
-                .then_some(index + character.len_utf8())
-        })
-        .unwrap_or(0)
+fn completion_command(source: &str, completion: &str, cursor: usize) -> EditorCommandKind {
+    let cursor = cursor.min(source.len());
+    let start = complete_any_word(source, cursor, 0).from;
+    let mut value = source.to_owned();
+    value.replace_range(start..cursor, completion);
+    let caret = start + completion.len();
+    EditorCommandKind::Replace {
+        value,
+        start: caret,
+        end: caret,
+    }
 }
 
 pub(super) fn language_for_path(path: &str) -> Language {
@@ -708,8 +722,14 @@ pub(super) fn language_for_path(path: &str) -> Language {
 
 #[cfg(test)]
 mod tests {
-    use super::format_editor_reference;
-    use crate::files::EditorSelection;
+    use super::{
+        completion_command, format_editor_reference, grammar_completion_words,
+        should_open_completions,
+    };
+    use crate::files::{EditorBuffer, EditorSelection};
+    use dioxus_code_editor::EditorCommandKind;
+    use syntaxis_editor::EditorConfig;
+    use syntaxis_workspace::FileVersion;
 
     #[test]
     fn file_reference_formats_cursor_and_single_line_selection() {
@@ -754,6 +774,50 @@ mod tests {
                 },
             ),
             "notes.md:1:2-3:1"
+        );
+    }
+
+    #[test]
+    fn completion_dictionary_comes_from_the_enabled_grammar() {
+        let rust = grammar_completion_words("rust");
+
+        assert!(rust.iter().any(|word| word == "fn"));
+        assert!(rust.iter().any(|word| word == "struct"));
+        assert!(!rust.iter().any(|word| word == "identifier"));
+    }
+
+    #[test]
+    fn automatic_completion_opens_only_for_a_prefix_with_candidates() {
+        let version = FileVersion {
+            length: 1,
+            modified_unix_nanos: 0,
+        };
+        let rust = EditorBuffer::open(
+            "src/main.rs",
+            "f".into(),
+            version.clone(),
+            EditorConfig::default(),
+        );
+        let no_match = EditorBuffer::open(
+            "src/main.rs",
+            "zzz".into(),
+            version,
+            EditorConfig::default(),
+        );
+
+        assert!(should_open_completions(&rust, 1));
+        assert!(!should_open_completions(&no_match, 3));
+    }
+
+    #[test]
+    fn accepting_completion_is_one_editor_history_transaction() {
+        assert_eq!(
+            completion_command("set", "setCounter", 3),
+            EditorCommandKind::Replace {
+                value: "setCounter".into(),
+                start: 10,
+                end: 10,
+            }
         );
     }
 }

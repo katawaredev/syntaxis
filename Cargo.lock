@@ -6200,6 +6200,7 @@ dependencies = [
 name = "syntaxis"
 version = "0.1.0"
 dependencies = [
+ "arborium",
  "async-trait",
  "base64",
  "bytes",
