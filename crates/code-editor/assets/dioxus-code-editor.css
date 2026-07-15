@@ -1,6 +1,14 @@
 .dxc-editor.dxc-editor {
     --dxc-editor-font-size: 14px;
     --dxc-editor-line-height: 21px;
+    --dxc-editor-font-family: ui-monospace, SFMono-Regular, Menlo, Monaco,
+        Consolas, monospace;
+    --dxc-editor-background: var(--card);
+    --dxc-editor-gutter-background: var(--background);
+    --dxc-editor-foreground: var(--foreground);
+    --dxc-editor-muted-foreground: var(--muted-foreground);
+    --dxc-editor-added: var(--success);
+    --dxc-editor-deleted: var(--destructive);
     --dxc-editor-selection: color-mix(
         in oklch,
         var(--primary) 32%,
@@ -12,10 +20,9 @@
     min-height: 100%;
     min-width: 100%;
     overflow: auto;
-    background: var(--card);
-    color: var(--foreground);
-    font-family:
-        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    background: var(--dxc-editor-background);
+    color: var(--dxc-editor-foreground);
+    font-family: var(--dxc-editor-font-family);
     font-size: var(--dxc-editor-font-size);
     line-height: var(--dxc-editor-line-height);
     tab-size: var(--dxc-editor-tab-width, 4);
@@ -51,10 +58,10 @@
     position: sticky;
     left: 0;
     z-index: 2;
-    padding: 14px 0 80px;
+    padding: 14px 0;
     border-right: 1px solid var(--border);
-    background: var(--background);
-    color: var(--muted-foreground);
+    background: var(--dxc-editor-gutter-background);
+    color: var(--dxc-editor-muted-foreground);
     pointer-events: none;
     user-select: none;
 }
@@ -116,7 +123,7 @@
     outline: none;
     background: transparent;
     color: transparent;
-    caret-color: var(--foreground);
+    caret-color: var(--dxc-editor-foreground);
     font: inherit;
     letter-spacing: 0;
 }
@@ -125,7 +132,7 @@
     color: transparent;
 }
 .dxc-editor-input::placeholder {
-    color: var(--muted-foreground);
+    color: var(--dxc-editor-muted-foreground);
 }
 .dxc-editor-no-gutter {
     grid-template-columns: minmax(0, 1fr);
@@ -148,4 +155,164 @@
 .dxc-editor:focus-within {
     box-shadow: inset 0 0 0 1px
         color-mix(in oklch, var(--primary) 38%, transparent);
+}
+
+.dxc-diff-editor.dxc-diff-editor {
+    display: block;
+    min-height: 100%;
+    overflow: auto;
+    padding: 14px 0;
+}
+.dxc-diff-editor.dxc-diff-layout-embedded {
+    min-height: 0;
+    padding: 0;
+}
+.dxc-diff-editor.dxc-diff-layout-full-file {
+    padding-top: 8px;
+}
+.dxc-diff-row,
+.dxc-diff-fold {
+    display: grid;
+    grid-template-columns: 128px minmax(0, 1fr);
+    width: max-content;
+    min-width: 100%;
+    min-height: var(--dxc-editor-line-height);
+    line-height: var(--dxc-editor-line-height);
+}
+.dxc-diff-meta,
+.dxc-diff-fold-meta {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    display: grid;
+    grid-template-columns: 24px 52px 52px;
+    border-right: 1px solid var(--border);
+    background: var(--dxc-editor-gutter-background);
+    color: var(--dxc-editor-muted-foreground);
+    text-align: right;
+    user-select: none;
+}
+.dxc-diff-marker {
+    text-align: center;
+}
+.dxc-diff-old-line,
+.dxc-diff-new-line {
+    padding: 0 10px;
+}
+.dxc-diff-old-line {
+    border-left: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
+}
+.dxc-diff-new-line {
+    border-left: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
+}
+.dxc-diff-code {
+    position: relative;
+    min-width: max-content;
+    padding: 0 22px 0 12px;
+    color: inherit;
+    font: inherit;
+    white-space: pre;
+}
+.dxc-diff-syntax {
+    color: var(--dxc-editor-foreground);
+}
+.dxc-diff-inline-overlay {
+    position: absolute;
+    inset: 0 22px 0 12px;
+    color: transparent;
+    pointer-events: none;
+    white-space: pre;
+}
+.dxc-diff-delete {
+    background: color-mix(
+        in lab,
+        var(--dxc-editor-background) 80%,
+        var(--dxc-editor-deleted)
+    );
+}
+.dxc-diff-delete .dxc-diff-meta {
+    color: var(--dxc-editor-deleted);
+    background: color-mix(
+        in lab,
+        var(--dxc-editor-gutter-background) 85%,
+        var(--dxc-editor-deleted)
+    );
+}
+.dxc-diff-insert {
+    background: color-mix(
+        in lab,
+        var(--dxc-editor-background) 80%,
+        var(--dxc-editor-added)
+    );
+}
+.dxc-diff-insert .dxc-diff-meta {
+    color: var(--dxc-editor-added);
+    background: color-mix(
+        in lab,
+        var(--dxc-editor-gutter-background) 85%,
+        var(--dxc-editor-added)
+    );
+}
+.dxc-diff-inline {
+    border-radius: 2px;
+    color: transparent;
+}
+.dxc-diff-delete .dxc-diff-inline {
+    background: color-mix(in srgb, var(--dxc-editor-deleted) 20%, transparent);
+}
+.dxc-diff-insert .dxc-diff-inline {
+    background: color-mix(in srgb, var(--dxc-editor-added) 20%, transparent);
+}
+.dxc-diff-fold {
+    border: 0;
+    background: color-mix(in oklch, var(--primary) 7%, var(--dxc-editor-background));
+    color: var(--dxc-editor-muted-foreground);
+    font: inherit;
+    text-align: left;
+}
+.dxc-diff-fold:hover {
+    color: var(--dxc-editor-foreground);
+    background: color-mix(in oklch, var(--primary) 12%, var(--dxc-editor-background));
+}
+.dxc-diff-fold-meta {
+    display: block;
+    padding-right: 13px;
+    color: var(--primary);
+}
+.dxc-diff-fold-label {
+    padding-left: 12px;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-size: 11px;
+}
+.dxc-diff-empty {
+    display: grid;
+    min-height: 180px;
+    place-items: center;
+    color: var(--dxc-editor-muted-foreground);
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-size: 12px;
+}
+.dxc-diff-editor.dxc-editor-no-gutter .dxc-diff-row,
+.dxc-diff-editor.dxc-editor-no-gutter .dxc-diff-fold {
+    grid-template-columns: 24px minmax(0, 1fr);
+}
+.dxc-diff-editor.dxc-editor-no-gutter .dxc-diff-meta {
+    grid-template-columns: 24px;
+}
+.dxc-diff-editor.dxc-editor-no-gutter .dxc-diff-old-line,
+.dxc-diff-editor.dxc-editor-no-gutter .dxc-diff-new-line {
+    display: none;
+}
+.dxc-diff-editor.dxc-editor-wrap .dxc-diff-row,
+.dxc-diff-editor.dxc-editor-wrap .dxc-diff-fold {
+    width: 100%;
+}
+.dxc-diff-editor.dxc-editor-wrap .dxc-diff-code {
+    min-width: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.dxc-diff-editor.dxc-editor-wrap .dxc-diff-inline-overlay {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
 }

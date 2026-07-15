@@ -1,9 +1,9 @@
 #[allow(unused_imports)] // Dioxus expands the parent glob for RSX hot-reload analysis.
 use super::{
-    component, diff_line_class, dioxus_core, dioxus_elements, dioxus_signals, rsx, ActionCallback,
-    AnyStorage, Button, ButtonExtension, ButtonKind, CommitDetail, ControlSize, Element,
-    EventHandler, FieldsetExtension, GlobalAttributesExtension, History, InputExtension,
-    LinkExtension, OptgroupExtension, OptionExtension, Props, ReadableExt, ReadableHashMapExt,
+    component, dioxus_core, dioxus_elements, dioxus_signals, rsx, ActionCallback, AnyStorage,
+    Button, ButtonExtension, ButtonKind, CommitDetail, ControlSize, Element, EventHandler,
+    FieldsetExtension, GlobalAttributesExtension, History, InputExtension, LinkExtension,
+    OptgroupExtension, OptionExtension, Props, RawPatch, ReadableExt, ReadableHashMapExt,
     ReadableHashSetExt, ReadableOptionExt, ReadableResultExt, ReadableStrExt, ReadableVecExt,
     Result, SelectExtension, ServerFnError, Storage, SvgAttributesExtension, TextareaExtension,
     TrackExtension, WritableExt,
@@ -78,14 +78,7 @@ pub(super) fn HistoryDetail(
                     "This commit has no textual patch."
                 }
             } else {
-                div { class: "unified-diff overflow-x-auto py-1 font-mono text-[11px] leading-relaxed",
-                    for (line_number, line) in detail.patch.lines().enumerate() {
-                        div { class: diff_line_class(line),
-                            span { "{line_number + 1}" }
-                            code { "{line}" }
-                        }
-                    }
-                }
+                RawPatch { patch: detail.patch }
             }
         }
     }

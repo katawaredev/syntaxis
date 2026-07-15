@@ -10,6 +10,17 @@ let ranges = [];
 const pairs = { "(": ")", "[": "]", "{": "}", "\"": "\"", "'": "'", "`": "`" };
 const bracketPairs = { "(": ")", "[": "]", "{": "}" };
 const encoder = new TextEncoder();
+const byteToCodeUnit = (value, byteOffset) => {
+    let bytes = 0;
+    let codeUnits = 0;
+    for (const character of value) {
+        const width = encoder.encode(character).length;
+        if (bytes + width > byteOffset) break;
+        bytes += width;
+        codeUnits += character.length;
+    }
+    return codeUnits;
+};
 const undoStack = [];
 const redoStack = [];
 const historyLimit = 200;
@@ -93,6 +104,43 @@ const restoreHistory = (from, to, redo) => {
     ranges = cloneRanges(state.ranges);
     applyValue(value, state.start, state.end);
     return true;
+};
+const applyCommand = command => {
+    if (!command || typeof command.kind !== "string") return;
+    if (command.kind === "focus") input.focus();
+    if (command.kind === "select") {
+        input.focus();
+        input.setSelectionRange(
+            byteToCodeUnit(input.value, command.start),
+            byteToCodeUnit(input.value, command.end),
+        );
+        input.dispatchEvent(new Event("select", { bubbles: true }));
+    }
+    if (command.kind === "replace") {
+        const value = command.value;
+        if (typeof value !== "string") return;
+        const start = byteToCodeUnit(value, command.start);
+        const end = byteToCodeUnit(value, command.end);
+        const before = captureHistory();
+        ranges = [];
+        input.focus();
+        applyValue(value, start, end);
+        commitHistory(before);
+    }
+    if (command.kind === "go_to_line") {
+        const line = Math.max(1, command.line);
+        let offset = 0;
+        for (let current = 1; current < line; current += 1) {
+            const next = input.value.indexOf("\n", offset);
+            if (next < 0) { offset = input.value.length; break; }
+            offset = next + 1;
+        }
+        input.focus();
+        input.setSelectionRange(offset, offset);
+        const lineHeight = Number.parseFloat(getComputedStyle(input).lineHeight) || 22;
+        input.scrollTop = Math.max(0, (line - 3) * lineHeight);
+        input.dispatchEvent(new Event("select", { bubbles: true }));
+    }
 };
 const replaceRange = (start, end, text, selectStart = text.length, selectEnd = text.length) => {
     const value = input.value.slice(0, start) + text + input.value.slice(end);
@@ -298,11 +346,14 @@ input.addEventListener("select", onSelection);
 input.addEventListener("keyup", onSelection);
 input.addEventListener("click", onSelection);
 emit();
-await dioxus.recv();
+while (true) {
+    const command = await dioxus.recv();
+    if (command === true) break;
+    applyCommand(command);
+}
 input.removeEventListener("keydown", onKeyDown);
 input.removeEventListener("beforeinput", onBeforeInput);
 input.removeEventListener("input", onInput);
 input.removeEventListener("select", onSelection);
 input.removeEventListener("keyup", onSelection);
 input.removeEventListener("click", onSelection);
-

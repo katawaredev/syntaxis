@@ -2,21 +2,21 @@ use std::collections::BTreeSet;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use dioxus::prelude::*;
-use dioxus_code::{CodeTheme, Language, Theme};
+use dioxus_code::Language;
 use dioxus_code_editor::{
     CodeEditor, EditorCommand, EditorCommandKind, EditorRange, EditorSelection,
 };
-use dioxus_icons::lucide::{Folder, FolderOpen};
 use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem, DropdownMenuTrigger};
 use syntaxis_editor::{
     apply_editor_config, language_label_for_path, language_slug_for_path, resolve_editor_config,
     BufferStatus, EditorBuffer, EditorConfigSource, ExplorerTree, ExternalChange, IndentStyle,
 };
-use syntaxis_git::{DiffKind, RepositoryStatus, UnifiedDiff};
+use syntaxis_git::{ChangeKind as GitChangeKind, DiffKind, RepositoryStatus, UnifiedDiff};
 use syntaxis_ui::prelude::{
     AppIcon, Button, ButtonKind, ControlSize, DangerNote, DialogActions, DialogForm, Drawer, Field,
-    IconButton, MenuContent, MenuTrigger, Modal, PanelHeader, PanelTab, PanelTabIndicator,
-    PanelTabList, PanelTabWidth, TextInput, TextInputType, Toast, Tone,
+    FileIcon, GitChangeBadge, Icon, IconButton, MenuContent, MenuTrigger, Modal, PanelHeader,
+    PanelTab, PanelTabIndicator, PanelTabList, PanelTabWidth, TextInput, TextInputType, Toast,
+    Tone,
 };
 use syntaxis_workspace::{ChangeKind, EntryKind, FileEntry, RelativePath, WorkspaceRecord};
 
@@ -38,10 +38,12 @@ use documents::{
     request_close, request_close_many, save_all, save_and_close, save_path,
 };
 use editor_ui::{
-    apply_completion, find_matches, handle_editor_shortcut, issue_command, language_for_path,
-    render_tab, CompletionMenu, EditorMenuItem, ExplorerActionItem, MobileTabs, SearchPanel,
+    apply_completion, copy_editor_reference, find_matches, format_editor_reference,
+    handle_editor_shortcut, issue_command, language_for_path, render_tab,
+    replace_all_search_matches, replace_search_match, text_document_contents, CompletionMenu,
+    EditorMenuItem, MobileTabs, SearchOptions, SearchPanel,
 };
-use explorer::{expand_directory, Explorer};
+use explorer::{expand_directory, Explorer, ExplorerView};
 use git_actions::{
     discard_git_change, revert_active, run_file_action, toggle_diff, toggle_stage,
     GitDiscardContext,
@@ -130,6 +132,29 @@ enum FileAction {
     Delete,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RevertAction {
+    Unsaved,
+    Unstaged,
+    Original,
+}
+
+impl RevertAction {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Unsaved => "Revert Unsaved Changes",
+            Self::Unstaged => "Revert Unstaged Changes",
+            Self::Original => "Revert to Original",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct GitRevertRequest {
+    path: String,
+    action: RevertAction,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 struct FileActionDialog {
     action: FileAction,
@@ -191,18 +216,20 @@ pub fn Files(slug: String) -> Element {
     let loading_documents = use_signal(BTreeSet::<String>::new);
     let mut drawer = use_signal(|| false);
     let mut sidebar_open = use_signal(|| true);
-    let search_open = use_signal(|| false);
+    let explorer_view = use_signal(ExplorerView::default);
     let explorer_search = use_signal(String::new);
-    let git_filter = use_signal(|| false);
-    let explorer_menu = use_signal(|| false);
     let mut editor_menu = use_signal(|| false);
     let mobile_tabs_open = use_signal(|| false);
     let mut word_wrap = use_signal(|| false);
     let mut line_numbers = use_signal(|| true);
-    let mut source_preview = use_signal(|| false);
+    let mut markdown_preview = use_signal(|| false);
+    let mut svg_preview = use_signal(|| false);
     let mut search_panel = use_signal(|| false);
     let search_query = use_signal(String::new);
+    let search_options = use_signal(SearchOptions::default);
     let mut search_match = use_signal(|| 0_usize);
+    let replace_query = use_signal(String::new);
+    let replace_open = use_signal(|| false);
     let mut go_to_line = use_signal(|| false);
     let mut editor_selection = use_signal(EditorSelection::default);
     let editor_command = use_signal(|| None::<EditorCommand>);
@@ -212,7 +239,7 @@ pub fn Files(slug: String) -> Element {
     let pending = use_signal(|| false);
     let mut file_dialog = use_signal(|| None::<FileActionDialog>);
     let close_request = use_signal(|| None::<CloseRequest>);
-    let mut git_discard_path = use_signal(|| None::<String>);
+    let mut git_revert_request = use_signal(|| None::<GitRevertRequest>);
     let mut toast = use_signal(|| None::<ToastState>);
     let mut processed_event_revision = session.processed_event_revision;
 
@@ -270,6 +297,15 @@ pub fn Files(slug: String) -> Element {
             }),
             _ => None,
         });
+    let active_markdown = active_buffer
+        .as_ref()
+        .is_some_and(|buffer| is_markdown(&buffer.path));
+    let active_svg = active_buffer
+        .as_ref()
+        .is_some_and(|buffer| is_svg(&buffer.path));
+    let showing_preview = diff().is_none()
+        && ((active_markdown && markdown_preview()) || (active_svg && svg_preview()));
+    let editor_interactive = diff().is_none() && !showing_preview;
     let active_changed = active_path().and_then(|path| {
         git_status.read().as_ref().and_then(|status| {
             status
@@ -279,28 +315,55 @@ pub fn Files(slug: String) -> Element {
                 .cloned()
         })
     });
-    let git_paths = git_status.read().as_ref().map(|status| {
-        status
-            .changes
-            .iter()
-            .map(|change| change.path.as_str().to_owned())
-            .collect::<BTreeSet<_>>()
-    });
-    let current_matches =
-        active_document
-            .as_ref()
-            .map_or_else(Vec::new, |document| match document {
-                OpenDocument::Text(buffer) => find_matches(&buffer.contents, &search_query()),
-                _ => Vec::new(),
-            });
+    let active_revert_action = if active_buffer
+        .as_ref()
+        .is_some_and(ActiveBufferMeta::is_dirty)
+    {
+        Some(RevertAction::Unsaved)
+    } else if active_changed
+        .as_ref()
+        .is_some_and(syntaxis_git::FileChange::is_unstaged)
+    {
+        Some(RevertAction::Unstaged)
+    } else if active_changed
+        .as_ref()
+        .is_some_and(syntaxis_git::FileChange::is_staged)
+    {
+        Some(RevertAction::Original)
+    } else {
+        None
+    };
+    let active_reference = active_document
+        .as_ref()
+        .and_then(|document| match document {
+            OpenDocument::Text(buffer) => Some(format_editor_reference(
+                &buffer.path,
+                &buffer.contents,
+                &editor_selection(),
+            )),
+            _ => None,
+        });
+    let (current_matches, search_error) = active_document.as_ref().map_or_else(
+        || (Vec::new(), None),
+        |document| match document {
+            OpenDocument::Text(buffer) => {
+                match find_matches(&buffer.contents, &search_query(), search_options()) {
+                    Ok(matches) => (matches, None),
+                    Err(error) => (Vec::new(), Some(error)),
+                }
+            }
+            _ => (Vec::new(), None),
+        },
+    );
     let editor_search_matches = current_matches
         .iter()
         .map(|&(start, end)| EditorRange { start, end })
         .collect::<Vec<_>>();
+    let replace_current_matches = current_matches.clone();
     let active_search_match = if editor_search_matches.is_empty() {
         None
     } else {
-        Some(search_match())
+        Some(search_match().min(editor_search_matches.len() - 1))
     };
     let open_tabs = documents
         .read()
@@ -319,11 +382,9 @@ pub fn Files(slug: String) -> Element {
                     Explorer {
                         tree,
                         selected_entry,
-                        search_open,
+                        view: explorer_view,
                         search: explorer_search,
-                        git_filter,
-                        git_paths: git_paths.clone(),
-                        menu: explorer_menu,
+                        git_status: git_status(),
                         pending: pending(),
                         on_open: move |entry| open_document(
                             entry,
@@ -358,11 +419,9 @@ pub fn Files(slug: String) -> Element {
                     Explorer {
                         tree,
                         selected_entry,
-                        search_open,
+                        view: explorer_view,
                         search: explorer_search,
-                        git_filter,
-                        git_paths: git_paths.clone(),
-                        menu: explorer_menu,
+                        git_status: git_status(),
                         pending: pending(),
                         on_open: move |entry| {
                             open_document(
@@ -419,10 +478,31 @@ pub fn Files(slug: String) -> Element {
                         on_close: move |path| request_close(path, documents, close_request),
                     }
                     div { class: "flex items-center gap-1",
+                        if diff().is_none() && active_markdown {
+                            IconButton {
+                                label: if markdown_preview() { "Show Markdown source" } else { "Show Markdown preview" },
+                                icon: if markdown_preview() { AppIcon::Code } else { AppIcon::Eye },
+                                pressed: markdown_preview(),
+                                onclick: move |_| {
+                                    markdown_preview.toggle();
+                                    search_panel.set(false);
+                                },
+                            }
+                        } else if diff().is_none() && active_svg {
+                            IconButton {
+                                label: if svg_preview() { "Show SVG source" } else { "Show SVG preview" },
+                                icon: if svg_preview() { AppIcon::Code } else { AppIcon::Eye },
+                                pressed: svg_preview(),
+                                onclick: move |_| {
+                                    svg_preview.toggle();
+                                    search_panel.set(false);
+                                },
+                            }
+                        }
                         IconButton {
                             label: "Find in file",
                             icon: AppIcon::Search,
-                            disabled: active_buffer.is_none(),
+                            disabled: active_buffer.is_none() || !editor_interactive,
                             pressed: search_panel(),
                             onclick: move |_| search_panel.toggle(),
                         }
@@ -438,31 +518,49 @@ pub fn Files(slug: String) -> Element {
                             MenuContent { class: "right-0 w-51",
                                 EditorMenuItem {
                                     index: 0,
+                                    icon: AppIcon::GoToLine,
                                     label: "Go to Line",
                                     suffix: "Mod G",
-                                    disabled: active_buffer.is_none(),
+                                    disabled: active_buffer.is_none() || !editor_interactive,
                                     onclick: move |()| go_to_line.set(true),
                                 }
                                 EditorMenuItem {
                                     index: 1,
-                                    label: if word_wrap() { "✓ Word Wrap" } else { "Word Wrap" },
-                                    onclick: move |()| word_wrap.toggle(),
+                                    icon: AppIcon::Copy,
+                                    label: "Copy Reference",
+                                    disabled: active_reference.is_none(),
+                                    onclick: move |()| {
+                                        if let Some(reference) = active_reference.clone() {
+                                            copy_editor_reference(reference, toast);
+                                        }
+                                    },
                                 }
                                 EditorMenuItem {
                                     index: 2,
-                                    label: if line_numbers() { "✓ Line Numbers" } else { "Line Numbers" },
+                                    icon: AppIcon::WordWrap,
+                                    label: "Word Wrap",
+                                    checked: word_wrap(),
+                                    onclick: move |()| word_wrap.toggle(),
+                                }
+                                EditorMenuItem {
+                                    index: 3,
+                                    icon: AppIcon::LineNumbers,
+                                    label: "Line Numbers",
+                                    checked: line_numbers(),
                                     onclick: move |()| line_numbers.toggle(),
                                 }
                                 hr {}
                                 EditorMenuItem {
-                                    index: 3,
+                                    index: 4,
+                                    icon: AppIcon::Save,
                                     label: "Save All",
                                     suffix: "Mod Shift S",
                                     disabled: !documents.read().iter().any(OpenDocument::is_dirty),
                                     onclick: move |()| save_all(workspace().as_ref(), documents, toast),
                                 }
                                 EditorMenuItem {
-                                    index: 4,
+                                    index: 5,
+                                    icon: AppIcon::Close,
                                     label: "Close All",
                                     disabled: documents.read().is_empty(),
                                     onclick: move |()| request_close_many(
@@ -472,7 +570,8 @@ pub fn Files(slug: String) -> Element {
                                     ),
                                 }
                                 EditorMenuItem {
-                                    index: 5,
+                                    index: 6,
+                                    icon: AppIcon::Close,
                                     label: "Close Others",
                                     disabled: active_path().is_none(),
                                     onclick: move |()| {
@@ -492,31 +591,37 @@ pub fn Files(slug: String) -> Element {
                                 }
                                 hr {}
                                 EditorMenuItem {
-                                    index: 6,
+                                    index: 7,
+                                    icon: AppIcon::FileDiff,
                                     label: if diff().is_some() { "Hide Changes" } else { "View Changes" },
                                     disabled: active_changed.as_ref().is_none_or(|change| !change.is_unstaged()),
                                     onclick: move |()| toggle_diff(diff_slug.clone(), active_path(), diff, toast),
                                 }
                                 EditorMenuItem {
-                                    index: 7,
+                                    index: 8,
+                                    icon: if active_changed.as_ref().is_some_and(syntaxis_git::FileChange::is_unstaged) { AppIcon::FilePlus } else { AppIcon::FileMinus },
                                     label: if active_changed.as_ref().is_some_and(syntaxis_git::FileChange::is_unstaged) { "Stage File" } else { "Unstage File" },
                                     disabled: active_changed.is_none(),
                                     onclick: move |()| toggle_stage(stage_slug.clone(), stage_change.clone(), refresh, toast),
                                 }
-                                EditorMenuItem {
-                                    index: 8,
-                                    label: "Revert Unsaved Changes",
-                                    disabled: active_buffer.as_ref().is_none_or(|buffer| !buffer.is_dirty()),
-                                    danger: true,
-                                    onclick: move |()| revert_active(active_path(), documents),
-                                }
+                                hr {}
                                 EditorMenuItem {
                                     index: 9,
-                                    label: "Discard Git Changes…",
-                                    disabled: active_changed.as_ref().is_none_or(|change| !change.is_unstaged())
-                                        || active_buffer.as_ref().is_some_and(ActiveBufferMeta::is_dirty),
+                                    icon: AppIcon::Revert,
+                                    label: active_revert_action.map_or("Revert File", RevertAction::label),
+                                    disabled: active_revert_action.is_none(),
                                     danger: true,
-                                    onclick: move |()| git_discard_path.set(active_path()),
+                                    onclick: move |()| {
+                                        match active_revert_action {
+                                            Some(RevertAction::Unsaved) => revert_active(active_path(), documents),
+                                            Some(action @ (RevertAction::Unstaged | RevertAction::Original)) => {
+                                                if let Some(path) = active_path() {
+                                                    git_revert_request.set(Some(GitRevertRequest { path, action }));
+                                                }
+                                            }
+                                            None => {}
+                                        }
+                                    },
                                 }
                             }
                         }
@@ -532,19 +637,24 @@ pub fn Files(slug: String) -> Element {
                         }
                     }
                 }
-                if search_panel() && active_buffer.is_some() {
+                if search_panel() && active_buffer.is_some() && editor_interactive {
                     SearchPanel {
                         query: search_query,
-                        current: search_match(),
+                        current: search_match,
+                        options: search_options,
+                        replacement: replace_query,
+                        replace_open,
                         count: current_matches.len(),
+                        error: search_error,
                         on_next: move |direction| {
                             if current_matches.is_empty() {
                                 return;
                             }
+                            let current = search_match().min(current_matches.len() - 1);
                             let next = if direction > 0 {
-                                (search_match() + 1) % current_matches.len()
+                                (current + 1) % current_matches.len()
                             } else {
-                                (search_match() + current_matches.len() - 1) % current_matches.len()
+                                (current + current_matches.len() - 1) % current_matches.len()
                             };
                             search_match.set(next);
                             let (start, end) = current_matches[next];
@@ -556,6 +666,68 @@ pub fn Files(slug: String) -> Element {
                                     end,
                                 },
                             );
+                        },
+                        on_replace: move |()| {
+                            if replace_current_matches.is_empty() {
+                                return;
+                            }
+                            let Some(path) = active_path() else { return };
+                            let Some(source) = text_document_contents(&path, documents) else {
+                                return;
+                            };
+                            let current = search_match().min(replace_current_matches.len() - 1);
+                            match replace_search_match(
+                                &source,
+                                &search_query(),
+                                &replace_query(),
+                                search_options(),
+                                replace_current_matches[current],
+                            ) {
+                                Ok(contents) => {
+                                    let (start, end) = replace_current_matches[current];
+                                    let inserted = contents.len() - (source.len() - (end - start));
+                                    let cursor = start + inserted;
+                                    issue_command(
+                                        command_revision,
+                                        editor_command,
+                                        EditorCommandKind::Replace {
+                                            value: contents,
+                                            start: cursor,
+                                            end: cursor,
+                                        },
+                                    );
+                                }
+                                Err(error) => set_error(toast, error),
+                            }
+                        },
+                        on_replace_all: move |()| {
+                            let Some(path) = active_path() else { return };
+                            let Some(source) = text_document_contents(&path, documents) else {
+                                return;
+                            };
+                            match replace_all_search_matches(
+                                &source,
+                                &search_query(),
+                                &replace_query(),
+                                search_options(),
+                            ) {
+                                Ok(contents) => {
+                                    let selection = editor_selection();
+                                    let start = selection.start.min(contents.len());
+                                    let end = selection.end.min(contents.len());
+                                    issue_command(
+                                        command_revision,
+                                        editor_command,
+                                        EditorCommandKind::Replace {
+                                            value: contents,
+                                            start,
+                                            end,
+                                        },
+                                    );
+                                    search_match.set(0);
+                                }
+                                Err(error) => set_error(toast, error),
+                            }
                         },
                         on_close: move |()| search_panel.set(false),
                     }
@@ -578,17 +750,21 @@ pub fn Files(slug: String) -> Element {
                                     .or_else(|| initial().is_none().then(|| "Loading workspace…".into())),
                             }
                         },
-                        Some(OpenDocument::Text(buffer)) if diff().is_some() => rsx! {
+                        Some(
+                            OpenDocument::Text(buffer),
+                        ) if diff().is_some_and(|diff| diff.original.is_none()) => rsx! {
                             DiffEditor { diff: diff().unwrap(), current: buffer.contents }
                         },
                         Some(
                             OpenDocument::Text(buffer),
-                        ) if is_markdown(&buffer.path) && !source_preview() => rsx! {
-                            MarkdownPreview { source: buffer.contents }
-                        },
+                        ) if diff().is_none() && is_markdown(&buffer.path) && markdown_preview() => {
+                            rsx! {
+                                MarkdownPreview { source: buffer.contents }
+                            }
+                        }
                         Some(
                             OpenDocument::Text(buffer),
-                        ) if is_svg(&buffer.path) && !source_preview() => {
+                        ) if diff().is_none() && is_svg(&buffer.path) && svg_preview() => {
                             rsx! {
                                 SafeSvgPreview { source: buffer.contents, path: buffer.path }
                             }
@@ -601,6 +777,8 @@ pub fn Files(slug: String) -> Element {
                             let input_path = path.clone();
                             let shortcut_path = path.clone();
                             let completion_path = path.clone();
+                            let diff_original = diff().and_then(|diff| diff.original);
+                            let diff_mode = diff_original.is_some();
                             rsx! {
                                 div { class: "relative size-full min-h-0",
                                     if buffer.status == BufferStatus::Conflict {
@@ -618,20 +796,20 @@ pub fn Files(slug: String) -> Element {
                                         }
                                     }
                                     CodeEditor {
-                                        key: "{buffer.path}",
+                                        key: "{buffer.path}-{diff_mode}",
                                         id: "syntaxis-active-editor",
-                                        class: "syntaxis-code-editor",
+                                        class: "size-full min-h-full rounded-none",
                                         value: buffer.contents.clone(),
                                         language,
-                                        theme: CodeTheme::fixed(Theme::TOKYO_NIGHT),
                                         line_numbers: line_numbers(),
                                         word_wrap: word_wrap(),
                                         tab_width: config.tab_width,
                                         indent_width: config.indent_size,
                                         indent_with_tabs: config.indent_style == IndentStyle::Tabs,
-                                        command: editor_command(),
+                                        command: Some(editor_command.into()),
                                         search_matches: if search_panel() { editor_search_matches.clone() } else { Vec::new() },
                                         active_search_match,
+                                        diff_original,
                                         onselection: move |selection| editor_selection.set(selection),
                                         oninput: move |contents| edit_document(&input_path, contents, documents),
                                         onkeydown: move |event| handle_editor_shortcut(
@@ -687,7 +865,11 @@ pub fn Files(slug: String) -> Element {
                         },
                     }
                 }
-                EditorStatus { buffer: active_buffer, selection: editor_selection }
+                EditorStatus {
+                    path: active_path(),
+                    buffer: active_buffer,
+                    selection: editor_selection,
+                }
             }
         }
 
@@ -720,15 +902,17 @@ pub fn Files(slug: String) -> Element {
                 toast,
             }
         }
-        if let Some(path) = git_discard_path() {
+        if let Some(request) = git_revert_request() {
             GitDiscardPrompt {
-                path: path.clone(),
-                on_close: move |()| git_discard_path.set(None),
+                path: request.path.clone(),
+                original: request.action == RevertAction::Original,
+                on_close: move |()| git_revert_request.set(None),
                 on_confirm: move |()| {
-                    git_discard_path.set(None);
+                    git_revert_request.set(None);
                     discard_git_change(
                         discard_slug.clone(),
-                        path.clone(),
+                        request.path.clone(),
+                        request.action == RevertAction::Original,
                         GitDiscardContext {
                             workspace: workspace(),
                             documents,
@@ -755,19 +939,6 @@ pub fn Files(slug: String) -> Element {
                     );
                     go_to_line.set(false);
                 },
-            }
-        }
-        if (is_markdown(active_path().as_deref().unwrap_or(""))
-            || is_svg(active_path().as_deref().unwrap_or(""))) && diff().is_none()
-        {
-            button {
-                class: "fixed right-3 bottom-21 z-20 rounded-md border border-border bg-popover px-2.5 py-1.5 text-[10px] text-muted-foreground shadow-lg hover:text-foreground",
-                onclick: move |_| source_preview.toggle(),
-                if source_preview() {
-                    "Show preview"
-                } else {
-                    "Show source"
-                }
             }
         }
         if let Some(toast_state) = toast() {
@@ -828,7 +999,53 @@ mod tests {
     use super::*;
     #[test]
     fn search_returns_non_overlapping_byte_ranges() {
-        assert_eq!(find_matches("one two one", "one"), vec![(0, 3), (8, 11)]);
+        assert_eq!(
+            find_matches("one two one", "one", SearchOptions::default()).unwrap(),
+            vec![(0, 3), (8, 11)]
+        );
+    }
+    #[test]
+    fn search_modes_handle_case_words_and_regex_errors() {
+        let sensitive = SearchOptions {
+            case_sensitive: true,
+            ..SearchOptions::default()
+        };
+        assert_eq!(
+            find_matches("Install install", "install", sensitive).unwrap(),
+            vec![(8, 15)]
+        );
+
+        let whole_word = SearchOptions {
+            whole_word: true,
+            ..SearchOptions::default()
+        };
+        assert_eq!(
+            find_matches("cat catalog cat_2 cat", "cat", whole_word).unwrap(),
+            vec![(0, 3), (18, 21)]
+        );
+
+        let regex = SearchOptions {
+            regex: true,
+            ..SearchOptions::default()
+        };
+        assert!(find_matches("anything", "[", regex).is_err());
+    }
+    #[test]
+    fn replacement_supports_literal_dollars_and_regex_captures() {
+        assert_eq!(
+            replace_search_match("cost $1", "$1", "$2", SearchOptions::default(), (5, 7),).unwrap(),
+            "cost $2"
+        );
+
+        let regex = SearchOptions {
+            regex: true,
+            ..SearchOptions::default()
+        };
+        assert_eq!(
+            replace_all_search_matches("Doe, Jane; Roe, Richard", r"(\w+), (\w+)", "$2 $1", regex,)
+                .unwrap(),
+            "Jane Doe; Richard Roe"
+        );
     }
     #[test]
     fn image_detection_is_explicit() {

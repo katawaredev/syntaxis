@@ -32,6 +32,23 @@ impl GitOperations for HostGit {
             .await
     }
 
+    async fn initialize(&self, workspace: &WorkspaceRecord) -> GitResult<()> {
+        match self.status(workspace).await {
+            Ok(_) => {
+                return Err(GitError::new(
+                    GitErrorCode::Conflict,
+                    "This workspace is already a Git repository.",
+                ));
+            }
+            Err(error) if error.code == GitErrorCode::NotRepository => {}
+            Err(error) => return Err(error),
+        }
+        let root = validated_root(workspace)?;
+        self.run_default(&root, &["init".into(), "-b".into(), "main".into()])
+            .await?;
+        Ok(())
+    }
+
     async fn status(&self, workspace: &WorkspaceRecord) -> GitResult<RepositoryStatus> {
         let mut status = self
             .status_with_cancellation(workspace, CancellationToken::new())
@@ -1309,12 +1326,89 @@ async fn repository_diff_with_context(
         )
     })?;
     let binary = diff_text.contains("GIT binary patch") || diff_text.contains("Binary files ");
+    let original = if binary {
+        None
+    } else {
+        original_diff_contents(host, &root, path, kind, untracked).await?
+    };
+    let current = if binary {
+        None
+    } else {
+        current_diff_contents(host, workspace, &root, path, kind).await?
+    };
     Ok(UnifiedDiff {
         path: path.clone(),
         kind,
         patch: diff_text,
         binary,
+        original,
+        current,
     })
+}
+
+async fn original_diff_contents(
+    host: &HostGit,
+    root: &Path,
+    path: &RelativePath,
+    kind: DiffKind,
+    untracked: bool,
+) -> GitResult<Option<String>> {
+    if untracked {
+        return Ok(Some(String::new()));
+    }
+    let revision = match kind {
+        DiffKind::Worktree => format!(":{}", path.as_str()),
+        DiffKind::Staged => format!("HEAD:{}", path.as_str()),
+    };
+    git_revision_contents(host, root, revision).await
+}
+
+async fn current_diff_contents(
+    host: &HostGit,
+    workspace: &WorkspaceRecord,
+    root: &Path,
+    path: &RelativePath,
+    kind: DiffKind,
+) -> GitResult<Option<String>> {
+    if kind == DiffKind::Staged {
+        return git_revision_contents(host, root, format!(":{}", path.as_str())).await;
+    }
+    match HostWorkspaceFiles
+        .read_text(workspace, path, MAX_CONFLICT_FILE_BYTES)
+        .await
+    {
+        Ok(file) => Ok(Some(file.content)),
+        Err(error) if error.code == WorkspaceErrorCode::NotFound => Ok(Some(String::new())),
+        Err(_) => Ok(None),
+    }
+}
+
+async fn git_revision_contents(
+    host: &HostGit,
+    root: &Path,
+    revision: String,
+) -> GitResult<Option<String>> {
+    let arguments = [
+        "show".into(),
+        "--no-color".into(),
+        "--no-textconv".into(),
+        "--format=".into(),
+        revision.into(),
+    ];
+    let output = host
+        .run(
+            root,
+            &arguments,
+            None,
+            &[],
+            &[0, 128],
+            CancellationToken::new(),
+        )
+        .await?;
+    if !output.status.success() {
+        return Ok(Some(String::new()));
+    }
+    Ok(String::from_utf8(output.stdout).ok())
 }
 
 fn parse_path_numstat(output: &[u8]) -> GitResult<Vec<(RelativePath, u64, u64)>> {

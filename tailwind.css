@@ -29,8 +29,6 @@
   --color-sidebar-accent: var(--sidebar-accent);
   --color-success: var(--success);
   --color-warning: var(--warning);
-  --color-diff-added: var(--diff-added);
-  --color-diff-removed: var(--diff-removed);
 
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
@@ -64,8 +62,6 @@
   --sidebar-accent: oklch(0.235 0.004 247.9);
   --success: oklch(0.704 0.131 164.2);
   --warning: oklch(0.754 0.137 72.8);
-  --diff-added: oklch(0.34 0.07 154);
-  --diff-removed: oklch(0.32 0.09 27);
   --radius: 0.45rem;
 }
 

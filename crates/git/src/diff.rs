@@ -16,6 +16,12 @@ pub struct UnifiedDiff {
     pub kind: DiffKind,
     pub patch: String,
     pub binary: bool,
+    /// Text on the original side of the comparison, when it can be displayed safely.
+    #[serde(default)]
+    pub original: Option<String>,
+    /// Text on the changed side of the comparison, when it can be displayed safely.
+    #[serde(default)]
+    pub current: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -23,6 +29,8 @@ pub struct DiffHunk {
     pub index: usize,
     pub header: String,
     pub body: String,
+    pub old_start: usize,
+    pub new_start: usize,
     /// Complete single-file patch containing only this hunk.
     pub patch: String,
     pub fingerprint: u64,
@@ -93,9 +101,7 @@ pub fn parse_diff_hunks(patch: &str) -> GitResult<Vec<DiffHunk>> {
             return Err(parse_error());
         }
         let header = lines[start].trim_end_matches(['\r', '\n']).to_owned();
-        if !valid_hunk_header(&header) {
-            return Err(parse_error());
-        }
+        let (old_start, new_start) = hunk_starts(&header).ok_or_else(parse_error)?;
         let body = lines[start..end].concat();
         let additions = lines[start + 1..end]
             .iter()
@@ -116,6 +122,8 @@ pub fn parse_diff_hunks(patch: &str) -> GitResult<Vec<DiffHunk>> {
             fingerprint: patch_fingerprint(&patch),
             patch,
             body,
+            old_start,
+            new_start,
             additions,
             deletions,
         });
@@ -132,8 +140,17 @@ fn patch_fingerprint(patch: &str) -> u64 {
         })
 }
 
-fn valid_hunk_header(header: &str) -> bool {
-    header.starts_with("@@ -") && header.contains(" +") && header[3..].contains(" @@")
+fn hunk_starts(header: &str) -> Option<(usize, usize)> {
+    let ranges = header.strip_prefix("@@ -")?.split_once(" @@")?.0;
+    let (old, new) = ranges.split_once(" +")?;
+    let start = |range: &str| {
+        range
+            .split_once(',')
+            .map_or(range, |(start, _)| start)
+            .parse()
+            .ok()
+    };
+    Some((start(old)?, start(new)?))
 }
 
 fn parse_error() -> GitError {
@@ -173,6 +190,8 @@ mod tests {
         assert_eq!(hunks.len(), 2);
         assert_eq!(hunks[0].additions, 1);
         assert_eq!(hunks[0].deletions, 1);
+        assert_eq!((hunks[0].old_start, hunks[0].new_start), (1, 1));
+        assert_eq!((hunks[1].old_start, hunks[1].new_start), (20, 20));
         assert!(hunks[0].patch.contains("diff --git a/file.txt b/file.txt"));
         assert!(!hunks[0].patch.contains("@@ -20 +20 @@"));
         assert!(hunks[1].patch.contains("@@ -20 +20 @@"));

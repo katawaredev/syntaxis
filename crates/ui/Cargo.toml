@@ -8,8 +8,10 @@ readme = "README.md"
 
 [dependencies]
 dioxus = "0.7.1"
+dioxus-devicons = "1.1.0"
 dioxus-icons = "=0.1.0"
 dioxus-primitives = { git = "https://github.com/DioxusLabs/dioxus-components", rev = "bf007c15d0cf4d04d3181cc46cf12325aa773955" }
+syntaxis-git = { path = "../git" }
 
 [lints]
 workspace = true

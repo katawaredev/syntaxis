@@ -22,7 +22,7 @@ pub(super) fn toggle_diff(
         return;
     };
     spawn(async move {
-        match git_api::repository_diff(slug, path, DiffKind::Worktree, true).await {
+        match git_api::repository_diff(slug, path, DiffKind::Worktree, false).await {
             Ok(next) => diff.set(Some(next)),
             Err(error) => set_error(toast, error.to_string()),
         }
@@ -62,11 +62,22 @@ pub(super) struct GitDiscardContext {
     pub(super) toast: Signal<Option<ToastState>>,
 }
 
-pub(super) fn discard_git_change(slug: String, path: String, mut context: GitDiscardContext) {
+pub(super) fn discard_git_change(
+    slug: String,
+    path: String,
+    revert_staged: bool,
+    mut context: GitDiscardContext,
+) {
     let Some(workspace) = context.workspace else {
         return;
     };
     spawn(async move {
+        if revert_staged {
+            if let Err(error) = git_api::unstage_paths(slug.clone(), vec![path.clone()]).await {
+                set_error(context.toast, error.to_string());
+                return;
+            }
+        }
         if let Err(error) = git_api::discard_paths(slug, vec![path.clone()]).await {
             set_error(context.toast, error.to_string());
             return;

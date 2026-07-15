@@ -12,6 +12,8 @@ use crate::{
 pub trait GitOperations: Send + Sync {
     async fn clone_repository(&self, request: CloneRequest) -> GitResult<CloneResult>;
 
+    async fn initialize(&self, workspace: &WorkspaceRecord) -> GitResult<()>;
+
     async fn status(&self, workspace: &WorkspaceRecord) -> GitResult<RepositoryStatus>;
 
     async fn diff(

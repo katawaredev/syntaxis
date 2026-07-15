@@ -1,117 +1,126 @@
 #[allow(unused_imports)] // Dioxus expands the parent glob for RSX hot-reload analysis.
 use super::{
     component, dioxus_core, dioxus_elements, dioxus_signals, rsx, set_error, spawn,
-    workspace_client, ActionCallback, AnyStorage, AppIcon, BTreeSet, ButtonExtension, ControlSize,
-    DataExtension, DetailsExtension, DialogExtension, DropdownMenu, EditorConfigSource, Element,
-    EntryKind, EventHandler, ExplorerActionItem, ExplorerTree, FieldsetExtension, FileAction,
-    FileEntry, Folder, FolderOpen, FormEvent, FormExtension, GlobalAttributesExtension,
-    HasFormData, History, IconButton, IframeExtension, InputExtension, LiExtension, LinkExtension,
-    MapExtension, MenuContent, MenuTrigger, MetaExtension, MeterExtension, MpaddedExtension,
-    MspaceExtension, ObjectExtension, OptgroupExtension, OptionExtension, OutputExtension,
-    ParamExtension, ProgressExtension, Props, ReadableExt, ReadableHashMapExt, ReadableHashSetExt,
-    ReadableOptionExt, ReadableResultExt, ReadableStrExt, ReadableVecExt, RelativePath,
-    SelectExtension, Signal, SlotExtension, Storage, SvgAttributesExtension, TextInput,
-    TextInputType, TextareaExtension, ToastState, TrackExtension, WorkspaceRecord, WritableExt,
-    WritableStringExt, WritableVecExt, MAX_TEXT_BYTES,
+    workspace_client, ActionCallback, AnyStorage, AppIcon, ButtonExtension, ControlSize,
+    DataExtension, DetailsExtension, DialogExtension, EditorConfigSource, Element, EntryKind,
+    EventHandler, ExplorerTree, FieldsetExtension, FileAction, FileEntry, FileIcon, FormEvent,
+    FormExtension, GitChangeBadge, GitChangeKind, GlobalAttributesExtension, HasFormData, History,
+    IconButton, IframeExtension, InputExtension, LiExtension, LinkExtension, MapExtension,
+    MetaExtension, MeterExtension, MpaddedExtension, MspaceExtension, ObjectExtension,
+    OptgroupExtension, OptionExtension, OutputExtension, ParamExtension, ProgressExtension, Props,
+    ReadableExt, ReadableHashMapExt, ReadableHashSetExt, ReadableOptionExt, ReadableResultExt,
+    ReadableStrExt, ReadableVecExt, RelativePath, RepositoryStatus, SelectExtension, Signal,
+    SlotExtension, Storage, SvgAttributesExtension, TextInput, TextInputType, TextareaExtension,
+    ToastState, TrackExtension, WorkspaceRecord, WritableExt, WritableStringExt, WritableVecExt,
+    MAX_TEXT_BYTES,
 };
+use std::collections::{BTreeMap, BTreeSet};
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(super) enum ExplorerView {
+    #[default]
+    Files,
+    Changes,
+    Search,
+}
 
 #[component]
 pub(super) fn Explorer(
     tree: Signal<ExplorerTree>,
     mut selected_entry: Signal<Option<FileEntry>>,
-    mut search_open: Signal<bool>,
+    mut view: Signal<ExplorerView>,
     mut search: Signal<String>,
-    mut git_filter: Signal<bool>,
-    git_paths: Option<BTreeSet<String>>,
-    mut menu: Signal<bool>,
+    git_status: Option<RepositoryStatus>,
     pending: bool,
     on_open: EventHandler<FileEntry>,
     on_expand: EventHandler<FileEntry>,
     on_action: EventHandler<FileAction>,
     on_refresh: EventHandler<()>,
 ) -> Element {
+    let changes_by_path = git_status.map_or_else(BTreeMap::new, |status| {
+        status
+            .changes
+            .into_iter()
+            .map(|change| (change.path.as_str().to_owned(), change))
+            .collect::<BTreeMap<_, _>>()
+    });
+    let git_paths = changes_by_path.keys().cloned().collect::<BTreeSet<_>>();
+    let active_view = view();
+    let search_query = search();
     let nodes = tree.read().flattened(
-        &search(),
-        if git_filter() {
-            git_paths.as_ref()
+        if active_view == ExplorerView::Search {
+            &search_query
         } else {
-            None
+            ""
         },
+        (active_view == ExplorerView::Changes).then_some(&git_paths),
     );
     rsx! {
         div { class: "flex h-full min-h-0 flex-col",
-            div { class: "flex h-10.5 min-h-10.5 items-center border-b border-border px-1.25",
-                DropdownMenu {
-                    class: "relative",
-                    open: menu(),
-                    on_open_change: move |open: bool| menu.set(open),
-                    MenuTrigger {
-                        label: "File actions",
-                        icon: AppIcon::Menu,
-                        open: menu(),
-                    }
-                    MenuContent { class: "left-0 w-48",
-                        ExplorerActionItem {
-                            index: 0,
-                            value: FileAction::CreateFile,
-                            label: "New file",
-                            disabled: pending,
-                            on_select: on_action,
-                        }
-                        ExplorerActionItem {
-                            index: 1,
-                            value: FileAction::CreateFolder,
-                            label: "New folder",
-                            disabled: pending,
-                            on_select: on_action,
-                        }
-                        hr {}
-                        ExplorerActionItem {
-                            index: 2,
-                            value: FileAction::Move,
-                            label: "Move selected",
-                            disabled: pending || selected_entry().is_none(),
-                            on_select: on_action,
-                        }
-                        ExplorerActionItem {
-                            index: 3,
-                            value: FileAction::Duplicate,
-                            label: "Duplicate selected",
-                            disabled: pending || selected_entry().is_none(),
-                            on_select: on_action,
-                        }
-                        ExplorerActionItem {
-                            index: 4,
-                            value: FileAction::Delete,
-                            label: "Delete selected",
-                            disabled: pending || selected_entry().is_none(),
-                            danger: true,
-                            on_select: on_action,
-                        }
-                    }
+            div { class: "grid h-12 min-h-12 grid-cols-3 items-center gap-1 border-b border-border p-1.25",
+                button {
+                    class: explorer_tab_class(active_view == ExplorerView::Files),
+                    onclick: move |_| view.set(ExplorerView::Files),
+                    "Files"
+                }
+                button {
+                    class: explorer_tab_class(active_view == ExplorerView::Changes),
+                    onclick: move |_| view.set(ExplorerView::Changes),
+                    "Changes ({changes_by_path.len()})"
+                }
+                button {
+                    class: explorer_tab_class(active_view == ExplorerView::Search),
+                    onclick: move |_| view.set(ExplorerView::Search),
+                    "Search"
+                }
+            }
+            div { class: "flex h-10.5 min-h-10.5 items-center gap-1 border-b border-border px-1.25",
+                IconButton {
+                    label: "New file",
+                    icon: AppIcon::FilePlus,
+                    size: ControlSize::Small,
+                    disabled: pending,
+                    onclick: move |_| on_action.call(FileAction::CreateFile),
                 }
                 IconButton {
-                    label: "Search files",
-                    icon: AppIcon::Search,
-                    pressed: search_open(),
-                    onclick: move |_| search_open.toggle(),
+                    label: "New folder",
+                    icon: AppIcon::FolderPlus,
+                    size: ControlSize::Small,
+                    disabled: pending,
+                    onclick: move |_| on_action.call(FileAction::CreateFolder),
                 }
                 IconButton {
-                    label: if git_filter() { "Show all files" } else { "Show Git changed files" },
-                    icon: AppIcon::GitBranch,
-                    pressed: git_filter(),
-                    disabled: git_paths.is_none(),
-                    onclick: move |_| git_filter.toggle(),
+                    label: "Move selected",
+                    icon: AppIcon::FileMove,
+                    size: ControlSize::Small,
+                    disabled: pending || selected_entry().is_none(),
+                    onclick: move |_| on_action.call(FileAction::Move),
+                }
+                IconButton {
+                    label: "Duplicate selected",
+                    icon: AppIcon::Copy,
+                    size: ControlSize::Small,
+                    disabled: pending || selected_entry().is_none(),
+                    onclick: move |_| on_action.call(FileAction::Duplicate),
+                }
+                IconButton {
+                    label: "Delete selected",
+                    icon: AppIcon::Delete,
+                    size: ControlSize::Small,
+                    danger: true,
+                    disabled: pending || selected_entry().is_none(),
+                    onclick: move |_| on_action.call(FileAction::Delete),
                 }
                 span { class: "flex-1" }
                 IconButton {
                     label: "Refresh files",
                     icon: AppIcon::Refresh,
+                    size: ControlSize::Small,
                     disabled: pending,
                     onclick: move |_| on_refresh.call(()),
                 }
             }
-            if search_open() {
+            if active_view == ExplorerView::Search {
                 div { class: "border-b border-border p-1.75",
                     TextInput {
                         size: ControlSize::Small,
@@ -124,41 +133,31 @@ pub(super) fn Explorer(
                     }
                 }
             }
-            div { class: "flex h-7.75 min-h-7.75 items-center justify-between px-2.75 text-[10px] font-bold tracking-[0.08em] text-muted-foreground",
-                if git_filter() {
-                    "GIT CHANGES"
-                } else {
-                    "FILES"
-                }
-            }
             div {
-                class: "min-h-0 flex-1 overflow-y-auto px-1.25",
+                class: "min-h-0 flex-1 overflow-y-auto px-1.25 pt-1",
                 role: "tree",
                 "aria-label": "Workspace files",
                 if nodes.is_empty() {
                     div { class: "p-3 text-xs text-muted-foreground",
-                        if search().is_empty() {
-                            "This workspace is empty."
-                        } else {
-                            "No loaded files match."
+                        match active_view {
+                            ExplorerView::Files => "This workspace is empty.",
+                            ExplorerView::Changes => "No Git changes.",
+                            ExplorerView::Search if search().is_empty() => "Enter a file name to search.",
+                            ExplorerView::Search => "No loaded files match.",
                         }
                     }
                 }
                 for node in nodes {
-                    {render_explorer_row(node, selected_entry, on_open, on_expand)}
-                }
-            }
-            div { class: "flex h-7.25 min-h-7.25 items-center justify-between border-t border-border px-2.5 text-[10px] text-muted-foreground",
-                span { class: "truncate",
                     {
-                        selected_entry()
-                            .map_or_else(
-                                || "No selection".into(),
-                                |entry| entry.path.as_str().to_owned(),
-                            )
+                        render_explorer_row(
+                            node.clone(),
+                            changes_by_path.get(node.entry.path.as_str()).cloned(),
+                            selected_entry,
+                            on_open,
+                            on_expand,
+                        )
                     }
                 }
-                span { {format!("{} changes", git_paths.as_ref().map_or(0, BTreeSet::len))} }
             }
         }
     }
@@ -166,6 +165,7 @@ pub(super) fn Explorer(
 
 pub(super) fn render_explorer_row(
     node: syntaxis_editor::ExplorerNode,
+    git_change: Option<syntaxis_git::FileChange>,
     mut selected_entry: Signal<Option<FileEntry>>,
     on_open: EventHandler<FileEntry>,
     on_expand: EventHandler<FileEntry>,
@@ -205,29 +205,34 @@ pub(super) fn render_explorer_row(
                     ""
                 }
             }
-            FileIcon { entry: entry.clone(), expanded: node.expanded }
+            FileIcon {
+                path: entry.path.as_str().to_owned(),
+                directory: entry.kind == EntryKind::Directory,
+                symlink: entry.kind == EntryKind::Symlink,
+                expanded: node.expanded,
+                size: 15,
+            }
             span { class: "flex-1 truncate", "{entry.name}" }
+            if let Some(change) = git_change {
+                GitChangeBadge { kind: explorer_change_kind(&change) }
+            }
         }
     }
 }
 
-/// Deliberately small adapter point: the future icon theme only needs to replace this component.
-#[component]
-pub(super) fn FileIcon(entry: FileEntry, expanded: bool) -> Element {
-    rsx! {
-        span {
-            class: if entry.kind == EntryKind::Directory { "w-3.25 shrink-0 text-warning" } else { "w-3.25 shrink-0 text-primary" },
-            "aria-hidden": true,
-            if entry.kind == EntryKind::Directory {
-                if expanded {
-                    FolderOpen { size: 14, stroke_width: 1.75 }
-                } else {
-                    Folder { size: 14, stroke_width: 1.75 }
-                }
-            } else {
-                "·"
-            }
-        }
+fn explorer_tab_class(active: bool) -> &'static str {
+    if active {
+        "h-8.5 rounded-md bg-muted text-[11px] font-medium text-foreground"
+    } else {
+        "h-8.5 rounded-md bg-transparent text-[11px] text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+    }
+}
+
+fn explorer_change_kind(change: &syntaxis_git::FileChange) -> Option<GitChangeKind> {
+    if change.conflicted {
+        Some(GitChangeKind::Unmerged)
+    } else {
+        change.worktree.or(change.index)
     }
 }
 

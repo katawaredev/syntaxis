@@ -180,13 +180,14 @@ pub(super) fn DirtyClosePrompt(
 #[component]
 pub(super) fn GitDiscardPrompt(
     path: String,
+    original: bool,
     on_close: EventHandler<()>,
     on_confirm: EventHandler<()>,
 ) -> Element {
     rsx! {
         Modal {
-            title: "Discard Git changes?",
-            description: "Restore this path to the repository version. Untracked files are deleted.",
+            title: if original { "Revert file to original?" } else { "Revert unstaged changes?" },
+            description: if original { "Restore both the index and working tree to the committed version." } else { "Restore the working tree while preserving staged changes. Untracked files are deleted." },
             on_close: move |()| on_close.call(()),
             DialogForm {
                 DangerNote { message: path }
@@ -197,7 +198,7 @@ pub(super) fn GitDiscardPrompt(
                         onclick: move |_| on_close.call(()),
                     }
                     Button {
-                        label: "Discard changes",
+                        label: if original { "Revert to original" } else { "Revert changes" },
                         kind: ButtonKind::Danger,
                         onclick: move |_| on_confirm.call(()),
                     }

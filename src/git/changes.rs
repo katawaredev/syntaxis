@@ -1,14 +1,17 @@
 #[allow(unused_imports)] // Dioxus expands the parent glob for RSX hot-reload analysis.
 use super::{
-    change_badge_class, change_label, component, diff_line_class, dioxus_core, dioxus_elements,
-    dioxus_signals, parse_diff_hunks, rsx, ActionCallback, AnyStorage, AppIcon, ChangeKind,
-    CommitInfo, ConflictChoice, ConflictFile, DiffKind, Element, EventHandler, FileChange,
-    GlobalAttributesExtension, History, HunkAction, Icon, InputExtension, LinkExtension, Mutation,
-    OptionExtension, Props, ReadableExt, ReadableHashMapExt, ReadableHashSetExt, ReadableOptionExt,
-    ReadableResultExt, ReadableStrExt, ReadableVecExt, RepositoryStatus, Result, SelectExtension,
-    SelectedChange, ServerFnError, SidebarView, Signal, Storage, StyleExtension,
-    SvgAttributesExtension, TrackExtension, UnifiedDiff, WritableExt,
+    component, diff_line_class, dioxus_core, dioxus_elements, dioxus_signals,
+    language_slug_for_path, parse_diff_hunks, rsx, ActionCallback, AnyStorage, AppIcon, ChangeKind,
+    CommitInfo, ConflictChoice, ConflictFile, DiffHunk, DiffKind, DiffLayout, Element,
+    EventHandler, FileChange, FileIcon, GitChangeBadge, GlobalAttributesExtension, History,
+    HunkAction, Icon, InputExtension, Language, LinkExtension, Mutation, OptionExtension, Props,
+    ReadableExt, ReadableHashMapExt, ReadableHashSetExt, ReadableOptionExt, ReadableResultExt,
+    ReadableStrExt, ReadableVecExt, RepositoryStatus, Result, SelectExtension, SelectedChange,
+    ServerFnError, SidebarView, Signal, Storage, StyleExtension, SvgAttributesExtension,
+    TrackExtension, UnifiedDiff, UnifiedDiffView, WritableExt,
 };
+
+const DIFF_TITLEBAR_CLASS: &str = "sticky top-0 z-10 flex min-h-14 min-w-165 items-center justify-between gap-3 border-b border-border bg-background/95 p-3 font-sans backdrop-blur-sm max-md:min-h-13 max-md:px-2.5 max-md:py-2";
 
 #[component]
 pub(super) fn GitSidebar(
@@ -185,15 +188,13 @@ pub(super) fn ChangeRow(
     } else {
         (change.unstaged_additions, change.unstaged_deletions)
     };
-    let label = change_label(change_kind);
     rsx! {
         button {
             class: if active { "flex min-h-9 w-full min-w-0 items-center gap-2 rounded-md bg-muted p-2 text-left text-xs text-foreground" } else { "flex min-h-9 w-full min-w-0 items-center gap-2 rounded-md p-2 text-left text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground" },
             onclick: move |_| selected.set(Some(selection.clone())),
-            span { class: "grid size-4 shrink-0 place-items-center rounded-[5px] border text-[8px] font-bold {change_badge_class(change_kind)}",
-                "{label}"
-            }
+            FileIcon { path: path.clone(), size: 15 }
             span { class: "min-w-0 flex-1 truncate", "{path}" }
+            GitChangeBadge { kind: change_kind }
             span { class: "shrink-0 text-[10px] text-emerald-400", "+{additions}" }
             span { class: "shrink-0 text-[10px] text-red-400", "−{deletions}" }
         }
@@ -203,6 +204,7 @@ pub(super) fn ChangeRow(
 #[component]
 pub(super) fn ChangeDetail(
     selection: Option<SelectedChange>,
+    change: Option<FileChange>,
     diff: Option<Result<UnifiedDiff, ServerFnError>>,
     conflict: Option<Result<ConflictFile, ServerFnError>>,
     expanded: bool,
@@ -227,13 +229,20 @@ pub(super) fn ChangeDetail(
             }
         };
     }
+    let (additions, deletions) = change.map_or((0, 0), |change| {
+        if selection.kind == DiffKind::Staged {
+            (change.staged_additions, change.staged_deletions)
+        } else {
+            (change.unstaged_additions, change.unstaged_deletions)
+        }
+    });
     let result = diff;
     rsx! {
-        div { class: "working-diff min-h-full",
-            div { class: "diff-titlebar",
-                div {
-                    span { class: "relative size-4 shrink-0 rounded-[5px] border-2 border-amber-400 text-amber-400 after:absolute after:top-1/2 after:left-1/2 after:size-1.5 after:-translate-1/2 after:rounded-full after:bg-current" }
-                    strong { class: "truncate text-sm font-medium", "{selection.path}" }
+        div { class: "min-h-full min-w-165",
+            div { class: DIFF_TITLEBAR_CLASS,
+                div { class: "flex min-w-0 flex-1 items-center gap-1.5",
+                    FileIcon { path: selection.path.clone(), size: 16 }
+                    strong { class: "min-w-0 truncate text-sm font-medium", "{selection.path}" }
                     button {
                         class: "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground",
                         title: if expanded { "Collapse diff context" } else { "Expand diff context" },
@@ -249,8 +258,12 @@ pub(super) fn ChangeDetail(
                             "Expand"
                         }
                     }
+                    span { class: "ml-1 flex shrink-0 items-center gap-2 px-1",
+                        span { class: "text-[10px] text-red-400", "−{deletions}" }
+                        span { class: "text-[10px] text-emerald-400", "+{additions}" }
+                    }
                 }
-                div {
+                div { class: "flex shrink-0 items-center gap-1.5",
                     if selection.kind == DiffKind::Staged {
                         button {
                             class: "inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs text-foreground hover:bg-muted disabled:opacity-50",
@@ -306,7 +319,7 @@ pub(super) fn ChangeDetail(
                 },
                 Some(Ok(diff)) => rsx! {
                     if expanded {
-                        RawPatch { patch: diff.patch }
+                        FullFileDiff { diff, path: selection.path }
                     } else {
                         HunkDiff {
                             diff,
@@ -330,10 +343,10 @@ pub(super) fn ConflictDetail(
 ) -> Element {
     rsx! {
         div { class: "min-h-full",
-            div { class: "diff-titlebar",
-                div {
-                    span { class: "relative size-4 shrink-0 rounded-[5px] border-2 border-red-400 text-red-400 after:absolute after:top-1/2 after:left-1/2 after:size-1.5 after:-translate-1/2 after:rounded-full after:bg-current" }
-                    strong { class: "truncate text-sm font-medium", "{selection.path}" }
+            div { class: DIFF_TITLEBAR_CLASS,
+                div { class: "flex min-w-0 items-center gap-1.5",
+                    FileIcon { path: selection.path.clone(), size: 16 }
+                    strong { class: "min-w-0 truncate text-sm font-medium", "{selection.path}" }
                 }
                 span { class: "text-xs text-muted-foreground", "Resolve every block to stage the file" }
             }
@@ -422,17 +435,17 @@ pub(super) fn ConflictDetail(
                                         }
                                     }
                                 }
-                                div { class: "unified-diff overflow-x-auto font-mono text-[11px] leading-relaxed",
+                                div { class: "overflow-x-auto font-mono text-[11px] leading-relaxed",
                                     for (line_number, line) in block.current.lines().enumerate() {
-                                        div { class: "diff-line removed",
-                                            span { "{line_number + 1}" }
-                                            code { "-{line}" }
+                                        PatchLine {
+                                            line_number: line_number + 1,
+                                            line: format!("-{line}"),
                                         }
                                     }
                                     for (line_number, line) in block.incoming.lines().enumerate() {
-                                        div { class: "diff-line added",
-                                            span { "{line_number + 1}" }
-                                            code { "+{line}" }
+                                        PatchLine {
+                                            line_number: line_number + 1,
+                                            line: format!("+{line}"),
                                         }
                                     }
                                 }
@@ -464,91 +477,13 @@ pub(super) fn HunkDiff(
         };
     }
     rsx! {
-        div { class: "min-w-165 space-y-3 overflow-x-auto p-3 font-mono text-[11px] leading-relaxed",
+        div { class: "min-w-165 space-y-3 overflow-x-auto p-3",
             for hunk in hunks {
-                section { class: "overflow-hidden rounded-md border border-border bg-card",
-                    header { class: "flex min-h-9 items-center justify-between gap-3 border-b border-border bg-muted/45 px-3 py-1.5 font-sans text-[10px] text-muted-foreground",
-                        span { class: "min-w-0 truncate font-mono", "{hunk.header}" }
-                        div { class: "flex shrink-0 items-center gap-1",
-                            if hunk.deletions > 0 {
-                                span { class: "mr-1 text-red-400", "−{hunk.deletions}" }
-                            }
-                            if hunk.additions > 0 {
-                                span { class: "mr-1 text-emerald-400", "+{hunk.additions}" }
-                            }
-                            if selection.kind == DiffKind::Staged {
-                                button {
-                                    class: "rounded-md border border-border bg-background px-2 py-1 text-[10px] text-foreground hover:bg-muted",
-                                    disabled: pending,
-                                    onclick: {
-                                        let path = selection.path.clone();
-                                        let index = hunk.index;
-                                        let fingerprint = hunk.fingerprint;
-                                        move |_| {
-                                            on_mutation
-                                                .call(Mutation::Hunk {
-                                                    path: path.clone(),
-                                                    kind: DiffKind::Staged,
-                                                    index,
-                                                    fingerprint,
-                                                    action: HunkAction::Unstage,
-                                                });
-                                        }
-                                    },
-                                    "Unstage"
-                                }
-                            } else {
-                                button {
-                                    class: "rounded-md border border-border bg-background px-2 py-1 text-[10px] text-foreground hover:bg-muted",
-                                    disabled: pending,
-                                    onclick: {
-                                        let path = selection.path.clone();
-                                        let index = hunk.index;
-                                        let fingerprint = hunk.fingerprint;
-                                        move |_| {
-                                            on_mutation
-                                                .call(Mutation::Hunk {
-                                                    path: path.clone(),
-                                                    kind: DiffKind::Worktree,
-                                                    index,
-                                                    fingerprint,
-                                                    action: HunkAction::Stage,
-                                                });
-                                        }
-                                    },
-                                    "Accept"
-                                }
-                                button {
-                                    class: "rounded-md bg-destructive/12 px-2 py-1 text-[10px] text-destructive hover:bg-destructive/20",
-                                    disabled: pending,
-                                    onclick: {
-                                        let path = selection.path.clone();
-                                        let index = hunk.index;
-                                        let fingerprint = hunk.fingerprint;
-                                        move |_| {
-                                            on_mutation
-                                                .call(Mutation::Hunk {
-                                                    path: path.clone(),
-                                                    kind: DiffKind::Worktree,
-                                                    index,
-                                                    fingerprint,
-                                                    action: HunkAction::Discard,
-                                                });
-                                        }
-                                    },
-                                    "Reject"
-                                }
-                            }
-                        }
-                    }
-                    div { class: "unified-diff",
-                        for (line_number, line) in hunk.body.lines().enumerate() {
-                            div { class: diff_line_class(line),
-                                span { "{line_number + 1}" }
-                                code { "{line}" }
-                            }
-                        }
-                    }
+                HunkCard {
+                    hunk,
+                    selection: selection.clone(),
+                    pending,
+                    on_mutation,
                 }
             }
         }
@@ -556,15 +491,187 @@ pub(super) fn HunkDiff(
 }
 
 #[component]
-pub(super) fn RawPatch(patch: String) -> Element {
+fn HunkCard(
+    hunk: DiffHunk,
+    selection: SelectedChange,
+    pending: bool,
+    on_mutation: EventHandler<Mutation>,
+) -> Element {
+    let (original, current) = hunk_sources(&hunk.body);
+    let language = diff_language(&selection.path);
     rsx! {
-        div { class: "unified-diff min-w-165 overflow-x-auto py-1 font-mono text-[11px] leading-relaxed",
-            for (line_number, line) in patch.lines().enumerate() {
-                div { class: diff_line_class(line),
-                    span { "{line_number + 1}" }
-                    code { "{line}" }
+        section { class: "overflow-hidden rounded-md border border-border bg-card",
+            header { class: "flex min-h-9 items-center justify-end gap-3 border-b border-border bg-muted/45 px-3 py-1.5 font-sans text-[10px] text-muted-foreground",
+                div { class: "flex shrink-0 items-center gap-1",
+                    if hunk.deletions > 0 {
+                        span { class: "mr-1 text-red-400", "−{hunk.deletions}" }
+                    }
+                    if hunk.additions > 0 {
+                        span { class: "mr-1 text-emerald-400", "+{hunk.additions}" }
+                    }
+                    if selection.kind == DiffKind::Staged {
+                        button {
+                            class: "rounded-md border border-border bg-background px-2 py-1 text-[10px] text-foreground hover:bg-muted",
+                            disabled: pending,
+                            onclick: {
+                                let path = selection.path.clone();
+                                let index = hunk.index;
+                                let fingerprint = hunk.fingerprint;
+                                move |_| {
+                                    on_mutation
+                                        .call(Mutation::Hunk {
+                                            path: path.clone(),
+                                            kind: DiffKind::Staged,
+                                            index,
+                                            fingerprint,
+                                            action: HunkAction::Unstage,
+                                        });
+                                }
+                            },
+                            "Unstage"
+                        }
+                    } else {
+                        button {
+                            class: "rounded-md border border-border bg-background px-2 py-1 text-[10px] text-foreground hover:bg-muted",
+                            disabled: pending,
+                            onclick: {
+                                let path = selection.path.clone();
+                                let index = hunk.index;
+                                let fingerprint = hunk.fingerprint;
+                                move |_| {
+                                    on_mutation
+                                        .call(Mutation::Hunk {
+                                            path: path.clone(),
+                                            kind: DiffKind::Worktree,
+                                            index,
+                                            fingerprint,
+                                            action: HunkAction::Stage,
+                                        });
+                                }
+                            },
+                            "Accept"
+                        }
+                        button {
+                            class: "rounded-md bg-destructive/12 px-2 py-1 text-[10px] text-destructive hover:bg-destructive/20",
+                            disabled: pending,
+                            onclick: {
+                                let path = selection.path.clone();
+                                let index = hunk.index;
+                                let fingerprint = hunk.fingerprint;
+                                move |_| {
+                                    on_mutation
+                                        .call(Mutation::Hunk {
+                                            path: path.clone(),
+                                            kind: DiffKind::Worktree,
+                                            index,
+                                            fingerprint,
+                                            action: HunkAction::Discard,
+                                        });
+                                }
+                            },
+                            "Reject"
+                        }
+                    }
                 }
             }
+            UnifiedDiffView {
+                original,
+                current,
+                language,
+                collapse_unchanged: false,
+                layout: DiffLayout::Embedded,
+                old_line_offset: hunk.old_start.saturating_sub(1),
+                new_line_offset: hunk.new_start.saturating_sub(1),
+            }
         }
+    }
+}
+
+#[component]
+fn FullFileDiff(diff: UnifiedDiff, path: String) -> Element {
+    let (Some(original), Some(current)) = (diff.original, diff.current) else {
+        return rsx! {
+            RawPatch { patch: diff.patch }
+        };
+    };
+    rsx! {
+        UnifiedDiffView {
+            original,
+            current,
+            language: diff_language(&path),
+            collapse_unchanged: false,
+            layout: DiffLayout::FullFile,
+        }
+    }
+}
+
+fn diff_language(path: &str) -> Language {
+    Language::from_slug(language_slug_for_path(path)).unwrap_or(Language::Rust)
+}
+
+fn hunk_sources(body: &str) -> (String, String) {
+    let mut original = Vec::new();
+    let mut current = Vec::new();
+    for line in body.lines().skip(1) {
+        if let Some(line) = line.strip_prefix(' ') {
+            original.push(line);
+            current.push(line);
+        } else if let Some(line) = line.strip_prefix('-') {
+            original.push(line);
+        } else if let Some(line) = line.strip_prefix('+') {
+            current.push(line);
+        }
+    }
+    (original.join("\n"), current.join("\n"))
+}
+
+#[component]
+pub(super) fn RawPatch(patch: String) -> Element {
+    rsx! {
+        div { class: "min-w-165 overflow-x-auto py-1 font-mono text-[11px] leading-relaxed",
+            for (line_number, line) in patch
+                .lines()
+                .filter(|line| {
+                    !line.starts_with("@@ ") && *line != "\\ No newline at end of file"
+                })
+                .enumerate()
+            {
+                PatchLine { line_number: line_number + 1, line: line.to_owned() }
+            }
+        }
+    }
+}
+
+#[component]
+fn PatchLine(line_number: usize, line: String) -> Element {
+    rsx! {
+        div { class: diff_line_class(&line),
+            span { class: "select-none border-r border-border pr-2.5 text-right text-muted-foreground",
+                "{line_number}"
+            }
+            code { class: "pl-2.5 whitespace-pre", "{line}" }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::hunk_sources;
+
+    #[test]
+    fn hunk_sources_drop_patch_metadata() {
+        let body = concat!(
+            "@@ -4,2 +4,2 @@\n",
+            " context\n",
+            "-old value\n",
+            "\\ No newline at end of file\n",
+            "+new value\n",
+            "\\ No newline at end of file\n",
+        );
+
+        assert_eq!(
+            hunk_sources(body),
+            ("context\nold value".into(), "context\nnew value".into())
+        );
     }
 }

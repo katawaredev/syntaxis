@@ -9,6 +9,10 @@ publish = false
 dioxus = { version = "0.7.1", default-features = false, features = ["lib"] }
 dioxus-code = { git = "https://github.com/DioxusLabs/dioxus-code", rev = "928568e248ebcda602ee0c071af44dfef849ec15", default-features = false, features = ["runtime"] }
 serde = { version = "1.0.219", features = ["derive"] }
+similar = { version = "3.1.1", features = ["inline", "wasm32_web_time"] }
+
+[dev-dependencies]
+serde_json = "1.0.140"
 
 [lints]
 workspace = true

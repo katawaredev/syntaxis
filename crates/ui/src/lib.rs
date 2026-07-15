@@ -5,7 +5,9 @@ mod dialog;
 mod drawer;
 mod empty_state;
 mod field;
+mod file_icon;
 mod form;
+mod git_change;
 mod icon;
 mod icon_button;
 mod input;
@@ -23,7 +25,9 @@ pub use dialog::Modal;
 pub use drawer::Drawer;
 pub use empty_state::EmptyState;
 pub use field::Field;
+pub use file_icon::FileIcon;
 pub use form::{DangerNote, DialogActions, DialogForm};
+pub use git_change::GitChangeBadge;
 pub use icon::{AppIcon, Icon};
 pub use icon_button::IconButton;
 pub use input::{TextInput, TextInputType};
@@ -39,8 +43,9 @@ pub use toast::Toast;
 pub mod prelude {
     pub use crate::{
         AppIcon, Button, ButtonKind, Checkbox, ControlSize, DangerNote, DialogActions, DialogForm,
-        Drawer, EmptyState, Field, Icon, IconButton, MenuContent, MenuTrigger, Modal, PanelHeader,
-        PanelHeaderKind, PanelTab, PanelTabIndicator, PanelTabList, PanelTabWidth, Select,
-        StatusBadge, TextArea, TextAreaResize, TextInput, TextInputType, Toast, Tone,
+        Drawer, EmptyState, Field, FileIcon, GitChangeBadge, Icon, IconButton, MenuContent,
+        MenuTrigger, Modal, PanelHeader, PanelHeaderKind, PanelTab, PanelTabIndicator,
+        PanelTabList, PanelTabWidth, Select, StatusBadge, TextArea, TextAreaResize, TextInput,
+        TextInputType, Toast, Tone,
     };
 }

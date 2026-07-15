@@ -56,6 +56,13 @@ pub struct RepositoryStatus {
     pub changes: Vec<FileChange>,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case", tag = "state", content = "repository")]
+pub enum RepositoryState {
+    Ready(RepositoryStatus),
+    Uninitialized,
+}
+
 impl RepositoryStatus {
     pub fn staged_count(&self) -> usize {
         self.changes

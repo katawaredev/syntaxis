@@ -14,6 +14,30 @@ use tokio_util::sync::CancellationToken;
 use crate::HostGit;
 
 #[tokio::test]
+async fn initializes_a_workspace_once_with_a_main_branch() {
+    let directory = TempDir::new().unwrap();
+    let host = HostGit::default();
+    let workspace = workspace(directory.path());
+
+    host.initialize(&workspace).await.unwrap();
+
+    assert!(directory.path().join(".git").is_dir());
+    assert_eq!(
+        host.status(&workspace)
+            .await
+            .unwrap()
+            .branch
+            .head
+            .as_deref(),
+        Some("main")
+    );
+    assert_eq!(
+        host.initialize(&workspace).await.unwrap_err().code,
+        GitErrorCode::Conflict
+    );
+}
+
+#[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn hunk_actions_match_git_index_and_worktree_semantics() {
     let repository = init_repository();
@@ -576,18 +600,24 @@ async fn diff_stage_unstage_discard_and_commit_match_real_git_state() {
         .unwrap();
     assert!(diff.patch.contains("-base"));
     assert!(diff.patch.contains("+changed"));
+    assert_eq!(diff.original.as_deref(), Some("base\n"));
+    assert_eq!(diff.current.as_deref(), Some("changed\n"));
+    let untracked_diff = host
+        .diff(&workspace, &new, DiffKind::Worktree)
+        .await
+        .unwrap();
+    assert_eq!(untracked_diff.original.as_deref(), Some(""));
+    assert_eq!(untracked_diff.current.as_deref(), Some("new\n"));
 
     host.stage(&workspace, &[tracked.clone(), new.clone()])
         .await
         .unwrap();
     let status = host.status(&workspace).await.unwrap();
     assert_eq!(status.staged_count(), 2);
-    assert!(host
-        .diff(&workspace, &new, DiffKind::Staged)
-        .await
-        .unwrap()
-        .patch
-        .contains("+new"));
+    let staged_new_diff = host.diff(&workspace, &new, DiffKind::Staged).await.unwrap();
+    assert!(staged_new_diff.patch.contains("+new"));
+    assert_eq!(staged_new_diff.original.as_deref(), Some(""));
+    assert_eq!(staged_new_diff.current.as_deref(), Some("new\n"));
 
     host.unstage(&workspace, std::slice::from_ref(&tracked))
         .await

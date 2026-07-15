@@ -24,4 +24,4 @@ pub use repository::{
     BranchComparison, BranchInfo, BranchRequest, CommitDetail, CommitInfo, MergeOutcome,
     PushOutcome, RemoteInfo, RemoteRequest, RemoteResult, TagInfo, TagRequest,
 };
-pub use status::{BranchStatus, ChangeKind, FileChange, RepositoryStatus};
+pub use status::{BranchStatus, ChangeKind, FileChange, RepositoryState, RepositoryStatus};

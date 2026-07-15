@@ -6,8 +6,8 @@ use syntaxis_git::{
     BranchComparison, BranchInfo, BranchRequest, CloneClientMessage, CloneRequest,
     CloneServerMessage, CommitDetail, CommitInfo, CommitOutcome, CommitRequest, ConflictChoice,
     ConflictFile, ConflictRequest, DiffKind, GitErrorCode, GitOperations, HunkAction, HunkRequest,
-    MergeOutcome, PushOutcome, RemoteInfo, RemoteRequest, RemoteResult, RepositoryStatus, TagInfo,
-    TagRequest, UnifiedDiff, CLONE_PROTOCOL_VERSION,
+    MergeOutcome, PushOutcome, RemoteInfo, RemoteRequest, RemoteResult, RepositoryState,
+    RepositoryStatus, TagInfo, TagRequest, UnifiedDiff, CLONE_PROTOCOL_VERSION,
 };
 use syntaxis_git_host::HostGit;
 use syntaxis_workspace::RelativePath;
@@ -155,6 +155,27 @@ pub(super) async fn repository_status(
     let workspace = crate::workspace::api::server::workspace_by_slug(workspace_slug).await?;
     HostGit::default()
         .status(&workspace)
+        .await
+        .map_err(server_error)
+}
+
+pub(super) async fn repository_state(
+    workspace_slug: &str,
+) -> Result<RepositoryState, ServerFnError> {
+    let workspace = crate::workspace::api::server::workspace_by_slug(workspace_slug).await?;
+    match HostGit::default().status(&workspace).await {
+        Ok(status) => Ok(RepositoryState::Ready(status)),
+        Err(error) if error.code == GitErrorCode::NotRepository => {
+            Ok(RepositoryState::Uninitialized)
+        }
+        Err(error) => Err(server_error(error)),
+    }
+}
+
+pub(super) async fn initialize_repository(workspace_slug: &str) -> Result<(), ServerFnError> {
+    let workspace = crate::workspace::api::server::workspace_by_slug(workspace_slug).await?;
+    HostGit::default()
+        .initialize(&workspace)
         .await
         .map_err(server_error)
 }

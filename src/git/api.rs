@@ -6,7 +6,7 @@ use syntaxis_git::{
     BranchComparison, BranchInfo, BranchRequest, CloneClientMessage, CloneServerMessage,
     CommitDetail, CommitInfo, CommitOutcome, CommitRequest, ConflictChoice, ConflictFile, DiffKind,
     HunkAction, MergeOutcome, PushOutcome, RemoteInfo, RemoteRequest, RemoteResult,
-    RepositoryStatus, TagInfo, TagRequest, UnifiedDiff,
+    RepositoryState, RepositoryStatus, TagInfo, TagRequest, UnifiedDiff,
 };
 use syntaxis_workspace::WorkspaceRecord;
 
@@ -29,6 +29,16 @@ pub async fn clone_repository_stream(
 #[get("/api/git/status/{workspace_slug}")]
 pub async fn repository_status(workspace_slug: String) -> Result<RepositoryStatus, ServerFnError> {
     server::repository_status(&workspace_slug).await
+}
+
+#[get("/api/git/state/{workspace_slug}")]
+pub async fn repository_state(workspace_slug: String) -> Result<RepositoryState, ServerFnError> {
+    server::repository_state(&workspace_slug).await
+}
+
+#[post("/api/git/init")]
+pub async fn initialize_repository(workspace_slug: String) -> Result<(), ServerFnError> {
+    server::initialize_repository(&workspace_slug).await
 }
 
 #[post("/api/git/diff")]

@@ -822,6 +822,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "bstr"
+version = "1.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f7dc094d718f2e1c1559ad110e27eeaae14a5465d3d56dd6dbd793079fbd530"
+dependencies = [
+ "memchr",
+ "serde_core",
+]
+
+[[package]]
 name = "built"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1552,6 +1562,8 @@ dependencies = [
  "dioxus",
  "dioxus-code",
  "serde",
+ "serde_json",
+ "similar",
 ]
 
 [[package]]
@@ -1680,6 +1692,17 @@ dependencies = [
  "tungstenite 0.28.0",
  "webbrowser",
  "wry",
+]
+
+[[package]]
+name = "dioxus-devicons"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34fd1657048e156d1df8196b667b38417d944551db0abf606fc87167056d4f8e"
+dependencies = [
+ "dioxus",
+ "dioxus-signals",
+ "roxmltree",
 ]
 
 [[package]]
@@ -5013,6 +5036,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulldown-cmark"
+version = "0.13.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e9f068eba8e7071c5f9511831b44f32c740d5adf574e990f946ddb53db2f314e"
+dependencies = [
+ "bitflags 2.13.0",
+ "memchr",
+ "pulldown-cmark-escape",
+ "unicase",
+]
+
+[[package]]
+name = "pulldown-cmark-escape"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "007d8adb5ddab6f8e3f491ac63566a7d5002cc7ed73901f72057943fa71ae1ae"
+
+[[package]]
 name = "pulp"
 version = "0.22.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5504,6 +5545,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "roxmltree"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c20b6793b5c2fa6553b250154b78d6d0db37e72700ae35fad9387a46f487c97"
+
+[[package]]
 name = "rusqlite"
 version = "0.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5922,6 +5969,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
 
 [[package]]
+name = "similar"
+version = "3.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6505efef05804732ed8a3f2d4f279429eb485bd69d5b0cc6b19cc02005cda16"
+dependencies = [
+ "bstr",
+ "web-time",
+]
+
+[[package]]
 name = "siphasher"
 version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6155,6 +6212,8 @@ dependencies = [
  "dioxus-sdk-time",
  "futures-util",
  "gloo-timers",
+ "pulldown-cmark",
+ "regex",
  "serde",
  "syntaxis-editor",
  "syntaxis-git",
@@ -6226,8 +6285,10 @@ name = "syntaxis-ui"
 version = "0.1.0"
 dependencies = [
  "dioxus",
+ "dioxus-devicons",
  "dioxus-icons",
  "dioxus-primitives",
+ "syntaxis-git",
 ]
 
 [[package]]

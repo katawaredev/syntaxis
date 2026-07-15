@@ -64,6 +64,8 @@ dioxus-icons = "0.1.0"
 dioxus-primitives = { git = "https://github.com/DioxusLabs/dioxus-components", rev = "bf007c15d0cf4d04d3181cc46cf12325aa773955" }
 dioxus-sdk-time = "0.7.0"
 futures-util = "0.3.31"
+pulldown-cmark = { version = "0.13.4", default-features = false, features = ["html"] }
+regex = "1.13.0"
 serde = { version = "1.0.219", features = ["derive"] }
 syntaxis-ui = { path = "crates/ui" }
 syntaxis-editor = { path = "crates/editor" }

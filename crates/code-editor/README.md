@@ -18,9 +18,10 @@ This fork adds:
 - line-number and word-wrap modes with the Syntaxis theme integration point;
 - deterministic event-listener cleanup when the component is dropped.
 
-History remains the browser textarea's native undo/redo stack. Search,
-selection matching, and completion UI are application-owned because they need
-workspace state. A focused test exercises an incremental edit in a roughly
+History is maintained beside the browser textarea so editor commands such as
+search replacement join typing in the same undo/redo stack. Search, selection
+matching, and completion UI are application-owned because they need workspace
+state. A focused test exercises an incremental edit in a roughly
 500 KiB highlighted Rust buffer; the product separately refuses text files over
 4 MiB and renders a clear large-file state.
 
