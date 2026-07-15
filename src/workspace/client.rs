@@ -1,3 +1,4 @@
+use syntaxis_git::{WorktreeCreateRequest, WorktreeInfo};
 #[cfg(feature = "desktop")]
 use syntaxis_workspace::ExecutionLocation;
 use syntaxis_workspace::{
@@ -37,12 +38,68 @@ pub async fn list_workspaces() -> Result<Vec<WorkspaceRecord>, String> {
     }
 }
 
-pub async fn workspace_by_slug(slug: String) -> Result<WorkspaceRecord, String> {
-    list_workspaces()
-        .await?
-        .into_iter()
-        .find(|workspace| workspace.slug == slug)
-        .ok_or_else(|| "The workspace is not registered.".to_owned())
+pub async fn worktrees(workspace: WorkspaceRecord) -> Result<Vec<WorktreeInfo>, String> {
+    #[cfg(feature = "desktop")]
+    use syntaxis_git::WorktreeOperations;
+
+    match selected_runtime() {
+        RuntimeTarget::Remote => crate::git::api::worktrees(workspace.id.0)
+            .await
+            .map_err(server_error_message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => syntaxis_git_host::HostGit::default()
+            .worktrees(&workspace)
+            .await
+            .map_err(|error| error.message),
+    }
+}
+
+pub async fn create_worktree(
+    workspace: WorkspaceRecord,
+    request: WorktreeCreateRequest,
+) -> Result<WorktreeInfo, String> {
+    #[cfg(feature = "desktop")]
+    use syntaxis_git::WorktreeOperations;
+
+    match selected_runtime() {
+        RuntimeTarget::Remote => crate::git::api::create_worktree(workspace.id.0, request)
+            .await
+            .map_err(server_error_message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => syntaxis_git_host::HostGit::default()
+            .create_worktree(&workspace, request)
+            .await
+            .map_err(|error| error.message),
+    }
+}
+
+pub async fn remove_worktree(
+    workspace: WorkspaceRecord,
+    worktree_workspace_id: String,
+    force: bool,
+) -> Result<(), String> {
+    #[cfg(feature = "desktop")]
+    use syntaxis_git::WorktreeOperations;
+
+    match selected_runtime() {
+        RuntimeTarget::Remote => {
+            crate::git::api::remove_worktree(workspace.id.0, worktree_workspace_id, force)
+                .await
+                .map_err(server_error_message)
+        }
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => syntaxis_git_host::HostGit::default()
+            .remove_worktree(&workspace, &worktree_workspace_id, force)
+            .await
+            .map_err(|error| error.message),
+    }
+}
+
+fn server_error_message(error: dioxus::prelude::ServerFnError) -> String {
+    match error {
+        dioxus::prelude::ServerFnError::ServerError { message, .. } => message,
+        other => other.to_string(),
+    }
 }
 
 pub async fn list_files(
@@ -348,4 +405,21 @@ fn host_registry() -> Result<&'static syntaxis_workspace_host::WorkspaceRegistry
         })
         .as_ref()
         .map_err(Clone::clone)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::server_error_message;
+    use dioxus::prelude::ServerFnError;
+
+    #[test]
+    fn worktree_server_errors_keep_the_actionable_message() {
+        let error = ServerFnError::ServerError {
+            message: "That branch already exists.".into(),
+            code: 422,
+            details: None,
+        };
+
+        assert_eq!(server_error_message(error), "That branch already exists.");
+    }
 }

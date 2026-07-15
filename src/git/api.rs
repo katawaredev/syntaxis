@@ -6,7 +6,8 @@ use syntaxis_git::{
     BranchComparison, BranchInfo, BranchRequest, CloneClientMessage, CloneServerMessage,
     CommitDetail, CommitInfo, CommitOutcome, CommitRequest, ConflictChoice, ConflictFile, DiffKind,
     HunkAction, MergeOutcome, PushOutcome, RemoteInfo, RemoteRequest, RemoteResult,
-    RepositoryState, RepositoryStatus, TagInfo, TagRequest, UnifiedDiff,
+    RepositoryState, RepositoryStatus, TagInfo, TagRequest, UnifiedDiff, WorktreeCreateRequest,
+    WorktreeInfo,
 };
 use syntaxis_workspace::WorkspaceRecord;
 
@@ -24,6 +25,28 @@ pub async fn clone_repository_stream(
     options: WebSocketOptions,
 ) -> Result<Websocket<CloneClientMessage, CloneServerMessage>, ServerFnError> {
     Ok(server::clone_repository_stream(options))
+}
+
+#[get("/api/worktrees/{workspace_id}")]
+pub async fn worktrees(workspace_id: String) -> Result<Vec<WorktreeInfo>, ServerFnError> {
+    server::worktrees(&workspace_id).await
+}
+
+#[post("/api/worktrees/create")]
+pub async fn create_worktree(
+    workspace_id: String,
+    request: WorktreeCreateRequest,
+) -> Result<WorktreeInfo, ServerFnError> {
+    server::create_worktree(&workspace_id, request).await
+}
+
+#[post("/api/worktrees/remove")]
+pub async fn remove_worktree(
+    workspace_id: String,
+    worktree_workspace_id: String,
+    force: bool,
+) -> Result<(), ServerFnError> {
+    server::remove_worktree(&workspace_id, &worktree_workspace_id, force).await
 }
 
 #[get("/api/git/status/{workspace_slug}")]
@@ -300,4 +323,4 @@ fn server_error(error: syntaxis_git::GitError) -> ServerFnError {
 }
 
 #[cfg(feature = "server")]
-mod server;
+pub(crate) mod server;

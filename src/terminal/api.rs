@@ -46,7 +46,7 @@ pub async fn terminal_socket(
     server::terminal_socket(WorkspaceId::new(workspace_id), options).await
 }
 #[cfg(feature = "server")]
-mod server;
+pub(crate) mod server;
 
 #[cfg(test)]
 mod tests {

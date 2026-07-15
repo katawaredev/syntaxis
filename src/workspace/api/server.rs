@@ -28,7 +28,7 @@ pub(super) async fn list_workspaces() -> Result<Vec<WorkspaceRecord>, ServerFnEr
 }
 
 pub(super) async fn get_workspace(id: &WorkspaceId) -> Result<WorkspaceRecord, ServerFnError> {
-    registry()?.get(id).await.map_err(server_error)
+    workspace_by_id(id).await
 }
 
 pub(crate) async fn register_workspace(
@@ -74,7 +74,7 @@ pub(super) async fn list_files(
     path: RelativePath,
 ) -> Result<Vec<FileEntry>, ServerFnError> {
     HostWorkspaceFiles
-        .list(&workspace(id).await?, &path)
+        .list(&workspace_by_id(id).await?, &path)
         .await
         .map_err(server_error)
 }
@@ -84,7 +84,7 @@ pub(super) async fn stat_file(
     path: RelativePath,
 ) -> Result<FileEntry, ServerFnError> {
     HostWorkspaceFiles
-        .stat(&workspace(id).await?, &path)
+        .stat(&workspace_by_id(id).await?, &path)
         .await
         .map_err(server_error)
 }
@@ -95,7 +95,7 @@ pub(super) async fn read_text(
     max_bytes: u64,
 ) -> Result<TextFile, ServerFnError> {
     HostWorkspaceFiles
-        .read_text(&workspace(id).await?, &path, max_bytes)
+        .read_text(&workspace_by_id(id).await?, &path, max_bytes)
         .await
         .map_err(server_error)
 }
@@ -106,7 +106,7 @@ pub(super) async fn read_binary(
     max_bytes: u64,
 ) -> Result<BinaryFile, ServerFnError> {
     HostWorkspaceFiles
-        .read_binary(&workspace(id).await?, &path, max_bytes)
+        .read_binary(&workspace_by_id(id).await?, &path, max_bytes)
         .await
         .map_err(server_error)
 }
@@ -116,7 +116,7 @@ pub(super) async fn create_file(
     path: RelativePath,
 ) -> Result<FileEntry, ServerFnError> {
     HostWorkspaceFiles
-        .create_file(&workspace(id).await?, &path)
+        .create_file(&workspace_by_id(id).await?, &path)
         .await
         .map_err(server_error)
 }
@@ -126,7 +126,7 @@ pub(super) async fn create_directory(
     path: RelativePath,
 ) -> Result<FileEntry, ServerFnError> {
     HostWorkspaceFiles
-        .create_directory(&workspace(id).await?, &path)
+        .create_directory(&workspace_by_id(id).await?, &path)
         .await
         .map_err(server_error)
 }
@@ -137,7 +137,7 @@ pub(super) async fn copy(
     destination: RelativePath,
 ) -> Result<(), ServerFnError> {
     HostWorkspaceFiles
-        .copy(&workspace(id).await?, &source, &destination)
+        .copy(&workspace_by_id(id).await?, &source, &destination)
         .await
         .map_err(server_error)
 }
@@ -148,14 +148,14 @@ pub(super) async fn move_entry(
     destination: RelativePath,
 ) -> Result<(), ServerFnError> {
     HostWorkspaceFiles
-        .move_entry(&workspace(id).await?, &source, &destination)
+        .move_entry(&workspace_by_id(id).await?, &source, &destination)
         .await
         .map_err(server_error)
 }
 
 pub(super) async fn delete(id: &WorkspaceId, path: RelativePath) -> Result<(), ServerFnError> {
     HostWorkspaceFiles
-        .delete(&workspace(id).await?, &path)
+        .delete(&workspace_by_id(id).await?, &path)
         .await
         .map_err(server_error)
 }
@@ -168,7 +168,13 @@ pub(super) async fn write_text(
     max_bytes: u64,
 ) -> Result<FileVersion, ServerFnError> {
     HostWorkspaceFiles
-        .write_text(&workspace(id).await?, &path, content, expected, max_bytes)
+        .write_text(
+            &workspace_by_id(id).await?,
+            &path,
+            content,
+            expected,
+            max_bytes,
+        )
         .await
         .map_err(server_error)
 }
@@ -177,7 +183,7 @@ pub(super) async fn workspace_events(
     workspace_id: WorkspaceId,
     options: WebSocketOptions,
 ) -> Result<Websocket<(), EventBatch>, ServerFnError> {
-    let workspace = workspace(&workspace_id).await?;
+    let workspace = workspace_by_id(&workspace_id).await?;
     let watcher = WorkspaceWatcher::start(workspace_id, workspace.root, Duration::from_millis(75))
         .map_err(server_error)?;
     let watcher = Arc::new(Mutex::new(watcher));
@@ -201,22 +207,37 @@ pub(super) async fn workspace_events(
     }))
 }
 
-async fn workspace(id: &WorkspaceId) -> Result<WorkspaceRecord, ServerFnError> {
-    registry()?.get(id).await.map_err(server_error)
-}
+pub(crate) async fn workspace_by_id(id: &WorkspaceId) -> Result<WorkspaceRecord, ServerFnError> {
+    use syntaxis_git::WorktreeOperations;
 
-pub(crate) async fn workspace_by_slug(slug: &str) -> Result<WorkspaceRecord, ServerFnError> {
-    registry()?
-        .list()
+    let Some((base_id, _)) = id.0.split_once(":worktree:") else {
+        return registry()?.get(id).await.map_err(server_error);
+    };
+    let base = registry()?
+        .get(&WorkspaceId::new(base_id))
         .await
-        .map_err(server_error)?
+        .map_err(server_error)?;
+    syntaxis_git_host::HostGit::default()
+        .worktrees(&base)
+        .await
+        .map_err(|error| ServerFnError::ServerError {
+            message: error.message,
+            code: 400,
+            details: None,
+        })?
         .into_iter()
-        .find(|workspace| workspace.slug == slug)
+        .filter(|worktree| workspace_root_is_permitted(&worktree.workspace.root))
+        .find(|worktree| worktree.workspace.id == *id)
+        .map(|worktree| worktree.workspace)
         .ok_or_else(|| ServerFnError::ServerError {
-            message: "The workspace is not registered.".into(),
+            message: "The selected worktree is no longer available.".into(),
             code: 404,
             details: None,
         })
+}
+
+pub(crate) fn workspace_root_is_permitted(root: &str) -> bool {
+    registry().is_ok_and(|registry| registry.permits_workspace_root(root))
 }
 
 fn registry() -> Result<&'static WorkspaceRegistryStore, ServerFnError> {

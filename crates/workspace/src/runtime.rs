@@ -20,6 +20,7 @@ pub enum RuntimeCapability {
     FileEvents,
     Terminal,
     Git,
+    Worktrees,
     Agent,
     UnrestrictedWorkspaceRoots,
 }

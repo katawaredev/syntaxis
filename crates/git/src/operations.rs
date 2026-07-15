@@ -5,7 +5,7 @@ use crate::{
     BranchComparison, BranchInfo, BranchRequest, CloneRequest, CloneResult, CommitDetail,
     CommitInfo, CommitOutcome, CommitRequest, ConflictFile, ConflictRequest, DiffKind, GitResult,
     HunkRequest, MergeOutcome, PushOutcome, RemoteInfo, RemoteRequest, RemoteResult,
-    RepositoryStatus, TagInfo, TagRequest, UnifiedDiff,
+    RepositoryStatus, TagInfo, TagRequest, UnifiedDiff, WorktreeCreateRequest, WorktreeInfo,
 };
 
 #[async_trait(?Send)]
@@ -133,4 +133,22 @@ pub trait GitOperations: Send + Sync {
         workspace: &WorkspaceRecord,
         force_with_lease: bool,
     ) -> GitResult<PushOutcome>;
+}
+
+#[async_trait(?Send)]
+pub trait WorktreeOperations: Send + Sync {
+    async fn worktrees(&self, workspace: &WorkspaceRecord) -> GitResult<Vec<WorktreeInfo>>;
+
+    async fn create_worktree(
+        &self,
+        workspace: &WorkspaceRecord,
+        request: WorktreeCreateRequest,
+    ) -> GitResult<WorktreeInfo>;
+
+    async fn remove_worktree(
+        &self,
+        workspace: &WorkspaceRecord,
+        worktree_workspace_id: &str,
+        force: bool,
+    ) -> GitResult<()>;
 }

@@ -114,3 +114,7 @@ pub(super) async fn agent_socket(
 fn agents() -> &'static HostAgentManager {
     AGENTS.get_or_init(HostAgentManager::default)
 }
+
+pub(crate) fn close_workspace(workspace_id: &WorkspaceId) {
+    agents().close_workspace(workspace_id);
+}

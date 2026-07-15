@@ -181,7 +181,7 @@ struct InitialFiles {
     git_status: Option<RepositoryStatus>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub(crate) struct FilesSessionState {
     documents: Signal<Vec<OpenDocument>>,
     active_path: Signal<Option<String>>,
@@ -196,15 +196,44 @@ pub(crate) fn use_files_session() -> FilesSessionState {
     }
 }
 
+impl FilesSessionState {
+    pub(crate) fn has_dirty(self) -> bool {
+        self.documents.read().iter().any(OpenDocument::is_dirty)
+    }
+
+    pub(crate) fn reset(mut self) {
+        self.documents.set(Vec::new());
+        self.active_path.set(None);
+        self.processed_event_revision.set(0);
+    }
+}
+
 #[component]
 pub fn Files(slug: String) -> Element {
+    let _ = slug;
+    let active = use_context::<crate::workspace::ActiveWorkspace>();
+    match active.current() {
+        Some(workspace) => rsx! {
+            WorkspaceFiles { key: "{workspace.id.0}", target: workspace }
+        },
+        None => rsx! {
+            div { class: "grid size-full place-items-center bg-card text-sm text-muted-foreground",
+                "Loading workspace files…"
+            }
+        },
+    }
+}
+
+#[component]
+fn WorkspaceFiles(target: WorkspaceRecord) -> Element {
     let mut refresh = use_signal(|| 0_u64);
-    let load_slug = slug.clone();
+    let load_target = target.clone();
     let initial = use_resource(move || {
-        let slug = load_slug.clone();
+        let workspace = load_target.clone();
         let _ = refresh();
-        async move { load_initial(slug).await }
+        async move { load_initial(workspace).await }
     });
+    let target_id = target.id.0;
     let mut workspace = use_signal(|| None::<WorkspaceRecord>);
     let mut tree = use_signal(ExplorerTree::default);
     let mut editor_configs = use_signal(Vec::<EditorConfigSource>::new);
@@ -374,10 +403,10 @@ pub fn Files(slug: String) -> Element {
         .iter()
         .map(OpenTab::from)
         .collect::<Vec<_>>();
-    let diff_slug = slug.clone();
-    let stage_slug = slug.clone();
+    let diff_slug = target_id.clone();
+    let stage_slug = target_id.clone();
     let stage_change = active_changed.clone();
-    let discard_slug = slug.clone();
+    let discard_slug = target_id;
 
     rsx! {
         div { class: if sidebar_open() { "grid size-full min-h-0 min-w-0 grid-cols-[248px_minmax(0,1fr)] overflow-hidden max-md:block" } else { "grid size-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] overflow-hidden max-md:block" },
@@ -1007,8 +1036,7 @@ pub fn Files(slug: String) -> Element {
     }
 }
 
-async fn load_initial(slug: String) -> Result<InitialFiles, String> {
-    let workspace = workspace_client::workspace_by_slug(slug.clone()).await?;
+async fn load_initial(workspace: WorkspaceRecord) -> Result<InitialFiles, String> {
     let entries = workspace_client::list_files(workspace.clone(), RelativePath::root()).await?;
     let mut editor_configs = Vec::new();
     if entries
@@ -1028,7 +1056,9 @@ async fn load_initial(slug: String) -> Result<InitialFiles, String> {
             });
         }
     }
-    let git_status = git_api::repository_status(slug).await.ok();
+    let git_status = git_api::repository_status(workspace.id.0.clone())
+        .await
+        .ok();
     Ok(InitialFiles {
         workspace,
         entries,

@@ -1,4 +1,4 @@
-mod api;
+pub(crate) mod api;
 mod renderer;
 use self::renderer::{
     GhosttyRenderer, RendererAction, RendererActionResult, RendererCommand, RendererOutput,
@@ -73,36 +73,18 @@ impl QuickCommand {
 }
 #[component]
 pub fn Terminal(slug: String) -> Element {
-    let workspaces = use_resource(crate::workspace::api::list_workspaces);
-    let workspace = workspaces()
-        .as_ref()
-        .and_then(|result| result.as_ref().ok())
-        .and_then(|workspaces| workspaces.iter().find(|workspace| workspace.slug == slug))
-        .cloned();
-    match (workspaces(), workspace) {
-        (_, Some(workspace)) => {
-            rsx! {
-                RemoteTerminal { workspace_id: workspace.id.0 }
+    let _ = slug;
+    let active = use_context::<crate::workspace::ActiveWorkspace>();
+    match active.current() {
+        Some(workspace) => rsx! {
+            RemoteTerminal { key: "{workspace.id.0}", workspace_id: workspace.id.0 }
+        },
+        None => rsx! {
+            div { class: "absolute inset-0 flex flex-col items-center justify-center gap-2 bg-card text-muted-foreground",
+                span { class: "size-5 animate-spin rounded-full border-2 border-border border-t-primary" }
+                "Loading workspace terminal…"
             }
-        }
-        (Some(Ok(_)), None) => {
-            rsx! {
-                TerminalUnavailable { message: "This workspace is no longer registered." }
-            }
-        }
-        (Some(Err(error)), _) => {
-            rsx! {
-                TerminalUnavailable { message: error.to_string() }
-            }
-        }
-        (None, _) => {
-            rsx! {
-                div { class: "absolute inset-0 flex flex-col items-center justify-center gap-2 bg-card text-muted-foreground",
-                    span { class: "size-5 animate-spin rounded-full border-2 border-border border-t-primary" }
-                    "Loading workspace terminal…"
-                }
-            }
-        }
+        },
     }
 }
 #[component]

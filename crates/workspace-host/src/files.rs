@@ -36,6 +36,11 @@ impl HostWorkspaceFiles {
         }
         let mut entries = fs::read_dir(directory)
             .map_err(map_io_error)?
+            .filter(|entry| {
+                entry.as_ref().map_or(true, |entry| {
+                    entry.file_name() != std::ffi::OsStr::new(".syntaxis-worktrees")
+                })
+            })
             .map(|entry| {
                 let entry = entry.map_err(map_io_error)?;
                 let child = if relative.is_root() {

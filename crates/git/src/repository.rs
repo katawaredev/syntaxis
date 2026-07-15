@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use syntaxis_workspace::RelativePath;
+use syntaxis_workspace::{RelativePath, WorkspaceRecord};
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BranchInfo {
@@ -14,6 +14,53 @@ pub struct BranchInfo {
 pub struct BranchRequest {
     pub name: String,
     pub start_point: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorktreeKind {
+    Primary,
+    Managed,
+    External,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct WorktreeInfo {
+    /// A checkout-specific workspace view. Its opaque id scopes Files, Terminal,
+    /// Git, file events, and AI sessions to this worktree.
+    pub workspace: WorkspaceRecord,
+    pub branch: Option<String>,
+    pub head: String,
+    pub kind: WorktreeKind,
+}
+
+impl WorktreeInfo {
+    pub fn is_primary(&self) -> bool {
+        self.kind == WorktreeKind::Primary
+    }
+
+    pub fn is_managed(&self) -> bool {
+        self.kind == WorktreeKind::Managed
+    }
+
+    pub fn label(&self) -> String {
+        self.branch.clone().unwrap_or_else(|| {
+            let short = self.head.chars().take(7).collect::<String>();
+            format!("Detached at {short}")
+        })
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct WorktreeCreateRequest {
+    pub branch: String,
+    pub start_point: Option<String>,
+    #[serde(default = "default_create_branch")]
+    pub create_branch: bool,
+}
+
+const fn default_create_branch() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

@@ -24,6 +24,12 @@ pub struct WorkspaceRegistryStore {
 }
 
 impl WorkspaceRegistryStore {
+    pub fn permits_workspace_root(&self, root: impl AsRef<Path>) -> bool {
+        root.as_ref()
+            .canonicalize()
+            .is_ok_and(|canonical| canonical.is_dir() && self.policy.permits(&canonical))
+    }
+
     /// Opens or creates a registry and applies pending schema migrations.
     ///
     /// # Errors

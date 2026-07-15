@@ -2,10 +2,10 @@ use dioxus::prelude::*;
 use dioxus_icons::lucide::{
     ArrowDown, ArrowUp, CaseSensitive, Check, ChevronLeft, ChevronRight, Code, Command, Copy,
     Ellipsis, EllipsisVertical, Eye, FileDiff, FileInput, FileMinus, FilePlus, FolderOpen,
-    FolderPlus, GitBranch, GitCommitHorizontal, Hash, ListChevronsDownUp, ListChevronsUpDown,
-    ListOrdered, Menu, PanelLeftOpen, Play, Plus, RefreshCw, Regex, Repeat1, Replace, ReplaceAll,
-    RotateCcw, Save, Search, Send, Sparkles, Square, SquarePen, SquareTerminal, Trash2, Type,
-    WholeWord, X,
+    FolderPlus, GitBranch, GitCommitHorizontal, GitFork, Hash, ListChevronsDownUp,
+    ListChevronsUpDown, ListOrdered, Menu, PanelLeftOpen, Play, Plus, RefreshCw, Regex, Repeat1,
+    Replace, ReplaceAll, RotateCcw, Save, Search, Send, Sparkles, Square, SquarePen,
+    SquareTerminal, Trash2, Type, WholeWord, X,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -29,6 +29,7 @@ pub enum AppIcon {
     Folder,
     FolderPlus,
     GitBranch,
+    Worktree,
     GoToLine,
     LineNumbers,
     MatchCase,
@@ -116,6 +117,9 @@ pub fn Icon(icon: AppIcon, #[props(default = 16)] size: u32) -> Element {
         },
         AppIcon::GitBranch => rsx! {
             GitBranch { size }
+        },
+        AppIcon::Worktree => rsx! {
+            GitFork { size }
         },
         AppIcon::GoToLine => rsx! {
             ListOrdered { size }

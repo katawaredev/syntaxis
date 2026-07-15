@@ -219,6 +219,10 @@ fn terminals() -> &'static HostTerminalManager {
     TERMINALS.get_or_init(|| HostTerminalManager::new(TerminalHostConfig::default()))
 }
 
+pub(crate) fn close_workspace(workspace_id: &WorkspaceId) {
+    let _ = terminals().close_all(workspace_id);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

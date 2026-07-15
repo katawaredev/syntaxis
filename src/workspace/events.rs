@@ -7,6 +7,13 @@ pub struct WorkspaceEventState {
     pub revision: Signal<u64>,
 }
 
+impl WorkspaceEventState {
+    pub(crate) fn reset(mut self) {
+        self.latest.set(None);
+        self.revision.set(0);
+    }
+}
+
 #[component]
 pub(super) fn WorkspaceEventBridge(
     workspace: WorkspaceRecord,

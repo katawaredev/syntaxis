@@ -54,6 +54,13 @@ impl HostAgentManager {
         lock(&self.workspaces).insert(workspace.id.clone(), agent.clone());
         agent
     }
+
+    /// Stops and forgets every live agent process for one workspace target.
+    pub fn close_workspace(&self, workspace_id: &WorkspaceId) {
+        if let Some(workspace) = lock(&self.workspaces).remove(workspace_id) {
+            lock(&workspace.sessions).clear();
+        }
+    }
 }
 
 #[derive(Clone)]

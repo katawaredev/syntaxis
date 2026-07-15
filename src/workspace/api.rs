@@ -48,6 +48,7 @@ pub async fn runtime_state() -> Result<RuntimeState, ServerFnError> {
                 RuntimeCapability::FileEvents,
                 RuntimeCapability::Terminal,
                 RuntimeCapability::Git,
+                RuntimeCapability::Worktrees,
                 RuntimeCapability::Agent,
             ],
         },

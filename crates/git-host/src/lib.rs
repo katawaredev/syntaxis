@@ -5,5 +5,6 @@
 mod operations;
 mod parser;
 mod runner;
+mod worktrees;
 
 pub use runner::{HostGit, HostGitConfig};

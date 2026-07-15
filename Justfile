@@ -326,6 +326,24 @@ ci-code platform=default_platform: (fix platform) test-doc
     @echo
     @echo "All code quality gates passed."
 
+# Auto-fix formatting and lint issues without running tests (for git pre-commit).
+pre-commit platform=default_platform:
+    cargo fmt --all
+    dx fmt
+    cargo clippy \
+        --workspace \
+        --all-targets \
+        --no-default-features \
+        --features "{{ platform }}" \
+        --fix --allow-dirty --allow-staged
+    cargo clippy \
+        --workspace \
+        --all-targets \
+        --no-default-features \
+        --features "{{ platform }}" \
+        -- -D warnings
+    dx check
+
 # Apply formatting, then perform the fast validation workflow.
 fix platform=default_platform:
     cargo fmt --all

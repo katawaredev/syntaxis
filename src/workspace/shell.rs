@@ -5,6 +5,7 @@ use crate::{app::Route, files::use_files_session, mock::WORKSPACES};
 use syntaxis_workspace::{ExecutionLocation, RuntimeState};
 
 use super::client::{list_workspaces, runtime_state};
+use super::worktrees::use_active_workspace;
 use super::ProjectIcon;
 use super::{events::WorkspaceEventBridge, WorkspaceEventState};
 
@@ -21,6 +22,8 @@ enum Module {
 pub fn WorkspaceShell() -> Element {
     let files_session = use_files_session();
     use_context_provider(|| files_session);
+    let active_workspace = use_active_workspace();
+    use_context_provider(|| active_workspace);
     let event_state = WorkspaceEventState {
         latest: use_signal(|| None),
         revision: use_signal(|| 0),
@@ -42,6 +45,22 @@ pub fn WorkspaceShell() -> Element {
         .and_then(|result| result.as_ref().ok())
         .and_then(|workspaces| workspaces.iter().find(|workspace| workspace.slug == slug))
         .cloned();
+    let active_slug = slug.clone();
+    use_effect(move || {
+        let Some(workspace) = workspaces()
+            .as_ref()
+            .and_then(|result| result.as_ref().ok())
+            .and_then(|workspaces| {
+                workspaces
+                    .iter()
+                    .find(|workspace| workspace.slug == active_slug)
+            })
+            .cloned()
+        else {
+            return;
+        };
+        active_workspace.set_base(workspace);
+    });
     let project_name = registered_workspace.as_ref().map_or_else(
         || {
             WORKSPACES
@@ -80,11 +99,16 @@ pub fn WorkspaceShell() -> Element {
     rsx! {
         main { class: "flex h-svh w-full flex-col overflow-hidden",
             if let (Some(workspace), Some(location)) = (
-                registered_workspace.clone(),
+                active_workspace.current(),
                 runtime_location,
             )
             {
-                WorkspaceEventBridge { workspace, location, state: event_state }
+                WorkspaceEventBridge {
+                    key: "{workspace.id.0}",
+                    workspace,
+                    location,
+                    state: event_state,
+                }
             }
             header { class: "flex h-11.5 min-h-11.5 items-center gap-2 border-b border-border bg-background px-2.5 max-md:h-12 max-md:min-h-12",
                 Link {

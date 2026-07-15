@@ -7,13 +7,67 @@ use syntaxis_git::{
     CloneServerMessage, CommitDetail, CommitInfo, CommitOutcome, CommitRequest, ConflictChoice,
     ConflictFile, ConflictRequest, DiffKind, GitErrorCode, GitOperations, HunkAction, HunkRequest,
     MergeOutcome, PushOutcome, RemoteInfo, RemoteRequest, RemoteResult, RepositoryState,
-    RepositoryStatus, TagInfo, TagRequest, UnifiedDiff, CLONE_PROTOCOL_VERSION,
+    RepositoryStatus, TagInfo, TagRequest, UnifiedDiff, WorktreeCreateRequest, WorktreeInfo,
+    WorktreeOperations, CLONE_PROTOCOL_VERSION,
 };
 use syntaxis_git_host::HostGit;
 use syntaxis_workspace::RelativePath;
 use tokio_util::sync::CancellationToken;
 
 use super::server_error;
+
+pub(super) async fn worktrees(workspace_id: &str) -> Result<Vec<WorktreeInfo>, ServerFnError> {
+    let workspace = crate::workspace::api::server::workspace_by_id(
+        &syntaxis_workspace::WorkspaceId::new(workspace_id),
+    )
+    .await?;
+    let worktrees = HostGit::default()
+        .worktrees(&workspace)
+        .await
+        .map_err(server_error)?;
+    Ok(worktrees
+        .into_iter()
+        .filter(|worktree| {
+            crate::workspace::api::server::workspace_root_is_permitted(&worktree.workspace.root)
+        })
+        .collect())
+}
+
+pub(super) async fn create_worktree(
+    workspace_id: &str,
+    request: WorktreeCreateRequest,
+) -> Result<WorktreeInfo, ServerFnError> {
+    let workspace = crate::workspace::api::server::workspace_by_id(
+        &syntaxis_workspace::WorkspaceId::new(workspace_id),
+    )
+    .await?;
+    HostGit::default()
+        .create_worktree(&workspace, request)
+        .await
+        .map_err(server_error)
+}
+
+pub(super) async fn remove_worktree(
+    workspace_id: &str,
+    worktree_workspace_id: &str,
+    force: bool,
+) -> Result<(), ServerFnError> {
+    let workspace = crate::workspace::api::server::workspace_by_id(
+        &syntaxis_workspace::WorkspaceId::new(workspace_id),
+    )
+    .await?;
+    HostGit::default()
+        .remove_worktree(&workspace, worktree_workspace_id, force)
+        .await
+        .map_err(server_error)?;
+    crate::terminal::api::server::close_workspace(&syntaxis_workspace::WorkspaceId::new(
+        worktree_workspace_id,
+    ));
+    crate::ai::api::server::close_workspace(&syntaxis_workspace::WorkspaceId::new(
+        worktree_workspace_id,
+    ));
+    Ok(())
+}
 
 pub(super) async fn clone_repository(
     url: String,
@@ -152,7 +206,7 @@ async fn send_clone_error(
 pub(super) async fn repository_status(
     workspace_slug: &str,
 ) -> Result<RepositoryStatus, ServerFnError> {
-    let workspace = crate::workspace::api::server::workspace_by_slug(workspace_slug).await?;
+    let workspace = workspace(workspace_slug).await?;
     HostGit::default()
         .status(&workspace)
         .await
@@ -162,7 +216,7 @@ pub(super) async fn repository_status(
 pub(super) async fn repository_state(
     workspace_slug: &str,
 ) -> Result<RepositoryState, ServerFnError> {
-    let workspace = crate::workspace::api::server::workspace_by_slug(workspace_slug).await?;
+    let workspace = workspace(workspace_slug).await?;
     match HostGit::default().status(&workspace).await {
         Ok(status) => Ok(RepositoryState::Ready(status)),
         Err(error) if error.code == GitErrorCode::NotRepository => {
@@ -173,7 +227,7 @@ pub(super) async fn repository_state(
 }
 
 pub(super) async fn initialize_repository(workspace_slug: &str) -> Result<(), ServerFnError> {
-    let workspace = crate::workspace::api::server::workspace_by_slug(workspace_slug).await?;
+    let workspace = workspace(workspace_slug).await?;
     HostGit::default()
         .initialize(&workspace)
         .await
@@ -533,7 +587,10 @@ pub(super) async fn push(
 async fn workspace(
     workspace_slug: &str,
 ) -> Result<syntaxis_workspace::WorkspaceRecord, ServerFnError> {
-    crate::workspace::api::server::workspace_by_slug(workspace_slug).await
+    crate::workspace::api::server::workspace_by_id(&syntaxis_workspace::WorkspaceId::new(
+        workspace_slug,
+    ))
+    .await
 }
 
 fn parse_path(path: String) -> Result<RelativePath, ServerFnError> {

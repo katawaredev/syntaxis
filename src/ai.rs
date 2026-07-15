@@ -1,4 +1,4 @@
-mod api;
+pub(crate) mod api;
 mod components;
 
 use dioxus::prelude::*;
@@ -7,7 +7,12 @@ use syntaxis_agent::{
     AgentSessionSummary, AgentSnapshot, AgentStatus, ChatItem, ClientMessage, PromptDelivery,
     ServerMessage, PROTOCOL_VERSION,
 };
-use syntaxis_ui::prelude::{AppIcon, Button, ButtonKind, DialogActions, DialogForm, Drawer, Modal};
+use syntaxis_git::WorktreeCreateRequest;
+use syntaxis_ui::prelude::{
+    AppIcon, Button, ButtonKind, Checkbox, DialogActions, DialogForm, Drawer, Field, Modal,
+    TextInput,
+};
+use syntaxis_workspace::WorkspaceId;
 
 use self::components::{
     AgentComposer, AgentHeader, AgentSessionSidebar, AgentTimeline, ExtensionRequestDialog,
@@ -26,23 +31,17 @@ enum ConnectionState {
 
 #[component]
 pub fn Ai(slug: String) -> Element {
-    let workspaces = use_resource(crate::workspace::api::list_workspaces);
-    let workspace = workspaces()
-        .as_ref()
-        .and_then(|result| result.as_ref().ok())
-        .and_then(|workspaces| workspaces.iter().find(|workspace| workspace.slug == slug))
-        .cloned();
-    match (workspaces(), workspace) {
-        (_, Some(workspace)) => rsx! {
-            RemoteAgent { workspace_id: workspace.id.0, workspace_name: workspace.name }
+    let _ = slug;
+    let active = use_context::<crate::workspace::ActiveWorkspace>();
+    match active.current() {
+        Some(workspace) => rsx! {
+            RemoteAgent {
+                key: "{workspace.id.0}",
+                workspace_id: workspace.id.0,
+                workspace_name: workspace.name,
+            }
         },
-        (Some(Ok(_)), None) => rsx! {
-            AgentUnavailable { message: "This workspace is no longer registered." }
-        },
-        (Some(Err(error)), _) => rsx! {
-            AgentUnavailable { message: error.to_string() }
-        },
-        (None, _) => rsx! {
+        None => rsx! {
             div { class: "absolute inset-0 flex flex-col items-center justify-center gap-2 bg-card text-muted-foreground",
                 span { class: "size-5 animate-spin rounded-full border-2 border-border border-t-primary" }
                 "Loading Pi…"
@@ -53,6 +52,10 @@ pub fn Ai(slug: String) -> Element {
 
 #[component]
 fn RemoteAgent(workspace_id: String, workspace_name: String) -> Element {
+    let active_workspace = use_context::<crate::workspace::ActiveWorkspace>();
+    let files_session = use_context::<crate::files::FilesSessionState>();
+    let event_state = use_context::<crate::workspace::WorkspaceEventState>();
+    let workspace_target_id = WorkspaceId::new(workspace_id.clone());
     let mut connection = use_signal(|| ConnectionState::Connecting);
     let mut snapshot = use_signal(AgentSnapshot::default);
     let mut sessions = use_signal(Vec::<AgentSessionSummary>::new);
@@ -61,13 +64,19 @@ fn RemoteAgent(workspace_id: String, workspace_name: String) -> Element {
     let mut error = use_signal(|| None::<String>);
     let mut extension_request = use_signal(|| None);
     let mut new_session_dialog = use_signal(|| false);
+    let mut isolated_session = use_signal(|| false);
+    let mut isolated_branch = use_signal(String::new);
+    let mut creating_worktree = use_signal(|| false);
+    let mut new_session_error = use_signal(|| None::<String>);
     let mut drawer = use_signal(|| false);
     let mut sidebar_open = use_signal(|| true);
 
     let client = use_coroutine({
         let workspace_id = workspace_id.clone();
+        let workspace_target_id = workspace_target_id.clone();
         move |mut outgoing: UnboundedReceiver<ClientMessage>| {
             let workspace_id = workspace_id.clone();
+            let workspace_target_id = workspace_target_id.clone();
             async move {
                 let mut attempt = 0_u8;
                 loop {
@@ -134,22 +143,21 @@ fn RemoteAgent(workspace_id: String, workspace_name: String) -> Element {
                                 } = &message
                                 {
                                     if !initial_selection_sent {
-                                        let preferred = selected_id()
-                                            .filter(|id| {
-                                                available.iter().any(|session| session.id == *id)
-                                            })
-                                            .or_else(|| {
-                                                available.first().map(|session| session.id.clone())
-                                            });
-                                        let request = preferred.map_or(
-                                            ClientMessage::CreateSession,
-                                            |session_id| ClientMessage::SelectSession {
-                                                session_id,
-                                            },
+                                        let create_requested = active_workspace
+                                            .should_create_agent_session(&workspace_target_id);
+                                        let request = initial_session_request(
+                                            available,
+                                            selected_id(),
+                                            create_requested,
                                         );
                                         if socket.send(request).await.is_err() {
                                             attempt = attempt.saturating_add(1).max(1);
                                             break;
+                                        }
+                                        if create_requested {
+                                            active_workspace.complete_agent_session_request(
+                                                &workspace_target_id,
+                                            );
                                         }
                                         initial_selection_sent = true;
                                     }
@@ -208,6 +216,7 @@ fn RemoteAgent(workspace_id: String, workspace_name: String) -> Element {
         ));
         draft.set(String::new());
     });
+    let files_dirty = files_session.has_dirty();
 
     rsx! {
         document::Stylesheet { href: AI_CHAT_CSS }
@@ -227,7 +236,12 @@ fn RemoteAgent(workspace_id: String, workspace_name: String) -> Element {
                                     session_id,
                                 });
                         },
-                        on_new: move |()| new_session_dialog.set(true),
+                        on_new: move |()| {
+                            isolated_session.set(false);
+                            isolated_branch.set(default_isolated_branch());
+                            new_session_error.set(None);
+                            new_session_dialog.set(true);
+                        },
                     }
                 }
             }
@@ -254,6 +268,9 @@ fn RemoteAgent(workspace_id: String, workspace_name: String) -> Element {
                         },
                         on_new: move |()| {
                             drawer.set(false);
+                            isolated_session.set(false);
+                            isolated_branch.set(default_isolated_branch());
+                            new_session_error.set(None);
                             new_session_dialog.set(true);
                         },
                     }
@@ -270,7 +287,12 @@ fn RemoteAgent(workspace_id: String, workspace_name: String) -> Element {
                     sidebar_open: sidebar_open(),
                     on_toggle_sidebar: move |()| sidebar_open.toggle(),
                     on_open_sidebar: move |()| drawer.set(true),
-                    on_new_session: move |()| new_session_dialog.set(true),
+                    on_new_session: move |()| {
+                        isolated_session.set(false);
+                        isolated_branch.set(default_isolated_branch());
+                        new_session_error.set(None);
+                        new_session_dialog.set(true);
+                    },
                     on_model: move |(provider, model_id)| {
                         if let Some(session_id) = selected_id() {
                             client
@@ -338,21 +360,100 @@ fn RemoteAgent(workspace_id: String, workspace_name: String) -> Element {
         if new_session_dialog() {
             Modal {
                 title: "Start a new chat?",
-                description: "Pi will keep the current chat in its session history and open a fresh conversation for this workspace.",
-                on_close: move |()| new_session_dialog.set(false),
+                description: "Start here, or create a branch and worktree so the new agent can work independently.",
+                on_close: move |()| {
+                    if !creating_worktree() {
+                        new_session_dialog.set(false);
+                    }
+                },
                 DialogForm {
+                    label { class: "flex items-start gap-2.5 rounded-lg border border-border bg-background/60 p-3 text-xs",
+                        Checkbox {
+                            checked: isolated_session(),
+                            aria_label: "Create an isolated worktree for this chat",
+                            disabled: creating_worktree() || files_dirty,
+                            on_checked_change: move |checked| {
+                                isolated_session.set(checked);
+                                new_session_error.set(None);
+                            },
+                        }
+                        span {
+                            strong { class: "block text-foreground", "Create an isolated worktree" }
+                            span { class: "mt-0.5 block leading-relaxed text-muted-foreground",
+                                "The new chat gets its own branch and checkout. Files, Terminal, and Git switch to it too."
+                            }
+                        }
+                    }
+                    if isolated_session() {
+                        Field {
+                            control_id: "agent-worktree-branch",
+                            label: "New branch",
+                            required: true,
+                            error: new_session_error(),
+                            TextInput {
+                                value: isolated_branch(),
+                                placeholder: "agent/chat-1234",
+                                disabled: creating_worktree(),
+                                oninput: move |event: FormEvent| {
+                                    isolated_branch.set(event.value());
+                                    new_session_error.set(None);
+                                },
+                            }
+                        }
+                    } else if let Some(message) = new_session_error() {
+                        p { class: "text-xs text-destructive", role: "alert", "{message}" }
+                    }
+                    if files_dirty {
+                        p { class: "text-xs leading-relaxed text-warning",
+                            "Save or close modified files before starting an isolated chat."
+                        }
+                    }
                     DialogActions {
                         Button {
                             label: "Cancel",
                             kind: ButtonKind::Ghost,
+                            disabled: creating_worktree(),
                             onclick: move |_| new_session_dialog.set(false),
                         }
                         Button {
-                            label: "New chat",
+                            label: if creating_worktree() { "Creating worktree…" } else if isolated_session() { "New isolated chat" } else { "New chat" },
                             kind: ButtonKind::Primary,
+                            disabled: creating_worktree()
+                                || (isolated_session()
+                                    && (files_dirty || isolated_branch().trim().is_empty())),
                             onclick: move |_| {
-                                client.send(ClientMessage::CreateSession);
-                                new_session_dialog.set(false);
+                                if !isolated_session() {
+                                    client.send(ClientMessage::CreateSession);
+                                    new_session_dialog.set(false);
+                                    return;
+                                }
+                                let Some(base) = active_workspace.base() else {
+                                    new_session_error
+                                        .set(Some("The registered workspace is unavailable.".into()));
+                                    return;
+                                };
+                                let request = WorktreeCreateRequest {
+                                    branch: isolated_branch(),
+                                    start_point: active_workspace.current_head(),
+                                    create_branch: true,
+                                };
+                                creating_worktree.set(true);
+                                new_session_error.set(None);
+                                spawn(async move {
+                                    match crate::workspace::client::create_worktree(base, request).await {
+                                        Ok(worktree) => {
+                                            let target_id = worktree.workspace.id.clone();
+                                            active_workspace.request_new_agent_session(target_id);
+                                            active_workspace.activate(worktree);
+                                            files_session.reset();
+                                            event_state.reset();
+                                        }
+                                        Err(message) => {
+                                            new_session_error.set(Some(message));
+                                            creating_worktree.set(false);
+                                        }
+                                    }
+                                });
                             },
                         }
                     }
@@ -506,6 +607,29 @@ fn session_action(session_id: String, action: ClientMessage) -> ClientMessage {
     }
 }
 
+fn initial_session_request(
+    available: &[AgentSessionSummary],
+    selected_id: Option<String>,
+    force_new: bool,
+) -> ClientMessage {
+    if force_new {
+        return ClientMessage::CreateSession;
+    }
+    selected_id
+        .filter(|id| available.iter().any(|session| session.id == *id))
+        .or_else(|| available.first().map(|session| session.id.clone()))
+        .map_or(ClientMessage::CreateSession, |session_id| {
+            ClientMessage::SelectSession { session_id }
+        })
+}
+
+fn default_isolated_branch() -> String {
+    let milliseconds = web_time::SystemTime::now()
+        .duration_since(web_time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_millis());
+    format!("agent/chat-{milliseconds}")
+}
+
 fn reconnect_delay_ms(attempt: u8) -> u64 {
     250_u64
         .saturating_mul(1_u64 << attempt.saturating_sub(1).min(5))
@@ -545,5 +669,47 @@ fn AgentUnavailable(message: String) -> Element {
                 "Install Pi from pi.dev on the Syntaxis host."
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn session(id: &str) -> AgentSessionSummary {
+        AgentSessionSummary {
+            id: id.into(),
+            title: id.into(),
+            updated_at_ms: 0,
+            status: AgentStatus::Ready,
+            status_message: "Ready".into(),
+            running: false,
+        }
+    }
+
+    #[test]
+    fn isolated_handoff_always_creates_a_fresh_session() {
+        let available = vec![session("saved")];
+        assert_eq!(
+            initial_session_request(&available, Some("saved".into()), true),
+            ClientMessage::CreateSession,
+        );
+    }
+
+    #[test]
+    fn ordinary_connection_resumes_the_selected_or_first_session() {
+        let available = vec![session("first"), session("selected")];
+        assert_eq!(
+            initial_session_request(&available, Some("selected".into()), false),
+            ClientMessage::SelectSession {
+                session_id: "selected".into(),
+            },
+        );
+        assert_eq!(
+            initial_session_request(&available, Some("missing".into()), false),
+            ClientMessage::SelectSession {
+                session_id: "first".into(),
+            },
+        );
     }
 }

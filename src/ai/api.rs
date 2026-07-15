@@ -49,7 +49,7 @@ pub async fn agent_socket(
 }
 
 #[cfg(feature = "server")]
-mod server;
+pub(crate) mod server;
 
 #[cfg(test)]
 mod tests {

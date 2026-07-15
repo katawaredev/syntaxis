@@ -19,9 +19,10 @@ pub use conflict::{
 };
 pub use diff::{parse_diff_hunks, DiffHunk, DiffKind, HunkAction, HunkRequest, UnifiedDiff};
 pub use error::{GitError, GitErrorCode, GitResult};
-pub use operations::GitOperations;
+pub use operations::{GitOperations, WorktreeOperations};
 pub use repository::{
     BranchComparison, BranchInfo, BranchRequest, CommitDetail, CommitInfo, MergeOutcome,
     PushOutcome, RemoteInfo, RemoteRequest, RemoteResult, TagInfo, TagRequest,
+    WorktreeCreateRequest, WorktreeInfo, WorktreeKind,
 };
 pub use status::{BranchStatus, ChangeKind, FileChange, RepositoryState, RepositoryStatus};

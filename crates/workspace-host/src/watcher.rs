@@ -22,6 +22,7 @@ const IGNORED_DIRECTORIES: &[&str] = &[
     "build",
     ".next",
     ".turbo",
+    ".syntaxis-worktrees",
 ];
 
 pub struct WorkspaceWatcher {
