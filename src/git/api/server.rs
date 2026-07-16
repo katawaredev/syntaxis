@@ -73,11 +73,12 @@ pub(super) async fn clone_repository(
     url: String,
     destination_parent: String,
 ) -> Result<syntaxis_workspace::WorkspaceRecord, ServerFnError> {
-    crate::workspace::api::server::browse_directories(&destination_parent).await?;
+    let destination_parent =
+        crate::workspace::api::server::resolve_browser_path(&destination_parent)?;
     let cloned = HostGit::default()
         .clone_repository(CloneRequest {
             url,
-            destination_parent,
+            destination_parent: destination_parent.to_string_lossy().into_owned(),
             directory_name: None,
         })
         .await
@@ -138,6 +139,7 @@ async fn receive_clone_request(
         version,
         url,
         destination_parent,
+        directory_name,
     }) = socket.recv().await
     else {
         send_clone_error(socket, "Clone protocol start message required.").await;
@@ -147,18 +149,21 @@ async fn receive_clone_request(
         send_clone_error(socket, "The clone protocol version is incompatible.").await;
         return None;
     }
-    if let Err(error) = crate::workspace::api::server::browse_directories(&destination_parent).await
-    {
-        send_clone_error(socket, &error.to_string()).await;
-        return None;
-    }
+    let destination_parent =
+        match crate::workspace::api::server::resolve_browser_path(&destination_parent) {
+            Ok(path) => path.to_string_lossy().into_owned(),
+            Err(error) => {
+                send_clone_error(socket, &error.to_string()).await;
+                return None;
+            }
+        };
     if socket.send(CloneServerMessage::Started).await.is_err() {
         return None;
     }
     Some(CloneRequest {
         url,
         destination_parent,
-        directory_name: None,
+        directory_name: Some(directory_name),
     })
 }
 

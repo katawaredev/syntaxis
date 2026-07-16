@@ -8,6 +8,7 @@ use syntaxis_workspace::{ExecutionLocation, RuntimeCapability, RuntimeState};
 
 use self::{dialogs::HomeDialogs, recent::RecentProjects};
 use super::client::{list_workspaces, runtime_state};
+use crate::ai::notifications::NotificationMenu;
 
 #[derive(Clone, PartialEq, Eq)]
 pub(super) enum HomeDialog {
@@ -22,11 +23,9 @@ pub(super) struct RuntimePresentation {
     eyebrow: String,
     folder_action_title: String,
     folder_action_description: String,
-    recent_description: String,
     footer: String,
     folder_dialog_title: String,
     folder_dialog_description: String,
-    folder_policy_note: String,
 }
 
 impl RuntimePresentation {
@@ -47,13 +46,10 @@ impl RuntimePresentation {
                 folder_action_title: "Open workspace folder".into(),
                 folder_action_description: "Choose a project exposed by the connected runtime"
                     .into(),
-                recent_description: "Your registered workspaces".into(),
                 footer: footer.into(),
                 folder_dialog_title: "Open workspace folder".into(),
                 folder_dialog_description:
-                    "Register an absolute directory exposed by the connected runtime.".into(),
-                folder_policy_note: "Available workspace roots depend on the connected runtime."
-                    .into(),
+                    "Choose a project folder exposed by the connected runtime.".into(),
             };
         };
 
@@ -75,11 +71,6 @@ impl RuntimePresentation {
             } else {
                 format!("Choose a project exposed by {}", identity.label)
             },
-            recent_description: if local {
-                "Workspaces on this device".into()
-            } else {
-                format!("Workspaces on {}", identity.label)
-            },
             footer: format!("Syntaxis UI preview · {}", identity.label),
             folder_dialog_title: if unrestricted {
                 "Open folder".into()
@@ -87,40 +78,10 @@ impl RuntimePresentation {
                 "Open workspace folder".into()
             },
             folder_dialog_description: if local {
-                "Register an absolute directory on this device.".into()
+                "Choose a project folder on this device.".into()
             } else {
-                format!(
-                    "Register an absolute directory exposed by {}.",
-                    identity.label
-                )
+                format!("Choose a project folder exposed by {}.", identity.label)
             },
-            folder_policy_note: if unrestricted {
-                "This runtime can register any folder available to the application.".into()
-            } else {
-                format!(
-                    "This client can register folders only beneath roots exposed by {}.",
-                    identity.label
-                )
-            },
-        }
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum WorkspaceListView {
-    Ready,
-    Loading,
-    Empty,
-    Error,
-}
-
-impl WorkspaceListView {
-    pub(super) const fn label(self) -> &'static str {
-        match self {
-            Self::Ready => "Available",
-            Self::Loading => "Loading",
-            Self::Empty => "Empty",
-            Self::Error => "Error",
         }
     }
 }
@@ -128,7 +89,6 @@ impl WorkspaceListView {
 #[component]
 pub fn Home() -> Element {
     let mut dialog = use_signal(|| HomeDialog::None);
-    let mut list_view = use_signal(|| WorkspaceListView::Ready);
     let mut toast = use_signal(|| None::<String>);
     let mut refresh_key = use_signal(|| 0_u64);
     let runtime = use_resource(runtime_state);
@@ -153,11 +113,8 @@ pub fn Home() -> Element {
     rsx! {
         main { class: "relative size-full overflow-x-hidden overflow-y-auto bg-background",
             section { class: "mx-auto flex min-h-full w-[calc(100%-2.5rem)] max-w-205 flex-col pt-[9vh] pb-6 max-md:w-[calc(100%-1.5rem)] max-md:max-w-155 max-md:pt-8.5",
-                header { class: "mb-9.5 flex items-center gap-4.5 max-md:mb-6.5 max-md:items-start",
-                    div { class: "grid size-12.5 shrink-0 place-items-center rounded-xl bg-linear-to-br from-primary to-primary/60 text-[22px] font-bold text-primary-foreground shadow-lg max-md:size-11",
-                        "S"
-                    }
-                    div {
+                header { class: "mb-9.5 flex items-start justify-between gap-4 max-md:mb-6.5",
+                    div { class: "min-w-0",
                         p { class: "text-[10px] font-bold tracking-[0.14em] text-primary max-[420px]:hidden",
                             {runtime_presentation.eyebrow.clone()}
                         }
@@ -168,6 +125,7 @@ pub fn Home() -> Element {
                             "Pick up where you left off or open another project."
                         }
                     }
+                    NotificationMenu {}
                 }
 
                 div { class: "mb-10.5 grid grid-cols-2 gap-3 max-md:mb-8 max-md:grid-cols-1",
@@ -186,14 +144,9 @@ pub fn Home() -> Element {
                 }
 
                 RecentProjects {
-                    view: list_view,
                     workspaces: workspace_records.clone(),
-                    runtime: runtime_presentation.clone(),
                     backend_loading: workspace_loading,
                     backend_error: workspace_error,
-                    on_view_change: move |next| list_view.set(next),
-                    on_open_folder: move |()| dialog.set(HomeDialog::WorkspaceFolder),
-                    on_open_git: move |()| dialog.set(HomeDialog::Git),
                     on_delete: move |index| dialog.set(HomeDialog::Delete(index)),
                     on_notice: move |message| toast.set(Some(message)),
                     on_refresh: move |()| *refresh_key.write() += 1,
@@ -246,19 +199,7 @@ mod tests {
         ExecutionLocation, RuntimeCapabilities, RuntimeIdentity, RuntimeState,
     };
 
-    use super::{RuntimePresentation, WorkspaceListView};
-
-    #[test]
-    fn every_workspace_list_state_has_a_clear_preview_label() {
-        let labels = [
-            WorkspaceListView::Ready.label(),
-            WorkspaceListView::Loading.label(),
-            WorkspaceListView::Empty.label(),
-            WorkspaceListView::Error.label(),
-        ];
-
-        assert_eq!(labels, ["Available", "Loading", "Empty", "Error"]);
-    }
+    use super::RuntimePresentation;
 
     #[test]
     fn remote_runtime_presentation_never_calls_server_folders_local() {
@@ -272,11 +213,10 @@ mod tests {
 
         let presentation = RuntimePresentation::from_state(Some(&state));
         let rendered_copy = format!(
-            "{} {} {} {} {}",
+            "{} {} {} {}",
             presentation.eyebrow,
             presentation.folder_action_title,
             presentation.folder_action_description,
-            presentation.recent_description,
             presentation.footer,
         )
         .to_lowercase();

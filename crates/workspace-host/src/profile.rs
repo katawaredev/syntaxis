@@ -142,6 +142,9 @@ fn detect_technologies(root: &Path) -> Vec<Technology> {
     ) {
         push_unique(&mut technologies, Technology::Docker);
     }
+    if has_any(root, &["Justfile", "justfile"]) {
+        push_unique(&mut technologies, Technology::Just);
+    }
     if package.is_some() {
         push_unique(&mut technologies, Technology::Nodejs);
     }
@@ -361,6 +364,7 @@ mod tests {
         )
         .unwrap();
         fs::write(root.path().join("Dockerfile"), "FROM scratch").unwrap();
+        fs::write(root.path().join("justfile"), "build:\n  true\n").unwrap();
 
         let profile = detect_workspace_profile(root.path());
 
@@ -369,6 +373,7 @@ mod tests {
             vec![
                 Technology::Bun,
                 Technology::Docker,
+                Technology::Just,
                 Technology::Nodejs,
                 Technology::React,
                 Technology::Vite,

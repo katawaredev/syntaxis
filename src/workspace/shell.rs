@@ -120,7 +120,11 @@ pub fn WorkspaceShell() -> Element {
                     "←"
                 }
                 if let Some(workspace) = registered_workspace.as_ref() {
-                    ProjectIcon { icon: workspace.icon.clone(), compact: true }
+                    ProjectIcon {
+                        name: workspace.name.clone(),
+                        icon: workspace.icon.clone(),
+                        compact: true,
+                    }
                 } else {
                     div { class: "grid size-7 shrink-0 place-items-center rounded-md bg-linear-to-br from-primary to-primary/60 text-xs font-bold text-primary-foreground",
                         "S"

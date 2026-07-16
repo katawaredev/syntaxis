@@ -193,9 +193,6 @@ pub(crate) fn NotificationMenu() -> Element {
                                 Icon { icon: AppIcon::Bell, size: 14 }
                             }
                             p { class: "mt-2 text-xs font-medium", "Nothing needs attention" }
-                            p { class: "mt-1 text-[10px] text-muted-foreground",
-                                "Completed tasks and questions will appear here."
-                            }
                         }
                     }
                     for notification in notifications {

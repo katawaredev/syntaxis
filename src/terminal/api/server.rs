@@ -20,7 +20,7 @@ pub(super) async fn terminal_socket(
     workspace_id: WorkspaceId,
     options: WebSocketOptions,
 ) -> Result<Websocket<ClientMessage, ServerMessage, TerminalEncoding>, ServerFnError> {
-    let workspace = crate::workspace::api::get_workspace(workspace_id.0.clone()).await?;
+    let workspace = crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
     let manager = terminals().clone();
     Ok(options.on_upgrade(
         move |mut socket: TypedWebsocket<ClientMessage, ServerMessage, TerminalEncoding>| async move {

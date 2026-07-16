@@ -6,15 +6,18 @@ use syntaxis_workspace::{WorkspaceLanguage, WorkspaceTechnology};
 #[component]
 pub fn ProjectTechnologyBadge(
     technology: WorkspaceTechnology,
+    #[props(default = false)] large: bool,
     #[props(default)] class: String,
 ) -> Element {
     let label = technology.label();
+    let size_class = if large { "size-7" } else { "size-5.5" };
+    let icon_size = if large { 16 } else { 13 };
     rsx! {
         span {
-            class: "project-badge inline-grid size-6 shrink-0 place-items-center rounded-md border border-border/80 bg-background/80 shadow-xs {class}",
+            class: "project-badge inline-grid {size_class} shrink-0 place-items-center rounded-md border border-border/60 bg-muted/35 {class}",
             title: label,
             "aria-label": label,
-            {technology_icon(technology, 14)}
+            {technology_icon(technology, icon_size)}
         }
     }
 }
@@ -23,6 +26,7 @@ pub fn ProjectTechnologyBadge(
 pub fn ProjectLanguageBadge(
     language: WorkspaceLanguage,
     total_bytes: u64,
+    #[props(default = false)] large: bool,
     #[props(default)] class: String,
 ) -> Element {
     let permille = language
@@ -31,12 +35,14 @@ pub fn ProjectLanguageBadge(
         .checked_div(total_bytes)
         .unwrap_or_default();
     let label = format!("{} · {}.{}%", language.name, permille / 10, permille % 10);
+    let size_class = if large { "size-7" } else { "size-5.5" };
+    let icon_size = if large { 16 } else { 13 };
     rsx! {
         span {
-            class: "project-badge inline-grid size-6 shrink-0 place-items-center rounded-md border border-border/80 bg-background/80 shadow-xs {class}",
+            class: "project-badge inline-grid {size_class} shrink-0 place-items-center rounded-md border border-border/60 bg-muted/35 {class}",
             title: label.clone(),
             "aria-label": label,
-            {language_icon(&language.name, 14)}
+            {language_icon(&language.name, icon_size)}
         }
     }
 }
@@ -88,6 +94,9 @@ fn technology_icon(technology: WorkspaceTechnology, size: u32) -> Element {
         },
         WorkspaceTechnology::Jest => rsx! {
             color::Jest { size }
+        },
+        WorkspaceTechnology::Just => rsx! {
+            Code { size, stroke_width: 1.8 }
         },
         WorkspaceTechnology::Mongodb => rsx! {
             color::MongodbIcon { size }

@@ -2,8 +2,8 @@ use syntaxis_git::{WorktreeCreateRequest, WorktreeInfo};
 #[cfg(feature = "desktop")]
 use syntaxis_workspace::ExecutionLocation;
 use syntaxis_workspace::{
-    BinaryFile, BrowseDirectory, BrowseRoot, FileEntry, FileVersion, RelativePath, RuntimeState,
-    TextFile, WorkspaceRecord,
+    BinaryFile, BrowseDirectory, FileEntry, FileVersion, RelativePath, RuntimeState, TextFile,
+    WorkspaceRecord,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -351,20 +351,6 @@ pub async fn runtime_state() -> Result<RuntimeState, String> {
     }
 }
 
-#[allow(clippy::unused_async)] // The desktop and remote implementations share one async API.
-pub async fn browse_workspace_roots() -> Result<Vec<BrowseRoot>, String> {
-    use syntaxis_workspace::WorkspaceBrowser;
-
-    match selected_runtime() {
-        RuntimeTarget::Remote => super::remote::RemoteWorkspaceOperations
-            .roots()
-            .await
-            .map_err(|error| error.message),
-        #[cfg(feature = "desktop")]
-        RuntimeTarget::DesktopLocal => Ok(Vec::new()),
-    }
-}
-
 pub async fn browse_workspace_directories(
     absolute_path: String,
 ) -> Result<Vec<BrowseDirectory>, String> {
@@ -410,7 +396,7 @@ fn host_registry() -> Result<&'static syntaxis_workspace_host::WorkspaceRegistry
             };
             std::fs::create_dir_all(&data_directory).map_err(|error| error.to_string())?;
             WorkspaceRegistryStore::open(
-                data_directory.join("workspaces.sqlite3"),
+                data_directory.join("workspaces.json"),
                 RegistrationPolicy::Unrestricted,
             )
             .map_err(|error| error.message)

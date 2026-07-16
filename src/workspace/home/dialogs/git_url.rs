@@ -7,16 +7,21 @@ use syntaxis_git::{
     CloneClientMessage, ClonePhase, CloneProgress, CloneServerMessage, CLONE_PROTOCOL_VERSION,
 };
 use syntaxis_ui::prelude::{
-    Button, ButtonKind, DialogActions, DialogForm, Field, Modal, Select, TextInput, TextInputType,
+    Button, ButtonKind, DialogActions, DialogForm, Field, Modal, TextInput, TextInputType,
 };
 
 use super::RequestState;
-use crate::workspace::{client::browse_workspace_roots, home::HomeDialog};
+use crate::workspace::home::HomeDialog;
 
 const INVALID_URL_ERROR: &str = "Enter an HTTPS, SSH, or Git repository URL.";
 const REMOTE_ERROR: &str =
     "The repository could not be cloned. Check its URL, access, and destination.";
-const DESTINATION_ERROR: &str = "Choose a destination exposed by the connected runtime.";
+const DESTINATION_ERROR: &str = "Enter a destination folder with no more than one leading slash.";
+
+struct CloneDestination {
+    parent: String,
+    directory_name: String,
+}
 
 #[component]
 pub(super) fn GitUrlDialog(
@@ -25,19 +30,10 @@ pub(super) fn GitUrlDialog(
     on_changed: EventHandler<()>,
 ) -> Element {
     let mut git_url = use_signal(String::new);
-    let mut destination = use_signal(String::new);
+    let mut destination = use_signal(|| "/".to_owned());
     let mut request = use_signal(|| RequestState::Idle);
     let mut progress = use_signal(|| None::<CloneProgress>);
-    let roots = use_resource(browse_workspace_roots);
-    use_effect(move || {
-        if destination().is_empty() {
-            if let Some(Ok(roots)) = roots() {
-                if let Some(root) = roots.first() {
-                    destination.set(root.path.clone());
-                }
-            }
-        }
-    });
+    let mut paste_pending = use_signal(|| false);
     let clone_client = use_coroutine(
         move |mut commands: UnboundedReceiver<CloneClientMessage>| async move {
             while let Some(start) = commands.next().await {
@@ -113,9 +109,10 @@ pub(super) fn GitUrlDialog(
                 Field {
                     control_id: "git-url",
                     label: "Repository URL",
-                    description: "The repository name determines the new folder name.",
                     error: match request() {
-                        RequestState::Error(message) => Some(message.to_string()),
+                        RequestState::Error(message) if message != DESTINATION_ERROR => {
+                            Some(message.to_string())
+                        }
                         _ => None,
                     },
                     TextInput {
@@ -124,27 +121,36 @@ pub(super) fn GitUrlDialog(
                         value: git_url(),
                         autofocus: true,
                         disabled: pending,
+                        onpaste: move |_| paste_pending.set(true),
                         oninput: move |event: FormEvent| {
-                            git_url.set(event.value());
+                            let value = event.value();
+                            let was_pasted = paste_pending();
+                            paste_pending.set(false);
+                            if was_pasted && matches!(destination().trim(), "" | "/") {
+                                if let Some(name) = repository_name_from_url(&value) {
+                                    destination.set(format!("/{name}"));
+                                }
+                            }
+                            git_url.set(value);
                             request.set(RequestState::Idle);
                         },
                     }
                 }
                 Field {
                     control_id: "clone-destination",
-                    label: "Destination root",
-                    Select {
+                    label: "Destination folder",
+                    error: match request() {
+                        RequestState::Error(DESTINATION_ERROR) => Some(DESTINATION_ERROR.to_owned()),
+                        _ => None,
+                    },
+                    TextInput {
                         value: destination(),
+                        placeholder: "/repository",
                         disabled: pending,
-                        onchange: move |event: FormEvent| {
+                        oninput: move |event: FormEvent| {
                             destination.set(event.value());
                             request.set(RequestState::Idle);
                         },
-                        if let Some(Ok(roots)) = roots() {
-                            for root in roots {
-                                option { value: root.path.clone(), "{root.name} · {root.path}" }
-                            }
-                        }
                     }
                 }
                 match request() {
@@ -174,18 +180,18 @@ pub(super) fn GitUrlDialog(
                     Button {
                         label: if pending { "Cloning…" } else if matches!(request(), RequestState::Error(_)) { "Try again" } else { "Clone repository" },
                         kind: ButtonKind::Primary,
-                        disabled: pending || git_url().trim().is_empty() || destination().is_empty(),
+                        disabled: pending || git_url().trim().is_empty()
+                            || parse_clone_destination(&destination()).is_none(),
                         onclick: move |_| {
                             let url = git_url();
                             if !looks_like_git_url(&url) {
                                 request.set(RequestState::Error(INVALID_URL_ERROR));
                                 return;
                             }
-                            let parent = destination();
-                            if parent.is_empty() {
+                            let Some(destination) = parse_clone_destination(&destination()) else {
                                 request.set(RequestState::Error(DESTINATION_ERROR));
                                 return;
-                            }
+                            };
                             request.set(RequestState::Pending);
                             let initial_progress = CloneProgress {
                                 phase: ClonePhase::Preparing,
@@ -196,7 +202,8 @@ pub(super) fn GitUrlDialog(
                                 .send(CloneClientMessage::Start {
                                     version: CLONE_PROTOCOL_VERSION,
                                     url,
-                                    destination_parent: parent,
+                                    destination_parent: destination.parent,
+                                    directory_name: destination.directory_name,
                                 });
                         },
                     }
@@ -234,17 +241,85 @@ fn looks_like_git_url(url: &str) -> bool {
         || (url.starts_with("git@") && url.contains(':'))
 }
 
+fn repository_name_from_url(url: &str) -> Option<String> {
+    if !looks_like_git_url(url) {
+        return None;
+    }
+    let url = url.trim().split(['?', '#']).next()?.trim_end_matches('/');
+    let name = url
+        .rsplit(['/', ':'])
+        .next()?
+        .strip_suffix(".git")
+        .unwrap_or_else(|| url.rsplit(['/', ':']).next().unwrap_or_default());
+    parse_clone_destination(name).map(|destination| destination.directory_name)
+}
+
+fn parse_clone_destination(value: &str) -> Option<CloneDestination> {
+    let value = value.trim();
+    if value.is_empty() || value.starts_with("//") || value.contains('\\') {
+        return None;
+    }
+    let normalized = if value.starts_with('/') {
+        value.to_owned()
+    } else {
+        format!("/{value}")
+    };
+    if normalized[1..]
+        .split('/')
+        .any(|component| component.is_empty() || matches!(component, "." | ".."))
+    {
+        return None;
+    }
+    let (parent, directory_name) = normalized.rsplit_once('/')?;
+    if directory_name.len() > 255 || directory_name.chars().any(char::is_control) {
+        return None;
+    }
+    Some(CloneDestination {
+        parent: if parent.is_empty() { "/" } else { parent }.to_owned(),
+        directory_name: directory_name.to_owned(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use syntaxis_git::{ClonePhase, CloneProgress};
 
-    use super::{clone_progress_label, looks_like_git_url};
+    use super::{
+        clone_progress_label, looks_like_git_url, parse_clone_destination, repository_name_from_url,
+    };
 
     #[test]
     fn accepts_common_git_url_forms() {
         assert!(looks_like_git_url("https://example.com/owner/repo.git"));
         assert!(looks_like_git_url("git@example.com:owner/repo.git"));
         assert!(!looks_like_git_url("owner/repo"));
+    }
+
+    #[test]
+    fn derives_repository_names_for_destination_suggestions() {
+        assert_eq!(
+            repository_name_from_url("https://example.com/owner/repo.git"),
+            Some("repo".into())
+        );
+        assert_eq!(
+            repository_name_from_url("git@example.com:owner/repo.git"),
+            Some("repo".into())
+        );
+        assert_eq!(repository_name_from_url("owner/repo"), None);
+    }
+
+    #[test]
+    fn clone_destinations_allow_one_optional_leading_slash() {
+        let absolute = parse_clone_destination("/teams/repo").unwrap();
+        assert_eq!(absolute.parent, "/teams");
+        assert_eq!(absolute.directory_name, "repo");
+
+        let relative = parse_clone_destination("devbox").unwrap();
+        assert_eq!(relative.parent, "/");
+        assert_eq!(relative.directory_name, "devbox");
+
+        assert!(parse_clone_destination("//devbox").is_none());
+        assert!(parse_clone_destination("/").is_none());
     }
 
     #[test]

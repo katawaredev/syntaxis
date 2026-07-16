@@ -1,26 +1,100 @@
 use std::{
+    fs,
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::{Mutex, MutexGuard},
 };
 
 use async_trait::async_trait;
-use rusqlite::{params, Connection};
+use serde::{Deserialize, Serialize};
 use syntaxis_workspace::{
-    ErrorCode, WorkspaceAvailability, WorkspaceError, WorkspaceId, WorkspaceRecord,
-    WorkspaceRegistry, WorkspaceResult,
+    ErrorCode, WorkspaceAvailability, WorkspaceError, WorkspaceIcon, WorkspaceId, WorkspaceProfile,
+    WorkspaceRecord, WorkspaceRegistry, WorkspaceResult,
 };
 use uuid::Uuid;
 
 use crate::{
-    error::{map_database_error, map_io_error},
+    error::map_io_error,
     icon::detect_workspace_icon,
     policy::RegistrationPolicy,
     profile::detect_workspace_profile,
-    record::{require_changed, row_to_record, slugify, unix_milliseconds},
+    record::{slugify, unix_milliseconds},
 };
 
+const REGISTRY_VERSION: u32 = 1;
+
+#[derive(Clone, Deserialize, Serialize)]
+struct RegistryFile {
+    #[serde(default = "registry_version")]
+    version: u32,
+    #[serde(default)]
+    workspaces: Vec<StoredWorkspace>,
+}
+
+impl Default for RegistryFile {
+    fn default() -> Self {
+        Self {
+            version: REGISTRY_VERSION,
+            workspaces: Vec::new(),
+        }
+    }
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+struct StoredWorkspace {
+    id: WorkspaceId,
+    slug: String,
+    name: String,
+    root: String,
+    icon: WorkspaceIcon,
+    #[serde(default)]
+    profile: WorkspaceProfile,
+    registered_at_unix_ms: i64,
+    last_opened_unix_ms: i64,
+}
+
+impl StoredWorkspace {
+    fn into_record(self) -> WorkspaceRecord {
+        let availability = if Path::new(&self.root).is_dir() {
+            WorkspaceAvailability::Available
+        } else {
+            WorkspaceAvailability::Missing
+        };
+        WorkspaceRecord {
+            id: self.id,
+            slug: self.slug,
+            name: self.name,
+            root: self.root,
+            icon: self.icon,
+            profile: self.profile,
+            registered_at_unix_ms: self.registered_at_unix_ms,
+            last_opened_unix_ms: self.last_opened_unix_ms,
+            availability,
+        }
+    }
+}
+
+impl From<WorkspaceRecord> for StoredWorkspace {
+    fn from(record: WorkspaceRecord) -> Self {
+        Self {
+            id: record.id,
+            slug: record.slug,
+            name: record.name,
+            root: record.root,
+            icon: record.icon,
+            profile: record.profile,
+            registered_at_unix_ms: record.registered_at_unix_ms,
+            last_opened_unix_ms: record.last_opened_unix_ms,
+        }
+    }
+}
+
+const fn registry_version() -> u32 {
+    REGISTRY_VERSION
+}
+
 pub struct WorkspaceRegistryStore {
-    connection: Mutex<Connection>,
+    file: Mutex<RegistryFile>,
+    path: Option<PathBuf>,
     policy: RegistrationPolicy,
 }
 
@@ -31,121 +105,99 @@ impl WorkspaceRegistryStore {
             .is_ok_and(|canonical| canonical.is_dir() && self.policy.permits(&canonical))
     }
 
-    /// Opens or creates a registry and applies pending schema migrations.
+    /// Opens or creates a JSON-backed workspace registry.
     ///
     /// # Errors
     ///
-    /// Returns an error when the database or registration policy cannot be initialized.
+    /// Returns an error when the registry file or registration policy cannot be initialized.
     pub fn open(
-        database_path: impl AsRef<Path>,
+        registry_path: impl AsRef<Path>,
         policy: RegistrationPolicy,
     ) -> WorkspaceResult<Self> {
-        let connection = Connection::open(database_path).map_err(map_database_error)?;
-        let store = Self {
-            connection: Mutex::new(connection),
-            policy: policy.canonicalize()?,
+        let path = registry_path.as_ref().to_owned();
+        let file = match fs::read(&path) {
+            Ok(bytes) => serde_json::from_slice::<RegistryFile>(&bytes)
+                .map_err(|_| WorkspaceError::internal())?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => RegistryFile::default(),
+            Err(error) => return Err(map_io_error(error)),
         };
-        store.migrate()?;
-        Ok(store)
+        if file.version != REGISTRY_VERSION {
+            return Err(WorkspaceError::internal());
+        }
+        Ok(Self {
+            file: Mutex::new(file),
+            path: Some(path),
+            policy: policy.canonicalize()?,
+        })
     }
 
-    /// Creates a migrated in-memory registry for temporary runtimes and tests.
+    /// Creates an in-memory registry for temporary runtimes and tests.
     ///
     /// # Errors
     ///
-    /// Returns an error when `SQLite` or the registration policy cannot be initialized.
+    /// Returns an error when the registration policy cannot be initialized.
     pub fn open_in_memory(policy: RegistrationPolicy) -> WorkspaceResult<Self> {
-        let connection = Connection::open_in_memory().map_err(map_database_error)?;
-        let store = Self {
-            connection: Mutex::new(connection),
+        Ok(Self {
+            file: Mutex::new(RegistryFile::default()),
+            path: None,
             policy: policy.canonicalize()?,
-        };
-        store.migrate()?;
-        Ok(store)
+        })
     }
 
-    fn migrate(&self) -> WorkspaceResult<()> {
-        let connection = self
-            .connection
-            .lock()
-            .map_err(|_| WorkspaceError::internal())?;
-        connection
-            .execute_batch(
-                r#"BEGIN;
-                 CREATE TABLE IF NOT EXISTS workspaces (
-                    id TEXT PRIMARY KEY NOT NULL,
-                    slug TEXT NOT NULL,
-                    name TEXT NOT NULL,
-                    root TEXT NOT NULL UNIQUE,
-                    icon TEXT NOT NULL,
-                    registered_at_unix_ms INTEGER NOT NULL,
-                    last_opened_unix_ms INTEGER NOT NULL,
-                    profile TEXT NOT NULL DEFAULT '{"technologies":[],"languages":[]}'
-                 );
-                 COMMIT;"#,
-            )
-            .map_err(map_database_error)?;
-        let has_profile = {
-            let mut statement = connection
-                .prepare("PRAGMA table_info(workspaces)")
-                .map_err(map_database_error)?;
-            let columns = statement
-                .query_map([], |row| row.get::<_, String>(1))
-                .map_err(map_database_error)?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(map_database_error)?;
-            columns.iter().any(|column| column == "profile")
+    fn lock_file(&self) -> WorkspaceResult<MutexGuard<'_, RegistryFile>> {
+        self.file.lock().map_err(|_| WorkspaceError::internal())
+    }
+
+    fn save(&self, file: &RegistryFile) -> WorkspaceResult<()> {
+        let Some(path) = &self.path else {
+            return Ok(());
         };
-        if !has_profile {
-            connection
-                .execute(
-                    "ALTER TABLE workspaces ADD COLUMN profile TEXT NOT NULL DEFAULT '{\"technologies\":[],\"languages\":[]}'",
-                    [],
-                )
-                .map_err(map_database_error)?;
-        }
-        connection
-            .pragma_update(None, "user_version", 2)
-            .map_err(map_database_error)
+        let bytes = serde_json::to_vec_pretty(file).map_err(|_| WorkspaceError::internal())?;
+        let temporary = path.with_extension("json.tmp");
+        fs::write(&temporary, bytes)
+            .and_then(|()| fs::rename(&temporary, path))
+            .map_err(map_io_error)
+    }
+
+    fn update_file<T>(
+        &self,
+        update: impl FnOnce(&mut RegistryFile) -> WorkspaceResult<T>,
+    ) -> WorkspaceResult<T> {
+        let mut current = self.lock_file()?;
+        let mut next = current.clone();
+        let result = update(&mut next)?;
+        self.save(&next)?;
+        *current = next;
+        Ok(result)
     }
 
     fn list_records(&self) -> WorkspaceResult<Vec<WorkspaceRecord>> {
-        let connection = self
-            .connection
-            .lock()
-            .map_err(|_| WorkspaceError::internal())?;
-        let mut statement = connection
-            .prepare(
-                "SELECT id, slug, name, root, icon, registered_at_unix_ms,
-                        last_opened_unix_ms, profile
-                 FROM workspaces
-                 ORDER BY last_opened_unix_ms DESC, name ASC",
-            )
-            .map_err(map_database_error)?;
-        let records = statement
-            .query_map([], row_to_record)
-            .map_err(map_database_error)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(map_database_error)?
-            .into_iter()
+        let file = self.lock_file()?;
+        let mut records = file
+            .workspaces
+            .iter()
             .filter(|record| self.policy.permits_registered_root(Path::new(&record.root)))
-            .collect();
+            .cloned()
+            .map(StoredWorkspace::into_record)
+            .collect::<Vec<_>>();
+        records.sort_by(|left, right| {
+            right
+                .last_opened_unix_ms
+                .cmp(&left.last_opened_unix_ms)
+                .then_with(|| left.name.cmp(&right.name))
+        });
         Ok(records)
     }
 
     fn get_record(&self, id: &WorkspaceId) -> WorkspaceResult<WorkspaceRecord> {
-        let connection = self
-            .connection
-            .lock()
-            .map_err(|_| WorkspaceError::internal())?;
-        let record = connection
-            .query_row(
-                "SELECT id, slug, name, root, icon, registered_at_unix_ms,
-                        last_opened_unix_ms, profile FROM workspaces WHERE id = ?1",
-                params![id.0],
-                row_to_record,
-            )
-            .map_err(map_database_error)?;
+        let record = self
+            .lock_file()?
+            .workspaces
+            .iter()
+            .find(|record| record.id == *id)
+            .cloned()
+            .ok_or_else(workspace_not_found)?
+            .into_record();
         self.require_permitted_record(record)
     }
 
@@ -169,68 +221,67 @@ impl WorkspaceRegistryStore {
             ));
         }
 
+        let root = canonical.to_string_lossy().into_owned();
+        let timestamp = unix_milliseconds()?;
+        if self
+            .lock_file()?
+            .workspaces
+            .iter()
+            .any(|record| record.root == root)
+        {
+            self.update_file(|file| {
+                let record = file
+                    .workspaces
+                    .iter_mut()
+                    .find(|record| record.root == root)
+                    .ok_or_else(workspace_not_found)?;
+                record.last_opened_unix_ms = timestamp;
+                Ok(())
+            })?;
+            return self.record_by_root(&root);
+        }
+
         let name = canonical
             .file_name()
             .and_then(|name| name.to_str())
             .filter(|name| !name.is_empty())
             .ok_or_else(|| WorkspaceError::invalid_path("The workspace needs a valid name."))?
             .to_owned();
-        let timestamp = unix_milliseconds()?;
         let record = WorkspaceRecord {
             id: WorkspaceId::new(Uuid::new_v4().to_string()),
             slug: slugify(&name),
             icon: detect_workspace_icon(&canonical),
             profile: detect_workspace_profile(&canonical),
             name,
-            root: canonical.to_string_lossy().into_owned(),
+            root,
             registered_at_unix_ms: timestamp,
             last_opened_unix_ms: timestamp,
             availability: WorkspaceAvailability::Available,
         };
-
-        let connection = self
-            .connection
-            .lock()
-            .map_err(|_| WorkspaceError::internal())?;
-        let icon = serde_json::to_string(&record.icon).map_err(|_| WorkspaceError::internal())?;
-        let profile =
-            serde_json::to_string(&record.profile).map_err(|_| WorkspaceError::internal())?;
-        connection
-            .execute(
-                "INSERT INTO workspaces (
-                    id, slug, name, root, icon, registered_at_unix_ms, last_opened_unix_ms, profile
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-                 ON CONFLICT(root) DO UPDATE SET last_opened_unix_ms = excluded.last_opened_unix_ms",
-                params![
-                    record.id.0,
-                    record.slug,
-                    record.name,
-                    record.root,
-                    icon,
-                    record.registered_at_unix_ms,
-                    record.last_opened_unix_ms,
-                    profile,
-                ],
-            )
-            .map_err(map_database_error)?;
-        drop(connection);
-
+        self.update_file(|file| {
+            if let Some(existing) = file
+                .workspaces
+                .iter_mut()
+                .find(|existing| existing.root == record.root)
+            {
+                existing.last_opened_unix_ms = timestamp;
+            } else {
+                file.workspaces.push(record.clone().into());
+            }
+            Ok(())
+        })?;
         self.record_by_root(&record.root)
     }
 
     fn record_by_root(&self, root: &str) -> WorkspaceResult<WorkspaceRecord> {
-        let connection = self
-            .connection
-            .lock()
-            .map_err(|_| WorkspaceError::internal())?;
-        let record = connection
-            .query_row(
-                "SELECT id, slug, name, root, icon, registered_at_unix_ms,
-                        last_opened_unix_ms, profile FROM workspaces WHERE root = ?1",
-                params![root],
-                row_to_record,
-            )
-            .map_err(map_database_error)?;
+        let record = self
+            .lock_file()?
+            .workspaces
+            .iter()
+            .find(|record| record.root == root)
+            .cloned()
+            .ok_or_else(workspace_not_found)?
+            .into_record();
         self.require_permitted_record(record)
     }
 
@@ -250,56 +301,50 @@ impl WorkspaceRegistryStore {
 
     fn touch_record(&self, id: &WorkspaceId) -> WorkspaceResult<()> {
         let timestamp = unix_milliseconds()?;
-        let connection = self
-            .connection
-            .lock()
-            .map_err(|_| WorkspaceError::internal())?;
-        let changed = connection
-            .execute(
-                "UPDATE workspaces SET last_opened_unix_ms = ?1 WHERE id = ?2",
-                params![timestamp, id.0],
-            )
-            .map_err(map_database_error)?;
-        require_changed(changed)
+        self.update_file(|file| {
+            let record = file
+                .workspaces
+                .iter_mut()
+                .find(|record| record.id == *id)
+                .ok_or_else(workspace_not_found)?;
+            record.last_opened_unix_ms = timestamp;
+            Ok(())
+        })
     }
 
     /// Re-scans the workspace icon, technologies, and programming languages.
     ///
     /// # Errors
     ///
-    /// Returns an error when the workspace is unavailable or its registry row cannot be updated.
+    /// Returns an error when the workspace is unavailable or its registry entry cannot be updated.
     pub fn refresh_profile(&self, id: &WorkspaceId) -> WorkspaceResult<WorkspaceRecord> {
         let record = self.get_record(id)?;
         let root = Path::new(&record.root);
         let icon = detect_workspace_icon(root);
         let profile = detect_workspace_profile(root);
-        let encoded_icon = serde_json::to_string(&icon).map_err(|_| WorkspaceError::internal())?;
-        let encoded_profile =
-            serde_json::to_string(&profile).map_err(|_| WorkspaceError::internal())?;
-        let connection = self
-            .connection
-            .lock()
-            .map_err(|_| WorkspaceError::internal())?;
-        let changed = connection
-            .execute(
-                "UPDATE workspaces SET icon = ?1, profile = ?2 WHERE id = ?3",
-                params![encoded_icon, encoded_profile, id.0],
-            )
-            .map_err(map_database_error)?;
-        require_changed(changed)?;
-        drop(connection);
+        self.update_file(|file| {
+            let record = file
+                .workspaces
+                .iter_mut()
+                .find(|record| record.id == *id)
+                .ok_or_else(workspace_not_found)?;
+            record.icon = icon;
+            record.profile = profile;
+            Ok(())
+        })?;
         self.get_record(id)
     }
 
     fn remove_record(&self, id: &WorkspaceId) -> WorkspaceResult<()> {
-        let connection = self
-            .connection
-            .lock()
-            .map_err(|_| WorkspaceError::internal())?;
-        let changed = connection
-            .execute("DELETE FROM workspaces WHERE id = ?1", params![id.0])
-            .map_err(map_database_error)?;
-        require_changed(changed)
+        self.update_file(|file| {
+            let index = file
+                .workspaces
+                .iter()
+                .position(|record| record.id == *id)
+                .ok_or_else(workspace_not_found)?;
+            file.workspaces.remove(index);
+            Ok(())
+        })
     }
 
     /// Permanently deletes a registered workspace directory after validating it again.
@@ -327,8 +372,12 @@ impl WorkspaceRegistryStore {
                 "The registered workspace root could not be validated for deletion.",
             ));
         }
-        std::fs::remove_dir_all(canonical).map_err(map_io_error)
+        fs::remove_dir_all(canonical).map_err(map_io_error)
     }
+}
+
+fn workspace_not_found() -> WorkspaceError {
+    WorkspaceError::new(ErrorCode::NotFound, "The workspace was not found.")
 }
 
 #[async_trait(?Send)]

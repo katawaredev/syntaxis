@@ -24,11 +24,17 @@ static REGISTRY: OnceLock<Result<WorkspaceRegistryStore, syntaxis_workspace::Wor
     OnceLock::new();
 
 pub(super) async fn list_workspaces() -> Result<Vec<WorkspaceRecord>, ServerFnError> {
-    registry()?.list().await.map_err(server_error)
+    registry()?
+        .list()
+        .await
+        .map_err(server_error)?
+        .into_iter()
+        .map(public_workspace)
+        .collect()
 }
 
 pub(super) async fn get_workspace(id: &WorkspaceId) -> Result<WorkspaceRecord, ServerFnError> {
-    workspace_by_id(id).await
+    public_workspace(workspace_by_id(id).await?)
 }
 
 pub(crate) async fn register_workspace(
@@ -38,6 +44,13 @@ pub(crate) async fn register_workspace(
         .register(absolute_path)
         .await
         .map_err(server_error)
+}
+
+pub(super) async fn register_workspace_from_browser(
+    path: &str,
+) -> Result<WorkspaceRecord, ServerFnError> {
+    let absolute_path = resolve_browser_path(path)?;
+    public_workspace(register_workspace(&absolute_path.to_string_lossy()).await?)
 }
 
 pub(super) async fn remove_workspace(
@@ -59,20 +72,19 @@ pub(super) async fn touch_workspace(id: &WorkspaceId) -> Result<(), ServerFnErro
 pub(super) async fn refresh_workspace(id: &WorkspaceId) -> Result<WorkspaceRecord, ServerFnError> {
     let workspace = registry()?.refresh_profile(id).map_err(server_error)?;
     crate::terminal::api::server::refresh_run_commands(id.clone()).await?;
-    Ok(workspace)
+    public_workspace(workspace)
 }
 
 pub(super) async fn browse_roots() -> Result<Vec<BrowseRoot>, ServerFnError> {
     browser()?.roots().await.map_err(server_error)
 }
 
-pub(crate) async fn browse_directories(
-    absolute_path: &str,
-) -> Result<Vec<BrowseDirectory>, ServerFnError> {
-    browser()?
-        .directories(absolute_path)
-        .await
-        .map_err(server_error)
+pub(crate) async fn browse_directories(path: &str) -> Result<Vec<BrowseDirectory>, ServerFnError> {
+    browser()?.directories(path).await.map_err(server_error)
+}
+
+pub(crate) fn resolve_browser_path(path: &str) -> Result<PathBuf, ServerFnError> {
+    browser()?.resolve_path(path).map_err(server_error)
 }
 
 pub(super) async fn list_files(
@@ -260,12 +272,19 @@ fn browser() -> Result<HostWorkspaceBrowser, ServerFnError> {
     .map_err(server_error)
 }
 
+fn public_workspace(mut workspace: WorkspaceRecord) -> Result<WorkspaceRecord, ServerFnError> {
+    workspace.root = browser()?
+        .virtual_path(Path::new(&workspace.root))
+        .map_err(server_error)?;
+    Ok(workspace)
+}
+
 fn open_registry() -> Result<WorkspaceRegistryStore, syntaxis_workspace::WorkspaceError> {
     let data_directory = data_directory();
     std::fs::create_dir_all(&data_directory)
         .map_err(|_| syntaxis_workspace::WorkspaceError::internal())?;
     WorkspaceRegistryStore::open(
-        data_directory.join("workspaces.sqlite3"),
+        data_directory.join("workspaces.json"),
         RegistrationPolicy::Allowlisted {
             roots: configured_roots(),
         },

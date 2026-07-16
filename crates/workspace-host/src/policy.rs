@@ -45,11 +45,4 @@ impl RegistrationPolicy {
             ),
         }
     }
-
-    pub(crate) fn roots(&self) -> &[PathBuf] {
-        match self {
-            Self::Unrestricted => &[],
-            Self::Allowlisted { roots } => roots,
-        }
-    }
 }

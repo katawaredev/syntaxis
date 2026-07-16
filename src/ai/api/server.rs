@@ -22,7 +22,7 @@ pub(super) async fn agent_socket(
     workspace_id: WorkspaceId,
     options: WebSocketOptions,
 ) -> Result<Websocket<ClientMessage, ServerMessage, AgentEncoding>, ServerFnError> {
-    let workspace = crate::workspace::api::get_workspace(workspace_id.0).await?;
+    let workspace = crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
     let agent = agents().workspace(&workspace);
     Ok(options.on_upgrade(
         move |mut socket: TypedWebsocket<ClientMessage, ServerMessage, AgentEncoding>| async move {

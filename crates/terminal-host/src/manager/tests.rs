@@ -54,15 +54,24 @@ fn shell_runs_in_workspace_and_replays_output() {
         .enable_time()
         .build()
         .unwrap();
-    let event = runtime
+    let data = runtime
         .block_on(async {
-            tokio::time::timeout(Duration::from_secs(3), attachment.events.recv()).await
+            tokio::time::timeout(Duration::from_secs(3), async {
+                let mut output = Vec::new();
+                loop {
+                    if let HostTerminalEvent::Output { data, .. } =
+                        attachment.events.recv().await.unwrap()
+                    {
+                        output.extend_from_slice(&data);
+                        if String::from_utf8_lossy(&output).contains("syntaxis-pty") {
+                            return output;
+                        }
+                    }
+                }
+            })
+            .await
         })
-        .unwrap()
         .unwrap();
-    let HostTerminalEvent::Output { data, .. } = event else {
-        panic!("expected output event");
-    };
     assert!(String::from_utf8_lossy(&data).contains("syntaxis-pty"));
     manager
         .close(&WorkspaceId::new("workspace"), &session.id)

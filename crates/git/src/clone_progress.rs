@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use syntaxis_workspace::WorkspaceRecord;
 
-pub const CLONE_PROTOCOL_VERSION: u16 = 1;
+pub const CLONE_PROTOCOL_VERSION: u16 = 2;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -28,6 +28,7 @@ pub enum CloneClientMessage {
         version: u16,
         url: String,
         destination_parent: String,
+        directory_name: String,
     },
     Cancel,
 }
@@ -52,6 +53,7 @@ mod tests {
             version: CLONE_PROTOCOL_VERSION,
             url: "https://example.invalid/repository.git".into(),
             destination_parent: "/srv/projects".into(),
+            directory_name: "repository".into(),
         };
         assert!(matches!(
             message,

@@ -1,24 +1,4 @@
-use rusqlite::ErrorCode as SqliteErrorCode;
 use syntaxis_workspace::{ErrorCode, WorkspaceError};
-
-pub(crate) fn map_database_error(error: rusqlite::Error) -> WorkspaceError {
-    let constraint = matches!(
-        error.sqlite_error_code(),
-        Some(SqliteErrorCode::ConstraintViolation)
-    );
-    let not_found = matches!(error, rusqlite::Error::QueryReturnedNoRows);
-    drop(error);
-    if constraint {
-        WorkspaceError::new(
-            ErrorCode::AlreadyExists,
-            "That workspace is already registered.",
-        )
-    } else if not_found {
-        WorkspaceError::new(ErrorCode::NotFound, "The workspace was not found.")
-    } else {
-        WorkspaceError::internal()
-    }
-}
 
 pub(crate) fn map_io_error(error: std::io::Error) -> WorkspaceError {
     let kind = error.kind();
