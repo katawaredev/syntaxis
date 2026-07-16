@@ -11,6 +11,7 @@ use syntaxis_agent::{
     ServerMessage, PROTOCOL_VERSION,
 };
 use syntaxis_git::WorktreeCreateRequest;
+use syntaxis_notifications::NotificationTarget;
 use syntaxis_ui::prelude::{
     AppIcon, Button, ButtonKind, DialogActions, DialogForm, Drawer, Field, Modal, TextInput, Toast,
     Tone,
@@ -97,7 +98,7 @@ fn RemoteAgent(
     requested_session_id: Option<String>,
 ) -> Element {
     let active_workspace = use_context::<crate::workspace::ActiveWorkspace>();
-    let notification_center = use_context::<notifications::AgentNotificationCenter>();
+    let notification_center = use_context::<notifications::NotificationCenter>();
     let files_session = use_context::<crate::files::FilesSessionState>();
     let event_state = use_context::<crate::workspace::WorkspaceEventState>();
     let workspace_target_id = WorkspaceId::new(workspace_id.clone());
@@ -140,7 +141,12 @@ fn RemoteAgent(
     });
     use_effect({
         let workspace_id = workspace_id.clone();
-        move || notification_center.view(workspace_id.clone(), selected_id())
+        move || {
+            notification_center.view(
+                workspace_id.clone(),
+                selected_id().map(|session_id| NotificationTarget::Agent { session_id }),
+            );
+        }
     });
     use_drop({
         let workspace_id = workspace_id.clone();

@@ -68,61 +68,6 @@ pub struct AgentSessionSummary {
 }
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum AgentNotificationKind {
-    Completed,
-    Attention,
-    Failed,
-}
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct AgentNotification {
-    pub workspace_id: String,
-    pub workspace_slug: String,
-    pub workspace_name: String,
-    pub session_id: String,
-    pub session_title: String,
-    pub kind: AgentNotificationKind,
-    pub message: String,
-    pub created_at_ms: u64,
-}
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum NotificationClientMessage {
-    Hello {
-        version: u16,
-    },
-    ClearSession {
-        workspace_id: String,
-        session_id: String,
-    },
-    Ping {
-        nonce: u64,
-    },
-}
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum NotificationServerMessage {
-    Hello {
-        version: u16,
-    },
-    Snapshot {
-        notifications: Vec<AgentNotification>,
-    },
-    Upsert {
-        notification: AgentNotification,
-    },
-    Removed {
-        workspace_id: String,
-        session_id: String,
-    },
-    Error {
-        error: AgentError,
-    },
-    Pong {
-        nonce: u64,
-    },
-}
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
 pub enum ItemStatus {
     Streaming,
     Running,
@@ -522,20 +467,5 @@ mod tests {
             images: Vec::new(),
         };
         assert!(oversized.validate().is_err());
-    }
-    #[test]
-    fn notification_messages_are_stably_tagged() {
-        let clear = NotificationClientMessage::ClearSession {
-            workspace_id: "workspace-1".into(),
-            session_id: "session-1".into(),
-        };
-        assert_eq!(
-            serde_json::to_value(clear).unwrap(),
-            serde_json::json!({
-                "type": "clear_session",
-                "workspace_id": "workspace-1",
-                "session_id": "session-1"
-            })
-        );
     }
 }

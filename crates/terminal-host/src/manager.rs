@@ -2,7 +2,7 @@ use crate::replay::{ReplayBuffer, ReplayChunk};
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use std::{
     collections::HashMap,
-    env,
+    env, fs,
     io::{Read, Write},
     path::{Path, PathBuf},
     sync::{
@@ -10,8 +10,10 @@ use std::{
         Arc, Mutex, MutexGuard, Weak,
     },
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+use syntaxis_notifications::{AppNotification, NotificationKind, NotificationTarget};
+use syntaxis_notifications_host::notifications;
 use syntaxis_terminal::{
     Lifecycle, SessionId, SessionSummary, TerminalError, TerminalErrorCode, TerminalSize,
     MAX_INPUT_BYTES,
@@ -19,6 +21,9 @@ use syntaxis_terminal::{
 use syntaxis_workspace::{WorkspaceId, WorkspaceRecord};
 use tokio::sync::broadcast;
 const READ_CHUNK_BYTES: usize = 32 * 1024;
+const COMMAND_MARKER_PREFIX: &[u8] = b"\x1b]777;syntaxis;";
+const COMMAND_MARKER_END: u8 = 0x07;
+const MAX_COMMAND_MARKER_BYTES: usize = 128;
 #[derive(Clone, Debug)]
 pub struct TerminalHostConfig {
     pub replay_bytes: usize,
@@ -74,13 +79,17 @@ struct ManagerInner {
 }
 struct Session {
     workspace_id: WorkspaceId,
+    workspace_slug: String,
+    workspace_name: String,
     id: SessionId,
     name: String,
+    _shell_rc: ShellRc,
     master: Mutex<Box<dyn MasterPty + Send>>,
     writer: Mutex<Box<dyn Write + Send>>,
     child: Mutex<Box<dyn Child + Send + Sync>>,
     state: Mutex<SessionState>,
     replay: Mutex<ReplayBuffer>,
+    marker_parser: Mutex<CommandMarkerParser>,
     events: broadcast::Sender<HostTerminalEvent>,
     attached: AtomicUsize,
     last_detached: Mutex<Instant>,
@@ -91,7 +100,21 @@ struct SessionState {
     size: TerminalSize,
     exit_code: Option<u32>,
     finished_at: Option<Instant>,
+    command_active: bool,
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CommandMarker {
+    Started,
+    Finished(i32),
+}
+
+#[derive(Default)]
+struct CommandMarkerParser {
+    pending: Vec<u8>,
+}
+
+struct ShellRc(PathBuf);
 impl HostTerminalManager {
     pub fn new(config: TerminalHostConfig) -> Self {
         let inner = Arc::new(ManagerInner {
@@ -129,7 +152,7 @@ impl HostTerminalManager {
         let pty = native_pty_system()
             .openpty(to_pty_size(size))
             .map_err(|_| unavailable("Failed to create a pseudo-terminal"))?;
-        let mut command = controlled_shell_command(&root)?;
+        let (mut command, shell_rc) = controlled_shell_command(&root)?;
         command.cwd(&root);
         let child = pty
             .slave
@@ -148,8 +171,11 @@ impl HostTerminalManager {
         let (events, _) = broadcast::channel(self.inner.config.event_capacity.max(1));
         let session = Arc::new(Session {
             workspace_id: workspace.id.clone(),
+            workspace_slug: workspace.slug.clone(),
+            workspace_name: workspace.name.clone(),
             id: id.clone(),
             name,
+            _shell_rc: shell_rc,
             master: Mutex::new(pty.master),
             writer: Mutex::new(writer),
             child: Mutex::new(child),
@@ -158,8 +184,10 @@ impl HostTerminalManager {
                 size,
                 exit_code: None,
                 finished_at: None,
+                command_active: false,
             }),
             replay: Mutex::new(ReplayBuffer::new(self.inner.config.replay_bytes.max(1))),
+            marker_parser: Mutex::new(CommandMarkerParser::default()),
             events,
             attached: AtomicUsize::new(0),
             last_detached: Mutex::new(Instant::now()),
@@ -204,6 +232,12 @@ impl HostTerminalManager {
         session_id: &SessionId,
     ) -> Result<(SessionSummary, SessionAttachment), TerminalError> {
         let session = self.session(workspace_id, session_id)?;
+        notifications().clear(
+            &workspace_id.0,
+            &NotificationTarget::Terminal {
+                session_id: session_id.0.clone(),
+            },
+        );
         session.attached.fetch_add(1, Ordering::Relaxed);
         let events = session.events.subscribe();
         let replay = lock(&session.replay)?
@@ -289,6 +323,7 @@ impl HostTerminalManager {
             if matches!(state.lifecycle, Lifecycle::Exited | Lifecycle::Failed) {
                 drop(state);
                 lock(&self.inner.sessions)?.remove(session_id);
+                clear_terminal_notification(workspace_id, session_id);
                 return Ok(());
             }
             let previous = *state;
@@ -312,6 +347,7 @@ impl HostTerminalManager {
             );
         }
         lock(&self.inner.sessions)?.remove(session_id);
+        clear_terminal_notification(workspace_id, session_id);
         Ok(())
     }
     /// Terminate every session owned by a workspace.
@@ -342,6 +378,7 @@ impl HostTerminalManager {
             .filter_map(|session| {
                 let state = lock(&session.state).ok()?;
                 let detached_expired = session.attached.load(Ordering::Relaxed) == 0
+                    && !state.command_active
                     && now.duration_since(*lock(&session.last_detached).ok()?)
                         >= self.inner.config.detached_timeout;
                 let exited_expired = state.finished_at.is_some_and(|finished| {
@@ -358,6 +395,7 @@ impl HostTerminalManager {
                         .kill()
                         .map_err(|_| unavailable("Failed to clean up terminal"))
                 });
+                clear_terminal_notification(&session.workspace_id, &session.id);
             }
         }
         Ok(())
@@ -449,15 +487,72 @@ impl Session {
             exit_code: state.exit_code,
         })
     }
-    fn record_output(&self, data: Vec<u8>) {
-        let Ok(chunk) = lock(&self.replay).map(|mut replay| replay.push(data)) else {
+    fn record_output(&self, data: &[u8]) {
+        let Ok((visible, markers)) = lock(&self.marker_parser).map(|mut parser| parser.push(data))
+        else {
             return;
         };
-        let _ = self.events.send(HostTerminalEvent::Output {
-            session_id: self.id.clone(),
-            sequence: chunk.sequence,
-            data: chunk.data,
-        });
+        if !visible.is_empty() {
+            let Ok(chunk) = lock(&self.replay).map(|mut replay| replay.push(visible)) else {
+                return;
+            };
+            let _ = self.events.send(HostTerminalEvent::Output {
+                session_id: self.id.clone(),
+                sequence: chunk.sequence,
+                data: chunk.data,
+            });
+        }
+        for marker in markers {
+            self.handle_command_marker(marker);
+        }
+    }
+    fn handle_command_marker(&self, marker: CommandMarker) {
+        match marker {
+            CommandMarker::Started => {
+                if let Ok(mut state) = lock(&self.state) {
+                    state.command_active = true;
+                }
+                clear_terminal_notification(&self.workspace_id, &self.id);
+            }
+            CommandMarker::Finished(exit_code) => {
+                let completed = lock(&self.state).is_ok_and(|mut state| {
+                    let was_active = state.command_active;
+                    state.command_active = false;
+                    was_active
+                });
+                if !completed {
+                    return;
+                }
+                if self.attached.load(Ordering::Relaxed) == 0 {
+                    if let Ok(mut detached) = lock(&self.last_detached) {
+                        *detached = Instant::now();
+                    }
+                }
+                let (kind, message) = if exit_code == 0 {
+                    (
+                        NotificationKind::Completed,
+                        "Command finished successfully".into(),
+                    )
+                } else {
+                    (
+                        NotificationKind::Failed,
+                        format!("Command exited with status {exit_code}"),
+                    )
+                };
+                notifications().publish(AppNotification {
+                    workspace_id: self.workspace_id.0.clone(),
+                    workspace_slug: self.workspace_slug.clone(),
+                    workspace_name: self.workspace_name.clone(),
+                    target: NotificationTarget::Terminal {
+                        session_id: self.id.0.clone(),
+                    },
+                    title: self.name.clone(),
+                    kind,
+                    message,
+                    created_at_ms: now_ms(),
+                });
+            }
+        }
     }
     fn mark_exited(&self, exit_code: Option<u32>, failed: bool) {
         if let Ok(mut state) = lock(&self.state) {
@@ -468,6 +563,7 @@ impl Session {
             };
             state.exit_code = exit_code;
             state.finished_at = Some(Instant::now());
+            state.command_active = false;
         }
         self.publish_lifecycle();
     }
@@ -483,6 +579,71 @@ impl Session {
         }
     }
 }
+
+impl Drop for ShellRc {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
+    }
+}
+
+impl CommandMarkerParser {
+    fn push(&mut self, data: &[u8]) -> (Vec<u8>, Vec<CommandMarker>) {
+        self.pending.extend_from_slice(data);
+        let mut visible = Vec::new();
+        let mut markers = Vec::new();
+        loop {
+            let Some(start) = find_bytes(&self.pending, COMMAND_MARKER_PREFIX) else {
+                let keep = partial_prefix_len(&self.pending, COMMAND_MARKER_PREFIX);
+                let emit = self.pending.len().saturating_sub(keep);
+                visible.extend(self.pending.drain(..emit));
+                break;
+            };
+            visible.extend(self.pending.drain(..start));
+            let Some(end_offset) = self.pending[COMMAND_MARKER_PREFIX.len()..]
+                .iter()
+                .position(|byte| *byte == COMMAND_MARKER_END)
+            else {
+                if self.pending.len() > MAX_COMMAND_MARKER_BYTES {
+                    visible.extend(self.pending.drain(..1));
+                    continue;
+                }
+                break;
+            };
+            let content_start = COMMAND_MARKER_PREFIX.len();
+            let content_end = content_start + end_offset;
+            if let Some(marker) = parse_command_marker(&self.pending[content_start..content_end]) {
+                markers.push(marker);
+            }
+            self.pending.drain(..=content_end);
+        }
+        (visible, markers)
+    }
+}
+
+fn parse_command_marker(content: &[u8]) -> Option<CommandMarker> {
+    if content == b"command-start" {
+        return Some(CommandMarker::Started);
+    }
+    std::str::from_utf8(content)
+        .ok()?
+        .strip_prefix("command-end;")?
+        .parse::<i32>()
+        .ok()
+        .map(CommandMarker::Finished)
+}
+
+fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack
+        .windows(needle.len())
+        .position(|candidate| candidate == needle)
+}
+
+fn partial_prefix_len(data: &[u8], prefix: &[u8]) -> usize {
+    (1..prefix.len().min(data.len()))
+        .rev()
+        .find(|length| data.ends_with(&prefix[..*length]))
+        .unwrap_or(0)
+}
 fn spawn_reader(
     session: Arc<Session>,
     mut reader: Box<dyn Read + Send>,
@@ -494,7 +655,7 @@ fn spawn_reader(
             loop {
                 match reader.read(&mut buffer) {
                     Ok(0) | Err(_) => break,
-                    Ok(read) => session.record_output(buffer[..read].to_vec()),
+                    Ok(read) => session.record_output(&buffer[..read]),
                 }
             }
         })
@@ -545,21 +706,21 @@ fn spawn_cleanup_worker(manager: Weak<ManagerInner>) {
         })
         .expect("failed to start terminal cleanup thread");
 }
-fn controlled_shell_command(root: &Path) -> Result<CommandBuilder, TerminalError> {
+fn controlled_shell_command(root: &Path) -> Result<(CommandBuilder, ShellRc), TerminalError> {
     let shell = env::var_os("SHELL")
         .map(PathBuf::from)
-        .filter(|path| path.is_absolute() && path.is_file())
+        .filter(|path| {
+            path.is_absolute()
+                && path.is_file()
+                && path.file_name().is_some_and(|name| name == "bash")
+        })
         .or_else(|| {
             Path::new("/bin/bash")
                 .is_file()
                 .then(|| PathBuf::from("/bin/bash"))
         })
-        .or_else(|| {
-            Path::new("/bin/sh")
-                .is_file()
-                .then(|| PathBuf::from("/bin/sh"))
-        })
-        .ok_or_else(|| unavailable("No supported shell is available"))?;
+        .ok_or_else(|| unavailable("Bash is unavailable"))?;
+    let shell_rc = create_shell_rc()?;
     let mut command = CommandBuilder::new(shell);
     command.env_clear();
     for key in [
@@ -579,7 +740,47 @@ fn controlled_shell_command(root: &Path) -> Result<CommandBuilder, TerminalError
     command.env("COLORTERM", "truecolor");
     command.env("TERM_PROGRAM", "Syntaxis");
     command.env("PWD", root);
-    Ok(command)
+    command.arg("--noprofile");
+    command.arg("--rcfile");
+    command.arg(&shell_rc.0);
+    command.arg("-i");
+    Ok((command, shell_rc))
+}
+
+fn create_shell_rc() -> Result<ShellRc, TerminalError> {
+    let path = env::temp_dir().join(format!("syntaxis-bash-{}.rc", uuid::Uuid::new_v4()));
+    fs::write(
+        &path,
+        r#"if [[ -r "$HOME/.bashrc" ]]; then
+    source "$HOME/.bashrc"
+fi
+
+if [[ "$(declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]]; then
+    __syntaxis_original_prompt_commands=("${PROMPT_COMMAND[@]}")
+elif [[ -n "${PROMPT_COMMAND-}" ]]; then
+    __syntaxis_original_prompt_commands=("$PROMPT_COMMAND")
+else
+    __syntaxis_original_prompt_commands=()
+fi
+PS0=$'\e]777;syntaxis;command-start\a'"${PS0-}"
+
+__syntaxis_prompt_command() {
+    local __syntaxis_status=$?
+    printf '\e]777;syntaxis;command-end;%d\a' "$__syntaxis_status"
+    local __syntaxis_prompt_status="$__syntaxis_status"
+    local __syntaxis_prompt_entry
+    for __syntaxis_prompt_entry in "${__syntaxis_original_prompt_commands[@]}"; do
+        (exit "$__syntaxis_prompt_status")
+        eval -- "$__syntaxis_prompt_entry"
+        __syntaxis_prompt_status=$?
+    done
+}
+
+PROMPT_COMMAND=(__syntaxis_prompt_command)
+"#,
+    )
+    .map_err(|_| unavailable("Failed to prepare Bash integration"))?;
+    Ok(ShellRc(path))
 }
 const fn to_pty_size(size: TerminalSize) -> PtySize {
     PtySize {
@@ -599,6 +800,23 @@ fn invalid_request(message: &'static str) -> TerminalError {
 }
 fn unavailable(message: &'static str) -> TerminalError {
     TerminalError::new(TerminalErrorCode::Unavailable, message)
+}
+
+fn clear_terminal_notification(workspace_id: &WorkspaceId, session_id: &SessionId) {
+    notifications().clear(
+        &workspace_id.0,
+        &NotificationTarget::Terminal {
+            session_id: session_id.0.clone(),
+        },
+    );
+}
+
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .and_then(|duration| u64::try_from(duration.as_millis()).ok())
+        .unwrap_or(0)
 }
 #[cfg(test)]
 mod tests;

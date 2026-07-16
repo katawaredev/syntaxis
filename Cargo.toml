@@ -13,6 +13,8 @@ members = [
     "crates/code-editor",
     "crates/git",
     "crates/git-host",
+    "crates/notifications",
+    "crates/notifications-host",
     "crates/terminal",
     "crates/terminal-host",
     "crates/ui",
@@ -77,6 +79,8 @@ syntaxis-ui = { path = "crates/ui" }
 syntaxis-editor = { path = "crates/editor" }
 syntaxis-git = { path = "crates/git" }
 syntaxis-git-host = { path = "crates/git-host", optional = true }
+syntaxis-notifications = { path = "crates/notifications" }
+syntaxis-notifications-host = { path = "crates/notifications-host", optional = true }
 syntaxis-terminal = { path = "crates/terminal" }
 syntaxis-workspace = { path = "crates/workspace" }
 syntaxis-workspace-host = { path = "crates/workspace-host", optional = true }
@@ -106,6 +110,7 @@ server = [
     "dioxus/server",
     "dep:syntaxis-agent-host",
     "dep:syntaxis-git-host",
+    "dep:syntaxis-notifications-host",
     "dep:syntaxis-terminal-host",
     "dep:syntaxis-workspace-host",
     "dep:tokio",

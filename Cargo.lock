@@ -6228,6 +6228,8 @@ dependencies = [
  "syntaxis-editor",
  "syntaxis-git",
  "syntaxis-git-host",
+ "syntaxis-notifications",
+ "syntaxis-notifications-host",
  "syntaxis-terminal",
  "syntaxis-terminal-host",
  "syntaxis-ui",
@@ -6254,6 +6256,8 @@ version = "0.1.0"
 dependencies = [
  "serde_json",
  "syntaxis-agent",
+ "syntaxis-notifications",
+ "syntaxis-notifications-host",
  "syntaxis-workspace",
  "tempfile",
  "tokio",
@@ -6292,6 +6296,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "syntaxis-notifications"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "syntaxis-notifications-host"
+version = "0.1.0"
+dependencies = [
+ "syntaxis-notifications",
+ "tokio",
+]
+
+[[package]]
 name = "syntaxis-terminal"
 version = "0.1.0"
 dependencies = [
@@ -6305,6 +6325,8 @@ name = "syntaxis-terminal-host"
 version = "0.1.0"
 dependencies = [
  "portable-pty",
+ "syntaxis-notifications",
+ "syntaxis-notifications-host",
  "syntaxis-terminal",
  "syntaxis-workspace",
  "tempfile",

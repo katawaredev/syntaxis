@@ -1,4 +1,19 @@
 use super::*;
+
+#[test]
+fn command_markers_are_removed_across_chunk_boundaries() {
+    let mut parser = CommandMarkerParser::default();
+    let (visible, markers) = parser.push(b"before\x1b]777;synt");
+    assert_eq!(visible, b"before");
+    assert!(markers.is_empty());
+    let (visible, markers) =
+        parser.push(b"axis;command-start\x07during\x1b]777;syntaxis;command-end;7\x07after");
+    assert_eq!(visible, b"duringafter");
+    assert_eq!(
+        markers,
+        vec![CommandMarker::Started, CommandMarker::Finished(7)]
+    );
+}
 use std::time::Duration;
 use syntaxis_workspace::{WorkspaceAvailability, WorkspaceIcon};
 fn workspace(root: &Path) -> WorkspaceRecord {
@@ -121,6 +136,81 @@ fn detached_sessions_are_cleaned_after_the_configured_timeout() {
         .list(&WorkspaceId::new("workspace"))
         .unwrap()
         .is_empty());
+}
+
+#[test]
+fn detached_foreground_command_pauses_and_then_restarts_expiry() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut workspace = workspace(directory.path());
+    workspace.id = WorkspaceId::new("command-expiry-workspace");
+    workspace.slug = "command-expiry-workspace".into();
+    let manager = HostTerminalManager::new(TerminalHostConfig {
+        detached_timeout: Duration::from_millis(150),
+        cleanup_interval: Duration::from_secs(10),
+        ..TerminalHostConfig::default()
+    });
+    let session = manager
+        .create(&workspace, Some("long command"), TerminalSize::DEFAULT)
+        .unwrap();
+    let target = NotificationTarget::Terminal {
+        session_id: session.id.0.clone(),
+    };
+    notifications().clear(&workspace.id.0, &target);
+    let (_, attachment) = manager.attach(&workspace.id, &session.id).unwrap();
+    thread::sleep(Duration::from_millis(100));
+    manager
+        .write(&workspace.id, &session.id, b"sleep 1\n")
+        .unwrap();
+
+    let active_deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        if lock(&manager.session(&workspace.id, &session.id).unwrap().state)
+            .unwrap()
+            .command_active
+        {
+            break;
+        }
+        assert!(
+            Instant::now() < active_deadline,
+            "Bash command marker was not received"
+        );
+        thread::sleep(Duration::from_millis(20));
+    }
+    drop(attachment);
+    thread::sleep(Duration::from_millis(200));
+    manager.cleanup().unwrap();
+    assert_eq!(manager.list(&workspace.id).unwrap().len(), 1);
+
+    let completion_deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        if notifications().snapshot().iter().any(|notification| {
+            notification.workspace_id == workspace.id.0 && notification.target == target
+        }) {
+            break;
+        }
+        assert!(
+            Instant::now() < completion_deadline,
+            "command completion notification was not published"
+        );
+        thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(manager.list(&workspace.id).unwrap().len(), 1);
+    thread::sleep(Duration::from_millis(200));
+    let terminal_session = manager.session(&workspace.id, &session.id).unwrap();
+    let command_active = lock(&terminal_session.state).unwrap().command_active;
+    let attached = terminal_session.attached.load(Ordering::Relaxed);
+    let detached_for =
+        Instant::now().duration_since(*lock(&terminal_session.last_detached).unwrap());
+    manager.cleanup().unwrap();
+    assert!(
+        manager.list(&workspace.id).unwrap().is_empty(),
+        "active={command_active} attached={attached} detached_for={detached_for:?}"
+    );
+    assert!(!notifications()
+        .snapshot()
+        .iter()
+        .any(|notification| notification.workspace_id == workspace.id.0
+            && notification.target == target));
 }
 
 #[test]

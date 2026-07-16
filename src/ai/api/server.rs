@@ -4,11 +4,13 @@ use dioxus::{
     fullstack::{TypedWebsocket, WebSocketOptions, Websocket},
     prelude::ServerFnError,
 };
-use syntaxis_agent::{
-    AgentError, AgentErrorCode, ClientMessage, NotificationClientMessage,
-    NotificationServerMessage, ServerMessage, PROTOCOL_VERSION,
-};
+use syntaxis_agent::{AgentError, AgentErrorCode, ClientMessage, ServerMessage, PROTOCOL_VERSION};
 use syntaxis_agent_host::HostAgentManager;
+use syntaxis_notifications::{
+    NotificationClientMessage, NotificationServerMessage,
+    PROTOCOL_VERSION as NOTIFICATION_PROTOCOL_VERSION,
+};
+use syntaxis_notifications_host::notifications;
 use syntaxis_workspace::WorkspaceId;
 
 use super::AgentEncoding;
@@ -121,13 +123,13 @@ fn agents() -> &'static HostAgentManager {
     AGENTS.get_or_init(HostAgentManager::default)
 }
 
-pub(super) async fn agent_notification_socket(
+pub(super) async fn notification_socket(
     options: WebSocketOptions,
 ) -> Result<
     Websocket<NotificationClientMessage, NotificationServerMessage, AgentEncoding>,
     ServerFnError,
 > {
-    let notifications = agents().notifications();
+    let notifications = notifications();
     Ok(options.on_upgrade(
         move |mut socket: TypedWebsocket<
             NotificationClientMessage,
@@ -139,28 +141,22 @@ pub(super) async fn agent_notification_socket(
             else {
                 let _ = socket
                     .send(NotificationServerMessage::Error {
-                        error: AgentError::new(
-                            AgentErrorCode::InvalidProtocol,
-                            "AI notification handshake required",
-                        ),
+                        message: "Notification protocol handshake required".into(),
                     })
                     .await;
                 return;
             };
-            if version != PROTOCOL_VERSION {
+            if version != NOTIFICATION_PROTOCOL_VERSION {
                 let _ = socket
                     .send(NotificationServerMessage::Error {
-                        error: AgentError::new(
-                            AgentErrorCode::InvalidProtocol,
-                            "Unsupported AI notification protocol version",
-                        ),
+                        message: "Unsupported notification protocol version".into(),
                     })
                     .await;
                 return;
             }
             if socket
                 .send(NotificationServerMessage::Hello {
-                    version: PROTOCOL_VERSION,
+                    version: NOTIFICATION_PROTOCOL_VERSION,
                 })
                 .await
                 .is_err()
@@ -179,8 +175,8 @@ pub(super) async fn agent_notification_socket(
                     incoming = socket.recv() => {
                         let Ok(message) = incoming else { break; };
                         match message {
-                            NotificationClientMessage::ClearSession { workspace_id, session_id } => {
-                                notifications.clear(&workspace_id, &session_id);
+                            NotificationClientMessage::Clear { workspace_id, target } => {
+                                notifications.clear(&workspace_id, &target);
                             }
                             NotificationClientMessage::Ping { nonce } => {
                                 if socket.send(NotificationServerMessage::Pong { nonce }).await.is_err() {
@@ -189,10 +185,7 @@ pub(super) async fn agent_notification_socket(
                             }
                             NotificationClientMessage::Hello { .. } => {
                                 if socket.send(NotificationServerMessage::Error {
-                                    error: AgentError::new(
-                                        AgentErrorCode::InvalidProtocol,
-                                        "The AI notification handshake is already complete",
-                                    ),
+                                    message: "The notification handshake is already complete".into(),
                                 }).await.is_err() {
                                     break;
                                 }

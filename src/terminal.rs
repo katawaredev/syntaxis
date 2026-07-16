@@ -10,6 +10,8 @@ use futures_util::{
     future::{select, Either},
     pin_mut, FutureExt, StreamExt,
 };
+use std::fmt;
+use syntaxis_notifications::NotificationTarget;
 use syntaxis_terminal::{
     ClientMessage, Lifecycle, ServerMessage, SessionId, SessionSummary, TerminalErrorCode,
     TerminalSize, PROTOCOL_VERSION,
@@ -26,6 +28,40 @@ const MAX_RECONNECT_DELAY_MS: u64 = 8_000;
 const HEARTBEAT_INTERVAL_SECONDS: u64 = 10;
 const HEARTBEAT_TIMEOUT_SECONDS: u64 = 30;
 const TERMINAL_SCRIPT: Asset = asset!("/assets/terminal/ghostty-web.bundle.js");
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TerminalQuery {
+    session_id: Option<String>,
+}
+
+impl TerminalQuery {
+    pub(crate) fn with_session(session_id: String) -> Self {
+        Self {
+            session_id: Some(session_id),
+        }
+    }
+}
+
+impl From<&str> for TerminalQuery {
+    fn from(query: &str) -> Self {
+        let session_id = url::form_urlencoded::parse(query.as_bytes()).find_map(|(key, value)| {
+            matches!(key.as_ref(), "sessionId" | "session_id")
+                .then(|| value.trim().to_owned())
+                .filter(|value| !value.is_empty())
+        });
+        Self { session_id }
+    }
+}
+
+impl fmt::Display for TerminalQuery {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut serializer = url::form_urlencoded::Serializer::new(String::new());
+        if let Some(session_id) = self.session_id.as_deref() {
+            serializer.append_pair("sessionId", session_id);
+        }
+        formatter.write_str(&serializer.finish())
+    }
+}
 #[derive(Clone, Debug, PartialEq)]
 enum ConnectionState {
     Connecting,
@@ -72,12 +108,16 @@ impl QuickCommand {
     }
 }
 #[component]
-pub fn Terminal(slug: String) -> Element {
-    let _ = slug;
+pub fn Terminal(slug: String, query: TerminalQuery) -> Element {
     let active = use_context::<crate::workspace::ActiveWorkspace>();
     match active.current() {
         Some(workspace) => rsx! {
-            RemoteTerminal { key: "{workspace.id.0}", workspace_id: workspace.id.0 }
+            RemoteTerminal {
+                key: "{workspace.id.0}:{query}",
+                workspace_id: workspace.id.0,
+                workspace_slug: slug,
+                requested_session_id: query.session_id,
+            }
         },
         None => rsx! {
             div { class: "absolute inset-0 flex flex-col items-center justify-center gap-2 bg-card text-muted-foreground",
@@ -88,7 +128,12 @@ pub fn Terminal(slug: String) -> Element {
     }
 }
 #[component]
-fn RemoteTerminal(workspace_id: String) -> Element {
+fn RemoteTerminal(
+    workspace_id: String,
+    workspace_slug: String,
+    requested_session_id: Option<String>,
+) -> Element {
+    let notification_center = use_context::<crate::ai::notifications::NotificationCenter>();
     let mut connection = use_signal(|| ConnectionState::Connecting);
     let mut sessions = use_signal(Vec::<SessionSummary>::new);
     let mut active = use_signal(|| None::<SessionId>);
@@ -104,6 +149,21 @@ fn RemoteTerminal(workspace_id: String) -> Element {
     let mut new_name_server_error = use_signal(|| None::<String>);
     let mut creating_session = use_signal(|| false);
     let storage_key = format!("syntaxis.terminal.active.{workspace_id}");
+    use_effect({
+        let workspace_id = workspace_id.clone();
+        move || {
+            notification_center.view(
+                workspace_id.clone(),
+                active().map(|session_id| NotificationTarget::Terminal {
+                    session_id: session_id.0,
+                }),
+            );
+        }
+    });
+    use_drop({
+        let workspace_id = workspace_id.clone();
+        move || notification_center.stop_viewing(&workspace_id)
+    });
     use_effect({
         let storage_key = storage_key.clone();
         move || {
@@ -145,6 +205,7 @@ fn RemoteTerminal(workspace_id: String) -> Element {
         let workspace_id = workspace_id.clone();
         move |mut commands: UnboundedReceiver<ClientMessage>| {
             let workspace_id = workspace_id.clone();
+            let requested_session_id = requested_session_id.clone();
             async move {
                 while !remembered_loaded() {
                     dioxus_sdk_time::sleep(std::time::Duration::from_millis(10)).await;
@@ -261,8 +322,11 @@ fn RemoteTerminal(workspace_id: String) -> Element {
                                     ServerMessage::Sessions {
                                         sessions: available,
                                     } => {
+                                        let requested =
+                                            requested_session_id.as_ref().map(SessionId::new);
                                         let selected = choose_active(
                                             &available,
+                                            requested.as_ref(),
                                             active().as_ref(),
                                             remembered().as_ref(),
                                         );
@@ -485,6 +549,23 @@ fn RemoteTerminal(workspace_id: String) -> Element {
             .iter()
             .find(|session| session.id == id)
             .cloned()
+    });
+    let navigator = use_navigator();
+    use_effect({
+        let workspace_slug = workspace_slug.clone();
+        move || {
+            let query = if let Some(session_id) = active() {
+                TerminalQuery::with_session(session_id.0)
+            } else if connection() == ConnectionState::Ready && sessions().is_empty() {
+                TerminalQuery::default()
+            } else {
+                return;
+            };
+            navigator.replace(crate::app::Route::Terminal {
+                slug: workspace_slug.clone(),
+                query,
+            });
+        }
     });
     let connection_ready = connection() == ConnectionState::Ready;
     let connection_label = match connection() {
@@ -981,11 +1062,13 @@ fn fail_pending_requests(
 
 fn choose_active(
     sessions: &[SessionSummary],
+    requested: Option<&SessionId>,
     active: Option<&SessionId>,
     remembered: Option<&SessionId>,
 ) -> Option<SessionId> {
-    active
+    requested
         .and_then(|id| sessions.iter().find(|session| &session.id == id))
+        .or_else(|| active.and_then(|id| sessions.iter().find(|session| &session.id == id)))
         .or_else(|| remembered.and_then(|id| sessions.iter().find(|session| &session.id == id)))
         .or_else(|| sessions.first())
         .map(|session| session.id.clone())
@@ -1138,8 +1221,21 @@ mod tests {
     fn remembered_session_wins_when_active_is_missing() {
         let sessions = vec![session("1"), session("2")];
         assert_eq!(
-            choose_active(&sessions, None, Some(&SessionId::new("2"))),
+            choose_active(&sessions, None, None, Some(&SessionId::new("2"))),
             Some(SessionId::new("2")),
+        );
+    }
+    #[test]
+    fn requested_session_wins_over_remembered_session() {
+        let sessions = vec![session("1"), session("2")];
+        assert_eq!(
+            choose_active(
+                &sessions,
+                Some(&SessionId::new("1")),
+                None,
+                Some(&SessionId::new("2")),
+            ),
+            Some(SessionId::new("1")),
         );
     }
     #[test]
@@ -1151,6 +1247,19 @@ mod tests {
         );
         assert_eq!(duplicate_session_name_error("shell 2", &sessions), None);
         assert_eq!(duplicate_session_name_error("", &sessions), None);
+    }
+    #[test]
+    fn terminal_links_round_trip_through_the_router() {
+        let route = crate::app::Route::Terminal {
+            slug: "syntaxis-demo".into(),
+            query: TerminalQuery::with_session("terminal/with spaces".into()),
+        };
+        let link = route.to_string();
+        assert_eq!(
+            link,
+            "/workspaces/syntaxis-demo/terminal?sessionId=terminal%2Fwith+spaces"
+        );
+        assert_eq!(link.parse::<crate::app::Route>().unwrap(), route);
     }
     #[test]
     fn reconnect_backoff_is_exponential_and_bounded() {

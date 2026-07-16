@@ -2,9 +2,8 @@ use bytes::Bytes;
 use dioxus::fullstack::{CborEncoding, Encoding, WebSocketOptions, Websocket};
 use dioxus::prelude::*;
 use serde::{de::DeserializeOwned, Serialize};
-use syntaxis_agent::{
-    ClientMessage, NotificationClientMessage, NotificationServerMessage, ServerMessage,
-};
+use syntaxis_agent::{ClientMessage, ServerMessage};
+use syntaxis_notifications::{NotificationClientMessage, NotificationServerMessage};
 
 const MAX_AGENT_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
@@ -50,14 +49,14 @@ pub async fn agent_socket(
     server::agent_socket(WorkspaceId::new(workspace_id), options).await
 }
 
-#[get("/api/agent-notifications")]
-pub async fn agent_notification_socket(
+#[get("/api/notifications")]
+pub async fn notification_socket(
     options: WebSocketOptions,
 ) -> Result<
     Websocket<NotificationClientMessage, NotificationServerMessage, AgentEncoding>,
     ServerFnError,
 > {
-    server::agent_notification_socket(options).await
+    server::notification_socket(options).await
 }
 
 #[cfg(feature = "server")]

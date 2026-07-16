@@ -1,27 +1,27 @@
 use dioxus::prelude::*;
 use dioxus_primitives::popover::{PopoverContent, PopoverRoot, PopoverTrigger};
 use futures_util::{future::FutureExt, StreamExt};
-use syntaxis_agent::{
-    AgentNotification, AgentNotificationKind, NotificationClientMessage, NotificationServerMessage,
-    PROTOCOL_VERSION,
+use syntaxis_notifications::{
+    AppNotification, NotificationClientMessage, NotificationKind, NotificationServerMessage,
+    NotificationTarget, PROTOCOL_VERSION,
 };
 use syntaxis_ui::prelude::{AppIcon, Icon};
 
 use crate::app::Route;
 
 #[derive(Clone, Copy)]
-pub(crate) struct AgentNotificationCenter {
-    items: Signal<Vec<AgentNotification>>,
-    viewing: Signal<Option<(String, String)>>,
+pub(crate) struct NotificationCenter {
+    items: Signal<Vec<AppNotification>>,
+    viewing: Signal<Option<(String, NotificationTarget)>>,
     client: Coroutine<NotificationClientMessage>,
 }
 
-impl AgentNotificationCenter {
-    pub(crate) fn view(mut self, workspace_id: String, session_id: Option<String>) {
-        let viewing = session_id.map(|session_id| (workspace_id, session_id));
+impl NotificationCenter {
+    pub(crate) fn view(mut self, workspace_id: String, target: Option<NotificationTarget>) {
+        let viewing = target.map(|target| (workspace_id, target));
         self.viewing.set(viewing.clone());
-        if let Some((workspace_id, session_id)) = viewing {
-            self.clear(workspace_id, session_id);
+        if let Some((workspace_id, target)) = viewing {
+            self.clear(workspace_id, target);
         }
     }
 
@@ -36,21 +36,21 @@ impl AgentNotificationCenter {
         }
     }
 
-    pub(crate) fn clear(mut self, workspace_id: String, session_id: String) {
+    pub(crate) fn clear(mut self, workspace_id: String, target: NotificationTarget) {
         self.items.write().retain(|notification| {
-            notification.workspace_id != workspace_id || notification.session_id != session_id
+            notification.workspace_id != workspace_id || notification.target != target
         });
-        self.client.send(NotificationClientMessage::ClearSession {
+        self.client.send(NotificationClientMessage::Clear {
             workspace_id,
-            session_id,
+            target,
         });
     }
 }
 
 #[allow(clippy::too_many_lines)] // The reconnecting bidirectional websocket is one state machine.
-pub(crate) fn use_agent_notification_center() -> AgentNotificationCenter {
-    let mut items = use_signal(Vec::<AgentNotification>::new);
-    let viewing = use_signal(|| None::<(String, String)>);
+pub(crate) fn use_notification_center() -> NotificationCenter {
+    let mut items = use_signal(Vec::<AppNotification>::new);
+    let viewing = use_signal(|| None::<(String, NotificationTarget)>);
     let client = use_coroutine(
         move |mut outgoing: UnboundedReceiver<NotificationClientMessage>| async move {
             let mut attempt = 0_u8;
@@ -61,10 +61,9 @@ pub(crate) fn use_agent_notification_center() -> AgentNotificationCenter {
                     )))
                     .await;
                 }
-                let Ok(socket) = super::api::agent_notification_socket(
-                    dioxus::fullstack::WebSocketOptions::new(),
-                )
-                .await
+                let Ok(socket) =
+                    super::api::notification_socket(dioxus::fullstack::WebSocketOptions::new())
+                        .await
                 else {
                     attempt = attempt.saturating_add(1).min(8);
                     continue;
@@ -102,9 +101,9 @@ pub(crate) fn use_agent_notification_center() -> AgentNotificationCenter {
                                 for notification in notifications {
                                     if is_viewed(&notification, viewing().as_ref()) {
                                         let _ = socket
-                                            .send(NotificationClientMessage::ClearSession {
+                                            .send(NotificationClientMessage::Clear {
                                                 workspace_id: notification.workspace_id,
-                                                session_id: notification.session_id,
+                                                target: notification.target,
                                             })
                                             .await;
                                     } else {
@@ -119,22 +118,22 @@ pub(crate) fn use_agent_notification_center() -> AgentNotificationCenter {
                             NotificationServerMessage::Upsert { notification } => {
                                 if is_viewed(&notification, viewing().as_ref()) {
                                     let _ = socket
-                                        .send(NotificationClientMessage::ClearSession {
+                                        .send(NotificationClientMessage::Clear {
                                             workspace_id: notification.workspace_id,
-                                            session_id: notification.session_id,
+                                            target: notification.target,
                                         })
                                         .await;
                                 } else {
                                     upsert(&mut items, notification.clone());
-                                    show_browser_notification(notification);
+                                    show_browser_notification(&notification);
                                 }
                             }
                             NotificationServerMessage::Removed {
                                 workspace_id,
-                                session_id,
+                                target,
                             } => items.write().retain(|notification| {
                                 notification.workspace_id != workspace_id
-                                    || notification.session_id != session_id
+                                    || notification.target != target
                             }),
                             NotificationServerMessage::Error { .. }
                             | NotificationServerMessage::Pong { .. }
@@ -149,7 +148,7 @@ pub(crate) fn use_agent_notification_center() -> AgentNotificationCenter {
             }
         },
     );
-    AgentNotificationCenter {
+    NotificationCenter {
         items,
         viewing,
         client,
@@ -157,8 +156,8 @@ pub(crate) fn use_agent_notification_center() -> AgentNotificationCenter {
 }
 
 #[component]
-pub(crate) fn AgentNotificationMenu() -> Element {
-    let center = use_context::<AgentNotificationCenter>();
+pub(crate) fn NotificationMenu() -> Element {
+    let center = use_context::<NotificationCenter>();
     let mut open = use_signal(|| false);
     let notifications = (center.items)();
     let count = notifications.len();
@@ -171,8 +170,8 @@ pub(crate) fn AgentNotificationMenu() -> Element {
             on_open_change: move |next| open.set(next),
             PopoverTrigger {
                 class: if open() { "relative grid size-8 place-items-center rounded-lg bg-accent text-foreground" } else { "relative grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground" },
-                aria_label: if count == 0 { "Agent notifications".to_owned() } else { format!("Agent notifications, {count} unread") },
-                title: "Agent notifications",
+                aria_label: if count == 0 { "Notifications".to_owned() } else { format!("Notifications, {count} unread") },
+                title: "Notifications",
                 Icon { icon: AppIcon::Bell, size: 15 }
                 if count > 0 {
                     span { class: "absolute -top-0.5 -right-0.5 grid min-w-4 h-4 place-items-center rounded-full bg-primary px-1 text-[8px] font-semibold leading-none text-primary-foreground ring-2 ring-background",
@@ -182,7 +181,7 @@ pub(crate) fn AgentNotificationMenu() -> Element {
             }
             PopoverContent { class: "absolute top-[calc(100%+6px)] right-0 z-90 w-[min(360px,calc(100vw-1rem))] overflow-hidden rounded-xl border border-border bg-popover shadow-2xl",
                 div { class: "flex items-center justify-between border-b border-border px-3 py-2.5",
-                    strong { class: "text-xs", "Agent notifications" }
+                    strong { class: "text-xs", "Notifications" }
                     if count > 0 {
                         span { class: "text-[9px] text-muted-foreground", "{count} need attention" }
                     }
@@ -195,16 +194,16 @@ pub(crate) fn AgentNotificationMenu() -> Element {
                             }
                             p { class: "mt-2 text-xs font-medium", "Nothing needs attention" }
                             p { class: "mt-1 text-[10px] text-muted-foreground",
-                                "Completed agents and questions will appear here."
+                                "Completed tasks and questions will appear here."
                             }
                         }
                     }
                     for notification in notifications {
                         NotificationRow {
-                            key: "{notification.workspace_id}:{notification.session_id}",
+                            key: "{notification.workspace_id}:{notification.target.session_id()}",
                             notification,
-                            on_open: move |(workspace_id, session_id)| {
-                                center.clear(workspace_id, session_id);
+                            on_open: move |(workspace_id, target)| {
+                                center.clear(workspace_id, target);
                                 open.set(false);
                             },
                         }
@@ -217,33 +216,30 @@ pub(crate) fn AgentNotificationMenu() -> Element {
 
 #[component]
 fn NotificationRow(
-    notification: AgentNotification,
-    on_open: EventHandler<(String, String)>,
+    notification: AppNotification,
+    on_open: EventHandler<(String, NotificationTarget)>,
 ) -> Element {
     let kind_label = match notification.kind {
-        AgentNotificationKind::Completed => "Completed",
-        AgentNotificationKind::Attention => "Needs attention",
-        AgentNotificationKind::Failed => "Failed",
+        NotificationKind::Completed => "Completed",
+        NotificationKind::Attention => "Needs attention",
+        NotificationKind::Failed => "Failed",
     };
     let dot_class = match notification.kind {
-        AgentNotificationKind::Completed => "bg-success",
-        AgentNotificationKind::Attention => "bg-warning",
-        AgentNotificationKind::Failed => "bg-destructive",
+        NotificationKind::Completed => "bg-success",
+        NotificationKind::Attention => "bg-warning",
+        NotificationKind::Failed => "bg-destructive",
     };
     let workspace_id = notification.workspace_id.clone();
-    let session_id = notification.session_id.clone();
-    let target = Route::Ai {
-        slug: notification.workspace_slug.clone(),
-        query: super::AiQuery::with_session(notification.session_id.clone()),
-    };
+    let notification_target = notification.target.clone();
+    let target = notification_route(&notification);
     rsx! {
         Link {
             class: "block rounded-lg px-2.5 py-2.5 hover:bg-accent focus-visible:bg-accent focus-visible:outline-none",
             to: target,
-            onclick: move |_| on_open.call((workspace_id.clone(), session_id.clone())),
+            onclick: move |_| on_open.call((workspace_id.clone(), notification_target.clone())),
             div { class: "flex items-center gap-2",
                 span { class: "size-1.5 shrink-0 rounded-full {dot_class}" }
-                strong { class: "min-w-0 flex-1 truncate text-[11px]", "{notification.session_title}" }
+                strong { class: "min-w-0 flex-1 truncate text-[11px]", "{notification.title}" }
                 time { class: "shrink-0 text-[9px] text-muted-foreground",
                     {notification_age(notification.created_at_ms)}
                 }
@@ -260,34 +256,33 @@ fn NotificationRow(
     }
 }
 
-fn is_viewed(notification: &AgentNotification, viewing: Option<&(String, String)>) -> bool {
-    viewing.is_some_and(|(workspace_id, session_id)| {
-        notification.workspace_id == *workspace_id && notification.session_id == *session_id
+fn is_viewed(
+    notification: &AppNotification,
+    viewing: Option<&(String, NotificationTarget)>,
+) -> bool {
+    viewing.is_some_and(|(workspace_id, target)| {
+        notification.workspace_id == *workspace_id && notification.target == *target
     })
 }
 
-fn upsert(items: &mut Signal<Vec<AgentNotification>>, notification: AgentNotification) {
+fn upsert(items: &mut Signal<Vec<AppNotification>>, notification: AppNotification) {
     let mut items = items.write();
     items.retain(|candidate| {
         candidate.workspace_id != notification.workspace_id
-            || candidate.session_id != notification.session_id
+            || candidate.target != notification.target
     });
     items.push(notification);
     items.sort_by_key(|notification| std::cmp::Reverse(notification.created_at_ms));
 }
 
-fn show_browser_notification(notification: AgentNotification) {
-    let path = Route::Ai {
-        slug: notification.workspace_slug,
-        query: super::AiQuery::with_session(notification.session_id.clone()),
-    }
-    .to_string();
+fn show_browser_notification(notification: &AppNotification) {
+    let path = notification_route(notification).to_string();
     let title = match notification.kind {
-        AgentNotificationKind::Completed => format!("{} finished", notification.session_title),
-        AgentNotificationKind::Attention => {
-            format!("{} needs attention", notification.session_title)
+        NotificationKind::Completed => format!("{} finished", notification.title),
+        NotificationKind::Attention => {
+            format!("{} needs attention", notification.title)
         }
-        AgentNotificationKind::Failed => format!("{} failed", notification.session_title),
+        NotificationKind::Failed => format!("{} failed", notification.title),
     };
     let eval = document::eval(
         r#"
@@ -306,10 +301,24 @@ fn show_browser_notification(notification: AgentNotification) {
         format!("{} · {}", notification.workspace_name, notification.message),
         path,
         format!(
-            "syntaxis-agent-{}-{}",
-            notification.workspace_id, notification.session_id
+            "syntaxis-{}-{}",
+            notification.workspace_id,
+            notification.target.session_id()
         ),
     ));
+}
+
+fn notification_route(notification: &AppNotification) -> Route {
+    match &notification.target {
+        NotificationTarget::Agent { session_id } => Route::Ai {
+            slug: notification.workspace_slug.clone(),
+            query: super::AiQuery::with_session(session_id.clone()),
+        },
+        NotificationTarget::Terminal { session_id } => Route::Terminal {
+            slug: notification.workspace_slug.clone(),
+            query: crate::terminal::TerminalQuery::with_session(session_id.clone()),
+        },
+    }
 }
 
 fn notification_age(timestamp: u64) -> String {

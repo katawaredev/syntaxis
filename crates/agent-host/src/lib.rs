@@ -11,11 +11,12 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use syntaxis_agent::{
-    AgentError, AgentErrorCode, AgentNotification, AgentNotificationKind, AgentSessionSummary,
-    AgentSnapshot, AgentStatus, ChatItem, ClientMessage, ExtensionUiRequest, ImageAttachment,
-    ItemStatus, ModelSummary, NotificationServerMessage, PiCommand, PromptDelivery, ServerMessage,
-    SessionStats, ThinkingLevel, TokenUsage,
+    AgentError, AgentErrorCode, AgentSessionSummary, AgentSnapshot, AgentStatus, ChatItem,
+    ClientMessage, ExtensionUiRequest, ImageAttachment, ItemStatus, ModelSummary, PiCommand,
+    PromptDelivery, ServerMessage, SessionStats, ThinkingLevel, TokenUsage,
 };
+use syntaxis_notifications::{AppNotification, NotificationKind, NotificationTarget};
+use syntaxis_notifications_host::{notifications as global_notifications, HostNotificationHub};
 use syntaxis_workspace::{WorkspaceId, WorkspaceRecord};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
@@ -31,13 +32,13 @@ const STDERR_BUFFER_CHARS: usize = 8 * 1024;
 #[derive(Clone)]
 pub struct HostAgentManager {
     workspaces: Arc<Mutex<HashMap<WorkspaceId, HostAgentWorkspace>>>,
-    notifications: HostAgentNotificationHub,
+    notifications: HostNotificationHub,
 }
 impl Default for HostAgentManager {
     fn default() -> Self {
         Self {
             workspaces: Arc::new(Mutex::new(HashMap::new())),
-            notifications: HostAgentNotificationHub::default(),
+            notifications: global_notifications().clone(),
         }
     }
 }
@@ -57,72 +58,6 @@ impl HostAgentManager {
         }
         self.notifications.clear_workspace(&workspace_id.0);
     }
-    pub fn notifications(&self) -> HostAgentNotificationHub {
-        self.notifications.clone()
-    }
-}
-#[derive(Clone)]
-pub struct HostAgentNotificationHub {
-    items: Arc<Mutex<HashMap<(String, String), AgentNotification>>>,
-    events: broadcast::Sender<NotificationServerMessage>,
-}
-impl Default for HostAgentNotificationHub {
-    fn default() -> Self {
-        let (events, _) = broadcast::channel(EVENT_CAPACITY);
-        Self {
-            items: Arc::new(Mutex::new(HashMap::new())),
-            events,
-        }
-    }
-}
-impl HostAgentNotificationHub {
-    pub fn snapshot(&self) -> Vec<AgentNotification> {
-        let mut items = lock(&self.items).values().cloned().collect::<Vec<_>>();
-        items.sort_by_key(|notification| std::cmp::Reverse(notification.created_at_ms));
-        items
-    }
-    pub fn subscribe(&self) -> broadcast::Receiver<NotificationServerMessage> {
-        self.events.subscribe()
-    }
-    pub fn clear(&self, workspace_id: &str, session_id: &str) {
-        let key = (workspace_id.to_owned(), session_id.to_owned());
-        if lock(&self.items).remove(&key).is_some() {
-            let _ = self.events.send(NotificationServerMessage::Removed {
-                workspace_id: workspace_id.to_owned(),
-                session_id: session_id.to_owned(),
-            });
-        }
-    }
-    fn clear_workspace(&self, workspace_id: &str) {
-        let removed = {
-            let mut items = lock(&self.items);
-            let removed = items
-                .keys()
-                .filter(|(candidate, _)| candidate == workspace_id)
-                .cloned()
-                .collect::<Vec<_>>();
-            for key in &removed {
-                items.remove(key);
-            }
-            removed
-        };
-        for (workspace_id, session_id) in removed {
-            let _ = self.events.send(NotificationServerMessage::Removed {
-                workspace_id,
-                session_id,
-            });
-        }
-    }
-    fn publish(&self, notification: AgentNotification) {
-        let key = (
-            notification.workspace_id.clone(),
-            notification.session_id.clone(),
-        );
-        lock(&self.items).insert(key, notification.clone());
-        let _ = self
-            .events
-            .send(NotificationServerMessage::Upsert { notification });
-    }
 }
 #[derive(Clone)]
 pub struct HostAgentWorkspace {
@@ -130,7 +65,7 @@ pub struct HostAgentWorkspace {
     sessions: Arc<Mutex<HashMap<String, ManagedSession>>>,
     events: broadcast::Sender<ServerMessage>,
     process_lock: Arc<AsyncMutex<()>>,
-    notifications: HostAgentNotificationHub,
+    notifications: HostNotificationHub,
 }
 struct ManagedSession {
     path: Option<PathBuf>,
@@ -138,7 +73,7 @@ struct ManagedSession {
     process: Option<HostAgentSession>,
 }
 impl HostAgentWorkspace {
-    fn new(workspace: WorkspaceRecord, notifications: HostAgentNotificationHub) -> Self {
+    fn new(workspace: WorkspaceRecord, notifications: HostNotificationHub) -> Self {
         let sessions = session_store::discover(Path::new(&workspace.root))
             .into_iter()
             .map(|session| {
@@ -216,7 +151,12 @@ impl HostAgentWorkspace {
     ///
     /// Returns not-found or launch errors for invalid sessions.
     pub async fn select_session(&self, id: &str) -> Result<AgentSnapshot, AgentError> {
-        self.notifications.clear(&self.workspace.id.0, id);
+        self.notifications.clear(
+            &self.workspace.id.0,
+            &NotificationTarget::Agent {
+                session_id: id.to_owned(),
+            },
+        );
         if let Some(process) = lock(&self.sessions)
             .get(id)
             .and_then(|session| session.process.clone())
@@ -286,7 +226,12 @@ impl HostAgentWorkspace {
             })?;
         }
         lock(&self.sessions).remove(id);
-        self.notifications.clear(&self.workspace.id.0, id);
+        self.notifications.clear(
+            &self.workspace.id.0,
+            &NotificationTarget::Agent {
+                session_id: id.to_owned(),
+            },
+        );
         self.emit_sessions();
         Ok(())
     }
@@ -303,7 +248,12 @@ impl HostAgentWorkspace {
             .and_then(|session| session.process.clone())
             .ok_or_else(|| AgentError::new(AgentErrorCode::Unavailable, "Pi is not running"))?;
         if let ClientMessage::Prompt { text, .. } = &action {
-            self.notifications.clear(&self.workspace.id.0, id);
+            self.notifications.clear(
+                &self.workspace.id.0,
+                &NotificationTarget::Agent {
+                    session_id: id.to_owned(),
+                },
+            );
             let title = prompt_title(text);
             let should_name = {
                 let mut sessions = lock(&self.sessions);
@@ -387,11 +337,11 @@ impl HostAgentWorkspace {
                             previous_status,
                             AgentStatus::Working | AgentStatus::Compacting
                         ) {
-                        Some(AgentNotificationKind::Completed)
+                        Some(NotificationKind::Completed)
                     } else if *status == AgentStatus::Failed
                         && previous_status != AgentStatus::Failed
                     {
-                        Some(AgentNotificationKind::Failed)
+                        Some(NotificationKind::Failed)
                     } else {
                         None
                     };
@@ -400,7 +350,7 @@ impl HostAgentWorkspace {
                             id,
                             &session.summary.title,
                             kind,
-                            if kind == AgentNotificationKind::Completed {
+                            if kind == NotificationKind::Completed {
                                 "Pi finished working".into()
                             } else {
                                 message.clone()
@@ -420,7 +370,7 @@ impl HostAgentWorkspace {
                     notification = Some(self.notification(
                         id,
                         &session.summary.title,
-                        AgentNotificationKind::Attention,
+                        NotificationKind::Attention,
                         if request.message.trim().is_empty() {
                             request.title.clone()
                         } else {
@@ -447,15 +397,17 @@ impl HostAgentWorkspace {
         &self,
         session_id: &str,
         session_title: &str,
-        kind: AgentNotificationKind,
+        kind: NotificationKind,
         message: String,
-    ) -> AgentNotification {
-        AgentNotification {
+    ) -> AppNotification {
+        AppNotification {
             workspace_id: self.workspace.id.0.clone(),
             workspace_slug: self.workspace.slug.clone(),
             workspace_name: self.workspace.name.clone(),
-            session_id: session_id.to_owned(),
-            session_title: session_title.to_owned(),
+            target: NotificationTarget::Agent {
+                session_id: session_id.to_owned(),
+            },
+            title: session_title.to_owned(),
             kind,
             message: truncate_chars(message, 240),
             created_at_ms: now_ms(),
@@ -1637,7 +1589,7 @@ mod tests {
             last_opened_unix_ms: 0,
             availability: WorkspaceAvailability::Available,
         };
-        let notifications = HostAgentNotificationHub::default();
+        let notifications = HostNotificationHub::default();
         let workspace = HostAgentWorkspace::new(record, notifications.clone());
         lock(&workspace.sessions).insert(
             "session-1".into(),
@@ -1665,7 +1617,7 @@ mod tests {
         );
         let snapshot = notifications.snapshot();
         assert_eq!(snapshot.len(), 1);
-        assert_eq!(snapshot[0].kind, AgentNotificationKind::Completed);
+        assert_eq!(snapshot[0].kind, NotificationKind::Completed);
 
         workspace.update_summary(
             "session-1",
@@ -1683,10 +1635,15 @@ mod tests {
         );
         let snapshot = notifications.snapshot();
         assert_eq!(snapshot.len(), 1);
-        assert_eq!(snapshot[0].kind, AgentNotificationKind::Attention);
+        assert_eq!(snapshot[0].kind, NotificationKind::Attention);
         assert_eq!(snapshot[0].message, "Apply the migration?");
 
-        notifications.clear("workspace-1", "session-1");
+        notifications.clear(
+            "workspace-1",
+            &NotificationTarget::Agent {
+                session_id: "session-1".into(),
+            },
+        );
         assert!(notifications.snapshot().is_empty());
     }
 }
