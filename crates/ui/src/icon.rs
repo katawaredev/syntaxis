@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 use dioxus_icons::lucide::{
-    ArrowDown, ArrowUp, CaseSensitive, Check, ChevronLeft, ChevronRight, Code, Command, Copy,
+    ArrowDown, ArrowUp, Bot, CaseSensitive, Check, ChevronLeft, ChevronRight, Code, Command, Copy,
     Ellipsis, EllipsisVertical, Eye, FileDiff, FileInput, FileMinus, FilePlus, FolderOpen,
     FolderPlus, GitBranch, GitCommitHorizontal, GitFork, Hash, ListChevronsDownUp,
     ListChevronsUpDown, ListOrdered, Menu, PanelLeftOpen, Play, Plus, RefreshCw, Regex, Repeat1,
@@ -50,6 +50,7 @@ pub enum AppIcon {
     Search,
     Send,
     Sparkles,
+    Bot,
     Stop,
     NewChat,
     Next,
@@ -180,6 +181,9 @@ pub fn Icon(icon: AppIcon, #[props(default = 16)] size: u32) -> Element {
         },
         AppIcon::Sparkles => rsx! {
             Sparkles { size }
+        },
+        AppIcon::Bot => rsx! {
+            Bot { size }
         },
         AppIcon::Stop => rsx! {
             Square { size }

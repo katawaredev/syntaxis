@@ -167,7 +167,7 @@ pub fn WorkspaceShell() -> Element {
                 }
                 NavItem {
                     label: "AI",
-                    icon: AppIcon::Sparkles,
+                    icon: AppIcon::Bot,
                     active: active == Module::Ai,
                     to: Route::Ai { slug: slug.clone() },
                 }
