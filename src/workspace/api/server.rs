@@ -86,6 +86,38 @@ pub(super) async fn refresh_workspace(id: &WorkspaceId) -> Result<WorkspaceRecor
     public_workspace(workspace)
 }
 
+pub(super) async fn prune_mise_tools() -> Result<(), ServerFnError> {
+    run_mise(&["prune", "--tools", "--yes"]).await
+}
+
+pub(super) async fn clear_mise_tools() -> Result<(), ServerFnError> {
+    run_mise(&["uninstall", "--all", "--yes"]).await?;
+    run_mise(&["cache", "clear"]).await
+}
+
+async fn run_mise(arguments: &[&str]) -> Result<(), ServerFnError> {
+    let output = tokio::process::Command::new("mise")
+        .args(arguments)
+        .output()
+        .await
+        .map_err(|_| mise_command_error("mise is unavailable in this runtime"))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(mise_command_error(
+            "mise could not manage the installed tools",
+        ))
+    }
+}
+
+fn mise_command_error(message: &str) -> ServerFnError {
+    ServerFnError::ServerError {
+        message: message.into(),
+        code: 500,
+        details: None,
+    }
+}
+
 pub(super) async fn browse_roots() -> Result<Vec<BrowseRoot>, ServerFnError> {
     browser()?.roots().await.map_err(server_error)
 }

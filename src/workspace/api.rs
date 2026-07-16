@@ -42,6 +42,14 @@ pub async fn touch_workspace(workspace_id: String) -> Result<(), ServerFnError> 
 pub async fn refresh_workspace(workspace_id: String) -> Result<WorkspaceRecord, ServerFnError> {
     server::refresh_workspace(&WorkspaceId::new(workspace_id)).await
 }
+#[post("/api/mise/prune")]
+pub async fn prune_mise_tools() -> Result<(), ServerFnError> {
+    server::prune_mise_tools().await
+}
+#[post("/api/mise/clear")]
+pub async fn clear_mise_tools() -> Result<(), ServerFnError> {
+    server::clear_mise_tools().await
+}
 #[get("/api/runtime")]
 #[allow(clippy::unused_async)]
 pub async fn runtime_state() -> Result<RuntimeState, ServerFnError> {

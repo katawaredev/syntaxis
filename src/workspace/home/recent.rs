@@ -8,30 +8,92 @@ use syntaxis_ui::prelude::{
 };
 use syntaxis_workspace::{WorkspaceAvailability, WorkspaceRecord, WorkspaceTechnology};
 
-use crate::workspace::client::refresh_workspace;
+use crate::workspace::client::{prune_mise_tools, refresh_workspace};
 
 const MIN_LANGUAGE_PERMILLE: u64 = 20;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ProjectAction {
+    Bootstrap,
     Refresh,
     Delete,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MiseAction {
+    Prune,
+    Clear,
 }
 #[component]
 pub(super) fn RecentProjects(
     workspaces: Vec<WorkspaceRecord>,
     backend_loading: bool,
     backend_error: bool,
+    on_bootstrap: EventHandler<usize>,
+    on_clear_mise_tools: EventHandler<()>,
     on_delete: EventHandler<usize>,
     on_notice: EventHandler<String>,
     on_refresh: EventHandler<()>,
 ) -> Element {
+    let mut menu_open = use_signal(|| false);
+    let mut pruning = use_signal(|| false);
     rsx! {
         section { "aria-labelledby": "recent-title",
-            h2 {
-                class: "mb-3 text-[17px] font-semibold text-muted-foreground",
-                id: "recent-title",
-                "Recent projects"
+            div { class: "mb-3 flex items-center justify-between gap-3",
+                h2 {
+                    class: "text-[17px] font-semibold text-muted-foreground",
+                    id: "recent-title",
+                    "Recent projects"
+                }
+                DropdownMenu {
+                    class: "relative shrink-0",
+                    open: menu_open(),
+                    on_open_change: move |open: bool| menu_open.set(open),
+                    MenuTrigger {
+                        label: "Manage mise tools".to_owned(),
+                        icon: AppIcon::More,
+                        open: menu_open(),
+                    }
+                    MenuContent { class: "right-0 w-48",
+                        DropdownMenuItem::<MiseAction> {
+                            value: MiseAction::Prune,
+                            index: 0_usize,
+                            disabled: pruning(),
+                            on_select: move |_: MiseAction| {
+                                if pruning() {
+                                    return;
+                                }
+                                pruning.set(true);
+                                spawn(async move {
+                                    match prune_mise_tools().await {
+                                        Ok(()) => on_notice.call("Unused mise tools were pruned".into()),
+                                        Err(error) => on_notice.call(error),
+                                    }
+                                    pruning.set(false);
+                                });
+                            },
+                            span { class: "flex items-center gap-2",
+                                Icon { icon: AppIcon::Refresh, size: 14 }
+                                if pruning() {
+                                    "Pruning…"
+                                } else {
+                                    "Prune unused tools"
+                                }
+                            }
+                        }
+                        DropdownMenuItem::<MiseAction> {
+                            value: MiseAction::Clear,
+                            index: 1_usize,
+                            class: "!text-destructive",
+                            disabled: pruning(),
+                            on_select: move |_: MiseAction| on_clear_mise_tools.call(()),
+                            span { class: "flex items-center gap-2",
+                                Icon { icon: AppIcon::Delete, size: 14 }
+                                "Remove all tools"
+                            }
+                        }
+                    }
+                }
             }
             if backend_loading {
                 LoadingWorkspaces {}
@@ -42,6 +104,7 @@ pub(super) fn RecentProjects(
             } else {
                 WorkspaceRows {
                     workspaces,
+                    on_bootstrap,
                     on_delete,
                     on_notice,
                     on_changed: on_refresh,
@@ -53,6 +116,7 @@ pub(super) fn RecentProjects(
 #[component]
 fn WorkspaceRows(
     workspaces: Vec<WorkspaceRecord>,
+    on_bootstrap: EventHandler<usize>,
     on_delete: EventHandler<usize>,
     on_notice: EventHandler<String>,
     on_changed: EventHandler<()>,
@@ -63,6 +127,7 @@ fn WorkspaceRows(
                 WorkspaceRow {
                     workspace,
                     index,
+                    on_bootstrap,
                     on_delete,
                     on_notice,
                     on_changed,
@@ -75,6 +140,7 @@ fn WorkspaceRows(
 fn WorkspaceRow(
     workspace: WorkspaceRecord,
     index: usize,
+    on_bootstrap: EventHandler<usize>,
     on_delete: EventHandler<usize>,
     on_notice: EventHandler<String>,
     on_changed: EventHandler<()>,
@@ -130,8 +196,18 @@ fn WorkspaceRow(
                 }
                 MenuContent { class: "right-0 w-40",
                     DropdownMenuItem::<ProjectAction> {
-                        value: ProjectAction::Refresh,
+                        value: ProjectAction::Bootstrap,
                         index: 0_usize,
+                        disabled: refreshing() || availability == WorkspaceAvailability::Missing,
+                        on_select: move |_: ProjectAction| on_bootstrap.call(index),
+                        span { class: "flex items-center gap-2",
+                            Icon { icon: AppIcon::Terminal, size: 14 }
+                            "Bootstrap"
+                        }
+                    }
+                    DropdownMenuItem::<ProjectAction> {
+                        value: ProjectAction::Refresh,
+                        index: 1_usize,
                         disabled: refreshing() || availability == WorkspaceAvailability::Missing,
                         on_select: move |_: ProjectAction| {
                             if refreshing() {
@@ -162,7 +238,7 @@ fn WorkspaceRow(
                     }
                     DropdownMenuItem::<ProjectAction> {
                         value: ProjectAction::Delete,
-                        index: 1_usize,
+                        index: 2_usize,
                         class: "!text-destructive",
                         disabled: refreshing(),
                         on_select: move |_: ProjectAction| on_delete.call(index),

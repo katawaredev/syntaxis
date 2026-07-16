@@ -1,12 +1,15 @@
+mod bootstrap;
 mod delete;
 mod folder;
 mod git_url;
+mod mise_tools;
 mod new_project;
 
 use dioxus::prelude::*;
 
 use self::{
-    delete::DeleteWorkspaceDialog, folder::WorkspaceFolderDialog, git_url::GitUrlDialog,
+    bootstrap::BootstrapProjectDialog, delete::DeleteWorkspaceDialog,
+    folder::WorkspaceFolderDialog, git_url::GitUrlDialog, mise_tools::ClearMiseToolsDialog,
     new_project::NewProjectDialog,
 };
 use super::{HomeDialog, RuntimePresentation};
@@ -41,6 +44,18 @@ pub(super) fn HomeDialogs(
         }
         if dialog() == HomeDialog::NewProject {
             NewProjectDialog { dialog, on_notice, on_changed }
+        }
+        if let HomeDialog::Bootstrap(index) = dialog() {
+            BootstrapProjectDialog {
+                index,
+                dialog,
+                workspaces: workspaces.clone(),
+                on_notice,
+                on_changed,
+            }
+        }
+        if dialog() == HomeDialog::ClearMiseTools {
+            ClearMiseToolsDialog { dialog, on_notice }
         }
         if let HomeDialog::Delete(index) = dialog() {
             DeleteWorkspaceDialog {

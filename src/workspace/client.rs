@@ -328,6 +328,43 @@ pub async fn refresh_workspace(workspace_id: String) -> Result<WorkspaceRecord, 
     }
 }
 
+pub async fn prune_mise_tools() -> Result<(), String> {
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::api::prune_mise_tools()
+            .await
+            .map_err(server_error_message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => run_local_mise(&["prune", "--tools", "--yes"]).await,
+    }
+}
+
+pub async fn clear_mise_tools() -> Result<(), String> {
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::api::clear_mise_tools()
+            .await
+            .map_err(server_error_message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => {
+            run_local_mise(&["uninstall", "--all", "--yes"]).await?;
+            run_local_mise(&["cache", "clear"]).await
+        }
+    }
+}
+
+#[cfg(feature = "desktop")]
+async fn run_local_mise(arguments: &[&str]) -> Result<(), String> {
+    let output = tokio::process::Command::new("mise")
+        .args(arguments)
+        .output()
+        .await
+        .map_err(|_| "mise is unavailable in the desktop runtime".to_owned())?;
+    output
+        .status
+        .success()
+        .then_some(())
+        .ok_or_else(|| "mise could not manage the installed tools".to_owned())
+}
+
 #[allow(clippy::unused_async)] // The desktop and remote implementations share one async API.
 pub async fn runtime_state() -> Result<RuntimeState, String> {
     match selected_runtime() {
