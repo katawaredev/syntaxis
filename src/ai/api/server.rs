@@ -4,7 +4,10 @@ use dioxus::{
     fullstack::{TypedWebsocket, WebSocketOptions, Websocket},
     prelude::ServerFnError,
 };
-use syntaxis_agent::{AgentError, AgentErrorCode, ClientMessage, ServerMessage, PROTOCOL_VERSION};
+use syntaxis_agent::{
+    AgentError, AgentErrorCode, ClientMessage, NotificationClientMessage,
+    NotificationServerMessage, ServerMessage, PROTOCOL_VERSION,
+};
 use syntaxis_agent_host::HostAgentManager;
 use syntaxis_workspace::WorkspaceId;
 
@@ -71,6 +74,9 @@ pub(super) async fn agent_socket(
                             ClientMessage::SelectSession { session_id } => agent.select_session(&session_id).await.map(|snapshot| {
                                 ServerMessage::SelectedSession { session_id, snapshot }
                             }),
+                            ClientMessage::DeleteSession { session_id } => agent.delete_session(&session_id).await.map(|()| {
+                                ServerMessage::Sessions { sessions: agent.sessions() }
+                            }),
                             ClientMessage::SessionAction { session_id, action } => {
                                 agent.handle(&session_id, *action).await.map(|()| ServerMessage::Sessions { sessions: agent.sessions() })
                             }
@@ -113,6 +119,105 @@ pub(super) async fn agent_socket(
 
 fn agents() -> &'static HostAgentManager {
     AGENTS.get_or_init(HostAgentManager::default)
+}
+
+pub(super) async fn agent_notification_socket(
+    options: WebSocketOptions,
+) -> Result<
+    Websocket<NotificationClientMessage, NotificationServerMessage, AgentEncoding>,
+    ServerFnError,
+> {
+    let notifications = agents().notifications();
+    Ok(options.on_upgrade(
+        move |mut socket: TypedWebsocket<
+            NotificationClientMessage,
+            NotificationServerMessage,
+            AgentEncoding,
+        >| async move {
+            let Ok(Ok(NotificationClientMessage::Hello { version })) =
+                tokio::time::timeout(HANDSHAKE_TIMEOUT, socket.recv()).await
+            else {
+                let _ = socket
+                    .send(NotificationServerMessage::Error {
+                        error: AgentError::new(
+                            AgentErrorCode::InvalidProtocol,
+                            "AI notification handshake required",
+                        ),
+                    })
+                    .await;
+                return;
+            };
+            if version != PROTOCOL_VERSION {
+                let _ = socket
+                    .send(NotificationServerMessage::Error {
+                        error: AgentError::new(
+                            AgentErrorCode::InvalidProtocol,
+                            "Unsupported AI notification protocol version",
+                        ),
+                    })
+                    .await;
+                return;
+            }
+            if socket
+                .send(NotificationServerMessage::Hello {
+                    version: PROTOCOL_VERSION,
+                })
+                .await
+                .is_err()
+                || socket
+                    .send(NotificationServerMessage::Snapshot {
+                        notifications: notifications.snapshot(),
+                    })
+                    .await
+                    .is_err()
+            {
+                return;
+            }
+            let mut events = notifications.subscribe();
+            loop {
+                tokio::select! {
+                    incoming = socket.recv() => {
+                        let Ok(message) = incoming else { break; };
+                        match message {
+                            NotificationClientMessage::ClearSession { workspace_id, session_id } => {
+                                notifications.clear(&workspace_id, &session_id);
+                            }
+                            NotificationClientMessage::Ping { nonce } => {
+                                if socket.send(NotificationServerMessage::Pong { nonce }).await.is_err() {
+                                    break;
+                                }
+                            }
+                            NotificationClientMessage::Hello { .. } => {
+                                if socket.send(NotificationServerMessage::Error {
+                                    error: AgentError::new(
+                                        AgentErrorCode::InvalidProtocol,
+                                        "The AI notification handshake is already complete",
+                                    ),
+                                }).await.is_err() {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    event = events.recv() => match event {
+                        Ok(message) => {
+                            if socket.send(message).await.is_err() {
+                                break;
+                            }
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                            if socket.send(NotificationServerMessage::Snapshot {
+                                notifications: notifications.snapshot(),
+                            }).await.is_err() {
+                                break;
+                            }
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                    }
+                }
+            }
+        },
+    ))
 }
 
 pub(crate) fn close_workspace(workspace_id: &WorkspaceId) {

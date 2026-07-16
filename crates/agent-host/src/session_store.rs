@@ -31,6 +31,23 @@ pub(crate) fn discover(workspace_root: &Path) -> Vec<PersistedSession> {
     sessions
 }
 
+pub(crate) fn delete(workspace_root: &Path, session_id: &str, path: &Path) -> std::io::Result<()> {
+    let expected_cwd = canonical_or_owned(workspace_root);
+    let descriptor = read_descriptor(path, &expected_cwd).ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "The Pi session file does not belong to this workspace",
+        )
+    })?;
+    if descriptor.id != session_id {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "The Pi session id does not match its session file",
+        ));
+    }
+    fs::remove_file(path)
+}
+
 fn session_root(workspace_root: &Path) -> PathBuf {
     let home = env::var_os("HOME").map(PathBuf::from);
     let agent_dir = env::var_os("PI_CODING_AGENT_DIR")
@@ -235,5 +252,29 @@ mod tests {
         let session = read_descriptor(&path, &workspace.canonicalize().unwrap()).unwrap();
         assert_eq!(session.id, "session-1");
         assert_eq!(session.title, "Project review");
+    }
+
+    #[test]
+    fn only_deletes_a_matching_workspace_session() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace = temp.path().join("workspace");
+        let other_workspace = temp.path().join("other");
+        fs::create_dir(&workspace).unwrap();
+        fs::create_dir(&other_workspace).unwrap();
+        let path = temp.path().join("session.jsonl");
+        let mut file = fs::File::create(&path).unwrap();
+        writeln!(
+            file,
+            "{}",
+            serde_json::json!({"type":"session","id":"session-1","cwd":workspace})
+        )
+        .unwrap();
+
+        assert!(delete(&other_workspace, "session-1", &path).is_err());
+        assert!(path.exists());
+        assert!(delete(&workspace, "different-session", &path).is_err());
+        assert!(path.exists());
+        delete(&workspace, "session-1", &path).unwrap();
+        assert!(!path.exists());
     }
 }

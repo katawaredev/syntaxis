@@ -1,5 +1,5 @@
 use crate::{
-    ai::Ai,
+    ai::{Ai, AiQuery},
     files::Files,
     git::Git,
     terminal::Terminal,
@@ -32,11 +32,13 @@ pub enum Route {
     Git { slug: String },
     #[route("/workspaces/:slug/preview")]
     Preview { slug: String },
-    #[route("/workspaces/:slug/ai")]
-    Ai { slug: String },
+    #[route("/workspaces/:slug/ai?:..query")]
+    Ai { slug: String, query: AiQuery },
 }
 #[component]
 pub fn App() -> Element {
+    let notification_center = crate::ai::notifications::use_agent_notification_center();
+    use_context_provider(|| notification_center);
     let geist_font_face = format!(
         "@font-face {{ font-family: 'Geist Variable'; src: url('{GEIST_FONT}') format('woff2'); font-style: normal; font-weight: 100 900; font-display: swap; }}",
     );

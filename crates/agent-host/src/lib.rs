@@ -1,8 +1,7 @@
 //! Host-side Pi RPC process management.
 #![cfg(not(target_arch = "wasm32"))]
-
 mod session_store;
-
+use serde_json::{json, Value};
 use std::{
     collections::HashMap,
     env,
@@ -11,74 +10,135 @@ use std::{
     sync::{Arc, Mutex, MutexGuard},
     time::{SystemTime, UNIX_EPOCH},
 };
-
-use serde_json::{json, Value};
 use syntaxis_agent::{
-    AgentError, AgentErrorCode, AgentSessionSummary, AgentSnapshot, AgentStatus, ChatItem,
-    ClientMessage, ExtensionUiRequest, ItemStatus, ModelSummary, PromptDelivery, ServerMessage,
-    ThinkingLevel,
+    AgentError, AgentErrorCode, AgentNotification, AgentNotificationKind, AgentSessionSummary,
+    AgentSnapshot, AgentStatus, ChatItem, ClientMessage, ExtensionUiRequest, ImageAttachment,
+    ItemStatus, ModelSummary, NotificationServerMessage, PiCommand, PromptDelivery, ServerMessage,
+    SessionStats, ThinkingLevel, TokenUsage,
 };
 use syntaxis_workspace::{WorkspaceId, WorkspaceRecord};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     process::Command,
-    sync::{broadcast, mpsc, Mutex as AsyncMutex},
+    sync::{broadcast, mpsc, oneshot, Mutex as AsyncMutex},
 };
 use uuid::Uuid;
-
 const EVENT_CAPACITY: usize = 512;
 const COMMAND_CAPACITY: usize = 64;
 const MAX_HISTORY_ITEMS: usize = 400;
 const MAX_TOOL_OUTPUT_CHARS: usize = 24 * 1024;
 const STDERR_BUFFER_CHARS: usize = 8 * 1024;
-
 #[derive(Clone)]
 pub struct HostAgentManager {
     workspaces: Arc<Mutex<HashMap<WorkspaceId, HostAgentWorkspace>>>,
+    notifications: HostAgentNotificationHub,
 }
-
 impl Default for HostAgentManager {
     fn default() -> Self {
         Self {
             workspaces: Arc::new(Mutex::new(HashMap::new())),
+            notifications: HostAgentNotificationHub::default(),
         }
     }
 }
-
 impl HostAgentManager {
     pub fn workspace(&self, workspace: &WorkspaceRecord) -> HostAgentWorkspace {
         if let Some(agent) = lock(&self.workspaces).get(&workspace.id).cloned() {
             return agent;
         }
-        let agent = HostAgentWorkspace::new(workspace.clone());
+        let agent = HostAgentWorkspace::new(workspace.clone(), self.notifications.clone());
         lock(&self.workspaces).insert(workspace.id.clone(), agent.clone());
         agent
     }
-
     /// Stops and forgets every live agent process for one workspace target.
     pub fn close_workspace(&self, workspace_id: &WorkspaceId) {
         if let Some(workspace) = lock(&self.workspaces).remove(workspace_id) {
             lock(&workspace.sessions).clear();
         }
+        self.notifications.clear_workspace(&workspace_id.0);
+    }
+    pub fn notifications(&self) -> HostAgentNotificationHub {
+        self.notifications.clone()
     }
 }
-
+#[derive(Clone)]
+pub struct HostAgentNotificationHub {
+    items: Arc<Mutex<HashMap<(String, String), AgentNotification>>>,
+    events: broadcast::Sender<NotificationServerMessage>,
+}
+impl Default for HostAgentNotificationHub {
+    fn default() -> Self {
+        let (events, _) = broadcast::channel(EVENT_CAPACITY);
+        Self {
+            items: Arc::new(Mutex::new(HashMap::new())),
+            events,
+        }
+    }
+}
+impl HostAgentNotificationHub {
+    pub fn snapshot(&self) -> Vec<AgentNotification> {
+        let mut items = lock(&self.items).values().cloned().collect::<Vec<_>>();
+        items.sort_by_key(|notification| std::cmp::Reverse(notification.created_at_ms));
+        items
+    }
+    pub fn subscribe(&self) -> broadcast::Receiver<NotificationServerMessage> {
+        self.events.subscribe()
+    }
+    pub fn clear(&self, workspace_id: &str, session_id: &str) {
+        let key = (workspace_id.to_owned(), session_id.to_owned());
+        if lock(&self.items).remove(&key).is_some() {
+            let _ = self.events.send(NotificationServerMessage::Removed {
+                workspace_id: workspace_id.to_owned(),
+                session_id: session_id.to_owned(),
+            });
+        }
+    }
+    fn clear_workspace(&self, workspace_id: &str) {
+        let removed = {
+            let mut items = lock(&self.items);
+            let removed = items
+                .keys()
+                .filter(|(candidate, _)| candidate == workspace_id)
+                .cloned()
+                .collect::<Vec<_>>();
+            for key in &removed {
+                items.remove(key);
+            }
+            removed
+        };
+        for (workspace_id, session_id) in removed {
+            let _ = self.events.send(NotificationServerMessage::Removed {
+                workspace_id,
+                session_id,
+            });
+        }
+    }
+    fn publish(&self, notification: AgentNotification) {
+        let key = (
+            notification.workspace_id.clone(),
+            notification.session_id.clone(),
+        );
+        lock(&self.items).insert(key, notification.clone());
+        let _ = self
+            .events
+            .send(NotificationServerMessage::Upsert { notification });
+    }
+}
 #[derive(Clone)]
 pub struct HostAgentWorkspace {
     workspace: WorkspaceRecord,
     sessions: Arc<Mutex<HashMap<String, ManagedSession>>>,
     events: broadcast::Sender<ServerMessage>,
     process_lock: Arc<AsyncMutex<()>>,
+    notifications: HostAgentNotificationHub,
 }
-
 struct ManagedSession {
     path: Option<PathBuf>,
     summary: AgentSessionSummary,
     process: Option<HostAgentSession>,
 }
-
 impl HostAgentWorkspace {
-    fn new(workspace: WorkspaceRecord) -> Self {
+    fn new(workspace: WorkspaceRecord, notifications: HostAgentNotificationHub) -> Self {
         let sessions = session_store::discover(Path::new(&workspace.root))
             .into_iter()
             .map(|session| {
@@ -106,9 +166,9 @@ impl HostAgentWorkspace {
             sessions: Arc::new(Mutex::new(sessions)),
             events,
             process_lock: Arc::new(AsyncMutex::new(())),
+            notifications,
         }
     }
-
     pub fn sessions(&self) -> Vec<AgentSessionSummary> {
         let mut sessions = lock(&self.sessions)
             .values()
@@ -117,11 +177,9 @@ impl HostAgentWorkspace {
         sessions.sort_by_key(|session| std::cmp::Reverse(session.updated_at_ms));
         sessions
     }
-
     pub fn subscribe(&self) -> broadcast::Receiver<ServerMessage> {
         self.events.subscribe()
     }
-
     /// Create and retain a new Pi RPC process for this workspace.
     ///
     /// # Errors
@@ -152,13 +210,13 @@ impl HostAgentWorkspace {
         self.emit_sessions();
         Ok((id, snapshot))
     }
-
     /// Start or return a persisted Pi session.
     ///
     /// # Errors
     ///
     /// Returns not-found or launch errors for invalid sessions.
     pub async fn select_session(&self, id: &str) -> Result<AgentSnapshot, AgentError> {
+        self.notifications.clear(&self.workspace.id.0, id);
         if let Some(process) = lock(&self.sessions)
             .get(id)
             .and_then(|session| session.process.clone())
@@ -192,7 +250,46 @@ impl HostAgentWorkspace {
         self.emit_sessions();
         Ok(snapshot)
     }
-
+    /// Stop and permanently remove one Pi session owned by this workspace.
+    ///
+    /// # Errors
+    ///
+    /// Returns a lookup or filesystem error when the session cannot be safely removed.
+    pub async fn delete_session(&self, id: &str) -> Result<(), AgentError> {
+        let _guard = self.process_lock.lock().await;
+        let (process, persisted_path) = {
+            let sessions = lock(&self.sessions);
+            let session = sessions.get(id).ok_or_else(|| {
+                AgentError::new(AgentErrorCode::InvalidRequest, "Pi session not found")
+            })?;
+            (session.process.clone(), session.path.clone())
+        };
+        if let Some(process) = process.as_ref() {
+            process.shutdown().await?;
+        }
+        let path = process
+            .as_ref()
+            .and_then(HostAgentSession::session_file)
+            .or(persisted_path)
+            .or_else(|| {
+                session_store::discover(Path::new(&self.workspace.root))
+                    .into_iter()
+                    .find(|session| session.id == id)
+                    .map(|session| session.path)
+            });
+        if let Some(path) = path {
+            session_store::delete(Path::new(&self.workspace.root), id, &path).map_err(|error| {
+                AgentError::new(
+                    AgentErrorCode::Internal,
+                    format!("Could not delete the Pi session: {error}"),
+                )
+            })?;
+        }
+        lock(&self.sessions).remove(id);
+        self.notifications.clear(&self.workspace.id.0, id);
+        self.emit_sessions();
+        Ok(())
+    }
     /// Forward an action to one independently running Pi session.
     ///
     /// # Errors
@@ -206,6 +303,7 @@ impl HostAgentWorkspace {
             .and_then(|session| session.process.clone())
             .ok_or_else(|| AgentError::new(AgentErrorCode::Unavailable, "Pi is not running"))?;
         if let ClientMessage::Prompt { text, .. } = &action {
+            self.notifications.clear(&self.workspace.id.0, id);
             let title = prompt_title(text);
             let should_name = {
                 let mut sessions = lock(&self.sessions);
@@ -225,14 +323,13 @@ impl HostAgentWorkspace {
             };
             if should_name {
                 process
-                    .send(json!({"type":"set_session_name","name":title}))
+                    .send(json!({ "type" : "set_session_name", "name" : title }))
                     .await?;
                 self.emit_sessions();
             }
         }
         process.handle(action).await
     }
-
     fn bridge(&self, id: String, mut receiver: broadcast::Receiver<ServerMessage>) {
         let workspace = self.clone();
         tokio::spawn(async move {
@@ -262,14 +359,15 @@ impl HostAgentWorkspace {
             }
         });
     }
-
     fn update_summary(&self, id: &str, event: &ServerMessage) {
         let mut changed = false;
+        let mut notification = None;
         if let Some(session) = lock(&self.sessions).get_mut(id) {
             match event {
                 ServerMessage::Status {
                     status, message, ..
                 } => {
+                    let previous_status = session.summary.status;
                     session.summary.status = *status;
                     session.summary.status_message.clone_from(message);
                     session.summary.running =
@@ -284,6 +382,31 @@ impl HostAgentWorkspace {
                     if *status == AgentStatus::Failed {
                         session.process = None;
                     }
+                    let kind = if *status == AgentStatus::Ready
+                        && matches!(
+                            previous_status,
+                            AgentStatus::Working | AgentStatus::Compacting
+                        ) {
+                        Some(AgentNotificationKind::Completed)
+                    } else if *status == AgentStatus::Failed
+                        && previous_status != AgentStatus::Failed
+                    {
+                        Some(AgentNotificationKind::Failed)
+                    } else {
+                        None
+                    };
+                    if let Some(kind) = kind {
+                        notification = Some(self.notification(
+                            id,
+                            &session.summary.title,
+                            kind,
+                            if kind == AgentNotificationKind::Completed {
+                                "Pi finished working".into()
+                            } else {
+                                message.clone()
+                            },
+                        ));
+                    }
                     changed = true;
                 }
                 ServerMessage::SessionChanged {
@@ -293,40 +416,69 @@ impl HostAgentWorkspace {
                     session.summary.title = prompt_title(name);
                     changed = true;
                 }
+                ServerMessage::ExtensionUiRequest { request } => {
+                    notification = Some(self.notification(
+                        id,
+                        &session.summary.title,
+                        AgentNotificationKind::Attention,
+                        if request.message.trim().is_empty() {
+                            request.title.clone()
+                        } else {
+                            request.message.clone()
+                        },
+                    ));
+                }
                 _ => {}
             }
+        }
+        if let Some(notification) = notification {
+            self.notifications.publish(notification);
         }
         if changed {
             self.emit_sessions();
         }
     }
-
     fn emit_sessions(&self) {
         let _ = self.events.send(ServerMessage::Sessions {
             sessions: self.sessions(),
         });
     }
+    fn notification(
+        &self,
+        session_id: &str,
+        session_title: &str,
+        kind: AgentNotificationKind,
+        message: String,
+    ) -> AgentNotification {
+        AgentNotification {
+            workspace_id: self.workspace.id.0.clone(),
+            workspace_slug: self.workspace.slug.clone(),
+            workspace_name: self.workspace.name.clone(),
+            session_id: session_id.to_owned(),
+            session_title: session_title.to_owned(),
+            kind,
+            message: truncate_chars(message, 240),
+            created_at_ms: now_ms(),
+        }
+    }
 }
-
 enum LaunchTarget {
     New(String),
     Resume(PathBuf),
 }
-
 #[derive(Clone)]
 pub struct HostAgentSession {
     commands: mpsc::Sender<Value>,
+    shutdown: mpsc::Sender<oneshot::Sender<()>>,
     events: broadcast::Sender<ServerMessage>,
     state: Arc<Mutex<RuntimeState>>,
 }
-
 struct RuntimeState {
     snapshot: AgentSnapshot,
     session_file: Option<PathBuf>,
     current_assistant: Option<String>,
     accept_initial_history: bool,
 }
-
 impl HostAgentSession {
     fn start(workspace: &WorkspaceRecord, target: LaunchTarget) -> Result<Self, AgentError> {
         let command = env::var_os("SYNTAXIS_PI_COMMAND").unwrap_or_else(|| "pi".into());
@@ -352,7 +504,7 @@ impl HostAgentSession {
                 AgentError::new(
                     AgentErrorCode::Unavailable,
                     format!(
-                        "Could not start Pi. Install it from pi.dev or set SYNTAXIS_PI_COMMAND: {error}"
+                        "Could not start Pi. Install it from pi.dev or set SYNTAXIS_PI_COMMAND: {error}",
                     ),
                 )
             })?;
@@ -365,8 +517,8 @@ impl HostAgentSession {
         let stderr = child.stderr.take().ok_or_else(|| {
             AgentError::new(AgentErrorCode::Internal, "Pi stderr was not available")
         })?;
-
         let (commands, command_rx) = mpsc::channel(COMMAND_CAPACITY);
+        let (shutdown, shutdown_rx) = mpsc::channel(1);
         let (events, _) = broadcast::channel(EVENT_CAPACITY);
         let state = Arc::new(Mutex::new(RuntimeState {
             snapshot: AgentSnapshot::default(),
@@ -381,30 +533,40 @@ impl HostAgentSession {
             stdin,
             stdout,
             command_rx,
+            shutdown_rx,
+            commands.clone(),
             events.clone(),
             Arc::clone(&state),
             stderr_buffer,
         ));
-
         Ok(Self {
             commands,
+            shutdown,
             events,
             state,
         })
     }
-
     pub fn snapshot(&self) -> AgentSnapshot {
         lock(&self.state).snapshot.clone()
     }
-
     fn session_file(&self) -> Option<PathBuf> {
         lock(&self.state).session_file.clone()
     }
-
     pub fn subscribe(&self) -> broadcast::Receiver<ServerMessage> {
         self.events.subscribe()
     }
-
+    async fn shutdown(&self) -> Result<(), AgentError> {
+        let (completed, wait) = oneshot::channel();
+        self.shutdown.send(completed).await.map_err(|_| {
+            AgentError::new(AgentErrorCode::Unavailable, "The Pi process is not running")
+        })?;
+        wait.await.map_err(|_| {
+            AgentError::new(
+                AgentErrorCode::Unavailable,
+                "The Pi process did not stop cleanly",
+            )
+        })
+    }
     /// Forward a validated client action to Pi.
     ///
     /// # Errors
@@ -417,11 +579,16 @@ impl HostAgentSession {
                 AgentErrorCode::InvalidProtocol,
                 "The AI protocol handshake was already completed",
             )),
-            ClientMessage::Prompt { text, delivery } => {
+            ClientMessage::Prompt {
+                text,
+                delivery,
+                images,
+            } => {
                 let text = text.trim().to_owned();
                 let item = ChatItem::User {
                     id: new_id("user"),
                     text: text.clone(),
+                    images: images.clone(),
                 };
                 {
                     let mut state = lock(&self.state);
@@ -431,20 +598,28 @@ impl HostAgentSession {
                     state.accept_initial_history = false;
                 }
                 let _ = self.events.send(ServerMessage::ItemAdded { item });
+                let images = images.iter().map(pi_image).collect::<Vec<_>>();
                 let command = match delivery {
-                    PromptDelivery::Prompt => json!({"type": "prompt", "message": text}),
-                    PromptDelivery::Steer => json!({"type": "steer", "message": text}),
-                    PromptDelivery::FollowUp => json!({"type": "follow_up", "message": text}),
+                    PromptDelivery::Prompt => {
+                        json!({ "type" : "prompt", "message" : text, "images" : images })
+                    }
+                    PromptDelivery::Steer => {
+                        json!({ "type" : "steer", "message" : text, "images" : images })
+                    }
+                    PromptDelivery::FollowUp => {
+                        json!(
+                            { "type" : "follow_up", "message" : text, "images" : images }
+                        )
+                    }
                 };
                 self.send(command).await
             }
-            ClientMessage::Abort => self.send(json!({"type": "abort"})).await,
+            ClientMessage::Abort => self.send(json!({ "type" : "abort" })).await,
             ClientMessage::SetModel { provider, model_id } => {
-                self.send(json!({
-                    "type": "set_model",
-                    "provider": provider,
-                    "modelId": model_id,
-                }))
+                self.send(json!(
+                    { "type" : "set_model", "provider" : provider, "modelId" :
+                    model_id, }
+                ))
                 .await
             }
             ClientMessage::SetThinkingLevel { level } => {
@@ -456,10 +631,9 @@ impl HostAgentSession {
                     model: snapshot.model,
                     thinking_level: level,
                 });
-                self.send(json!({
-                    "type": "set_thinking_level",
-                    "level": level.as_str(),
-                }))
+                self.send(json!(
+                    { "type" : "set_thinking_level", "level" : level.as_str(), }
+                ))
                 .await
             }
             ClientMessage::Refresh => {
@@ -473,10 +647,9 @@ impl HostAgentSession {
                 cancelled,
             } => {
                 lock(&self.state).snapshot.pending_extension_request = None;
-                let mut response = json!({
-                    "type": "extension_ui_response",
-                    "id": request_id,
-                });
+                let mut response = json!(
+                    { "type" : "extension_ui_response", "id" : request_id, }
+                );
                 if cancelled {
                     response["cancelled"] = Value::Bool(true);
                 } else if let Some(value) = value {
@@ -488,6 +661,7 @@ impl HostAgentSession {
             }
             ClientMessage::CreateSession
             | ClientMessage::SelectSession { .. }
+            | ClientMessage::DeleteSession { .. }
             | ClientMessage::SessionAction { .. } => Err(AgentError::new(
                 AgentErrorCode::InvalidRequest,
                 "Workspace-level action sent to a Pi session",
@@ -495,17 +669,19 @@ impl HostAgentSession {
             ClientMessage::Ping { .. } => Ok(()),
         }
     }
-
     fn refresh(&self) {
         for (id, command) in [
             ("syntaxis-state", "get_state"),
             ("syntaxis-messages", "get_messages"),
             ("syntaxis-models", "get_available_models"),
+            ("syntaxis-commands", "get_commands"),
+            ("syntaxis-stats", "get_session_stats"),
         ] {
-            let _ = self.commands.try_send(json!({"id": id, "type": command}));
+            let _ = self
+                .commands
+                .try_send(json!({ "id" : id, "type" : command }));
         }
     }
-
     async fn send(&self, mut command: Value) -> Result<(), AgentError> {
         if command.get("id").is_none() {
             command["id"] = Value::String(new_id("request"));
@@ -515,46 +691,47 @@ impl HostAgentSession {
         })
     }
 }
-
+#[allow(clippy::too_many_arguments)]
 async fn run_pi_process(
     mut child: tokio::process::Child,
     mut stdin: tokio::process::ChildStdin,
     stdout: tokio::process::ChildStdout,
     mut commands: mpsc::Receiver<Value>,
+    mut shutdown: mpsc::Receiver<oneshot::Sender<()>>,
+    command_tx: mpsc::Sender<Value>,
     events: broadcast::Sender<ServerMessage>,
     state: Arc<Mutex<RuntimeState>>,
     stderr_buffer: Arc<Mutex<String>>,
 ) {
     let mut stdout = BufReader::new(stdout);
     let mut line = String::new();
+    let mut shutdown_completed = None;
     loop {
         line.clear();
         tokio::select! {
-            command = commands.recv() => {
-                let Some(command) = command else { break; };
-                let Ok(mut encoded) = serde_json::to_vec(&command) else {
-                    continue;
-                };
-                encoded.push(b'\n');
-                if stdin.write_all(&encoded).await.is_err() || stdin.flush().await.is_err() {
-                    break;
+            request = shutdown.recv() => {
+                if let Some(completed) = request {
+                    let _ = child.start_kill();
+                    shutdown_completed = Some(completed);
                 }
+                break;
             }
-            read = stdout.read_line(&mut line) => {
-                match read {
-                    Ok(0) | Err(_) => break,
-                    Ok(_) => {
-                        let record = line.trim_end_matches(['\r', '\n']);
-                        if let Ok(value) = serde_json::from_str::<Value>(record) {
-                            handle_pi_record(&value, &state, &events);
-                        }
-                    }
-                }
-            }
+            command = commands.recv() => { let Some(command) = command else { break; };
+            let Ok(mut encoded) = serde_json::to_vec(& command) else { continue; };
+            encoded.push(b'\n'); if stdin.write_all(& encoded). await .is_err() || stdin
+            .flush(). await .is_err() { break; } } read = stdout.read_line(& mut line) =>
+            { match read { Ok(0) | Err(_) => break, Ok(_) => { let record = line
+            .trim_end_matches(['\r', '\n']); if let Ok(value) = serde_json::from_str::<
+            Value > (record) { handle_pi_record(& value, & state, & events, &
+            command_tx); } } } }
         }
     }
     drop(stdin);
     let status = child.wait().await.ok();
+    if let Some(completed) = shutdown_completed {
+        let _ = completed.send(());
+        return;
+    }
     let stderr = lock(&stderr_buffer).clone();
     let detail = status.map_or_else(
         || "Pi stopped unexpectedly".to_owned(),
@@ -583,7 +760,6 @@ async fn run_pi_process(
         pending_messages: 0,
     });
 }
-
 async fn capture_stderr(stderr: tokio::process::ChildStderr, buffer: Arc<Mutex<String>>) {
     let mut lines = BufReader::new(stderr).lines();
     while let Ok(Some(line)) = lines.next_line().await {
@@ -597,11 +773,11 @@ async fn capture_stderr(stderr: tokio::process::ChildStderr, buffer: Arc<Mutex<S
         }
     }
 }
-
 fn handle_pi_record(
     record: &Value,
     state: &Arc<Mutex<RuntimeState>>,
     events: &broadcast::Sender<ServerMessage>,
+    command_tx: &mpsc::Sender<Value>,
 ) {
     let Some(kind) = record.get("type").and_then(Value::as_str) else {
         return;
@@ -629,6 +805,10 @@ fn handle_pi_record(
                 message: "Ready".into(),
                 pending_messages: 0,
             });
+            let _ = command_tx.try_send(json!(
+                { "id" : new_id("syntaxis-stats"), "type" : "get_session_stats",
+                }
+            ));
         }
         "message_start" => handle_message_start(record, state, events),
         "message_update" => handle_message_update(record, state, events),
@@ -665,7 +845,6 @@ fn handle_pi_record(
         _ => {}
     }
 }
-
 fn handle_pi_response(
     response: &Value,
     state: &Arc<Mutex<RuntimeState>>,
@@ -729,6 +908,27 @@ fn handle_pi_response(
             lock(state).snapshot.models.clone_from(&models);
             let _ = events.send(ServerMessage::Models { models });
         }
+        "get_commands" => {
+            let commands = data
+                .get("commands")
+                .and_then(Value::as_array)
+                .map(|commands| {
+                    commands
+                        .iter()
+                        .filter_map(parse_command)
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            lock(state).snapshot.commands.clone_from(&commands);
+            let _ = events.send(ServerMessage::Commands { commands });
+        }
+        "get_session_stats" => {
+            let session_stats = parse_session_stats(data);
+            lock(state).snapshot.session_stats = Some(session_stats.clone());
+            let _ = events.send(ServerMessage::SessionStats {
+                stats: session_stats,
+            });
+        }
         "set_model" => {
             let model = parse_model(data);
             let mut guard = lock(state);
@@ -748,7 +948,6 @@ fn handle_pi_response(
         _ => {}
     }
 }
-
 fn handle_message_start(
     record: &Value,
     state: &Arc<Mutex<RuntimeState>>,
@@ -767,7 +966,6 @@ fn handle_message_start(
     drop(guard);
     let _ = events.send(ServerMessage::ItemAdded { item });
 }
-
 fn handle_message_update(
     record: &Value,
     state: &Arc<Mutex<RuntimeState>>,
@@ -810,7 +1008,6 @@ fn handle_message_update(
         thinking,
     });
 }
-
 fn handle_message_end(
     record: &Value,
     state: &Arc<Mutex<RuntimeState>>,
@@ -847,7 +1044,6 @@ fn handle_message_end(
     drop(guard);
     let _ = events.send(ServerMessage::ItemUpdated { item });
 }
-
 fn handle_tool_start(
     record: &Value,
     state: &Arc<Mutex<RuntimeState>>,
@@ -866,7 +1062,6 @@ fn handle_tool_start(
     push_item(&mut lock(state).snapshot.items, item.clone());
     let _ = events.send(ServerMessage::ItemAdded { item });
 }
-
 fn handle_tool_update(
     record: &Value,
     state: &Arc<Mutex<RuntimeState>>,
@@ -929,7 +1124,6 @@ fn handle_tool_update(
     drop(guard);
     let _ = events.send(ServerMessage::ItemUpdated { item });
 }
-
 fn handle_extension_request(
     record: &Value,
     state: &Arc<Mutex<RuntimeState>>,
@@ -985,7 +1179,6 @@ fn handle_extension_request(
     lock(state).snapshot.pending_extension_request = Some(request.clone());
     let _ = events.send(ServerMessage::ExtensionUiRequest { request });
 }
-
 fn ensure_current_assistant(
     state: &mut RuntimeState,
     events: &broadcast::Sender<ServerMessage>,
@@ -1006,7 +1199,6 @@ fn ensure_current_assistant(
     let _ = events.send(ServerMessage::ItemAdded { item });
     id
 }
-
 fn finalize_current_assistant(state: &mut RuntimeState, status: ItemStatus) -> Option<ChatItem> {
     let id = state.current_assistant.take()?;
     let item = state
@@ -1024,7 +1216,6 @@ fn finalize_current_assistant(state: &mut RuntimeState, status: ItemStatus) -> O
     }
     None
 }
-
 fn set_status(
     state: &Arc<Mutex<RuntimeState>>,
     events: &broadcast::Sender<ServerMessage>,
@@ -1047,7 +1238,6 @@ fn set_status(
         pending_messages,
     });
 }
-
 fn apply_session_state(snapshot: &mut AgentSnapshot, value: &Value) {
     snapshot.session_id = string_field(value, "sessionId");
     snapshot.session_name = string_field(value, "sessionName");
@@ -1081,7 +1271,6 @@ fn apply_session_state(snapshot: &mut AgentSnapshot, value: &Value) {
         (AgentStatus::Ready, "Ready".into())
     };
 }
-
 fn parse_model(value: &Value) -> Option<ModelSummary> {
     let provider = string_field(value, "provider")?;
     let id = string_field(value, "id")?;
@@ -1090,14 +1279,64 @@ fn parse_model(value: &Value) -> Option<ModelSummary> {
         .get("reasoning")
         .and_then(Value::as_bool)
         .unwrap_or(false);
+    let supports_images = value
+        .get("input")
+        .and_then(Value::as_array)
+        .is_some_and(|inputs| inputs.iter().any(|input| input.as_str() == Some("image")));
     Some(ModelSummary {
         provider,
         id,
         name,
         reasoning,
+        supports_images,
     })
 }
-
+fn parse_command(value: &Value) -> Option<PiCommand> {
+    Some(PiCommand {
+        name: string_field(value, "name")?,
+        description: string_field(value, "description").unwrap_or_default(),
+        source: string_field(value, "source").unwrap_or_else(|| "command".into()),
+        location: string_field(value, "location"),
+    })
+}
+fn parse_session_stats(value: &Value) -> SessionStats {
+    let tokens = value.get("tokens").unwrap_or(&Value::Null);
+    let context = value.get("contextUsage").unwrap_or(&Value::Null);
+    SessionStats {
+        user_messages: u64_field(value, "userMessages"),
+        assistant_messages: u64_field(value, "assistantMessages"),
+        tool_calls: u64_field(value, "toolCalls"),
+        total_messages: u64_field(value, "totalMessages"),
+        tokens: TokenUsage {
+            input: u64_field(tokens, "input"),
+            output: u64_field(tokens, "output"),
+            cache_read: u64_field(tokens, "cacheRead"),
+            cache_write: u64_field(tokens, "cacheWrite"),
+            total: u64_field(tokens, "total"),
+        },
+        cost_microusd: value
+            .get("cost")
+            .and_then(Value::as_f64)
+            .map_or(0, |cost| rounded_u64(cost * 1_000_000.0, 1.0e15)),
+        context_tokens: context.get("tokens").and_then(Value::as_u64),
+        context_window: context.get("contextWindow").and_then(Value::as_u64),
+        context_percent: context
+            .get("percent")
+            .and_then(Value::as_f64)
+            .and_then(|percent| u8::try_from(rounded_u64(percent, 100.0)).ok()),
+    }
+}
+fn pi_image(image: &ImageAttachment) -> Value {
+    json!({ "type" : "image", "data" : image.data, "mimeType" : image.mime_type, })
+}
+fn u64_field(value: &Value, key: &str) -> u64 {
+    value.get(key).and_then(Value::as_u64).unwrap_or_default()
+}
+fn rounded_u64(value: f64, maximum: f64) -> u64 {
+    format!("{:.0}", value.clamp(0.0, maximum))
+        .parse()
+        .unwrap_or_default()
+}
 fn parse_thinking_level(value: &str) -> Option<ThinkingLevel> {
     match value {
         "off" => Some(ThinkingLevel::Off),
@@ -1110,7 +1349,6 @@ fn parse_thinking_level(value: &str) -> Option<ThinkingLevel> {
         _ => None,
     }
 }
-
 fn map_history(messages: &[Value]) -> Vec<ChatItem> {
     let mut items = Vec::new();
     for (index, message) in messages.iter().enumerate() {
@@ -1123,6 +1361,7 @@ fn map_history(messages: &[Value]) -> Vec<ChatItem> {
                         ChatItem::User {
                             id: format!("history-user-{index}"),
                             text,
+                            images: extract_message_images(message),
                         },
                     );
                 }
@@ -1190,7 +1429,6 @@ fn map_history(messages: &[Value]) -> Vec<ChatItem> {
     }
     items
 }
-
 fn assistant_item_from_message(message: &Value, status: ItemStatus, id: String) -> ChatItem {
     let mut text = String::new();
     let mut thinking = String::new();
@@ -1224,7 +1462,6 @@ fn assistant_item_from_message(message: &Value, status: ItemStatus, id: String) 
         status,
     }
 }
-
 fn extract_message_text(message: &Value) -> String {
     match message.get("content") {
         Some(Value::String(text)) => text.clone(),
@@ -1237,7 +1474,25 @@ fn extract_message_text(message: &Value) -> String {
         _ => String::new(),
     }
 }
-
+fn extract_message_images(message: &Value) -> Vec<ImageAttachment> {
+    message
+        .get("content")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|part| part.get("type").and_then(Value::as_str) == Some("image"))
+        .filter_map(|part| {
+            let data = string_field(part, "data").or_else(|| string_field(part, "content"))?;
+            let mime_type = string_field(part, "mimeType")?;
+            Some(ImageAttachment {
+                name: string_field(part, "fileName").unwrap_or_else(|| "image".into()),
+                size: u64::try_from(data.len().saturating_mul(3) / 4).unwrap_or(u64::MAX),
+                mime_type,
+                data,
+            })
+        })
+        .collect()
+}
 fn summarize_tool(name: &str, arguments: Option<&Value>) -> String {
     let arguments = arguments.unwrap_or(&Value::Null);
     let keys: &[&str] = match name {
@@ -1257,7 +1512,6 @@ fn summarize_tool(name: &str, arguments: Option<&Value>) -> String {
         truncate_chars(compact_json(arguments), 240)
     }
 }
-
 fn extract_result_text(result: &Value) -> String {
     let text = if let Some(text) = result.as_str() {
         text.to_owned()
@@ -1277,11 +1531,9 @@ fn extract_result_text(result: &Value) -> String {
     };
     truncate_chars(text, MAX_TOOL_OUTPUT_CHARS)
 }
-
 fn compact_json(value: &Value) -> String {
     serde_json::to_string(value).unwrap_or_default()
 }
-
 fn truncate_chars(mut text: String, max_chars: usize) -> String {
     if text.chars().count() <= max_chars {
         return text;
@@ -1294,22 +1546,18 @@ fn truncate_chars(mut text: String, max_chars: usize) -> String {
     text.push('…');
     text
 }
-
 fn string_field(value: &Value, key: &str) -> Option<String> {
     value.get(key).and_then(Value::as_str).map(str::to_owned)
 }
-
 fn push_item(items: &mut Vec<ChatItem>, item: ChatItem) {
     items.push(item);
     if items.len() > MAX_HISTORY_ITEMS {
         items.drain(..items.len() - MAX_HISTORY_ITEMS);
     }
 }
-
 fn new_id(prefix: &str) -> String {
     format!("{prefix}-{}", Uuid::new_v4())
 }
-
 fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1317,7 +1565,6 @@ fn now_ms() -> u64 {
         .and_then(|duration| u64::try_from(duration.as_millis()).ok())
         .unwrap_or_default()
 }
-
 fn prompt_title(text: &str) -> String {
     let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
     let mut chars = normalized.chars();
@@ -1330,41 +1577,116 @@ fn prompt_title(text: &str) -> String {
         title
     }
 }
-
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    use syntaxis_workspace::{WorkspaceAvailability, WorkspaceIcon, WorkspaceIconSymbol};
     #[test]
     fn history_maps_pi_messages_and_tool_results() {
         let messages = vec![
-            json!({"role":"user","content":"Inspect src"}),
-            json!({"role":"assistant","content":[
-                {"type":"thinking","thinking":"I should inspect."},
-                {"type":"text","text":"I found it."},
-                {"type":"toolCall","id":"tool-1","name":"read","arguments":{"path":"src/main.rs"}}
-            ]}),
-            json!({"role":"toolResult","toolCallId":"tool-1","toolName":"read","content":[{"type":"text","text":"fn main() {}"}],"isError":false}),
+            json!({ "role" : "user", "content" : "Inspect src" }),
+            json!(
+                { "role" : "assistant", "content" : [{ "type" : "thinking", "thinking" :
+                "I should inspect." }, { "type" : "text", "text" : "I found it." }, {
+                "type" : "toolCall", "id" : "tool-1", "name" : "read", "arguments" : {
+                "path" : "src/main.rs" } }] }
+            ),
+            json!(
+                { "role" : "toolResult", "toolCallId" : "tool-1", "toolName" : "read",
+                "content" : [{ "type" : "text", "text" : "fn main() {}" }], "isError" :
+                false }
+            ),
         ];
         let items = map_history(&messages);
         assert_eq!(items.len(), 3);
-        assert!(matches!(&items[0], ChatItem::User { text, .. } if text == "Inspect src"));
-        assert!(
-            matches!(&items[1], ChatItem::Assistant { text, thinking, .. } if text == "I found it." && thinking == "I should inspect.")
-        );
-        assert!(matches!(&items[2], ChatItem::Tool { output, .. } if output == "fn main() {}"));
+        assert!(matches!(&items[0], ChatItem::User { text, .. } if text == "Inspect src"),);
+        assert!(matches!(
+            &items[1],
+            ChatItem::Assistant { text, thinking, .. }
+            if text == "I found it." && thinking == "I should inspect."
+        ),);
+        assert!(matches!(
+            &items[2],
+            ChatItem::Tool { output, .. }
+            if output == "fn main() {}"
+        ),);
     }
-
     #[test]
     fn tool_output_is_bounded() {
         let output = extract_result_text(&Value::String("x".repeat(MAX_TOOL_OUTPUT_CHARS + 100)));
         assert!(output.chars().count() <= MAX_TOOL_OUTPUT_CHARS);
         assert!(output.ends_with('…'));
+    }
+    #[test]
+    fn completion_and_attention_notifications_replace_and_clear() {
+        let temp = tempfile::tempdir().unwrap();
+        let record = WorkspaceRecord {
+            id: WorkspaceId::new("workspace-1"),
+            slug: "project-one".into(),
+            name: "Project One".into(),
+            root: temp.path().to_string_lossy().into_owned(),
+            icon: WorkspaceIcon::Symbol {
+                name: WorkspaceIconSymbol::Folder,
+            },
+            registered_at_unix_ms: 0,
+            last_opened_unix_ms: 0,
+            availability: WorkspaceAvailability::Available,
+        };
+        let notifications = HostAgentNotificationHub::default();
+        let workspace = HostAgentWorkspace::new(record, notifications.clone());
+        lock(&workspace.sessions).insert(
+            "session-1".into(),
+            ManagedSession {
+                path: None,
+                summary: AgentSessionSummary {
+                    id: "session-1".into(),
+                    title: "Fix the tests".into(),
+                    updated_at_ms: 0,
+                    status: AgentStatus::Working,
+                    status_message: "Working".into(),
+                    running: true,
+                },
+                process: None,
+            },
+        );
+
+        workspace.update_summary(
+            "session-1",
+            &ServerMessage::Status {
+                status: AgentStatus::Ready,
+                message: "Ready".into(),
+                pending_messages: 0,
+            },
+        );
+        let snapshot = notifications.snapshot();
+        assert_eq!(snapshot.len(), 1);
+        assert_eq!(snapshot[0].kind, AgentNotificationKind::Completed);
+
+        workspace.update_summary(
+            "session-1",
+            &ServerMessage::ExtensionUiRequest {
+                request: ExtensionUiRequest {
+                    id: "request-1".into(),
+                    method: "confirm".into(),
+                    title: "Confirm change".into(),
+                    message: "Apply the migration?".into(),
+                    options: Vec::new(),
+                    placeholder: None,
+                    prefill: None,
+                },
+            },
+        );
+        let snapshot = notifications.snapshot();
+        assert_eq!(snapshot.len(), 1);
+        assert_eq!(snapshot[0].kind, AgentNotificationKind::Attention);
+        assert_eq!(snapshot[0].message, "Apply the migration?");
+
+        notifications.clear("workspace-1", "session-1");
+        assert!(notifications.snapshot().is_empty());
     }
 }

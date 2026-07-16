@@ -8,6 +8,7 @@ use super::client::{list_workspaces, runtime_state};
 use super::worktrees::use_active_workspace;
 use super::ProjectIcon;
 use super::{events::WorkspaceEventBridge, WorkspaceEventState};
+use crate::ai::notifications::AgentNotificationMenu;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Module {
@@ -35,7 +36,7 @@ pub fn WorkspaceShell() -> Element {
         Route::Terminal { slug } => (slug, Module::Terminal),
         Route::Git { slug } => (slug, Module::Git),
         Route::Preview { slug } => (slug, Module::Preview),
-        Route::Ai { slug } => (slug, Module::Ai),
+        Route::Ai { slug, .. } => (slug, Module::Ai),
         Route::Home {} => ("syntaxis".into(), Module::Files),
     };
     let workspaces = use_resource(list_workspaces);
@@ -130,6 +131,7 @@ pub fn WorkspaceShell() -> Element {
                     StatusBadge { label: runtime_label, tone: Tone::Neutral }
                 }
                 div { class: "ml-auto flex items-center gap-2 pr-2 text-[11px] text-muted-foreground",
+                    AgentNotificationMenu {}
                     span { class: if runtime_ready { "size-2 rounded-full bg-success shadow-[0_0_0.5rem_color-mix(in_oklch,var(--success),transparent_20%)]" } else { "size-2 rounded-full bg-warning" } }
                     span { class: "max-md:hidden", {runtime_message} }
                 }
@@ -169,7 +171,10 @@ pub fn WorkspaceShell() -> Element {
                     label: "AI",
                     icon: AppIcon::Bot,
                     active: active == Module::Ai,
-                    to: Route::Ai { slug: slug.clone() },
+                    to: Route::Ai {
+                        slug: slug.clone(),
+                        query: crate::ai::AiQuery::default(),
+                    },
                 }
             }
         }
