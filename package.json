@@ -1,0 +1,11 @@
+{
+  "name": "syntaxis-quality-tools",
+  "private": true,
+  "scripts": {
+    "lighthouse": "rm -rf target/dx/syntaxis/release/web/public && dx build --platform web --release --locked --debug-symbols false && lhci autorun",
+    "lighthouse:open": "lhci open"
+  },
+  "devDependencies": {
+    "@lhci/cli": "0.15.1"
+  }
+}

@@ -2,10 +2,13 @@
 tailwind_input = "tailwind.css"
 tailwind_output = "assets/tailwind.css"
 
+[web]
+pre_compress = true
+
 [web.app]
 
 # HTML title tag content
-title = "syntaxis"
+title = "Syntaxis"
 
 # include `assets` in web platform
 [web.resource]

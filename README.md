@@ -71,3 +71,30 @@ To run for a different platform, use the `--platform platform` flag. E.g.
 ```bash
 dx serve --platform desktop
 ```
+
+## Lighthouse
+
+Run a complete local audit with:
+
+```bash
+just lighthouse
+```
+
+This command installs the pinned Lighthouse CI tool when needed, creates an optimized Dioxus
+fullstack web build, starts its release server on `127.0.0.1:4173`, and runs Lighthouse three times
+with mobile emulation. The server is stopped automatically. The median run is checked against
+performance, accessibility, best-practice, SEO, and key loading/responsiveness thresholds.
+
+The terminal output summarizes enforced failures and warning-level improvement targets. Full HTML
+and JSON reports are written to `lighthouse-reports/`; open the most recent collected report with:
+
+```bash
+just lighthouse-open
+```
+
+The audit uses `target/dx/syntaxis/release/web/server`, not the hot-reloading development server or a
+standalone static server. The release server provides the server-rendered HTML and hydration data
+that the Dioxus fullstack client expects. Debug builds do not represent production asset size or
+runtime performance. Local Lighthouse numbers still vary with CPU load, Chrome version, and
+hardware, so compare repeated runs on the same machine and treat field data from a deployed site as
+the final measure of user experience.

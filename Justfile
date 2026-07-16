@@ -7,6 +7,7 @@
 #   just serve desktop
 #   just check
 #   just ci
+#   just lighthouse
 #   just dx doctor
 #
 # Override defaults:
@@ -79,7 +80,7 @@ install-lefthook:
     lefthook install
 
 # Install all project development tooling.
-install: install-rust install-dx install-goodies install-lefthook
+install: install-rust install-dx install-goodies install-lefthook install-lighthouse
     @echo
     @echo "Development tooling installed."
     @echo "Run 'just doctor' to verify the environment."
@@ -93,6 +94,10 @@ update-tools: install-binstall
         cargo-deny \
         cargo-expand
     just install-lefthook
+
+# Install the pinned Lighthouse CI dependency.
+install-lighthouse:
+    npm ci
 
 # -----------------------------------------------------------------------------
 # Environment inspection
@@ -191,6 +196,21 @@ build platform=default_platform profile="debug":
 # Build an optimized release.
 release platform=default_platform:
     dx build --platform "{{ platform }}" --release
+
+# Build the production web app and run repeatable local Lighthouse audits.
+lighthouse:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if [[ ! -x node_modules/.bin/lhci ]]; then
+        npm ci
+    fi
+
+    npm run lighthouse
+
+# Open the most recent locally collected Lighthouse report.
+lighthouse-open:
+    npm run lighthouse:open
 
 # Run Dioxus checks.
 dx-check:
