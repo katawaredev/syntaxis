@@ -4,9 +4,20 @@ use crate::workspace::ProjectIcon;
 use dioxus::prelude::*;
 use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem, DropdownMenuTrigger};
 use syntaxis_ui::prelude::{
-    AppIcon, Button, ButtonKind, Icon, IconButton, MenuContent, StatusBadge, Tone,
+    AppIcon, Button, ButtonKind, Icon, MenuContent, MenuTrigger, ProjectLanguageBadge,
+    ProjectTechnologyBadge, StatusBadge, Tone,
 };
 use syntaxis_workspace::{WorkspaceAvailability, WorkspaceRecord};
+
+use crate::workspace::client::refresh_workspace;
+
+const MIN_LANGUAGE_PERMILLE: u64 = 20;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ProjectAction {
+    Refresh,
+    Delete,
+}
 #[component]
 pub(super) fn RecentProjects(
     view: Signal<WorkspaceListView>,
@@ -56,7 +67,12 @@ pub(super) fn RecentProjects(
                     } else if workspaces.is_empty() {
                         EmptyWorkspaces {}
                     } else {
-                        WorkspaceRows { workspaces, on_delete }
+                        WorkspaceRows {
+                            workspaces,
+                            on_delete,
+                            on_notice,
+                            on_changed: on_refresh,
+                        }
                     }
                 },
                 WorkspaceListView::Loading => rsx! {
@@ -151,11 +167,22 @@ fn StateOption(
     }
 }
 #[component]
-fn WorkspaceRows(workspaces: Vec<WorkspaceRecord>, on_delete: EventHandler<usize>) -> Element {
+fn WorkspaceRows(
+    workspaces: Vec<WorkspaceRecord>,
+    on_delete: EventHandler<usize>,
+    on_notice: EventHandler<String>,
+    on_changed: EventHandler<()>,
+) -> Element {
     rsx! {
-        div { class: "overflow-hidden rounded-xl border border-border bg-card shadow-sm",
+        div { class: "rounded-xl border border-border bg-card shadow-sm",
             for (index, workspace) in workspaces.into_iter().enumerate() {
-                WorkspaceRow { workspace, index, on_delete }
+                WorkspaceRow {
+                    workspace,
+                    index,
+                    on_delete,
+                    on_notice,
+                    on_changed,
+                }
             }
         }
     }
@@ -165,10 +192,16 @@ fn WorkspaceRow(
     workspace: WorkspaceRecord,
     index: usize,
     on_delete: EventHandler<usize>,
+    on_notice: EventHandler<String>,
+    on_changed: EventHandler<()>,
 ) -> Element {
     let availability = workspace.availability;
+    let workspace_id = workspace.id.0.clone();
+    let workspace_name = workspace.name.clone();
+    let mut menu_open = use_signal(|| false);
+    let mut refreshing = use_signal(|| false);
     rsx! {
-        article { class: if availability == WorkspaceAvailability::Missing { "flex min-h-17.5 min-w-0 items-center border-b border-border opacity-65 last:border-b-0 hover:bg-accent/60" } else { "flex min-h-17.5 min-w-0 items-center border-b border-border last:border-b-0 hover:bg-accent/60" },
+        article { class: if availability == WorkspaceAvailability::Missing { "flex min-h-17.5 min-w-0 items-center border-b border-border opacity-65 first:rounded-t-xl last:rounded-b-xl last:border-b-0 hover:bg-accent/60" } else { "flex min-h-17.5 min-w-0 items-center border-b border-border first:rounded-t-xl last:rounded-b-xl last:border-b-0 hover:bg-accent/60" },
             Link {
                 class: "grid min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5 max-md:grid-cols-[auto_minmax(0,1fr)]",
                 to: Route::Files {
@@ -182,10 +215,13 @@ fn WorkspaceRow(
                 ProjectIcon { icon: workspace.icon.clone() }
                 div { class: "min-w-0",
                     div { class: "flex items-center gap-2",
-                        h3 { class: "text-sm font-semibold text-foreground", "{workspace.name}" }
+                        h3 { class: "min-w-0 truncate text-sm font-semibold text-foreground",
+                            "{workspace.name}"
+                        }
                         if availability == WorkspaceAvailability::Missing {
                             StatusBadge { label: "Missing", tone: Tone::Destructive }
                         }
+                        ProjectProfileBadges { workspace: workspace.clone() }
                     }
                     p { class: "mt-1 truncate font-mono text-[11px] text-muted-foreground max-md:max-w-[65vw] max-[420px]:max-w-[55vw]",
                         "{workspace.root}"
@@ -195,12 +231,113 @@ fn WorkspaceRow(
                     {recent_label(workspace.last_opened_unix_ms)}
                 }
             }
-            IconButton {
-                label: format!("Remove {}", workspace.name),
-                icon: AppIcon::Close,
-                onclick: move |_| on_delete.call(index),
+            DropdownMenu {
+                class: "relative mr-1 shrink-0",
+                open: menu_open(),
+                on_open_change: move |open: bool| menu_open.set(open),
+                MenuTrigger {
+                    label: format!("Project actions for {}", workspace.name),
+                    icon: AppIcon::MoreVertical,
+                    open: menu_open(),
+                }
+                MenuContent { class: "right-0 w-40",
+                    DropdownMenuItem::<ProjectAction> {
+                        value: ProjectAction::Refresh,
+                        index: 0_usize,
+                        disabled: refreshing() || availability == WorkspaceAvailability::Missing,
+                        on_select: move |_: ProjectAction| {
+                            if refreshing() {
+                                return;
+                            }
+                            refreshing.set(true);
+                            let workspace_id = workspace_id.clone();
+                            let workspace_name = workspace_name.clone();
+                            spawn(async move {
+                                match refresh_workspace(workspace_id).await {
+                                    Ok(_) => {
+                                        on_notice.call(format!("Refreshed {workspace_name}"));
+                                        on_changed.call(());
+                                    }
+                                    Err(error) => on_notice.call(error),
+                                }
+                                refreshing.set(false);
+                            });
+                        },
+                        span { class: "flex items-center gap-2",
+                            Icon { icon: AppIcon::Refresh, size: 14 }
+                            if refreshing() {
+                                "Refreshing…"
+                            } else {
+                                "Refresh"
+                            }
+                        }
+                    }
+                    DropdownMenuItem::<ProjectAction> {
+                        value: ProjectAction::Delete,
+                        index: 1_usize,
+                        class: "!text-destructive",
+                        disabled: refreshing(),
+                        on_select: move |_: ProjectAction| on_delete.call(index),
+                        span { class: "flex items-center gap-2",
+                            Icon { icon: AppIcon::Delete, size: 14 }
+                            "Delete"
+                        }
+                    }
+                }
             }
         }
+    }
+}
+
+#[component]
+fn ProjectProfileBadges(workspace: WorkspaceRecord) -> Element {
+    let total_bytes = workspace.profile.total_language_bytes();
+    let technologies = workspace
+        .profile
+        .technologies
+        .iter()
+        .copied()
+        .take(5)
+        .collect::<Vec<_>>();
+    let languages = workspace
+        .profile
+        .languages
+        .iter()
+        .filter(|language| {
+            total_bytes > 0
+                && language.bytes.saturating_mul(1_000)
+                    >= total_bytes.saturating_mul(MIN_LANGUAGE_PERMILLE)
+        })
+        .take(5)
+        .cloned()
+        .collect::<Vec<_>>();
+    rsx! {
+        span { class: "ml-auto flex shrink-0 items-center gap-1 overflow-hidden",
+            for (badge_index, technology) in technologies.into_iter().enumerate() {
+                ProjectTechnologyBadge {
+                    key: "technology-{technology:?}",
+                    technology,
+                    class: badge_visibility_class(badge_index),
+                }
+            }
+            for (language_index, language) in languages.into_iter().enumerate() {
+                ProjectLanguageBadge {
+                    key: "language-{language.name}",
+                    class: badge_visibility_class(workspace.profile.technologies.len().min(5) + language_index),
+                    language,
+                    total_bytes,
+                }
+            }
+        }
+    }
+}
+
+const fn badge_visibility_class(index: usize) -> &'static str {
+    match index {
+        0..=2 => "",
+        3..=4 => "max-[479px]:hidden",
+        5..=7 => "max-md:hidden",
+        _ => "max-lg:hidden",
     }
 }
 fn recent_label(timestamp: i64) -> String {

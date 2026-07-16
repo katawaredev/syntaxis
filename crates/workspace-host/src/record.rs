@@ -24,6 +24,11 @@ pub(crate) fn row_to_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<Workspa
         icon: serde_json::from_str(&icon).unwrap_or(WorkspaceIcon::Symbol {
             name: WorkspaceIconSymbol::Folder,
         }),
+        profile: row
+            .get::<_, String>(7)
+            .ok()
+            .and_then(|profile| serde_json::from_str(&profile).ok())
+            .unwrap_or_default(),
         registered_at_unix_ms: row.get(5)?,
         last_opened_unix_ms: row.get(6)?,
     })

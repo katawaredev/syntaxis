@@ -15,6 +15,7 @@ use crate::{
     error::{map_database_error, map_io_error},
     icon::detect_workspace_icon,
     policy::RegistrationPolicy,
+    profile::detect_workspace_profile,
     record::{require_changed, row_to_record, slugify, unix_milliseconds},
 };
 
@@ -70,7 +71,7 @@ impl WorkspaceRegistryStore {
             .map_err(|_| WorkspaceError::internal())?;
         connection
             .execute_batch(
-                "BEGIN;
+                r#"BEGIN;
                  CREATE TABLE IF NOT EXISTS workspaces (
                     id TEXT PRIMARY KEY NOT NULL,
                     slug TEXT NOT NULL,
@@ -78,11 +79,33 @@ impl WorkspaceRegistryStore {
                     root TEXT NOT NULL UNIQUE,
                     icon TEXT NOT NULL,
                     registered_at_unix_ms INTEGER NOT NULL,
-                    last_opened_unix_ms INTEGER NOT NULL
+                    last_opened_unix_ms INTEGER NOT NULL,
+                    profile TEXT NOT NULL DEFAULT '{"technologies":[],"languages":[]}'
                  );
-                 PRAGMA user_version = 1;
-                 COMMIT;",
+                 COMMIT;"#,
             )
+            .map_err(map_database_error)?;
+        let has_profile = {
+            let mut statement = connection
+                .prepare("PRAGMA table_info(workspaces)")
+                .map_err(map_database_error)?;
+            let columns = statement
+                .query_map([], |row| row.get::<_, String>(1))
+                .map_err(map_database_error)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(map_database_error)?;
+            columns.iter().any(|column| column == "profile")
+        };
+        if !has_profile {
+            connection
+                .execute(
+                    "ALTER TABLE workspaces ADD COLUMN profile TEXT NOT NULL DEFAULT '{\"technologies\":[],\"languages\":[]}'",
+                    [],
+                )
+                .map_err(map_database_error)?;
+        }
+        connection
+            .pragma_update(None, "user_version", 2)
             .map_err(map_database_error)
     }
 
@@ -94,7 +117,7 @@ impl WorkspaceRegistryStore {
         let mut statement = connection
             .prepare(
                 "SELECT id, slug, name, root, icon, registered_at_unix_ms,
-                        last_opened_unix_ms
+                        last_opened_unix_ms, profile
                  FROM workspaces
                  ORDER BY last_opened_unix_ms DESC, name ASC",
             )
@@ -118,7 +141,7 @@ impl WorkspaceRegistryStore {
         let record = connection
             .query_row(
                 "SELECT id, slug, name, root, icon, registered_at_unix_ms,
-                        last_opened_unix_ms FROM workspaces WHERE id = ?1",
+                        last_opened_unix_ms, profile FROM workspaces WHERE id = ?1",
                 params![id.0],
                 row_to_record,
             )
@@ -157,6 +180,7 @@ impl WorkspaceRegistryStore {
             id: WorkspaceId::new(Uuid::new_v4().to_string()),
             slug: slugify(&name),
             icon: detect_workspace_icon(&canonical),
+            profile: detect_workspace_profile(&canonical),
             name,
             root: canonical.to_string_lossy().into_owned(),
             registered_at_unix_ms: timestamp,
@@ -169,11 +193,13 @@ impl WorkspaceRegistryStore {
             .lock()
             .map_err(|_| WorkspaceError::internal())?;
         let icon = serde_json::to_string(&record.icon).map_err(|_| WorkspaceError::internal())?;
+        let profile =
+            serde_json::to_string(&record.profile).map_err(|_| WorkspaceError::internal())?;
         connection
             .execute(
                 "INSERT INTO workspaces (
-                    id, slug, name, root, icon, registered_at_unix_ms, last_opened_unix_ms
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                    id, slug, name, root, icon, registered_at_unix_ms, last_opened_unix_ms, profile
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
                  ON CONFLICT(root) DO UPDATE SET last_opened_unix_ms = excluded.last_opened_unix_ms",
                 params![
                     record.id.0,
@@ -183,6 +209,7 @@ impl WorkspaceRegistryStore {
                     icon,
                     record.registered_at_unix_ms,
                     record.last_opened_unix_ms,
+                    profile,
                 ],
             )
             .map_err(map_database_error)?;
@@ -199,7 +226,7 @@ impl WorkspaceRegistryStore {
         let record = connection
             .query_row(
                 "SELECT id, slug, name, root, icon, registered_at_unix_ms,
-                        last_opened_unix_ms FROM workspaces WHERE root = ?1",
+                        last_opened_unix_ms, profile FROM workspaces WHERE root = ?1",
                 params![root],
                 row_to_record,
             )
@@ -234,6 +261,34 @@ impl WorkspaceRegistryStore {
             )
             .map_err(map_database_error)?;
         require_changed(changed)
+    }
+
+    /// Re-scans the workspace icon, technologies, and programming languages.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the workspace is unavailable or its registry row cannot be updated.
+    pub fn refresh_profile(&self, id: &WorkspaceId) -> WorkspaceResult<WorkspaceRecord> {
+        let record = self.get_record(id)?;
+        let root = Path::new(&record.root);
+        let icon = detect_workspace_icon(root);
+        let profile = detect_workspace_profile(root);
+        let encoded_icon = serde_json::to_string(&icon).map_err(|_| WorkspaceError::internal())?;
+        let encoded_profile =
+            serde_json::to_string(&profile).map_err(|_| WorkspaceError::internal())?;
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| WorkspaceError::internal())?;
+        let changed = connection
+            .execute(
+                "UPDATE workspaces SET icon = ?1, profile = ?2 WHERE id = ?3",
+                params![encoded_icon, encoded_profile, id.0],
+            )
+            .map_err(map_database_error)?;
+        require_changed(changed)?;
+        drop(connection);
+        self.get_record(id)
     }
 
     fn remove_record(&self, id: &WorkspaceId) -> WorkspaceResult<()> {

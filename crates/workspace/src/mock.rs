@@ -60,6 +60,7 @@ impl WorkspaceRegistry for MockWorkspaceRegistry {
             icon: WorkspaceIcon::Symbol {
                 name: WorkspaceIconSymbol::Folder,
             },
+            profile: crate::WorkspaceProfile::default(),
             registered_at_unix_ms: i64::try_from(sequence).unwrap_or(i64::MAX),
             last_opened_unix_ms: i64::try_from(sequence).unwrap_or(i64::MAX),
             availability: WorkspaceAvailability::Available,

@@ -1,5 +1,6 @@
 pub(crate) mod api;
 mod renderer;
+use self::api::RunCommand;
 use self::renderer::{
     GhosttyRenderer, RendererAction, RendererActionResult, RendererCommand, RendererOutput,
     RendererOutputBatch,
@@ -17,7 +18,7 @@ use syntaxis_terminal::{
     TerminalSize, PROTOCOL_VERSION,
 };
 use syntaxis_ui::prelude::{
-    AppIcon, Button, ButtonKind, ControlSize, DialogActions, DialogForm, Field, IconButton,
+    AppIcon, Button, ButtonKind, ControlSize, DialogActions, DialogForm, Field, Icon, IconButton,
     MenuContent, MenuTrigger, Modal, PanelHeader, PanelTab, PanelTabIndicator, PanelTabList,
     PanelTabWidth, TextInput, Toast, Tone,
 };
@@ -85,27 +86,11 @@ enum TerminalAction {
     CloseOthers,
     CloseAll,
 }
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum QuickCommand {
-    Ci,
-    Test,
-    Build,
-}
-impl QuickCommand {
-    const fn command(self) -> &'static str {
-        match self {
-            Self::Ci => "just ci-code",
-            Self::Test => "cargo test --workspace",
-            Self::Build => "cargo build --workspace",
-        }
-    }
-    const fn label(self) -> &'static str {
-        match self {
-            Self::Ci => "CI checks",
-            Self::Test => "Tests",
-            Self::Build => "Build",
-        }
-    }
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum RunMenuAction {
+    Run(RunCommand),
+    Add,
+    Refresh,
 }
 #[component]
 pub fn Terminal(slug: String, query: TerminalQuery) -> Element {
@@ -148,7 +133,27 @@ fn RemoteTerminal(
     let mut new_name = use_signal(String::new);
     let mut new_name_server_error = use_signal(|| None::<String>);
     let mut creating_session = use_signal(|| false);
+    let mut run_commands = use_signal(Vec::<RunCommand>::new);
+    let mut commands_loading = use_signal(|| true);
+    let mut add_command_dialog = use_signal(|| false);
+    let mut command_label = use_signal(String::new);
+    let mut command_text = use_signal(String::new);
+    let mut command_error = use_signal(|| None::<String>);
+    let mut saving_command = use_signal(|| false);
     let storage_key = format!("syntaxis.terminal.active.{workspace_id}");
+    use_effect({
+        let workspace_id = workspace_id.clone();
+        move || {
+            let workspace_id = workspace_id.clone();
+            spawn(async move {
+                match api::list_run_commands(workspace_id).await {
+                    Ok(commands) => run_commands.set(commands),
+                    Err(error) => toast.set(Some(server_error_message(error))),
+                }
+                commands_loading.set(false);
+            });
+        }
+    });
     use_effect({
         let workspace_id = workspace_id.clone();
         move || {
@@ -602,6 +607,90 @@ fn RemoteTerminal(
             size: TerminalSize::DEFAULT,
         });
     });
+    let run_project_command = EventHandler::new({
+        let selected = selected.clone();
+        move |command: RunCommand| {
+            if pending_command.read().is_some() || !connection_ready {
+                return;
+            }
+            let mut data = command.command.clone().into_bytes();
+            data.push(b'\n');
+            if let Some(session) = selected.as_ref().filter(|session| {
+                matches!(session.lifecycle, Lifecycle::Starting | Lifecycle::Running)
+            }) {
+                client.send(ClientMessage::Write {
+                    session_id: session.id.clone(),
+                    data,
+                });
+            } else {
+                pending_command.set(Some(command.command));
+                client.send(ClientMessage::Create {
+                    name: Some(command.label),
+                    size: TerminalSize::DEFAULT,
+                });
+            }
+            quick_menu.set(false);
+        }
+    });
+    let open_add_command_dialog = EventHandler::new(move |()| {
+        command_label.set(String::new());
+        command_text.set(String::new());
+        command_error.set(None);
+        saving_command.set(false);
+        add_command_dialog.set(true);
+        quick_menu.set(false);
+    });
+    let submit_command = EventHandler::new({
+        let workspace_id = workspace_id.clone();
+        move |()| {
+            if saving_command() {
+                return;
+            }
+            if command_text().trim().is_empty() {
+                command_error.set(Some("Enter a command to run.".into()));
+                return;
+            }
+            saving_command.set(true);
+            command_error.set(None);
+            let workspace_id = workspace_id.clone();
+            let label = command_label();
+            let command = command_text();
+            spawn(async move {
+                match api::add_run_command(workspace_id, label, command).await {
+                    Ok(commands) => {
+                        run_commands.set(commands);
+                        saving_command.set(false);
+                        add_command_dialog.set(false);
+                    }
+                    Err(error) => {
+                        saving_command.set(false);
+                        command_error.set(Some(server_error_message(error)));
+                    }
+                }
+            });
+        }
+    });
+    let refresh_commands = EventHandler::new({
+        let workspace_id = workspace_id.clone();
+        move |()| {
+            if commands_loading() {
+                return;
+            }
+            commands_loading.set(true);
+            quick_menu.set(false);
+            let workspace_id = workspace_id.clone();
+            spawn(async move {
+                match api::refresh_run_commands(workspace_id).await {
+                    Ok(commands) => {
+                        run_commands.set(commands);
+                        toast.set(Some("Project commands refreshed.".into()));
+                    }
+                    Err(error) => toast.set(Some(server_error_message(error))),
+                }
+                commands_loading.set(false);
+            });
+        }
+    });
     rsx! {
         document::Script { src: TERMINAL_SCRIPT }
         section { class: "flex size-full min-h-0 flex-col bg-background",
@@ -689,32 +778,83 @@ fn RemoteTerminal(
                     open: quick_menu(),
                     on_open_change: move |open: bool| quick_menu.set(open),
                     MenuTrigger {
-                        label: "Quick commands",
+                        label: "Run command",
                         icon: AppIcon::Play,
                         open: quick_menu(),
                     }
-                    MenuContent { class: "right-0 w-61",
-                        for (index, command) in [QuickCommand::Ci, QuickCommand::Test, QuickCommand::Build].into_iter().enumerate() {
-                            DropdownMenuItem::<QuickCommand> {
-                                value: command,
+                    MenuContent { class: "right-0 max-h-[min(32rem,calc(100svh-4rem))] w-72 overflow-y-auto",
+                        if commands_loading() && run_commands.read().is_empty() {
+                            div { class: "px-2 py-2 text-xs text-muted-foreground",
+                                "Detecting project commands…"
+                            }
+                        } else if run_commands.read().is_empty() {
+                            div { class: "px-2 py-2 text-xs text-muted-foreground",
+                                "No project commands detected"
+                            }
+                        }
+                        for (index, command) in run_commands().into_iter().enumerate() {
+                            DropdownMenuItem::<RunMenuAction> {
+                                value: RunMenuAction::Run(command.clone()),
                                 index,
                                 disabled: !connection_ready || pending_command.read().is_some(),
-                                on_select: move |command: QuickCommand| {
-                                    if pending_command.read().is_some() {
-                                        return;
+                                on_select: move |action: RunMenuAction| {
+                                    if let RunMenuAction::Run(command) = action {
+                                        run_project_command.call(command);
                                     }
-                                    pending_command.set(Some(command.command().into()));
-                                    client
-                                        .send(ClientMessage::Create {
-                                            name: Some(command.label().into()),
-                                            size: TerminalSize::DEFAULT,
-                                        });
                                 },
-                                div { class: "flex min-w-0 flex-col gap-0.5 text-left",
-                                    span { "{command.label()}" }
+                                div { class: "flex min-w-0 flex-1 flex-col gap-0.5 text-left",
+                                    span { class: "truncate", "{command.label}" }
                                     span { class: "truncate text-[10px] text-muted-foreground",
-                                        "{command.command()}"
+                                        "{command.command}"
                                     }
+                                }
+                                if command.custom {
+                                    button {
+                                        class: "-my-1 -mr-1 inline-flex size-7 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-destructive/12 hover:text-destructive",
+                                        r#type: "button",
+                                        title: "Delete custom command",
+                                        "aria-label": "Delete {command.label}",
+                                        onclick: {
+                                            let workspace_id = workspace_id.clone();
+                                            let command_id = command.id.clone();
+                                            move |event: MouseEvent| {
+                                                event.stop_propagation();
+                                                let workspace_id = workspace_id.clone();
+                                                let command_id = command_id.clone();
+                                                spawn(async move {
+                                                    match api::delete_run_command(workspace_id, command_id).await {
+                                                        Ok(commands) => run_commands.set(commands),
+                                                        Err(error) => toast.set(Some(server_error_message(error))),
+                                                    }
+                                                });
+                                            }
+                                        },
+                                        Icon { icon: AppIcon::Delete, size: 13 }
+                                    }
+                                }
+                            }
+                        }
+                        hr {}
+                        DropdownMenuItem::<RunMenuAction> {
+                            value: RunMenuAction::Add,
+                            index: run_commands.read().len(),
+                            on_select: move |_: RunMenuAction| open_add_command_dialog.call(()),
+                            span { class: "flex items-center gap-2",
+                                Icon { icon: AppIcon::Plus, size: 14 }
+                                "Add command"
+                            }
+                        }
+                        DropdownMenuItem::<RunMenuAction> {
+                            value: RunMenuAction::Refresh,
+                            index: run_commands.read().len() + 1,
+                            disabled: commands_loading(),
+                            on_select: move |_: RunMenuAction| refresh_commands.call(()),
+                            span { class: "flex items-center gap-2",
+                                Icon { icon: AppIcon::Refresh, size: 14 }
+                                if commands_loading() {
+                                    "Refreshing…"
+                                } else {
+                                    "Refresh"
                                 }
                             }
                         }
@@ -1005,6 +1145,69 @@ fn RemoteTerminal(
                 }
             }
         }
+        if add_command_dialog() {
+            Modal {
+                title: "Add command",
+                description: "Save a command for this project. It will remain available after the server restarts.",
+                on_close: move |()| {
+                    if !saving_command() {
+                        add_command_dialog.set(false);
+                    }
+                },
+                DialogForm {
+                    Field {
+                        control_id: "run-command-label",
+                        label: "Label",
+                        description: "Optional. The command itself is used when left blank.",
+                        TextInput {
+                            placeholder: "Development server",
+                            value: "{command_label}",
+                            disabled: saving_command(),
+                            oninput: move |event: FormEvent| {
+                                command_label.set(event.value());
+                                command_error.set(None);
+                            },
+                        }
+                    }
+                    Field {
+                        control_id: "run-command-text",
+                        label: "Command",
+                        required: true,
+                        error: command_error(),
+                        TextInput {
+                            placeholder: "npm run dev",
+                            value: "{command_text}",
+                            autofocus: true,
+                            disabled: saving_command(),
+                            oninput: move |event: FormEvent| {
+                                command_text.set(event.value());
+                                command_error.set(None);
+                            },
+                            onkeydown: move |event: KeyboardEvent| {
+                                if event.key() == Key::Enter {
+                                    event.prevent_default();
+                                    submit_command.call(());
+                                }
+                            },
+                        }
+                    }
+                    DialogActions {
+                        Button {
+                            label: "Cancel",
+                            kind: ButtonKind::Ghost,
+                            disabled: saving_command(),
+                            onclick: move |_| add_command_dialog.set(false),
+                        }
+                        Button {
+                            label: if saving_command() { "Saving…" } else { "Add command" },
+                            kind: ButtonKind::Primary,
+                            disabled: saving_command() || command_text().trim().is_empty(),
+                            onclick: move |_| submit_command.call(()),
+                        }
+                    }
+                }
+            }
+        }
         if let Some(message) = toast() {
             Toast { message, on_close: move |()| toast.set(None) }
         }
@@ -1055,7 +1258,7 @@ fn fail_pending_requests(
     if pending_command().is_some() {
         pending_command.set(None);
         toast.set(Some(
-            "The quick command was interrupted. Review the session list and retry.".into(),
+            "The run command was interrupted. Review the session list and retry.".into(),
         ));
     }
 }
@@ -1164,6 +1367,12 @@ fn send_renderer_action(
         sequence: sequence(),
         action,
     }));
+}
+fn server_error_message(error: ServerFnError) -> String {
+    match error {
+        ServerFnError::ServerError { message, .. } => message,
+        other => other.to_string(),
+    }
 }
 const fn lifecycle_tone(lifecycle: Lifecycle) -> Tone {
     match lifecycle {

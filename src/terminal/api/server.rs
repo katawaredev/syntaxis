@@ -12,7 +12,7 @@ use syntaxis_terminal_host::{
 use syntaxis_workspace::{WorkspaceId, WorkspaceRecord};
 use tokio::{sync::mpsc, task::JoinHandle};
 
-use super::TerminalEncoding;
+use super::{commands, RunCommand, TerminalEncoding};
 
 const HANDSHAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 static TERMINALS: OnceLock<HostTerminalManager> = OnceLock::new();
@@ -61,6 +61,34 @@ pub(super) async fn terminal_socket(
         },
     ))
 }
+
+pub(super) async fn list_run_commands(
+    workspace_id: WorkspaceId,
+) -> Result<Vec<RunCommand>, ServerFnError> {
+    commands::list(workspace_id).await
+}
+
+pub(crate) async fn refresh_run_commands(
+    workspace_id: WorkspaceId,
+) -> Result<Vec<RunCommand>, ServerFnError> {
+    commands::refresh(workspace_id).await
+}
+
+pub(super) async fn add_run_command(
+    workspace_id: WorkspaceId,
+    label: String,
+    command: String,
+) -> Result<Vec<RunCommand>, ServerFnError> {
+    commands::add(workspace_id, label, command).await
+}
+
+pub(super) async fn delete_run_command(
+    workspace_id: WorkspaceId,
+    command_id: String,
+) -> Result<Vec<RunCommand>, ServerFnError> {
+    commands::delete(workspace_id, command_id).await
+}
+
 fn handle_message(
     message: ClientMessage,
     workspace: &WorkspaceRecord,
@@ -236,6 +264,7 @@ mod tests {
             name: "Workspace".into(),
             root: root.to_string_lossy().into_owned(),
             icon: WorkspaceIcon::default(),
+            profile: syntaxis_workspace::WorkspaceProfile::default(),
             registered_at_unix_ms: 0,
             last_opened_unix_ms: 0,
             availability: WorkspaceAvailability::Available,

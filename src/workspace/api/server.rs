@@ -56,6 +56,12 @@ pub(super) async fn touch_workspace(id: &WorkspaceId) -> Result<(), ServerFnErro
     registry()?.touch(id).await.map_err(server_error)
 }
 
+pub(super) async fn refresh_workspace(id: &WorkspaceId) -> Result<WorkspaceRecord, ServerFnError> {
+    let workspace = registry()?.refresh_profile(id).map_err(server_error)?;
+    crate::terminal::api::server::refresh_run_commands(id.clone()).await?;
+    Ok(workspace)
+}
+
 pub(super) async fn browse_roots() -> Result<Vec<BrowseRoot>, ServerFnError> {
     browser()?.roots().await.map_err(server_error)
 }
@@ -311,7 +317,7 @@ fn is_usable_directory(path: &Path) -> bool {
     path.metadata().is_ok_and(|metadata| metadata.is_dir())
 }
 
-fn data_directory() -> PathBuf {
+pub(crate) fn data_directory() -> PathBuf {
     if let Some(directory) = env::var_os("SYNTAXIS_DATA_DIR") {
         return PathBuf::from(directory);
     }

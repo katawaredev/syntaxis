@@ -316,6 +316,18 @@ pub async fn remove_workspace(workspace_id: String, delete_files: bool) -> Resul
     }
 }
 
+pub async fn refresh_workspace(workspace_id: String) -> Result<WorkspaceRecord, String> {
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::api::refresh_workspace(workspace_id)
+            .await
+            .map_err(server_error_message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => host_registry()?
+            .refresh_profile(&syntaxis_workspace::WorkspaceId::new(workspace_id))
+            .map_err(|error| error.message),
+    }
+}
+
 #[allow(clippy::unused_async)] // The desktop and remote implementations share one async API.
 pub async fn runtime_state() -> Result<RuntimeState, String> {
     match selected_runtime() {

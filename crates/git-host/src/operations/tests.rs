@@ -739,6 +739,7 @@ fn workspace(root: &Path) -> WorkspaceRecord {
         name: "Test".into(),
         root: root.to_string_lossy().into_owned(),
         icon: WorkspaceIcon::default(),
+        profile: syntaxis_workspace::WorkspaceProfile::default(),
         registered_at_unix_ms: 0,
         last_opened_unix_ms: 0,
         availability: WorkspaceAvailability::Available,

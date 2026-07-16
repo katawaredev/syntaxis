@@ -34,6 +34,10 @@ pub async fn remove_workspace(
 pub async fn touch_workspace(workspace_id: String) -> Result<(), ServerFnError> {
     server::touch_workspace(&WorkspaceId::new(workspace_id)).await
 }
+#[post("/api/workspaces/{workspace_id}/refresh")]
+pub async fn refresh_workspace(workspace_id: String) -> Result<WorkspaceRecord, ServerFnError> {
+    server::refresh_workspace(&WorkspaceId::new(workspace_id)).await
+}
 #[get("/api/runtime")]
 #[allow(clippy::unused_async)]
 pub async fn runtime_state() -> Result<RuntimeState, ServerFnError> {

@@ -1,10 +1,18 @@
 use bytes::Bytes;
 use dioxus::fullstack::{CborEncoding, Encoding, WebSocketOptions, Websocket};
 use dioxus::prelude::*;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use syntaxis_terminal::{ClientMessage, ServerMessage};
 
 const MAX_TERMINAL_MESSAGE_BYTES: usize = 128 * 1024;
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub(crate) struct RunCommand {
+    pub id: String,
+    pub label: String,
+    pub command: String,
+    pub custom: bool,
+}
 
 pub(crate) struct TerminalEncoding;
 
@@ -45,8 +53,38 @@ pub async fn terminal_socket(
 ) -> Result<Websocket<ClientMessage, ServerMessage, TerminalEncoding>, ServerFnError> {
     server::terminal_socket(WorkspaceId::new(workspace_id), options).await
 }
+
+#[get("/api/terminal-commands/{workspace_id}")]
+pub async fn list_run_commands(workspace_id: String) -> Result<Vec<RunCommand>, ServerFnError> {
+    server::list_run_commands(WorkspaceId::new(workspace_id)).await
+}
+
+#[post("/api/terminal-commands/{workspace_id}/refresh")]
+pub async fn refresh_run_commands(workspace_id: String) -> Result<Vec<RunCommand>, ServerFnError> {
+    server::refresh_run_commands(WorkspaceId::new(workspace_id)).await
+}
+
+#[post("/api/terminal-commands/{workspace_id}/add")]
+pub async fn add_run_command(
+    workspace_id: String,
+    label: String,
+    command: String,
+) -> Result<Vec<RunCommand>, ServerFnError> {
+    server::add_run_command(WorkspaceId::new(workspace_id), label, command).await
+}
+
+#[post("/api/terminal-commands/{workspace_id}/delete")]
+pub async fn delete_run_command(
+    workspace_id: String,
+    command_id: String,
+) -> Result<Vec<RunCommand>, ServerFnError> {
+    server::delete_run_command(WorkspaceId::new(workspace_id), command_id).await
+}
 #[cfg(feature = "server")]
 pub(crate) mod server;
+
+#[cfg(feature = "server")]
+mod commands;
 
 #[cfg(test)]
 mod tests {

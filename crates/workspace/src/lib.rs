@@ -23,5 +23,6 @@ pub use runtime::{
     ExecutionLocation, RuntimeCapabilities, RuntimeCapability, RuntimeIdentity, RuntimeState,
 };
 pub use workspace::{
-    WorkspaceAvailability, WorkspaceIcon, WorkspaceIconSymbol, WorkspaceId, WorkspaceRecord,
+    WorkspaceAvailability, WorkspaceIcon, WorkspaceIconSymbol, WorkspaceId, WorkspaceLanguage,
+    WorkspaceProfile, WorkspaceRecord, WorkspaceTechnology,
 };

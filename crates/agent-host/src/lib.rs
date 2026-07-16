@@ -1585,6 +1585,7 @@ mod tests {
             icon: WorkspaceIcon::Symbol {
                 name: WorkspaceIconSymbol::Folder,
             },
+            profile: syntaxis_workspace::WorkspaceProfile::default(),
             registered_at_unix_ms: 0,
             last_opened_unix_ms: 0,
             availability: WorkspaceAvailability::Available,
