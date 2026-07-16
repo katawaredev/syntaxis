@@ -23,6 +23,10 @@ pub async fn get_workspace(workspace_id: String) -> Result<WorkspaceRecord, Serv
 pub async fn register_workspace(path: String) -> Result<WorkspaceRecord, ServerFnError> {
     server::register_workspace_from_browser(&path).await
 }
+#[post("/api/projects/create")]
+pub async fn create_project(path: String) -> Result<WorkspaceRecord, ServerFnError> {
+    server::create_project(&path).await
+}
 #[post("/api/workspaces/remove")]
 pub async fn remove_workspace(
     workspace_id: String,

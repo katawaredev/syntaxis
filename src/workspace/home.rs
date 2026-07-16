@@ -15,6 +15,7 @@ pub(super) enum HomeDialog {
     None,
     WorkspaceFolder,
     Git,
+    NewProject,
     Delete(usize),
 }
 
@@ -44,8 +45,7 @@ impl RuntimePresentation {
             return Self {
                 eyebrow: "WORKSPACE DEVELOPMENT".into(),
                 folder_action_title: "Open workspace folder".into(),
-                folder_action_description: "Choose a project exposed by the connected runtime"
-                    .into(),
+                folder_action_description: "Browse exposed folders".into(),
                 footer: footer.into(),
                 folder_dialog_title: "Open workspace folder".into(),
                 folder_dialog_description:
@@ -67,9 +67,9 @@ impl RuntimePresentation {
                 "Open workspace folder".into()
             },
             folder_action_description: if local {
-                "Choose an existing project on this device".into()
+                "Browse local folders".into()
             } else {
-                format!("Choose a project exposed by {}", identity.label)
+                "Browse exposed folders".into()
             },
             footer: format!("Syntaxis UI preview · {}", identity.label),
             folder_dialog_title: if unrestricted {
@@ -128,7 +128,7 @@ pub fn Home() -> Element {
                     NotificationMenu {}
                 }
 
-                div { class: "mb-10.5 grid grid-cols-2 gap-3 max-md:mb-8 max-md:grid-cols-1",
+                div { class: "mb-10.5 grid grid-cols-3 gap-3 max-md:mb-8 max-md:grid-cols-1",
                     SourceAction {
                         icon: AppIcon::Folder,
                         title: runtime_presentation.folder_action_title.clone(),
@@ -138,8 +138,14 @@ pub fn Home() -> Element {
                     SourceAction {
                         icon: AppIcon::Command,
                         title: "Open Git URL".to_owned(),
-                        description: "Clone a repository into the active runtime".to_owned(),
+                        description: "Clone a Git repository".to_owned(),
                         onclick: move |_| dialog.set(HomeDialog::Git),
+                    }
+                    SourceAction {
+                        icon: AppIcon::FolderPlus,
+                        title: "New project".to_owned(),
+                        description: "Scaffold in a live terminal".to_owned(),
+                        onclick: move |_| dialog.set(HomeDialog::NewProject),
                     }
                 }
 
@@ -179,16 +185,15 @@ fn SourceAction(
 ) -> Element {
     rsx! {
         button {
-            class: "grid min-w-0 grid-cols-[auto_1fr_auto] items-center gap-3 rounded-xl border border-border bg-card p-4 text-left shadow-sm transition-colors hover:border-primary/60 hover:bg-accent/80 max-[420px]:p-3.5",
+            class: "grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-3 overflow-hidden rounded-xl border border-border bg-card p-4 text-left shadow-sm transition-colors hover:border-primary/60 hover:bg-accent/80 max-[420px]:p-3.5",
             onclick: move |event| onclick.call(event),
             span { class: "grid size-9 place-items-center rounded-lg bg-primary/10 text-primary",
                 Icon { icon, size: 22 }
             }
-            span {
+            span { class: "min-w-0",
                 strong { class: "mb-1 block text-foreground", {title} }
-                small { class: "block truncate text-muted-foreground", {description} }
+                small { class: "block leading-snug text-muted-foreground", {description} }
             }
-            span { class: "text-lg text-muted-foreground", "→" }
         }
     }
 }

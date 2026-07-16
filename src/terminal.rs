@@ -92,6 +92,65 @@ enum RunMenuAction {
     Add,
     Refresh,
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct MobileTerminalKey {
+    label: &'static str,
+    accessible_label: &'static str,
+    input: &'static str,
+    wide: bool,
+}
+
+const MOBILE_TERMINAL_KEYS: [MobileTerminalKey; 8] = [
+    MobileTerminalKey {
+        label: "Esc",
+        accessible_label: "Escape",
+        input: "\u{1b}",
+        wide: false,
+    },
+    MobileTerminalKey {
+        label: "Tab",
+        accessible_label: "Tab",
+        input: "\t",
+        wide: false,
+    },
+    MobileTerminalKey {
+        label: "←",
+        accessible_label: "Left arrow",
+        input: "\u{1b}[D",
+        wide: false,
+    },
+    MobileTerminalKey {
+        label: "↑",
+        accessible_label: "Up arrow",
+        input: "\u{1b}[A",
+        wide: false,
+    },
+    MobileTerminalKey {
+        label: "↓",
+        accessible_label: "Down arrow",
+        input: "\u{1b}[B",
+        wide: false,
+    },
+    MobileTerminalKey {
+        label: "→",
+        accessible_label: "Right arrow",
+        input: "\u{1b}[C",
+        wide: false,
+    },
+    MobileTerminalKey {
+        label: "Space",
+        accessible_label: "Space",
+        input: " ",
+        wide: true,
+    },
+    MobileTerminalKey {
+        label: "↵",
+        accessible_label: "Enter",
+        input: "\r",
+        wide: false,
+    },
+];
 #[component]
 pub fn Terminal(slug: String, query: TerminalQuery) -> Element {
     let active = use_context::<crate::workspace::ActiveWorkspace>();
@@ -102,6 +161,10 @@ pub fn Terminal(slug: String, query: TerminalQuery) -> Element {
                 workspace_id: workspace.id.0,
                 workspace_slug: slug,
                 requested_session_id: query.session_id,
+                initial_command: None,
+                initializer_label: None,
+                on_initializer_finished: None,
+                embedded: false,
             }
         },
         None => rsx! {
@@ -112,22 +175,51 @@ pub fn Terminal(slug: String, query: TerminalQuery) -> Element {
         },
     }
 }
+
+#[component]
+pub(crate) fn ProjectInitializerTerminal(
+    workspace_id: String,
+    workspace_slug: String,
+    command: String,
+    label: String,
+    on_finished: EventHandler<bool>,
+) -> Element {
+    rsx! {
+        RemoteTerminal {
+            key: "project-initializer-{workspace_id}",
+            workspace_id,
+            workspace_slug,
+            requested_session_id: None,
+            initial_command: Some(command),
+            initializer_label: Some(label),
+            on_initializer_finished: Some(on_finished),
+            embedded: true,
+        }
+    }
+}
+
 #[component]
 fn RemoteTerminal(
     workspace_id: String,
     workspace_slug: String,
     requested_session_id: Option<String>,
+    initial_command: Option<String>,
+    initializer_label: Option<String>,
+    on_initializer_finished: Option<EventHandler<bool>>,
+    embedded: bool,
 ) -> Element {
     let notification_center = use_context::<crate::ai::notifications::NotificationCenter>();
     let mut connection = use_signal(|| ConnectionState::Connecting);
     let mut sessions = use_signal(Vec::<SessionSummary>::new);
     let mut active = use_signal(|| None::<SessionId>);
     let mut remembered = use_signal(|| None::<SessionId>);
-    let mut remembered_loaded = use_signal(|| false);
+    let mut remembered_loaded = use_signal(|| embedded);
     let mut output = use_signal(|| None::<RendererOutputBatch>);
     let mut renderer_command = use_signal(|| None::<RendererCommand>);
     let mut renderer_command_sequence = use_signal(|| 0_u64);
-    let mut pending_command = use_signal(|| None::<String>);
+    let mut pending_command = use_signal(|| initial_command.clone());
+    let mut initializer_started = use_signal(|| false);
+    let mut initializer_finished = use_signal(|| false);
     let mut toast = use_signal(|| None::<String>);
     let mut new_dialog = use_signal(|| false);
     let mut new_name = use_signal(String::new);
@@ -140,6 +232,7 @@ fn RemoteTerminal(
     let mut command_text = use_signal(String::new);
     let mut command_error = use_signal(|| None::<String>);
     let mut saving_command = use_signal(|| false);
+    let mut mobile_ctrl = use_signal(|| false);
     let storage_key = format!("syntaxis.terminal.active.{workspace_id}");
     use_effect({
         let workspace_id = workspace_id.clone();
@@ -172,6 +265,9 @@ fn RemoteTerminal(
     use_effect({
         let storage_key = storage_key.clone();
         move || {
+            if embedded {
+                return;
+            }
             let storage_key = storage_key.clone();
             spawn(async move {
                 let eval = document::eval(
@@ -194,6 +290,9 @@ fn RemoteTerminal(
     use_effect({
         let storage_key = storage_key.clone();
         move || {
+            if embedded {
+                return;
+            }
             let Some(id) = active() else {
                 return;
             };
@@ -211,6 +310,8 @@ fn RemoteTerminal(
         move |mut commands: UnboundedReceiver<ClientMessage>| {
             let workspace_id = workspace_id.clone();
             let requested_session_id = requested_session_id.clone();
+            let initializer_label = initializer_label.clone();
+            let on_initializer_finished = on_initializer_finished;
             async move {
                 while !remembered_loaded() {
                     dioxus_sdk_time::sleep(std::time::Duration::from_millis(10)).await;
@@ -327,6 +428,8 @@ fn RemoteTerminal(
                                     ServerMessage::Sessions {
                                         sessions: available,
                                     } => {
+                                        let start_initializer = pending_command.read().is_some()
+                                            && !initializer_started();
                                         let requested =
                                             requested_session_id.as_ref().map(SessionId::new);
                                         let selected = choose_active(
@@ -338,7 +441,27 @@ fn RemoteTerminal(
                                         sessions.set(available);
                                         active.set(selected.clone());
                                         output.set(None);
-                                        if let Some(session_id) = selected {
+                                        if start_initializer {
+                                            initializer_started.set(true);
+                                            let name = initializer_label
+                                                .clone()
+                                                .unwrap_or_else(|| "Project setup".into());
+                                            if socket
+                                                .send(ClientMessage::Create {
+                                                    name: Some(name),
+                                                    size: TerminalSize::DEFAULT,
+                                                })
+                                                .await
+                                                .is_err()
+                                            {
+                                                initializer_started.set(false);
+                                                last_error =
+                                                    "Could not start the project initializer"
+                                                        .into();
+                                                retry_attempt = 1;
+                                                continue 'connections;
+                                            }
+                                        } else if let Some(session_id) = selected {
                                             if socket
                                                 .send(ClientMessage::Attach { session_id })
                                                 .await
@@ -367,8 +490,7 @@ fn RemoteTerminal(
                                             pending.take()
                                         };
                                         if let Some(command) = command {
-                                            let mut bytes = command.clone().into_bytes();
-                                            bytes.push(b'\n');
+                                            let bytes = command_input(&command, embedded);
                                             if socket
                                                 .send(ClientMessage::Write {
                                                     session_id: session.id,
@@ -414,6 +536,23 @@ fn RemoteTerminal(
                                         }
                                     }
                                     ServerMessage::Lifecycle { session } => {
+                                        if embedded
+                                            && initializer_started()
+                                            && !initializer_finished()
+                                            && pending_command.read().is_none()
+                                            && matches!(
+                                                session.lifecycle,
+                                                Lifecycle::Exited | Lifecycle::Failed
+                                            )
+                                        {
+                                            initializer_finished.set(true);
+                                            if let Some(on_finished) = on_initializer_finished {
+                                                on_finished.call(
+                                                    session.lifecycle == Lifecycle::Exited
+                                                        && session.exit_code == Some(0),
+                                                );
+                                            }
+                                        }
                                         upsert_session(&mut sessions, session);
                                     }
                                     ServerMessage::Closed { session_id } => {
@@ -559,6 +698,9 @@ fn RemoteTerminal(
     use_effect({
         let workspace_slug = workspace_slug.clone();
         move || {
+            if embedded {
+                return;
+            }
             let query = if let Some(session_id) = active() {
                 TerminalQuery::with_session(session_id.0)
             } else if connection() == ConnectionState::Ready && sessions().is_empty() {
@@ -691,313 +833,333 @@ fn RemoteTerminal(
             });
         }
     });
+    let send_terminal_input = EventHandler::new(move |data: Vec<u8>| {
+        let data = if mobile_ctrl() {
+            mobile_ctrl.set(false);
+            ctrl_modified_byte(&data).map_or(data, |byte| vec![byte])
+        } else {
+            data
+        };
+        if let Some(session_id) = active() {
+            client.send(ClientMessage::Write { session_id, data });
+        }
+    });
     rsx! {
         document::Script { src: TERMINAL_SCRIPT }
-        section { class: "flex size-full min-h-0 flex-col bg-background",
-            PanelHeader {
-                PanelTabList {
-                    for session in sessions() {
-                        PanelTab {
-                            key: "{session.id.0}",
-                            label: session.name.clone(),
-                            active: active().as_ref() == Some(&session.id),
-                            width: PanelTabWidth::Session,
-                            indicator: PanelTabIndicator::Dot(lifecycle_tone(session.lifecycle)),
-                            on_select: {
-                                let session_id = session.id.clone();
-                                move |_| {
-                                    output.set(None);
-                                    active.set(Some(session_id.clone()));
-                                    client
-                                        .send(ClientMessage::Attach {
-                                            session_id: session_id.clone(),
-                                        });
-                                }
-                            },
-                            on_close: {
-                                let session_id = session.id.clone();
-                                move |()| {
-                                    client
-                                        .send(ClientMessage::Close {
-                                            session_id: session_id.clone(),
-                                        });
-                                }
-                            },
-                        }
-                    }
-                }
-                DropdownMenu {
-                    class: "relative hidden min-w-0 flex-1 max-md:block",
-                    open: mobile_tabs_open(),
-                    on_open_change: move |open: bool| mobile_tabs_open.set(open),
-                    DropdownMenuTrigger {
-                        class: "flex h-10 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-left text-xs text-foreground hover:bg-accent",
-                        "aria-label": "Open terminal tabs",
-                        span { class: "flex min-w-0 items-center gap-2 overflow-hidden",
-                            if let Some(session) = selected.as_ref() {
-                                span { class: lifecycle_dot_class(session.lifecycle) }
-                                span { class: "truncate", "{session.name}" }
-                            } else {
-                                "No terminal"
-                            }
-                        }
-                        span { class: "text-muted-foreground", "⌄" }
-                    }
-                    MenuContent { class: "!top-[calc(100%+4px)] right-2 left-2 w-auto",
-                        if sessions.read().is_empty() {
-                            div { class: "p-2.5 text-xs text-muted-foreground", "No terminal sessions" }
-                        }
-                        for (index, session) in sessions().into_iter().enumerate() {
-                            DropdownMenuItem::<SessionId> {
-                                value: session.id.clone(),
-                                index,
-                                on_select: move |session_id: SessionId| {
-                                    output.set(None);
-                                    active.set(Some(session_id.clone()));
-                                    client
-                                        .send(ClientMessage::Attach {
-                                            session_id,
-                                        });
-                                    mobile_tabs_open.set(false);
-                                },
-                                span { class: lifecycle_dot_class(session.lifecycle) }
-                                span { class: "truncate", "{session.name}" }
-                            }
-                        }
-                    }
-                }
-                IconButton {
-                    label: "New terminal",
-                    icon: AppIcon::Plus,
-                    size: ControlSize::Small,
-                    disabled: !connection_ready,
-                    onclick: move |_| open_new_terminal_dialog.call(()),
-                }
-                DropdownMenu {
-                    class: "relative shrink-0",
-                    open: quick_menu(),
-                    on_open_change: move |open: bool| quick_menu.set(open),
-                    MenuTrigger {
-                        label: "Run command",
-                        icon: AppIcon::Play,
-                        open: quick_menu(),
-                    }
-                    MenuContent { class: "right-0 max-h-[min(32rem,calc(100svh-4rem))] w-72 overflow-y-auto",
-                        if commands_loading() && run_commands.read().is_empty() {
-                            div { class: "px-2 py-2 text-xs text-muted-foreground",
-                                "Detecting project commands…"
-                            }
-                        } else if run_commands.read().is_empty() {
-                            div { class: "px-2 py-2 text-xs text-muted-foreground",
-                                "No project commands detected"
-                            }
-                        }
-                        for (index, command) in run_commands().into_iter().enumerate() {
-                            DropdownMenuItem::<RunMenuAction> {
-                                value: RunMenuAction::Run(command.clone()),
-                                index,
-                                disabled: !connection_ready || pending_command.read().is_some(),
-                                on_select: move |action: RunMenuAction| {
-                                    if let RunMenuAction::Run(command) = action {
-                                        run_project_command.call(command);
+        section {
+            class: "flex size-full min-h-0 flex-col bg-background",
+            "data-terminal-shell": "true",
+            if !embedded {
+                PanelHeader {
+                    PanelTabList {
+                        for session in sessions() {
+                            PanelTab {
+                                key: "{session.id.0}",
+                                label: session.name.clone(),
+                                active: active().as_ref() == Some(&session.id),
+                                width: PanelTabWidth::Session,
+                                indicator: PanelTabIndicator::Dot(lifecycle_tone(session.lifecycle)),
+                                on_select: {
+                                    let session_id = session.id.clone();
+                                    move |_| {
+                                        output.set(None);
+                                        active.set(Some(session_id.clone()));
+                                        client
+                                            .send(ClientMessage::Attach {
+                                                session_id: session_id.clone(),
+                                            });
                                     }
                                 },
-                                div { class: "flex min-w-0 flex-1 flex-col gap-0.5 text-left",
-                                    span { class: "truncate", "{command.label}" }
-                                    span { class: "truncate text-[10px] text-muted-foreground",
-                                        "{command.command}"
+                                on_close: {
+                                    let session_id = session.id.clone();
+                                    move |()| {
+                                        client
+                                            .send(ClientMessage::Close {
+                                                session_id: session_id.clone(),
+                                            });
                                     }
-                                }
-                                if command.custom {
-                                    button {
-                                        class: "-my-1 -mr-1 inline-flex size-7 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-destructive/12 hover:text-destructive",
-                                        r#type: "button",
-                                        title: "Delete custom command",
-                                        "aria-label": "Delete {command.label}",
-                                        onclick: {
-                                            let workspace_id = workspace_id.clone();
-                                            let command_id = command.id.clone();
-                                            move |event: MouseEvent| {
-                                                event.stop_propagation();
-                                                let workspace_id = workspace_id.clone();
-                                                let command_id = command_id.clone();
-                                                spawn(async move {
-                                                    match api::delete_run_command(workspace_id, command_id).await {
-                                                        Ok(commands) => run_commands.set(commands),
-                                                        Err(error) => toast.set(Some(server_error_message(error))),
-                                                    }
-                                                });
-                                            }
-                                        },
-                                        Icon { icon: AppIcon::Delete, size: 13 }
-                                    }
-                                }
+                                },
                             }
                         }
-                        hr {}
-                        DropdownMenuItem::<RunMenuAction> {
-                            value: RunMenuAction::Add,
-                            index: run_commands.read().len(),
-                            on_select: move |_: RunMenuAction| open_add_command_dialog.call(()),
-                            span { class: "flex items-center gap-2",
-                                Icon { icon: AppIcon::Plus, size: 14 }
-                                "Add command"
-                            }
-                        }
-                        DropdownMenuItem::<RunMenuAction> {
-                            value: RunMenuAction::Refresh,
-                            index: run_commands.read().len() + 1,
-                            disabled: commands_loading(),
-                            on_select: move |_: RunMenuAction| refresh_commands.call(()),
-                            span { class: "flex items-center gap-2",
-                                Icon { icon: AppIcon::Refresh, size: 14 }
-                                if commands_loading() {
-                                    "Refreshing…"
+                    }
+                    DropdownMenu {
+                        class: "relative hidden min-w-0 flex-1 max-md:block",
+                        open: mobile_tabs_open(),
+                        on_open_change: move |open: bool| mobile_tabs_open.set(open),
+                        DropdownMenuTrigger {
+                            class: "flex h-10 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-left text-xs text-foreground hover:bg-accent",
+                            "aria-label": "Open terminal tabs",
+                            span { class: "flex min-w-0 items-center gap-2 overflow-hidden",
+                                if let Some(session) = selected.as_ref() {
+                                    span { class: lifecycle_dot_class(session.lifecycle) }
+                                    span { class: "truncate", "{session.name}" }
                                 } else {
-                                    "Refresh"
+                                    "No terminal"
+                                }
+                            }
+                            span { class: "text-muted-foreground", "⌄" }
+                        }
+                        MenuContent { class: "!top-[calc(100%+4px)] right-2 left-2 w-auto",
+                            if sessions.read().is_empty() {
+                                div { class: "p-2.5 text-xs text-muted-foreground",
+                                    "No terminal sessions"
+                                }
+                            }
+                            for (index, session) in sessions().into_iter().enumerate() {
+                                DropdownMenuItem::<SessionId> {
+                                    value: session.id.clone(),
+                                    index,
+                                    on_select: move |session_id: SessionId| {
+                                        output.set(None);
+                                        active.set(Some(session_id.clone()));
+                                        client
+                                            .send(ClientMessage::Attach {
+                                                session_id,
+                                            });
+                                        mobile_tabs_open.set(false);
+                                    },
+                                    span { class: lifecycle_dot_class(session.lifecycle) }
+                                    span { class: "truncate", "{session.name}" }
                                 }
                             }
                         }
                     }
-                }
-                DropdownMenu {
-                    class: "relative shrink-0",
-                    open: menu(),
-                    on_open_change: move |open: bool| menu.set(open),
-                    MenuTrigger {
-                        label: "Terminal actions",
-                        icon: AppIcon::Menu,
-                        open: menu(),
+                    IconButton {
+                        label: "New terminal",
+                        icon: AppIcon::Plus,
+                        size: ControlSize::Small,
+                        disabled: !connection_ready,
+                        onclick: move |_| open_new_terminal_dialog.call(()),
                     }
-                    MenuContent { class: "right-0 w-53.75",
-                        TerminalMenuItem {
-                            action: TerminalAction::Copy,
-                            index: 0,
-                            label: "Copy selection",
-                            disabled: selected.is_none(),
-                            on_select: move |_| send_renderer_action(
-                                &mut renderer_command,
-                                &mut renderer_command_sequence,
-                                RendererAction::Copy,
-                            ),
+                    DropdownMenu {
+                        class: "relative shrink-0",
+                        open: quick_menu(),
+                        on_open_change: move |open: bool| quick_menu.set(open),
+                        MenuTrigger {
+                            label: "Run command",
+                            icon: AppIcon::Play,
+                            open: quick_menu(),
                         }
-                        TerminalMenuItem {
-                            action: TerminalAction::Paste,
-                            index: 1,
-                            label: "Paste",
-                            disabled: selected.is_none(),
-                            on_select: move |_| send_renderer_action(
-                                &mut renderer_command,
-                                &mut renderer_command_sequence,
-                                RendererAction::Paste,
-                            ),
-                        }
-                        TerminalMenuItem {
-                            action: TerminalAction::Clear,
-                            index: 2,
-                            label: "Clear terminal",
-                            disabled: selected.is_none(),
-                            on_select: move |_| send_renderer_action(
-                                &mut renderer_command,
-                                &mut renderer_command_sequence,
-                                RendererAction::Clear,
-                            ),
-                        }
-                        TerminalMenuItem {
-                            action: TerminalAction::Restart,
-                            index: 3,
-                            label: "Restart terminal",
-                            disabled: selected.is_none(),
-                            on_select: {
-                                let selected = selected.clone();
-                                move |_| {
-                                    if let Some(session) = selected.as_ref() {
-                                        client
-                                            .send(ClientMessage::Close {
-                                                session_id: session.id.clone(),
-                                            });
-                                        client
-                                            .send(ClientMessage::Create {
-                                                name: Some(session.name.clone()),
-                                                size: session.size,
-                                            });
-                                    }
+                        MenuContent { class: "right-0 max-h-[min(32rem,calc(100svh-4rem))] w-72 overflow-y-auto",
+                            if commands_loading() && run_commands.read().is_empty() {
+                                div { class: "px-2 py-2 text-xs text-muted-foreground",
+                                    "Detecting project commands…"
                                 }
-                            },
-                        }
-                        hr {}
-                        TerminalMenuItem {
-                            action: TerminalAction::Detach,
-                            index: 4,
-                            label: "Detach session",
-                            disabled: selected.is_none(),
-                            on_select: {
-                                let selected = selected.clone();
-                                move |_| {
-                                    if let Some(session) = selected.as_ref() {
-                                        client
-                                            .send(ClientMessage::Detach {
-                                                session_id: session.id.clone(),
-                                            });
-                                    }
+                            } else if run_commands.read().is_empty() {
+                                div { class: "px-2 py-2 text-xs text-muted-foreground",
+                                    "No project commands detected"
                                 }
-                            },
-                        }
-                        TerminalMenuItem {
-                            action: TerminalAction::Refresh,
-                            index: 5,
-                            label: "Refresh sessions",
-                            disabled: !connection_ready,
-                            on_select: move |_| client.send(ClientMessage::List),
-                        }
-                        hr {}
-                        TerminalMenuItem {
-                            action: TerminalAction::Close,
-                            index: 6,
-                            label: "Close terminal",
-                            destructive: true,
-                            disabled: selected.is_none(),
-                            on_select: {
-                                let selected = selected.clone();
-                                move |_| {
-                                    if let Some(session) = selected.as_ref() {
-                                        client
-                                            .send(ClientMessage::Close {
-                                                session_id: session.id.clone(),
-                                            });
+                            }
+                            for (index, command) in run_commands().into_iter().enumerate() {
+                                DropdownMenuItem::<RunMenuAction> {
+                                    value: RunMenuAction::Run(command.clone()),
+                                    index,
+                                    disabled: !connection_ready || pending_command.read().is_some(),
+                                    on_select: move |action: RunMenuAction| {
+                                        if let RunMenuAction::Run(command) = action {
+                                            run_project_command.call(command);
+                                        }
+                                    },
+                                    div { class: "flex min-w-0 flex-1 flex-col gap-0.5 text-left",
+                                        span { class: "truncate", "{command.label}" }
+                                        span { class: "truncate text-[10px] text-muted-foreground",
+                                            "{command.command}"
+                                        }
                                     }
-                                }
-                            },
-                        }
-                        TerminalMenuItem {
-                            action: TerminalAction::CloseOthers,
-                            index: 7,
-                            label: "Close all others",
-                            destructive: true,
-                            disabled: selected.is_none() || sessions.read().len() < 2,
-                            on_select: {
-                                let selected = selected.clone();
-                                move |_| {
-                                    if let Some(selected) = selected.as_ref() {
-                                        for session in sessions() {
-                                            if session.id != selected.id {
-                                                client
-                                                    .send(ClientMessage::Close {
-                                                        session_id: session.id,
+                                    if command.custom {
+                                        button {
+                                            class: "-my-1 -mr-1 inline-flex size-7 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-destructive/12 hover:text-destructive",
+                                            r#type: "button",
+                                            title: "Delete custom command",
+                                            "aria-label": "Delete {command.label}",
+                                            onclick: {
+                                                let workspace_id = workspace_id.clone();
+                                                let command_id = command.id.clone();
+                                                move |event: MouseEvent| {
+                                                    event.stop_propagation();
+                                                    let workspace_id = workspace_id.clone();
+                                                    let command_id = command_id.clone();
+                                                    spawn(async move {
+                                                        match api::delete_run_command(workspace_id, command_id).await {
+                                                            Ok(commands) => run_commands.set(commands),
+                                                            Err(error) => toast.set(Some(server_error_message(error))),
+                                                        }
                                                     });
+                                                }
+                                            },
+                                            Icon {
+                                                icon: AppIcon::Delete,
+                                                size: 13,
                                             }
                                         }
                                     }
                                 }
-                            },
+                            }
+                            hr {}
+                            DropdownMenuItem::<RunMenuAction> {
+                                value: RunMenuAction::Add,
+                                index: run_commands.read().len(),
+                                on_select: move |_: RunMenuAction| open_add_command_dialog.call(()),
+                                span { class: "flex items-center gap-2",
+                                    Icon { icon: AppIcon::Plus, size: 14 }
+                                    "Add command"
+                                }
+                            }
+                            DropdownMenuItem::<RunMenuAction> {
+                                value: RunMenuAction::Refresh,
+                                index: run_commands.read().len() + 1,
+                                disabled: commands_loading(),
+                                on_select: move |_: RunMenuAction| refresh_commands.call(()),
+                                span { class: "flex items-center gap-2",
+                                    Icon { icon: AppIcon::Refresh, size: 14 }
+                                    if commands_loading() {
+                                        "Refreshing…"
+                                    } else {
+                                        "Refresh"
+                                    }
+                                }
+                            }
                         }
-                        TerminalMenuItem {
-                            action: TerminalAction::CloseAll,
-                            index: 8,
-                            label: "Close all terminals",
-                            destructive: true,
-                            disabled: sessions.read().is_empty(),
-                            on_select: move |_| client.send(ClientMessage::CloseAll),
+                    }
+                    DropdownMenu {
+                        class: "relative shrink-0",
+                        open: menu(),
+                        on_open_change: move |open: bool| menu.set(open),
+                        MenuTrigger {
+                            label: "Terminal actions",
+                            icon: AppIcon::Menu,
+                            open: menu(),
+                        }
+                        MenuContent { class: "right-0 w-53.75",
+                            TerminalMenuItem {
+                                action: TerminalAction::Copy,
+                                index: 0,
+                                label: "Copy selection",
+                                disabled: selected.is_none(),
+                                on_select: move |_| send_renderer_action(
+                                    &mut renderer_command,
+                                    &mut renderer_command_sequence,
+                                    RendererAction::Copy,
+                                ),
+                            }
+                            TerminalMenuItem {
+                                action: TerminalAction::Paste,
+                                index: 1,
+                                label: "Paste",
+                                disabled: selected.is_none(),
+                                on_select: move |_| send_renderer_action(
+                                    &mut renderer_command,
+                                    &mut renderer_command_sequence,
+                                    RendererAction::Paste,
+                                ),
+                            }
+                            TerminalMenuItem {
+                                action: TerminalAction::Clear,
+                                index: 2,
+                                label: "Clear terminal",
+                                disabled: selected.is_none(),
+                                on_select: move |_| send_renderer_action(
+                                    &mut renderer_command,
+                                    &mut renderer_command_sequence,
+                                    RendererAction::Clear,
+                                ),
+                            }
+                            TerminalMenuItem {
+                                action: TerminalAction::Restart,
+                                index: 3,
+                                label: "Restart terminal",
+                                disabled: selected.is_none(),
+                                on_select: {
+                                    let selected = selected.clone();
+                                    move |_| {
+                                        if let Some(session) = selected.as_ref() {
+                                            client
+                                                .send(ClientMessage::Close {
+                                                    session_id: session.id.clone(),
+                                                });
+                                            client
+                                                .send(ClientMessage::Create {
+                                                    name: Some(session.name.clone()),
+                                                    size: session.size,
+                                                });
+                                        }
+                                    }
+                                },
+                            }
+                            hr {}
+                            TerminalMenuItem {
+                                action: TerminalAction::Detach,
+                                index: 4,
+                                label: "Detach session",
+                                disabled: selected.is_none(),
+                                on_select: {
+                                    let selected = selected.clone();
+                                    move |_| {
+                                        if let Some(session) = selected.as_ref() {
+                                            client
+                                                .send(ClientMessage::Detach {
+                                                    session_id: session.id.clone(),
+                                                });
+                                        }
+                                    }
+                                },
+                            }
+                            TerminalMenuItem {
+                                action: TerminalAction::Refresh,
+                                index: 5,
+                                label: "Refresh sessions",
+                                disabled: !connection_ready,
+                                on_select: move |_| client.send(ClientMessage::List),
+                            }
+                            hr {}
+                            TerminalMenuItem {
+                                action: TerminalAction::Close,
+                                index: 6,
+                                label: "Close terminal",
+                                destructive: true,
+                                disabled: selected.is_none(),
+                                on_select: {
+                                    let selected = selected.clone();
+                                    move |_| {
+                                        if let Some(session) = selected.as_ref() {
+                                            client
+                                                .send(ClientMessage::Close {
+                                                    session_id: session.id.clone(),
+                                                });
+                                        }
+                                    }
+                                },
+                            }
+                            TerminalMenuItem {
+                                action: TerminalAction::CloseOthers,
+                                index: 7,
+                                label: "Close all others",
+                                destructive: true,
+                                disabled: selected.is_none() || sessions.read().len() < 2,
+                                on_select: {
+                                    let selected = selected.clone();
+                                    move |_| {
+                                        if let Some(selected) = selected.as_ref() {
+                                            for session in sessions() {
+                                                if session.id != selected.id {
+                                                    client
+                                                        .send(ClientMessage::Close {
+                                                            session_id: session.id,
+                                                        });
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                            }
+                            TerminalMenuItem {
+                                action: TerminalAction::CloseAll,
+                                index: 8,
+                                label: "Close all terminals",
+                                destructive: true,
+                                disabled: sessions.read().is_empty(),
+                                on_select: move |_| client.send(ClientMessage::CloseAll),
+                            }
                         }
                     }
                 }
@@ -1029,6 +1191,12 @@ fn RemoteTerminal(
                             }
                         }
                     },
+                    ConnectionState::Ready if selected.is_none() && embedded => rsx! {
+                        div { class: "absolute inset-0 flex flex-col items-center justify-center gap-2 bg-card text-muted-foreground",
+                            span { class: "size-5 animate-spin rounded-full border-2 border-border border-t-primary" }
+                            "Starting project terminal…"
+                        }
+                    },
                     ConnectionState::Ready if selected.is_none() => rsx! {
                         div { class: "absolute inset-0 flex flex-col items-center justify-center gap-2 bg-card text-muted-foreground",
                             strong { class: "text-base text-foreground", "No terminal sessions" }
@@ -1047,15 +1215,7 @@ fn RemoteTerminal(
                                 session_id: session.id.clone(),
                                 output,
                                 command: renderer_command,
-                                on_input: move |data| {
-                                    if let Some(session_id) = active() {
-                                        client
-                                            .send(ClientMessage::Write {
-                                                session_id,
-                                                data,
-                                            });
-                                    }
-                                },
+                                on_input: send_terminal_input,
                                 on_resize: move |size| {
                                     if let Some(session_id) = active() {
                                         update_session_size(&mut sessions, &session_id, size);
@@ -1085,11 +1245,24 @@ fn RemoteTerminal(
                     },
                 }
             }
-            footer { class: "flex h-6.25 min-h-6.25 items-center justify-between border-t border-border bg-background px-2.75 text-[9px] text-muted-foreground",
-                span { "{connection_label}" }
-                span {
-                    if let Some(session) = selected.as_ref() {
-                        "{session.size.columns} × {session.size.rows}"
+            if connection_ready && selected.is_some() {
+                MobileTerminalKeys {
+                    ctrl: mobile_ctrl,
+                    on_input: send_terminal_input,
+                    on_focus: move |()| send_renderer_action(
+                        &mut renderer_command,
+                        &mut renderer_command_sequence,
+                        RendererAction::Focus,
+                    ),
+                }
+            }
+            if !embedded {
+                footer { class: "flex h-6.25 min-h-6.25 items-center justify-between border-t border-border bg-background px-2.75 text-[9px] text-muted-foreground",
+                    span { "{connection_label}" }
+                    span {
+                        if let Some(session) = selected.as_ref() {
+                            "{session.size.columns} × {session.size.rows}"
+                        }
                     }
                 }
             }
@@ -1210,6 +1383,45 @@ fn RemoteTerminal(
         }
         if let Some(message) = toast() {
             Toast { message, on_close: move |()| toast.set(None) }
+        }
+    }
+}
+
+#[component]
+fn MobileTerminalKeys(
+    mut ctrl: Signal<bool>,
+    on_input: EventHandler<Vec<u8>>,
+    on_focus: EventHandler<()>,
+) -> Element {
+    rsx! {
+        nav {
+            class: "terminal-mobile-keys min-h-11 shrink-0 items-center gap-1 overflow-x-auto border-t border-border bg-background px-1.5 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] [scrollbar-width:none]",
+            "aria-label": "Terminal keys",
+            button {
+                r#type: "button",
+                class: if ctrl() { "min-h-9 min-w-11 shrink-0 touch-manipulation rounded-md border border-primary bg-primary/15 px-2 font-mono text-xs font-semibold text-primary" } else { "min-h-9 min-w-11 shrink-0 touch-manipulation rounded-md border border-border bg-card px-2 font-mono text-xs font-medium text-foreground active:bg-accent" },
+                "aria-label": "Control modifier for the next key",
+                "aria-pressed": ctrl(),
+                onpointerdown: move |event| event.prevent_default(),
+                onclick: move |_| {
+                    ctrl.toggle();
+                    on_focus.call(());
+                },
+                "Ctrl"
+            }
+            for key in MOBILE_TERMINAL_KEYS {
+                button {
+                    r#type: "button",
+                    class: if key.wide { "min-h-9 min-w-15 shrink-0 touch-manipulation rounded-md border border-border bg-card px-2 font-mono text-xs font-medium text-foreground active:bg-accent" } else { "min-h-9 min-w-10 shrink-0 touch-manipulation rounded-md border border-border bg-card px-2 font-mono text-xs font-medium text-foreground active:bg-accent" },
+                    "aria-label": key.accessible_label,
+                    onpointerdown: move |event| event.prevent_default(),
+                    onclick: move |_| {
+                        on_input.call(key.input.as_bytes().to_vec());
+                        on_focus.call(());
+                    },
+                    {key.label}
+                }
+            }
         }
     }
 }
@@ -1345,6 +1557,29 @@ fn reconnect_delay_ms(attempt: u8) -> u64 {
     let exponent = attempt.saturating_sub(1).min(5);
     (INITIAL_RECONNECT_DELAY_MS * (1_u64 << exponent)).min(MAX_RECONNECT_DELAY_MS)
 }
+fn command_input(command: &str, exit_after: bool) -> Vec<u8> {
+    let suffix = if exit_after {
+        "; __syntaxis_setup_status=$?; exit $__syntaxis_setup_status\n"
+    } else {
+        "\n"
+    };
+    let mut input = Vec::with_capacity(command.len() + suffix.len());
+    input.extend_from_slice(command.as_bytes());
+    input.extend_from_slice(suffix.as_bytes());
+    input
+}
+
+fn ctrl_modified_byte(data: &[u8]) -> Option<u8> {
+    let [byte] = data else {
+        return None;
+    };
+    match byte {
+        b' ' | b'@' => Some(0),
+        b'a'..=b'z' | b'A'..=b'Z' | b'['..=b'_' => Some(byte & 0x1f),
+        b'?' => Some(0x7f),
+        _ => None,
+    }
+}
 fn push_renderer_output(output: &mut Signal<Option<RendererOutputBatch>>, chunk: RendererOutput) {
     let mut current = output.write();
     if current
@@ -1476,6 +1711,28 @@ mod tests {
         assert_eq!(reconnect_delay_ms(2), 500);
         assert_eq!(reconnect_delay_ms(6), 8_000);
         assert_eq!(reconnect_delay_ms(u8::MAX), 8_000);
+    }
+
+    #[test]
+    fn initializer_exit_is_part_of_the_same_shell_line() {
+        let input = String::from_utf8(command_input("npm create vite", true)).unwrap();
+        assert_eq!(input.matches('\n').count(), 1);
+        assert_eq!(
+            input,
+            "npm create vite; __syntaxis_setup_status=$?; exit $__syntaxis_setup_status\n"
+        );
+    }
+
+    #[test]
+    fn mobile_control_modifier_encodes_terminal_control_bytes() {
+        assert_eq!(ctrl_modified_byte(b"c"), Some(3));
+        assert_eq!(ctrl_modified_byte(b"D"), Some(4));
+        assert_eq!(ctrl_modified_byte(b"z"), Some(26));
+        assert_eq!(ctrl_modified_byte(b"["), Some(27));
+        assert_eq!(ctrl_modified_byte(b" "), Some(0));
+        assert_eq!(ctrl_modified_byte(b"?"), Some(127));
+        assert_eq!(ctrl_modified_byte(b"\x1b[A"), None);
+        assert_eq!(ctrl_modified_byte("é".as_bytes()), None);
     }
 
     #[test]

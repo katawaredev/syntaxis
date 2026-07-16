@@ -42,6 +42,7 @@ pub enum RendererAction {
     Copy,
     Paste,
     Fit,
+    Focus,
 }
 impl RendererAction {
     const fn name(self) -> &'static str {
@@ -50,6 +51,7 @@ impl RendererAction {
             Self::Copy => "copy",
             Self::Paste => "paste",
             Self::Fit => "fit",
+            Self::Focus => "focus",
         }
     }
 }
@@ -112,8 +114,33 @@ pub fn GhosttyRenderer(
                     if (event.detail?.id === id) dioxus.send(event.detail);
                 };
                 window.addEventListener("syntaxis-terminal", listener);
+                const viewport = window.matchMedia("(pointer: coarse)").matches
+                    ? window.visualViewport
+                    : null;
+                const container = document.getElementById(id);
+                const shell = container?.closest("[data-terminal-shell]");
+                const originalMaxHeight = shell?.style.maxHeight ?? "";
+                let fitFrame = null;
+                const fitVisibleTerminal = () => {
+                    if (!viewport || !shell) return;
+                    const visibleBottom = viewport.offsetTop + viewport.height;
+                    const available = Math.max(160, Math.floor(visibleBottom - shell.getBoundingClientRect().top));
+                    shell.style.maxHeight = `${available}px`;
+                    if (fitFrame !== null) cancelAnimationFrame(fitFrame);
+                    fitFrame = requestAnimationFrame(() => {
+                        window.SyntaxisTerminalBridge?.action(id, "fit");
+                        fitFrame = null;
+                    });
+                };
+                viewport?.addEventListener("resize", fitVisibleTerminal);
+                viewport?.addEventListener("scroll", fitVisibleTerminal);
+                fitVisibleTerminal();
                 await dioxus.recv();
                 window.removeEventListener("syntaxis-terminal", listener);
+                viewport?.removeEventListener("resize", fitVisibleTerminal);
+                viewport?.removeEventListener("scroll", fitVisibleTerminal);
+                if (fitFrame !== null) cancelAnimationFrame(fitFrame);
+                if (shell) shell.style.maxHeight = originalMaxHeight;
                 "#,
             );
             let _ = events.send(element_id.clone());
@@ -220,10 +247,16 @@ pub fn GhosttyRenderer(
                 return;
             };
             let action = document::eval(
-                r"
+                r#"
                 const [id, action] = await dioxus.recv();
-                window.SyntaxisTerminalBridge?.action(id, action);
-                ",
+                if (action === "focus") {
+                    const input = document.getElementById(id)?.querySelector("textarea");
+                    if (input instanceof HTMLTextAreaElement) input.focus({ preventScroll: true });
+                    else window.SyntaxisTerminalBridge?.action(id, action);
+                } else {
+                    window.SyntaxisTerminalBridge?.action(id, action);
+                }
+                "#,
             );
             let _ = action.send((element_id.clone(), command.action.name()));
         }

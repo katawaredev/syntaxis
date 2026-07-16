@@ -7,6 +7,7 @@ use crate::{AppIcon, Icon};
 pub fn Modal(
     title: String,
     description: String,
+    #[props(default)] content_class: String,
     on_close: EventHandler<()>,
     children: Element,
 ) -> Element {
@@ -19,7 +20,7 @@ pub fn Modal(
                 }
             },
             class: "fixed inset-0 z-100 grid place-items-center bg-background/75 p-4.5 backdrop-blur-sm",
-            DialogContent { class: "max-h-[calc(100svh-1.5rem)] w-full max-w-115 overflow-y-auto rounded-xl border border-border bg-popover text-popover-foreground shadow-2xl",
+            DialogContent { class: "max-h-[calc(100svh-1.5rem)] w-full max-w-115 overflow-y-auto rounded-xl border border-border bg-popover text-popover-foreground shadow-2xl {content_class}",
                 header { class: "flex justify-between gap-4.5 px-5 pt-5 pb-2",
                     div {
                         DialogTitle { class: "text-lg font-semibold text-foreground", {title} }

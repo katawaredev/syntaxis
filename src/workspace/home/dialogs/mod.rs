@@ -1,10 +1,14 @@
 mod delete;
 mod folder;
 mod git_url;
+mod new_project;
 
 use dioxus::prelude::*;
 
-use self::{delete::DeleteWorkspaceDialog, folder::WorkspaceFolderDialog, git_url::GitUrlDialog};
+use self::{
+    delete::DeleteWorkspaceDialog, folder::WorkspaceFolderDialog, git_url::GitUrlDialog,
+    new_project::NewProjectDialog,
+};
 use super::{HomeDialog, RuntimePresentation};
 use syntaxis_workspace::WorkspaceRecord;
 
@@ -34,6 +38,9 @@ pub(super) fn HomeDialogs(
         }
         if dialog() == HomeDialog::Git {
             GitUrlDialog { dialog, on_notice, on_changed }
+        }
+        if dialog() == HomeDialog::NewProject {
+            NewProjectDialog { dialog, on_notice, on_changed }
         }
         if let HomeDialog::Delete(index) = dialog() {
             DeleteWorkspaceDialog {

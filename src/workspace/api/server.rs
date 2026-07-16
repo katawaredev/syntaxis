@@ -53,6 +53,17 @@ pub(super) async fn register_workspace_from_browser(
     public_workspace(register_workspace(&absolute_path.to_string_lossy()).await?)
 }
 
+pub(super) async fn create_project(path: &str) -> Result<WorkspaceRecord, ServerFnError> {
+    let directory = browser()?.create_directory(path).map_err(server_error)?;
+    match register_workspace(&directory.to_string_lossy()).await {
+        Ok(workspace) => public_workspace(workspace),
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(directory);
+            Err(error)
+        }
+    }
+}
+
 pub(super) async fn remove_workspace(
     id: &WorkspaceId,
     delete_files: bool,

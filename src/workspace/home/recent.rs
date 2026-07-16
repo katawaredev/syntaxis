@@ -85,9 +85,9 @@ fn WorkspaceRow(
     let mut menu_open = use_signal(|| false);
     let mut refreshing = use_signal(|| false);
     rsx! {
-        article { class: if availability == WorkspaceAvailability::Missing { "flex min-h-22 min-w-0 items-center border-b border-border opacity-65 first:rounded-t-xl last:rounded-b-xl last:border-b-0 hover:bg-accent/60" } else { "flex min-h-22 min-w-0 items-center border-b border-border first:rounded-t-xl last:rounded-b-xl last:border-b-0 hover:bg-accent/60" },
+        article { class: if availability == WorkspaceAvailability::Missing { "flex min-h-22 min-w-0 items-center border-b border-border opacity-65 first:rounded-t-xl last:rounded-b-xl last:border-b-0 hover:bg-accent/60 max-md:min-h-16" } else { "flex min-h-22 min-w-0 items-center border-b border-border first:rounded-t-xl last:rounded-b-xl last:border-b-0 hover:bg-accent/60 max-md:min-h-16" },
             Link {
-                class: "grid min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-3 max-md:grid-cols-[auto_minmax(0,1fr)]",
+                class: "grid min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-3 max-md:grid-cols-[auto_minmax(0,1fr)] max-md:py-2.5",
                 to: Route::Files {
                     slug: workspace.slug.clone(),
                 },
@@ -101,15 +101,18 @@ fn WorkspaceRow(
                     icon: workspace.icon.clone(),
                 }
                 div { class: "min-w-0",
-                    div { class: "flex items-center gap-2",
-                        h3 { class: "min-w-0 truncate text-sm font-semibold text-foreground",
+                    div { class: "flex min-w-0 items-center gap-2",
+                        h3 { class: "min-w-0 truncate text-sm font-semibold text-foreground max-md:max-w-[42%] max-md:shrink-0",
                             "{workspace.name}"
                         }
                         if availability == WorkspaceAvailability::Missing {
                             StatusBadge { label: "Missing", tone: Tone::Destructive }
                         }
+                        p { class: "hidden min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground max-md:block",
+                            "{workspace.root}"
+                        }
                     }
-                    p { class: "mt-0.5 truncate font-mono text-[11px] text-muted-foreground",
+                    p { class: "mt-0.5 truncate font-mono text-[11px] text-muted-foreground max-md:hidden",
                         "{workspace.root}"
                     }
                     ProjectMetadata { workspace: workspace.clone(), desktop: false }

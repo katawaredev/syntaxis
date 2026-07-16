@@ -122,3 +122,13 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+.terminal-mobile-keys {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  .terminal-mobile-keys {
+    display: flex;
+  }
+}

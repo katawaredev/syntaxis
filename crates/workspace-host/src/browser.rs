@@ -76,6 +76,85 @@ impl HostWorkspaceBrowser {
         }
     }
 
+    /// Creates a new directory at a client-visible browser path.
+    ///
+    /// Missing parent directories are created, but every existing ancestor is resolved before any
+    /// write so a symlink cannot redirect creation outside the runtime's registration policy.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the path is malformed, already exists, or falls outside an exposed
+    /// workspace root.
+    pub fn create_directory(&self, path: &str) -> WorkspaceResult<PathBuf> {
+        let candidate = self.new_directory_candidate(path)?;
+        if candidate.exists() {
+            return Err(WorkspaceError::new(
+                ErrorCode::AlreadyExists,
+                "A file or directory already exists at that project path.",
+            ));
+        }
+
+        let mut existing = candidate.as_path();
+        while !existing.exists() {
+            existing = existing.parent().ok_or_else(outside_root_error)?;
+        }
+        let canonical_parent = existing.canonicalize().map_err(map_io_error)?;
+        if !canonical_parent.is_dir() || !self.policy.permits(&canonical_parent) {
+            return Err(outside_root_error());
+        }
+        let missing = candidate
+            .strip_prefix(existing)
+            .map_err(|_| outside_root_error())?;
+        let destination = canonical_parent.join(missing);
+        std::fs::create_dir_all(&destination).map_err(map_io_error)?;
+        let canonical = destination.canonicalize().map_err(map_io_error)?;
+        if self.policy.permits(&canonical) {
+            Ok(canonical)
+        } else {
+            let _ = std::fs::remove_dir_all(&canonical);
+            Err(outside_root_error())
+        }
+    }
+
+    fn new_directory_candidate(&self, path: &str) -> WorkspaceResult<PathBuf> {
+        validate_project_text(path)?;
+        match &self.policy {
+            RegistrationPolicy::Unrestricted => {
+                let candidate = Path::new(path);
+                if !candidate.is_absolute() {
+                    return Err(WorkspaceError::invalid_path(
+                        "Choose an absolute project path.",
+                    ));
+                }
+                validate_new_project_path(candidate)?;
+                Ok(candidate.to_owned())
+            }
+            RegistrationPolicy::Allowlisted { roots } if roots.len() == 1 => {
+                let relative = virtual_relative_path(path)?;
+                require_project_relative_path(&relative)?;
+                Ok(roots[0].join(relative))
+            }
+            RegistrationPolicy::Allowlisted { roots } => {
+                let relative = virtual_relative_path(path)?;
+                let mut components = relative.components();
+                let Some(Component::Normal(mount)) = components.next() else {
+                    return Err(WorkspaceError::invalid_path("Choose a workspace root."));
+                };
+                let mount = mount.to_string_lossy();
+                let Some((_, root)) = roots
+                    .iter()
+                    .enumerate()
+                    .find(|(index, root)| mount_name(roots, *index, root) == mount)
+                else {
+                    return Err(outside_root_error());
+                };
+                let remainder = components.collect::<PathBuf>();
+                require_project_relative_path(&remainder)?;
+                Ok(root.join(remainder))
+            }
+        }
+    }
+
     /// Converts a host directory into its client-visible browser path.
     ///
     /// # Errors
@@ -129,6 +208,52 @@ impl HostWorkspaceBrowser {
                 .collect(),
         }
     }
+}
+
+fn validate_project_text(path: &str) -> WorkspaceResult<()> {
+    let relative = path.strip_prefix('/').unwrap_or(path);
+    if relative.is_empty()
+        || path.starts_with("//")
+        || path.contains('\\')
+        || relative.split('/').any(|component| {
+            component.is_empty()
+                || matches!(component, "." | "..")
+                || component.len() > 255
+                || component.chars().any(char::is_control)
+        })
+    {
+        return Err(WorkspaceError::invalid_path(
+            "Use a project name or subpath without empty, dot, or parent folders.",
+        ));
+    }
+    Ok(())
+}
+
+fn require_project_relative_path(path: &Path) -> WorkspaceResult<()> {
+    if path.as_os_str().is_empty() {
+        Err(WorkspaceError::invalid_path("Enter a project name."))
+    } else {
+        validate_new_project_path(path)
+    }
+}
+
+fn validate_new_project_path(path: &Path) -> WorkspaceResult<()> {
+    if path.components().any(|component| {
+        matches!(
+            component,
+            Component::ParentDir | Component::Prefix(_) | Component::CurDir
+        )
+    }) {
+        return Err(outside_root_error());
+    }
+    if path.components().any(|component| {
+        matches!(component, Component::Normal(value) if value.is_empty() || value.to_string_lossy().chars().any(char::is_control))
+    }) {
+        return Err(WorkspaceError::invalid_path(
+            "Project folders cannot be empty or contain control characters.",
+        ));
+    }
+    Ok(())
 }
 
 #[async_trait(?Send)]
@@ -271,6 +396,30 @@ mod tests {
         );
         assert_eq!(
             browser.resolve_path("//syntaxis").unwrap_err().code,
+            ErrorCode::InvalidPath
+        );
+    }
+
+    #[test]
+    fn creates_nested_projects_without_leaving_the_exposed_root() {
+        let allowed = tempdir().unwrap();
+        let browser = HostWorkspaceBrowser::new(RegistrationPolicy::Allowlisted {
+            roots: vec![allowed.path().to_owned()],
+        })
+        .unwrap();
+
+        let created = browser.create_directory("/testing/MyAwesomeIdea").unwrap();
+        assert_eq!(created, allowed.path().join("testing/MyAwesomeIdea"));
+        assert!(created.is_dir());
+        assert_eq!(
+            browser
+                .create_directory("/testing/MyAwesomeIdea")
+                .unwrap_err()
+                .code,
+            ErrorCode::AlreadyExists
+        );
+        assert_eq!(
+            browser.create_directory("/../outside").unwrap_err().code,
             ErrorCode::InvalidPath
         );
     }

@@ -147,14 +147,16 @@ serve platform=default_platform host=default_host port=default_port:
     dx serve \
         --platform "{{ platform }}" \
         --addr "{{ host }}" \
-        --port "{{ port }}"
+        --port "{{ port }}" \
+        --force-sequential true
 
 # Start the web development server.
 web host=default_host port=default_port:
     dx serve \
         --platform web \
         --addr "{{ host }}" \
-        --port "{{ port }}"
+        --port "{{ port }}" \
+        --force-sequential true
 
 # Start the desktop development server.
 desktop:
