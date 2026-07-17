@@ -28,7 +28,7 @@ const INITIAL_RECONNECT_DELAY_MS: u64 = 250;
 const MAX_RECONNECT_DELAY_MS: u64 = 8_000;
 const HEARTBEAT_INTERVAL_SECONDS: u64 = 10;
 const HEARTBEAT_TIMEOUT_SECONDS: u64 = 30;
-const TERMINAL_SCRIPT: Asset = asset!("/assets/terminal/ghostty-web.bundle.js");
+const TERMINAL_SCRIPT: Asset = asset!("/assets/terminal/terminal.bundle.js");
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct TerminalQuery {

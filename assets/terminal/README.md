@@ -1,11 +1,21 @@
 # Terminal renderer assets
 
-`ghostty-web.bundle.js` bundles the application bridge in `bridge-source.js`
-with the pinned `ghostty-web` npm package version 0.4.0. The upstream package's
-WASM is embedded in that bundle; `ghostty-vt.wasm` is also retained beside it as
-the reviewed upstream artifact. `ghostty-web.LICENSE` is the upstream MIT
-license.
+`bridge-source.js` is the application bridge that imports from the `@wterm/dom`
+package. It is bundled with esbuild into `terminal.bundle.js` (browser IIFE
+format, minified) by the build script. The wterm CSS is inlined into the bundle
+and injected into the document on first mount.
 
-To refresh the bundle after deliberately changing the pinned version, install
-that exact package and bundle `bridge-source.js` with esbuild for the browser
-IIFE format. Do not replace the version without reviewing the API and license.
+## Building
+
+From the project root:
+
+```sh
+bun install
+bun run build:terminal
+```
+
+This generates `terminal.bundle.js`. The generated file is git-ignored — run the
+build after `bun install`.
+
+To change the pinned version, edit `@wterm/dom` in `package.json` and re-run the
+build. Review the API and license before upgrading.

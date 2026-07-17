@@ -48,15 +48,15 @@ tailwind_output = "assets/out.css" # also customize the location of the out file
 
 ### Tailwind Manual Install
 
-To use tailwind plugins or manually customize tailwind, you can can install the Tailwind CLI and use it directly.
+To use tailwind plugins or manually customize tailwind, you can install the Tailwind CLI and use it directly.
 
 ### Tailwind
-1. Install npm: https://docs.npmjs.com/downloading-and-installing-node-js-and-npm
+1. Install bun: https://bun.sh
 2. Install the Tailwind CSS CLI: https://tailwindcss.com/docs/installation/tailwind-cli
 3. Run the following command in the root of the project to start the Tailwind CSS compiler:
 
 ```bash
-npx @tailwindcss/cli -i ./input.css -o ./assets/tailwind.css --watch
+bunx @tailwindcss/cli -i ./input.css -o ./assets/tailwind.css --watch
 ```
 
 ### Serving Your App

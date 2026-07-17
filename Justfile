@@ -97,7 +97,18 @@ update-tools: install-binstall
 
 # Install the pinned Lighthouse CI dependency.
 install-lighthouse:
-    npm ci
+    bun install
+
+# Build the terminal bundle from the @wterm/dom package.
+build-terminal:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if [[ ! -f node_modules/.bin/esbuild ]]; then
+        bun install --production
+    fi
+
+    bun run build:terminal
 
 # -----------------------------------------------------------------------------
 # Environment inspection
@@ -148,7 +159,7 @@ versions:
 # -----------------------------------------------------------------------------
 
 # Start the development server.
-serve platform=default_platform host=default_host port=default_port:
+serve platform=default_platform host=default_host port=default_port: build-terminal
     dx serve \
         --platform "{{ platform }}" \
         --addr "{{ host }}" \
@@ -156,7 +167,7 @@ serve platform=default_platform host=default_host port=default_port:
         --force-sequential true
 
 # Start the web development server.
-web host=default_host port=default_port:
+web host=default_host port=default_port: build-terminal
     dx serve \
         --platform web \
         --addr "{{ host }}" \
@@ -164,14 +175,14 @@ web host=default_host port=default_port:
         --force-sequential true
 
 # Start the desktop development server.
-desktop:
+desktop: build-terminal
     dx serve --platform desktop
 
 # Start the mobile development server.
-mobile:
+mobile: build-terminal
     dx serve --platform mobile
 
-serve-local port=default_port:
+serve-local port=default_port: build-terminal
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -181,7 +192,7 @@ serve-local port=default_port:
         }
         trap cleanup EXIT
 
-        sudo ufw allow "{{ port }}/tcp" >/dev/null
+        sudo ufw allow "{{ port }}/tcp"
     fi
 
     dx serve \
@@ -196,7 +207,7 @@ serve-local port=default_port:
 #   just build
 #   just build desktop
 # just build web release
-build platform=default_platform profile="debug":
+build platform=default_platform profile="debug": build-terminal
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -213,7 +224,7 @@ build platform=default_platform profile="debug":
     dx "${args[@]}"
 
 # Build an optimized release.
-release platform=default_platform:
+release platform=default_platform: build-terminal
     dx build --platform "{{ platform }}" --release
 
 # Build the production web app and run repeatable local Lighthouse audits.
@@ -222,14 +233,14 @@ lighthouse:
     set -euo pipefail
 
     if [[ ! -x node_modules/.bin/lhci ]]; then
-        npm ci
+        bun install
     fi
 
-    npm run lighthouse
+    bun run lighthouse
 
 # Open the most recent locally collected Lighthouse report.
 lighthouse-open:
-    npm run lighthouse:open
+    bun run lighthouse:open
 
 # Run Dioxus checks.
 dx-check:

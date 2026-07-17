@@ -1,9 +1,14 @@
 {
-  "name": "syntaxis-quality-tools",
+  "name": "syntaxis",
   "private": true,
   "scripts": {
+    "build:terminal": "bun scripts/build-terminal.mjs",
     "lighthouse": "rm -rf target/dx/syntaxis/release/web/public && dx build --platform web --release --locked --debug-symbols false && lhci autorun",
     "lighthouse:open": "lhci open"
+  },
+  "dependencies": {
+    "@wterm/dom": "^0.1.9",
+    "esbuild": "^0.25.0"
   },
   "devDependencies": {
     "@lhci/cli": "0.15.1"
