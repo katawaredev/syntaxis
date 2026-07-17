@@ -16,7 +16,7 @@
 #   just test "my_test_name"
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
-set dotenv-load := true
+set dotenv-load
 
 # -----------------------------------------------------------------------------
 # Configuration
@@ -171,12 +171,31 @@ desktop:
 mobile:
     dx serve --platform mobile
 
+serve-local port=default_port:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if command -v ufw >/dev/null 2>&1; then
+        cleanup() {
+            sudo ufw delete allow "{{ port }}/tcp" >/dev/null 2>&1 || true
+        }
+        trap cleanup EXIT
+
+        sudo ufw allow "{{ port }}/tcp" >/dev/null
+    fi
+
+    dx serve \
+        --platform web \
+        --addr 0.0.0.0 \
+        --port "{{ port }}" \
+        --force-sequential true
+
 # Build the project.
 #
 # Examples:
 #   just build
 #   just build desktop
-#   just build web release
+# just build web release
 build platform=default_platform profile="debug":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -235,7 +254,7 @@ clean:
 # Examples:
 #   just dx doctor
 #   just dx config
-#   just dx build --platform web --release
+# just dx build --platform web --release
 dx *args:
     dx {{ args }}
 
