@@ -54,7 +54,12 @@ pub(super) fn BootstrapProjectDialog(
     use_effect(move || {
         if !initialized_command() {
             if let Some(Ok(BootstrapPlan::Inferred(tools))) = plan() {
-                inferred_command.set(inferred_mise_command(&tools));
+                let mise_command = inferred_mise_command(&tools);
+                if tools.is_empty() {
+                    inferred_command.set(mise_command);
+                } else {
+                    selected_command.set(Some(inferred_bootstrap_command(&mise_command)));
+                }
                 initialized_command.set(true);
             }
         }
@@ -67,11 +72,10 @@ pub(super) fn BootstrapProjectDialog(
         Some(Err(_)) | None => None,
     };
     let running = command.is_some();
-    let inferred_tools_label = match detected_plan.as_ref() {
-        Some(Ok(BootstrapPlan::Inferred(tools))) => tools.join(", "),
-        Some(Ok(BootstrapPlan::Configured) | Err(_)) | None => String::new(),
-    };
-
+    let needs_manual_command = matches!(
+        detected_plan.as_ref(),
+        Some(Ok(BootstrapPlan::Inferred(tools))) if tools.is_empty()
+    );
     rsx! {
         Modal {
             title: format!("Bootstrap {}", workspace.name),
@@ -152,17 +156,10 @@ pub(super) fn BootstrapProjectDialog(
                         }
                     }
                 }
-            } else if let Some(Ok(BootstrapPlan::Inferred(tools))) = detected_plan.as_ref() {
+            } else if needs_manual_command {
                 div { class: "space-y-4 px-5 pt-3 pb-5",
-                    div { class: "rounded-lg border border-border bg-muted/20 p-3",
-                        strong { class: "block text-sm text-foreground", "Review detected toolchain" }
-                        p { class: "mt-1 text-xs leading-relaxed text-muted-foreground",
-                            if tools.is_empty() {
-                                "No supported project markers were found. Enter the mise command you want to run."
-                            } else {
-                                "Syntaxis inferred these tools: {inferred_tools_label}. Edit the command before anything is installed."
-                            }
-                        }
+                    p { class: "text-sm leading-relaxed text-muted-foreground",
+                        "No supported project markers were found. Enter the mise command you want to run."
                     }
                     Field {
                         control_id: "bootstrap-mise-command",
@@ -195,6 +192,11 @@ pub(super) fn BootstrapProjectDialog(
                             },
                         }
                     }
+                }
+            } else {
+                div { class: "flex min-h-36 items-center justify-center gap-2 px-5 text-sm text-muted-foreground",
+                    span { class: "size-4 animate-spin rounded-full border-2 border-border border-t-primary" }
+                    "Starting bootstrap…"
                 }
             }
         }
@@ -406,7 +408,7 @@ mod tests {
     }
 
     #[test]
-    fn manifests_are_inferred_into_an_editable_mise_command() {
+    fn manifests_are_inferred_into_a_local_mise_command() {
         let tools = infer_tools(&files(&[
             "Cargo.toml",
             "package.json",

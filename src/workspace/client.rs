@@ -338,6 +338,16 @@ pub async fn prune_mise_tools() -> Result<(), String> {
     }
 }
 
+pub async fn update_mise_tools() -> Result<(), String> {
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::api::update_mise_tools()
+            .await
+            .map_err(server_error_message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => run_local_mise(&["upgrade", "--inactive"]).await,
+    }
+}
+
 pub async fn clear_mise_tools() -> Result<(), String> {
     match selected_runtime() {
         RuntimeTarget::Remote => super::api::clear_mise_tools()

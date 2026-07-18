@@ -90,6 +90,10 @@ pub(super) async fn prune_mise_tools() -> Result<(), ServerFnError> {
     run_mise(&["prune", "--tools", "--yes"]).await
 }
 
+pub(super) async fn update_mise_tools() -> Result<(), ServerFnError> {
+    run_mise(&["upgrade", "--inactive"]).await
+}
+
 pub(super) async fn clear_mise_tools() -> Result<(), ServerFnError> {
     run_mise(&["uninstall", "--all", "--yes"]).await?;
     run_mise(&["cache", "clear"]).await

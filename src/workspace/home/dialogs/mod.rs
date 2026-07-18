@@ -4,13 +4,14 @@ mod folder;
 mod git_url;
 mod mise_tools;
 mod new_project;
+mod update_tools;
 
 use dioxus::prelude::*;
 
 use self::{
     bootstrap::BootstrapProjectDialog, delete::DeleteWorkspaceDialog,
     folder::WorkspaceFolderDialog, git_url::GitUrlDialog, mise_tools::ClearMiseToolsDialog,
-    new_project::NewProjectDialog,
+    new_project::NewProjectDialog, update_tools::UpdateProjectToolsDialog,
 };
 use super::{HomeDialog, RuntimePresentation};
 use syntaxis_workspace::WorkspaceRecord;
@@ -52,6 +53,14 @@ pub(super) fn HomeDialogs(
                 workspaces: workspaces.clone(),
                 on_notice,
                 on_changed,
+            }
+        }
+        if let HomeDialog::UpdateTools(index) = dialog() {
+            UpdateProjectToolsDialog {
+                index,
+                dialog,
+                workspaces: workspaces.clone(),
+                on_notice,
             }
         }
         if dialog() == HomeDialog::ClearMiseTools {

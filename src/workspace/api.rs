@@ -46,6 +46,10 @@ pub async fn refresh_workspace(workspace_id: String) -> Result<WorkspaceRecord, 
 pub async fn prune_mise_tools() -> Result<(), ServerFnError> {
     server::prune_mise_tools().await
 }
+#[post("/api/mise/update")]
+pub async fn update_mise_tools() -> Result<(), ServerFnError> {
+    server::update_mise_tools().await
+}
 #[post("/api/mise/clear")]
 pub async fn clear_mise_tools() -> Result<(), ServerFnError> {
     server::clear_mise_tools().await
