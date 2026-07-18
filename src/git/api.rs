@@ -54,6 +54,11 @@ pub async fn repository_status(workspace_slug: String) -> Result<RepositoryStatu
     server::repository_status(&workspace_slug).await
 }
 
+#[get("/api/git/ignored/{workspace_slug}")]
+pub async fn ignored_paths(workspace_slug: String) -> Result<Vec<String>, ServerFnError> {
+    server::ignored_paths(&workspace_slug).await
+}
+
 #[get("/api/git/state/{workspace_slug}")]
 pub async fn repository_state(workspace_slug: String) -> Result<RepositoryState, ServerFnError> {
     server::repository_state(&workspace_slug).await
@@ -287,6 +292,11 @@ pub async fn revert_commit(workspace_slug: String, revision: String) -> Result<(
 #[post("/api/git/fetch")]
 pub async fn fetch(workspace_slug: String) -> Result<RemoteResult, ServerFnError> {
     server::fetch(&workspace_slug).await
+}
+
+#[post("/api/git/pull")]
+pub async fn pull(workspace_slug: String) -> Result<RemoteResult, ServerFnError> {
+    server::pull(&workspace_slug).await
 }
 
 #[post("/api/git/push")]

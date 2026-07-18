@@ -100,7 +100,7 @@ enum RepositoryAction {
     RevertCommit(String),
     Merge(String),
     AbortMerge,
-    Fetch,
+    Pull,
     FetchRemote(String),
     AddRemote(RemoteRequest),
     UpdateRemote {
@@ -431,7 +431,7 @@ fn WorkspaceGit(slug: String) -> Element {
                 RepositoryAction::AbortMerge => api::abort_merge(slug)
                     .await
                     .map(|()| "Aborted merge".to_owned()),
-                RepositoryAction::Fetch => api::fetch(slug).await.map(|result| result.message),
+                RepositoryAction::Pull => api::pull(slug).await.map(|result| result.message),
                 RepositoryAction::FetchRemote(name) => api::fetch_remote(slug, name)
                     .await
                     .map(|result| result.message),
@@ -611,6 +611,10 @@ fn WorkspaceGit(slug: String) -> Element {
         .upstream
         .as_deref()
         .unwrap_or("No upstream");
+    let commits_to_pull = repository.branch.behind;
+    let commits_to_push = repository.branch.ahead;
+    let pull_disabled = pending() || repository.branch.upstream.is_none() || commits_to_pull == 0;
+    let push_disabled = pending() || repository.branch.upstream.is_none() || commits_to_push == 0;
 
     rsx! {
         if repository_missing {
@@ -816,16 +820,24 @@ fn WorkspaceGit(slug: String) -> Element {
                                 class: "inline-flex h-7 items-center gap-1 rounded-md bg-transparent px-2 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50 max-lg:px-1.5",
                                 title: "Pull remote changes",
                                 "aria-label": "Pull remote changes",
-                                disabled: pending(),
-                                onclick: move |_| on_repository_action.call(RepositoryAction::Fetch),
+                                disabled: pull_disabled,
+                                onclick: move |_| on_repository_action.call(RepositoryAction::Pull),
                                 Icon { icon: AppIcon::Fetch, size: 14 }
                                 span { class: "max-lg:hidden", "Pull" }
+                                if repository.branch.upstream.is_some() {
+                                    span {
+                                        class: "grid min-w-4.5 place-items-center rounded-full bg-secondary px-1 text-[9px] font-semibold text-foreground",
+                                        "aria-label": "{commits_to_pull} commits to pull",
+                                        title: "{commits_to_pull} commits behind upstream",
+                                        "{commits_to_pull}"
+                                    }
+                                }
                             }
                             button {
                                 class: "inline-flex h-7 items-center gap-1 rounded-md bg-transparent px-2 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50 max-lg:px-1.5",
                                 title: "Push commits",
                                 "aria-label": "Push commits",
-                                disabled: pending(),
+                                disabled: push_disabled,
                                 onclick: move |_| {
                                     on_repository_action
                                         .call(RepositoryAction::Push {
@@ -834,6 +846,14 @@ fn WorkspaceGit(slug: String) -> Element {
                                 },
                                 Icon { icon: AppIcon::Push, size: 14 }
                                 span { class: "max-lg:hidden", "Push" }
+                                if repository.branch.upstream.is_some() {
+                                    span {
+                                        class: "grid min-w-4.5 place-items-center rounded-full bg-secondary px-1 text-[9px] font-semibold text-foreground",
+                                        "aria-label": "{commits_to_push} commits to push",
+                                        title: "{commits_to_push} commits ahead of upstream",
+                                        "{commits_to_push}"
+                                    }
+                                }
                             }
                             button {
                                 class: "inline-flex h-7 items-center gap-1 rounded-md bg-transparent px-2 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50 max-lg:px-1.5",

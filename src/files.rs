@@ -53,8 +53,8 @@ use git_actions::{
     GitDiscardContext,
 };
 use preview::{
-    file_glyph, file_label, image_mime, is_markdown, is_svg, DiffEditor, EditorStatus, EmptyEditor,
-    ImagePreview, MarkdownPreview, SafeSvgPreview, UnsupportedPreview,
+    file_glyph, file_label, image_mime, is_csv, is_markdown, is_svg, CsvPreview, DiffEditor,
+    EditorStatus, EmptyEditor, ImagePreview, MarkdownPreview, SafeSvgPreview, UnsupportedPreview,
 };
 
 const MAX_TEXT_BYTES: u64 = 4 * 1024 * 1024;
@@ -322,6 +322,7 @@ struct InitialFiles {
     entries: Vec<FileEntry>,
     editor_configs: Vec<EditorConfigSource>,
     git_status: Option<RepositoryStatus>,
+    ignored_paths: BTreeSet<String>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -385,9 +386,10 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
     let mut tree = use_signal(ExplorerTree::default);
     let mut editor_configs = use_signal(Vec::<EditorConfigSource>::new);
     let mut git_status = use_signal(|| None::<RepositoryStatus>);
+    let mut ignored_paths = use_signal(BTreeSet::<String>::new);
     let session = use_context::<FilesSessionState>();
     let documents = session.documents;
-    let active_path = session.active_path;
+    let mut active_path = session.active_path;
     let selected_entry = use_signal(|| None::<FileEntry>);
     let loading_path = use_signal(|| None::<String>);
     let loading_documents = use_signal(BTreeSet::<String>::new);
@@ -401,6 +403,8 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
     let mut line_numbers = use_signal(|| true);
     let mut markdown_preview = use_signal(|| false);
     let mut svg_preview = use_signal(|| false);
+    let mut csv_preview = use_signal(|| false);
+    let mut show_ignored = use_signal(|| false);
     let mut search_panel = use_signal(|| false);
     let search_query = use_signal(String::new);
     let search_options = use_signal(SearchOptions::default);
@@ -411,7 +415,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
     let mut editor_selection = use_signal(EditorSelection::default);
     let editor_command = use_signal(|| None::<EditorCommand>);
     let command_revision = use_signal(|| 0_u64);
-    let mut autocomplete_enabled = use_signal(|| true);
+    let mut autocomplete_enabled = use_signal(|| false);
     let mut autocomplete = use_signal(|| false);
     let mut completion_after_input = use_signal(|| false);
     let mut suppress_next_completion = use_signal(|| false);
@@ -433,6 +437,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                 tree.write().replace_directory("", loaded.entries);
                 editor_configs.set(loaded.editor_configs);
                 git_status.set(loaded.git_status);
+                ignored_paths.set(loaded.ignored_paths);
             }
             Err(message) => set_error(toast, message),
         }
@@ -511,10 +516,32 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
     });
 
     let navigator = use_navigator();
+    use_effect(move || {
+        let Some(active) = active_path() else { return };
+        if documents
+            .read()
+            .iter()
+            .any(|document| document.path() == active)
+        {
+            return;
+        }
+        active_path.set(
+            documents
+                .read()
+                .last()
+                .map(|document| document.path().to_owned()),
+        );
+    });
     use_effect({
         let query = query.clone();
         move || {
             let Some(path) = active_path() else {
+                if query.path.is_some() && documents.read().is_empty() {
+                    navigator.replace(crate::app::Route::Files {
+                        slug: route_slug.clone(),
+                        query: FilesQuery::default(),
+                    });
+                }
                 return;
             };
             let query_path = query
@@ -579,8 +606,13 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
     let active_svg = active_buffer
         .as_ref()
         .is_some_and(|buffer| is_svg(&buffer.path));
+    let active_csv = active_buffer
+        .as_ref()
+        .is_some_and(|buffer| is_csv(&buffer.path));
     let showing_preview = diff().is_none()
-        && ((active_markdown && markdown_preview()) || (active_svg && svg_preview()));
+        && ((active_markdown && markdown_preview())
+            || (active_svg && svg_preview())
+            || (active_csv && csv_preview()));
     let editor_interactive = diff().is_none() && !showing_preview;
     let active_changed = active_path().and_then(|path| {
         git_status.read().as_ref().and_then(|status| {
@@ -661,6 +693,8 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                         view: explorer_view,
                         search: explorer_search,
                         git_status: git_status(),
+                        ignored_paths: ignored_paths(),
+                        show_ignored: show_ignored(),
                         pending: pending(),
                         on_open: move |entry| open_document(
                             entry,
@@ -698,6 +732,8 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                         view: explorer_view,
                         search: explorer_search,
                         git_status: git_status(),
+                        ignored_paths: ignored_paths(),
+                        show_ignored: show_ignored(),
                         pending: pending(),
                         on_open: move |entry| {
                             open_document(
@@ -774,6 +810,16 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                     search_panel.set(false);
                                 },
                             }
+                        } else if diff().is_none() && active_csv {
+                            IconButton {
+                                label: if csv_preview() { "Show CSV source" } else { "Show CSV preview" },
+                                icon: if csv_preview() { AppIcon::Code } else { AppIcon::Eye },
+                                pressed: csv_preview(),
+                                onclick: move |_| {
+                                    csv_preview.toggle();
+                                    search_panel.set(false);
+                                },
+                            }
                         }
                         IconButton {
                             label: "Find in file",
@@ -840,9 +886,16 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                         }
                                     },
                                 }
-                                hr {}
                                 EditorMenuItem {
                                     index: 5,
+                                    icon: AppIcon::Explorer,
+                                    label: "Show Git Ignored Files",
+                                    checked: show_ignored(),
+                                    onclick: move |()| show_ignored.toggle(),
+                                }
+                                hr {}
+                                EditorMenuItem {
+                                    index: 6,
                                     icon: AppIcon::Save,
                                     label: "Save All",
                                     suffix: "Mod Shift S",
@@ -850,7 +903,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                     onclick: move |()| save_all(workspace().as_ref(), documents, toast),
                                 }
                                 EditorMenuItem {
-                                    index: 6,
+                                    index: 7,
                                     icon: AppIcon::Close,
                                     label: "Close All",
                                     disabled: documents.read().is_empty(),
@@ -861,7 +914,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                     ),
                                 }
                                 EditorMenuItem {
-                                    index: 7,
+                                    index: 9,
                                     icon: AppIcon::Close,
                                     label: "Close Others",
                                     disabled: active_path().is_none(),
@@ -889,7 +942,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                     onclick: move |()| toggle_diff(diff_slug.clone(), active_path(), diff, toast),
                                 }
                                 EditorMenuItem {
-                                    index: 9,
+                                    index: 10,
                                     icon: if active_changed.as_ref().is_some_and(syntaxis_git::FileChange::is_unstaged) { AppIcon::FilePlus } else { AppIcon::FileMinus },
                                     label: if active_changed.as_ref().is_some_and(syntaxis_git::FileChange::is_unstaged) { "Stage File" } else { "Unstage File" },
                                     disabled: active_changed.is_none(),
@@ -897,7 +950,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                 }
                                 hr {}
                                 EditorMenuItem {
-                                    index: 10,
+                                    index: 11,
                                     icon: AppIcon::Revert,
                                     label: active_revert_action.map_or("Revert File", RevertAction::label),
                                     disabled: active_revert_action.is_none(),
@@ -1058,6 +1111,13 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                         ) if diff().is_none() && is_svg(&buffer.path) && svg_preview() => {
                             rsx! {
                                 SafeSvgPreview { source: buffer.contents, path: buffer.path }
+                            }
+                        }
+                        Some(
+                            OpenDocument::Text(buffer),
+                        ) if diff().is_none() && is_csv(&buffer.path) && csv_preview() => {
+                            rsx! {
+                                CsvPreview { source: buffer.contents, path: buffer.path }
                             }
                         }
                         Some(OpenDocument::Text(buffer)) => {
@@ -1343,14 +1403,18 @@ async fn load_initial(workspace: WorkspaceRecord) -> Result<InitialFiles, String
             });
         }
     }
-    let git_status = git_api::repository_status(workspace.id.0.clone())
-        .await
-        .ok();
+    let (git_status, ignored_paths) = futures_util::join!(
+        git_api::repository_status(workspace.id.0.clone()),
+        git_api::ignored_paths(workspace.id.0.clone()),
+    );
+    let git_status = git_status.ok();
+    let ignored_paths = ignored_paths.unwrap_or_default().into_iter().collect();
     Ok(InitialFiles {
         workspace,
         entries,
         editor_configs,
         git_status,
+        ignored_paths,
     })
 }
 

@@ -24,6 +24,45 @@ const MAX_CONFLICT_FILE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_PASSPHRASE_BYTES: usize = 16 * 1024;
 const MAX_REMOTE_URL_BYTES: usize = 64 * 1024;
 
+impl HostGit {
+    /// Returns ignored, untracked paths using Git's complete exclude rules.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the workspace is invalid, Git fails, or an ignored
+    /// path cannot be represented as UTF-8.
+    pub async fn ignored_paths(&self, workspace: &WorkspaceRecord) -> GitResult<Vec<String>> {
+        let root = validated_root(workspace)?;
+        let arguments = [
+            "ls-files",
+            "--others",
+            "--ignored",
+            "--exclude-standard",
+            "--directory",
+            "-z",
+        ]
+        .map(OsString::from);
+        let output = self
+            .run(&root, &arguments, None, &[], &[0], CancellationToken::new())
+            .await?;
+        output
+            .stdout
+            .split(|byte| *byte == 0)
+            .filter(|path| !path.is_empty())
+            .map(|path| {
+                std::str::from_utf8(path)
+                    .map(|path| path.trim_end_matches('/').to_owned())
+                    .map_err(|_| {
+                        GitError::new(
+                            GitErrorCode::Parse,
+                            "Git returned a non-UTF-8 ignored path.",
+                        )
+                    })
+            })
+            .collect()
+    }
+}
+
 #[async_trait(?Send)]
 impl GitOperations for HostGit {
     async fn clone_repository(&self, request: CloneRequest) -> GitResult<CloneResult> {
@@ -839,6 +878,38 @@ impl GitOperations for HostGit {
         Ok(RemoteResult {
             message: "Fetch completed.".into(),
         })
+    }
+
+    async fn pull(&self, workspace: &WorkspaceRecord) -> GitResult<RemoteResult> {
+        let root = validated_root(workspace)?;
+        let arguments = ["pull".into(), "--ff-only".into(), "--prune".into()];
+        let result = self
+            .run(
+                &root,
+                &arguments,
+                None,
+                &[("GIT_TERMINAL_PROMPT", "0".into())],
+                &[0],
+                CancellationToken::new(),
+            )
+            .await;
+        match result {
+            Ok(_) => Ok(RemoteResult {
+                message: "Pull completed.".into(),
+            }),
+            Err(error)
+                if error.code == GitErrorCode::CommandFailed
+                    && self.status(workspace).await.is_ok_and(|status| {
+                    status.branch.ahead > 0 && status.branch.behind > 0
+                }) =>
+            {
+                Err(GitError::new(
+                    GitErrorCode::Conflict,
+                    "The local and upstream branches have diverged. Rebase or merge them in the terminal before pulling.",
+                ))
+            }
+            Err(error) => Err(error),
+        }
     }
 
     async fn push(

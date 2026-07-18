@@ -128,6 +128,8 @@ pub trait GitOperations: Send + Sync {
 
     async fn fetch(&self, workspace: &WorkspaceRecord) -> GitResult<RemoteResult>;
 
+    async fn pull(&self, workspace: &WorkspaceRecord) -> GitResult<RemoteResult>;
+
     async fn push(
         &self,
         workspace: &WorkspaceRecord,

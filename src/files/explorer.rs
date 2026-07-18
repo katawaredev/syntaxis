@@ -31,6 +31,8 @@ pub(super) fn Explorer(
     mut view: Signal<ExplorerView>,
     mut search: Signal<String>,
     git_status: Option<RepositoryStatus>,
+    ignored_paths: BTreeSet<String>,
+    show_ignored: bool,
     pending: bool,
     on_open: EventHandler<FileEntry>,
     on_expand: EventHandler<FileEntry>,
@@ -45,6 +47,7 @@ pub(super) fn Explorer(
             .collect::<BTreeMap<_, _>>()
     });
     let git_paths = changes_by_path.keys().cloned().collect::<BTreeSet<_>>();
+    let directory_changes = directory_change_kinds(&changes_by_path);
     let active_view = view();
     let search_query = search();
     let nodes = tree.read().flattened(
@@ -54,6 +57,8 @@ pub(super) fn Explorer(
             ""
         },
         (active_view == ExplorerView::Changes).then_some(&git_paths),
+        &ignored_paths,
+        show_ignored,
     );
     rsx! {
         div { class: "flex h-full min-h-0 flex-col",
@@ -150,7 +155,10 @@ pub(super) fn Explorer(
                     {
                         render_explorer_row(
                             node.clone(),
-                            changes_by_path.get(node.entry.path.as_str()).cloned(),
+                            changes_by_path
+                                .get(node.entry.path.as_str())
+                                .and_then(explorer_change_kind)
+                                .or_else(|| directory_changes.get(node.entry.path.as_str()).copied()),
                             selected_entry,
                             on_open,
                             on_expand,
@@ -164,7 +172,7 @@ pub(super) fn Explorer(
 
 pub(super) fn render_explorer_row(
     node: syntaxis_editor::ExplorerNode,
-    git_change: Option<syntaxis_git::FileChange>,
+    git_change: Option<GitChangeKind>,
     mut selected_entry: Signal<Option<FileEntry>>,
     on_open: EventHandler<FileEntry>,
     on_expand: EventHandler<FileEntry>,
@@ -176,15 +184,17 @@ pub(super) fn render_explorer_row(
         .is_some_and(|selected| selected.path == entry.path);
     let padding = 6 + node.depth * 14;
     let is_directory = entry.kind == EntryKind::Directory;
+    let ignored = node.ignored;
     let entry_for_click = entry.clone();
     rsx! {
         button {
             key: "{path}",
-            class: if selected { "file-tree-row flex h-7.25 w-full items-center gap-1.5 rounded-sm bg-accent pr-1.5 text-left text-xs text-foreground" } else { "file-tree-row flex h-7.25 w-full items-center gap-1.5 rounded-sm bg-transparent pr-1.5 text-left text-xs text-foreground/90 hover:bg-accent/65" },
+            class: if ignored { "file-tree-row flex h-7.25 w-full items-center gap-1.5 rounded-sm bg-transparent pr-1.5 text-left text-xs text-muted-foreground/55 hover:bg-accent/45" } else if selected { "file-tree-row flex h-7.25 w-full items-center gap-1.5 rounded-sm bg-accent pr-1.5 text-left text-xs text-foreground" } else { "file-tree-row flex h-7.25 w-full items-center gap-1.5 rounded-sm bg-transparent pr-1.5 text-left text-xs text-foreground/90 hover:bg-accent/65" },
             style: "padding-left: {padding}px",
             role: "treeitem",
             "aria-selected": selected,
             "aria-expanded": is_directory.then_some(node.expanded),
+            title: ignored.then_some("Ignored by Git"),
             onclick: move |_| {
                 selected_entry.set(Some(entry_for_click.clone()));
                 if is_directory {
@@ -213,7 +223,7 @@ pub(super) fn render_explorer_row(
             }
             span { class: "flex-1 truncate", "{entry.name}" }
             if let Some(change) = git_change {
-                GitChangeBadge { kind: explorer_change_kind(&change) }
+                GitChangeBadge { kind: change }
             }
         }
     }
@@ -232,6 +242,45 @@ fn explorer_change_kind(change: &syntaxis_git::FileChange) -> Option<GitChangeKi
         Some(GitChangeKind::Unmerged)
     } else {
         change.worktree.or(change.index)
+    }
+}
+
+fn directory_change_kinds(
+    changes: &BTreeMap<String, syntaxis_git::FileChange>,
+) -> BTreeMap<String, GitChangeKind> {
+    let mut directories = BTreeMap::new();
+    for (path, change) in changes {
+        let Some(kind) = explorer_change_kind(change) else {
+            continue;
+        };
+        let mut parent = path.rsplit_once('/').map(|(parent, _)| parent);
+        while let Some(directory) = parent {
+            directories
+                .entry(directory.to_owned())
+                .and_modify(|current| *current = stronger_change_kind(*current, kind))
+                .or_insert(kind);
+            parent = directory.rsplit_once('/').map(|(parent, _)| parent);
+        }
+    }
+    directories
+}
+
+fn stronger_change_kind(left: GitChangeKind, right: GitChangeKind) -> GitChangeKind {
+    if change_kind_priority(left) >= change_kind_priority(right) {
+        left
+    } else {
+        right
+    }
+}
+
+const fn change_kind_priority(kind: GitChangeKind) -> u8 {
+    match kind {
+        GitChangeKind::Unmerged => 7,
+        GitChangeKind::Deleted => 6,
+        GitChangeKind::Modified | GitChangeKind::TypeChanged => 5,
+        GitChangeKind::Renamed | GitChangeKind::Copied => 4,
+        GitChangeKind::Added => 3,
+        GitChangeKind::Untracked => 2,
     }
 }
 
@@ -282,4 +331,58 @@ pub(super) fn expand_directory(
             Err(message) => set_error(toast, message),
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn change(path: &str, kind: GitChangeKind) -> syntaxis_git::FileChange {
+        syntaxis_git::FileChange {
+            path: RelativePath::try_from(path).unwrap(),
+            original_path: None,
+            index: None,
+            worktree: Some(kind),
+            conflicted: false,
+            staged_additions: 0,
+            staged_deletions: 0,
+            unstaged_additions: 0,
+            unstaged_deletions: 0,
+        }
+    }
+
+    #[test]
+    fn directory_badges_include_nested_file_changes() {
+        let changes = BTreeMap::from([(
+            "public/icons/favicon.svg".to_owned(),
+            change("public/icons/favicon.svg", GitChangeKind::Untracked),
+        )]);
+
+        let directories = directory_change_kinds(&changes);
+
+        assert_eq!(directories.get("public"), Some(&GitChangeKind::Untracked));
+        assert_eq!(
+            directories.get("public/icons"),
+            Some(&GitChangeKind::Untracked)
+        );
+    }
+
+    #[test]
+    fn directory_badges_prioritize_actionable_changes() {
+        let changes = BTreeMap::from([
+            (
+                "src/new.rs".to_owned(),
+                change("src/new.rs", GitChangeKind::Untracked),
+            ),
+            (
+                "src/main.rs".to_owned(),
+                change("src/main.rs", GitChangeKind::Modified),
+            ),
+        ]);
+
+        assert_eq!(
+            directory_change_kinds(&changes).get("src"),
+            Some(&GitChangeKind::Modified)
+        );
+    }
 }

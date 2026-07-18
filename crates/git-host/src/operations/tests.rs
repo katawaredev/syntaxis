@@ -441,6 +441,48 @@ async fn current_incoming_and_both_resolve_real_merge_blocks() {
 }
 
 #[tokio::test]
+async fn pull_fast_forwards_from_the_configured_upstream() {
+    let repository = init_repository();
+    fs::write(repository.path().join("tracked.txt"), "base\n").unwrap();
+    git(repository.path(), &["add", "tracked.txt"]);
+    git(repository.path(), &["commit", "-m", "base"]);
+    let remote_parent = TempDir::new().unwrap();
+    git(remote_parent.path(), &["init", "--bare", "remote.git"]);
+    let remote = remote_parent.path().join("remote.git");
+    git(
+        repository.path(),
+        &["remote", "add", "origin", remote.to_str().unwrap()],
+    );
+    git(repository.path(), &["push", "-u", "origin", "main"]);
+    git(&remote, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+
+    let other_parent = TempDir::new().unwrap();
+    git(
+        other_parent.path(),
+        &["clone", remote.to_str().unwrap(), "other"],
+    );
+    let other = other_parent.path().join("other");
+    git(&other, &["config", "user.name", "Other Test"]);
+    git(&other, &["config", "user.email", "other@example.invalid"]);
+    git(&other, &["config", "commit.gpgsign", "false"]);
+    fs::write(other.join("remote.txt"), "remote\n").unwrap();
+    git(&other, &["add", "remote.txt"]);
+    git(&other, &["commit", "-m", "remote change"]);
+    git(&other, &["push"]);
+
+    let host = HostGit::default();
+    let workspace = workspace(repository.path());
+    let result = host.pull(&workspace).await.unwrap();
+
+    assert_eq!(result.message, "Pull completed.");
+    assert_eq!(
+        fs::read_to_string(repository.path().join("remote.txt")).unwrap(),
+        "remote\n"
+    );
+    assert_eq!(host.status(&workspace).await.unwrap().branch.behind, 0);
+}
+
+#[tokio::test]
 async fn fetch_push_and_force_with_lease_follow_real_remote_state() {
     let repository = init_repository();
     fs::write(repository.path().join("tracked.txt"), "base\n").unwrap();

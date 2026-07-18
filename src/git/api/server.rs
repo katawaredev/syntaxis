@@ -218,6 +218,14 @@ pub(super) async fn repository_status(
         .map_err(server_error)
 }
 
+pub(super) async fn ignored_paths(workspace_slug: &str) -> Result<Vec<String>, ServerFnError> {
+    let workspace = workspace(workspace_slug).await?;
+    HostGit::default()
+        .ignored_paths(&workspace)
+        .await
+        .map_err(server_error)
+}
+
 pub(super) async fn repository_state(
     workspace_slug: &str,
 ) -> Result<RepositoryState, ServerFnError> {
@@ -574,6 +582,14 @@ pub(super) async fn fetch(workspace_slug: &str) -> Result<RemoteResult, ServerFn
     let workspace = workspace(workspace_slug).await?;
     HostGit::default()
         .fetch(&workspace)
+        .await
+        .map_err(server_error)
+}
+
+pub(super) async fn pull(workspace_slug: &str) -> Result<RemoteResult, ServerFnError> {
+    let workspace = workspace(workspace_slug).await?;
+    HostGit::default()
+        .pull(&workspace)
         .await
         .map_err(server_error)
 }

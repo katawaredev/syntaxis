@@ -935,7 +935,24 @@ fn RemoteTerminal(
                                         mobile_tabs_open.set(false);
                                     },
                                     span { class: lifecycle_dot_class(session.lifecycle) }
-                                    span { class: "truncate", "{session.name}" }
+                                    span { class: "flex-1 truncate text-left", "{session.name}" }
+                                    button {
+                                        class: "ml-auto grid size-7 shrink-0 place-items-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground",
+                                        r#type: "button",
+                                        "aria-label": "Close {session.name}",
+                                        title: "Close {session.name}",
+                                        onclick: {
+                                            let session_id = session.id.clone();
+                                            move |event| {
+                                                event.stop_propagation();
+                                                client
+                                                    .send(ClientMessage::Close {
+                                                        session_id: session_id.clone(),
+                                                    });
+                                            }
+                                        },
+                                        Icon { icon: AppIcon::Close, size: 12 }
+                                    }
                                 }
                             }
                         }
@@ -948,7 +965,7 @@ fn RemoteTerminal(
                         onclick: move |_| open_new_terminal_dialog.call(()),
                     }
                     DropdownMenu {
-                        class: "relative shrink-0",
+                        class: "relative order-3 shrink-0",
                         open: quick_menu(),
                         on_open_change: move |open: bool| quick_menu.set(open),
                         MenuTrigger {
@@ -1039,7 +1056,7 @@ fn RemoteTerminal(
                         }
                     }
                     DropdownMenu {
-                        class: "relative shrink-0",
+                        class: "relative order-2 shrink-0",
                         open: menu(),
                         on_open_change: move |open: bool| menu.set(open),
                         MenuTrigger {

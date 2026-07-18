@@ -5,6 +5,8 @@ use pulldown_cmark::{html, CowStr, Event, Options, Parser, Tag};
 const MARKDOWN_PREVIEW_CSS: Asset = asset!("/assets/files/markdown-preview.css");
 const DIFF_TITLEBAR_CLASS: &str = "sticky top-0 z-10 flex min-h-14 min-w-165 items-center justify-between gap-3 border-b border-border bg-background/95 p-3 font-sans backdrop-blur-sm max-md:min-h-13 max-md:px-2.5 max-md:py-2";
 const CHECKERBOARD_STYLE: &str = "background-image: linear-gradient(45deg,#aaa 25%,transparent 25%),linear-gradient(-45deg,#aaa 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#aaa 75%),linear-gradient(-45deg,transparent 75%,#aaa 75%); background-size: 20px 20px; background-position: 0 0,0 10px,10px -10px,-10px 0";
+const MAX_CSV_PREVIEW_ROWS: usize = 500;
+const MAX_CSV_PREVIEW_COLUMNS: usize = 100;
 
 #[component]
 pub(super) fn EditorStatus(
@@ -114,6 +116,108 @@ pub(super) fn MarkdownPreview(source: String) -> Element {
             article { class: "markdown-preview", dangerous_inner_html: rendered }
         }
     }
+}
+
+#[component]
+pub(super) fn CsvPreview(source: String, path: String) -> Element {
+    let table = parse_csv(&source);
+    rsx! {
+        document::Stylesheet { href: MARKDOWN_PREVIEW_CSS }
+        div {
+            class: "min-h-full bg-card p-4",
+            role: "region",
+            "aria-label": "CSV preview",
+            article { class: "markdown-preview !max-w-none",
+                p { class: "text-[10px] font-[750] tracking-[.14em] text-primary",
+                    "CSV PREVIEW · {path}"
+                }
+                match table {
+                    Ok(table) if table.headers.is_empty() => rsx! {
+                        p { class: "text-muted-foreground", "This CSV file is empty." }
+                    },
+                    Ok(table) => rsx! {
+                        div { class: "overflow-auto",
+                            table {
+                                thead {
+                                    tr {
+                                        for header in table.headers {
+                                            th { "{header}" }
+                                        }
+                                    }
+                                }
+                                tbody {
+                                    for row in table.rows {
+                                        tr {
+                                            for cell in row {
+                                                td { "{cell}" }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if table.truncated {
+                            p { class: "text-muted-foreground",
+                                "Preview limited to {MAX_CSV_PREVIEW_ROWS} data rows and {MAX_CSV_PREVIEW_COLUMNS} columns."
+                            }
+                        }
+                    },
+                    Err(message) => rsx! {
+                        p { class: "text-destructive", "Could not parse CSV: {message}" }
+                    },
+                }
+            }
+        }
+    }
+}
+
+struct CsvTable {
+    headers: Vec<String>,
+    rows: Vec<Vec<String>>,
+    truncated: bool,
+}
+
+fn parse_csv(source: &str) -> Result<CsvTable, String> {
+    let mut reader = csv::ReaderBuilder::new()
+        .has_headers(false)
+        .flexible(true)
+        .from_reader(source.as_bytes());
+    let mut records = reader.records();
+    let Some(headers) = records.next() else {
+        return Ok(CsvTable {
+            headers: Vec::new(),
+            rows: Vec::new(),
+            truncated: false,
+        });
+    };
+    let headers = headers.map_err(|error| error.to_string())?;
+    let mut truncated = headers.len() > MAX_CSV_PREVIEW_COLUMNS;
+    let headers = headers
+        .iter()
+        .take(MAX_CSV_PREVIEW_COLUMNS)
+        .map(str::to_owned)
+        .collect();
+    let mut rows = Vec::new();
+    for record in records {
+        if rows.len() == MAX_CSV_PREVIEW_ROWS {
+            truncated = true;
+            break;
+        }
+        let record = record.map_err(|error| error.to_string())?;
+        truncated |= record.len() > MAX_CSV_PREVIEW_COLUMNS;
+        rows.push(
+            record
+                .iter()
+                .take(MAX_CSV_PREVIEW_COLUMNS)
+                .map(str::to_owned)
+                .collect(),
+        );
+    }
+    Ok(CsvTable {
+        headers,
+        rows,
+        truncated,
+    })
 }
 
 pub(crate) fn render_markdown(source: &str) -> String {
@@ -259,6 +363,9 @@ pub(super) fn is_markdown(path: &str) -> bool {
 pub(super) fn is_svg(path: &str) -> bool {
     path.to_ascii_lowercase().ends_with(".svg")
 }
+pub(super) fn is_csv(path: &str) -> bool {
+    path.to_ascii_lowercase().ends_with(".csv")
+}
 pub(super) fn file_label(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
 }
@@ -276,7 +383,7 @@ pub(super) fn file_glyph(path: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::render_markdown;
+    use super::{parse_csv, render_markdown};
 
     #[test]
     fn renders_commonmark_and_gfm() {
@@ -298,5 +405,14 @@ mod tests {
         assert!(!rendered.contains("<script>"));
         assert!(rendered.contains("&lt;script&gt;"));
         assert!(!rendered.contains("javascript:"));
+    }
+
+    #[test]
+    fn csv_uses_first_record_as_headers_and_handles_quoted_cells() {
+        let table = parse_csv("name,note\nAda,\"hello, world\"\n").unwrap();
+
+        assert_eq!(table.headers, ["name", "note"]);
+        assert_eq!(table.rows, [["Ada", "hello, world"]]);
+        assert!(!table.truncated);
     }
 }
