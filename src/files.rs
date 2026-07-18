@@ -1,4 +1,7 @@
-use std::collections::BTreeSet;
+use std::{
+    collections::BTreeSet,
+    fmt::{self, Write as _},
+};
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use dioxus::prelude::*;
@@ -8,9 +11,9 @@ use dioxus_code_editor::{
 };
 use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
 use syntaxis_editor::{
-    apply_editor_config, complete_any_word, complete_with_words, language_label_for_path,
-    language_slug_for_path, resolve_editor_config, BufferStatus, EditorBuffer, EditorConfigSource,
-    ExplorerTree, ExternalChange, IndentStyle,
+    apply_editor_config, complete_any_word, complete_with_words, generated_completion_words,
+    language_label_for_path, language_slug_for_path, resolve_editor_config, BufferStatus,
+    EditorBuffer, EditorConfigSource, ExplorerTree, ExternalChange, IndentStyle,
 };
 use syntaxis_git::{ChangeKind as GitChangeKind, DiffKind, RepositoryStatus, UnifiedDiff};
 use syntaxis_ui::prelude::{
@@ -56,6 +59,146 @@ use preview::{
 
 const MAX_TEXT_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_PREVIEW_BYTES: u64 = 4 * 1024 * 1024;
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct FilesQuery {
+    path: Option<String>,
+    line: Option<usize>,
+    column: Option<usize>,
+    end_line: Option<usize>,
+    end_column: Option<usize>,
+}
+
+impl FilesQuery {
+    fn path(path: String) -> Self {
+        Self {
+            path: Some(path),
+            ..Self::default()
+        }
+    }
+
+    pub(crate) fn location(
+        path: String,
+        line: usize,
+        column: Option<usize>,
+        end_line: Option<usize>,
+        end_column: Option<usize>,
+    ) -> Self {
+        Self {
+            path: Some(path),
+            line: Some(line.max(1)),
+            column: column.map(|value| value.max(1)),
+            end_line: end_line.map(|value| value.max(1)),
+            end_column: end_column.map(|value| value.max(1)),
+        }
+    }
+}
+
+impl From<&str> for FilesQuery {
+    fn from(query: &str) -> Self {
+        let mut result = Self::default();
+        for (key, value) in url::form_urlencoded::parse(query.as_bytes()) {
+            match key.as_ref() {
+                "path" if result.path.is_none() => {
+                    result.path = (!value.trim().is_empty()).then(|| value.into_owned());
+                }
+                "at" => {
+                    if let Some(location) = parse_compact_location(&value) {
+                        result.line.get_or_insert(location.line);
+                        if result.column.is_none() {
+                            result.column = location.column;
+                        }
+                        if result.end_line.is_none() {
+                            result.end_line = location.end_line;
+                        }
+                        if result.end_column.is_none() {
+                            result.end_column = location.end_column;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        result
+    }
+}
+
+impl fmt::Display for FilesQuery {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut serializer = url::form_urlencoded::Serializer::new(String::new());
+        if let Some(path) = self.path.as_deref() {
+            serializer.append_pair("path", path);
+        }
+        let mut query = serializer.finish();
+        if let Some(location) = compact_location(self) {
+            if !query.is_empty() {
+                query.push('&');
+            }
+            query.push_str("at=");
+            query.push_str(&location);
+        }
+        formatter.write_str(&query)
+    }
+}
+
+fn positive_usize(value: &str) -> Option<usize> {
+    value.parse::<usize>().ok().filter(|value| *value > 0)
+}
+
+struct ParsedLocation {
+    line: usize,
+    column: Option<usize>,
+    end_line: Option<usize>,
+    end_column: Option<usize>,
+}
+
+fn parse_compact_location(value: &str) -> Option<ParsedLocation> {
+    let (start, end) = value
+        .split_once('-')
+        .map_or((value, None), |(start, end)| (start, Some(end)));
+    let (line, column) = parse_line_column(start)?;
+    let (end_line, end_column) = match end {
+        Some(end) if end.contains(':') => {
+            let (line, column) = parse_line_column(end)?;
+            (Some(line), column)
+        }
+        Some(end) => (Some(line), Some(positive_usize(end)?)),
+        None => (None, None),
+    };
+    Some(ParsedLocation {
+        line,
+        column,
+        end_line,
+        end_column,
+    })
+}
+
+fn parse_line_column(value: &str) -> Option<(usize, Option<usize>)> {
+    let (line, column) = value
+        .split_once(':')
+        .map_or((value, None), |(line, column)| (line, Some(column)));
+    let column = match column {
+        Some(column) => Some(positive_usize(column)?),
+        None => None,
+    };
+    Some((positive_usize(line)?, column))
+}
+
+fn compact_location(query: &FilesQuery) -> Option<String> {
+    let line = query.line?;
+    let Some(column) = query.column else {
+        return Some(line.to_string());
+    };
+    let mut location = format!("{line}:{column}");
+    if let Some(end_column) = query.end_column {
+        if query.end_line.is_none() || query.end_line == Some(line) {
+            let _ = write!(location, "-{end_column}");
+        } else if let Some(end_line) = query.end_line {
+            let _ = write!(location, "-{end_line}:{end_column}");
+        }
+    }
+    Some(location)
+}
 
 #[derive(Clone, Debug, PartialEq)]
 enum OpenDocument {
@@ -209,12 +352,16 @@ impl FilesSessionState {
 }
 
 #[component]
-pub fn Files(slug: String) -> Element {
-    let _ = slug;
+pub fn Files(slug: String, query: FilesQuery) -> Element {
     let active = use_context::<crate::workspace::ActiveWorkspace>();
     match active.current() {
         Some(workspace) => rsx! {
-            WorkspaceFiles { key: "{workspace.id.0}", target: workspace }
+            WorkspaceFiles {
+                key: "{workspace.id.0}",
+                target: workspace,
+                route_slug: slug,
+                query,
+            }
         },
         None => rsx! {
             div { class: "grid size-full place-items-center bg-card text-sm text-muted-foreground",
@@ -225,7 +372,7 @@ pub fn Files(slug: String) -> Element {
 }
 
 #[component]
-fn WorkspaceFiles(target: WorkspaceRecord) -> Element {
+fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery) -> Element {
     let mut refresh = use_signal(|| 0_u64);
     let load_target = target.clone();
     let initial = use_resource(move || {
@@ -275,6 +422,8 @@ fn WorkspaceFiles(target: WorkspaceRecord) -> Element {
     let mut git_revert_request = use_signal(|| None::<GitRevertRequest>);
     let mut toast = use_signal(|| None::<ToastState>);
     let mut processed_event_revision = session.processed_event_revision;
+    let mut requested_location = use_signal(|| None::<FilesQuery>);
+    let mut pending_location = use_signal(|| None::<FilesQuery>);
 
     use_effect(move || {
         let Some(result) = initial() else { return };
@@ -286,6 +435,100 @@ fn WorkspaceFiles(target: WorkspaceRecord) -> Element {
                 git_status.set(loaded.git_status);
             }
             Err(message) => set_error(toast, message),
+        }
+    });
+
+    use_effect({
+        let query = query.clone();
+        move || {
+            let Some(path) = query.path.clone() else {
+                return;
+            };
+            if requested_location().as_ref() == Some(&query) {
+                return;
+            }
+            let Some(workspace) = workspace() else {
+                return;
+            };
+            requested_location.set(Some(query.clone()));
+            let relative = match RelativePath::try_from(path.clone()) {
+                Ok(relative) if !relative.is_root() => relative,
+                Ok(_) => {
+                    pending_location.set(None);
+                    set_error(toast, "A source link must point to a file.");
+                    return;
+                }
+                Err(error) => {
+                    pending_location.set(None);
+                    set_error(toast, error.message);
+                    return;
+                }
+            };
+            let mut normalized_location = query.clone();
+            normalized_location.path = Some(relative.as_str().to_owned());
+            pending_location.set(Some(normalized_location));
+            spawn(async move {
+                match workspace_client::stat_file(workspace.clone(), relative).await {
+                    Ok(entry) if entry.kind == EntryKind::File => open_document(
+                        entry,
+                        Some(workspace),
+                        editor_configs(),
+                        documents,
+                        active_path,
+                        loading_path,
+                        loading_documents,
+                    ),
+                    Ok(_) => {
+                        pending_location.set(None);
+                        set_error(toast, format!("{path} is not a file."));
+                    }
+                    Err(message) => {
+                        pending_location.set(None);
+                        set_error(toast, format!("Could not open {path}: {message}"));
+                    }
+                }
+            });
+        }
+    });
+
+    use_effect(move || {
+        let Some(location) = pending_location() else {
+            return;
+        };
+        let Some(path) = location.path.as_deref() else {
+            pending_location.set(None);
+            return;
+        };
+        if active_path().as_deref() != Some(path) {
+            return;
+        }
+        let Some(source) = text_document_contents(path, documents) else {
+            return;
+        };
+        let command = location_command(&source, &location);
+        issue_command(command_revision, editor_command, command);
+        pending_location.set(None);
+    });
+
+    let navigator = use_navigator();
+    use_effect({
+        let query = query.clone();
+        move || {
+            let Some(path) = active_path() else {
+                return;
+            };
+            let query_path = query
+                .path
+                .as_deref()
+                .and_then(|path| RelativePath::try_from(path).ok())
+                .map(|path| path.as_str().to_owned());
+            if query_path.as_deref() == Some(&path) {
+                return;
+            }
+            navigator.replace(crate::app::Route::Files {
+                slug: route_slug.clone(),
+                query: FilesQuery::path(path),
+            });
         }
     });
 
@@ -1037,6 +1280,49 @@ fn WorkspaceFiles(target: WorkspaceRecord) -> Element {
     }
 }
 
+fn location_command(source: &str, location: &FilesQuery) -> EditorCommandKind {
+    let Some(line) = location.line else {
+        return EditorCommandKind::Focus;
+    };
+    let Some(column) = location.column else {
+        return EditorCommandKind::GoToLine { line };
+    };
+    let start = line_column_offset(source, line, column);
+    let end = location
+        .end_line
+        .or(location.end_column)
+        .map_or(start, |_| {
+            line_column_offset(
+                source,
+                location.end_line.unwrap_or(line),
+                location.end_column.unwrap_or(column),
+            )
+        });
+    EditorCommandKind::Select {
+        start: start.min(end),
+        end: start.max(end),
+    }
+}
+
+fn line_column_offset(source: &str, line: usize, column: usize) -> usize {
+    let line = line.max(1);
+    let start = if line == 1 {
+        0
+    } else {
+        source
+            .match_indices('\n')
+            .nth(line - 2)
+            .map_or(source.len(), |(offset, _)| offset + 1)
+    };
+    let end = source[start..]
+        .find('\n')
+        .map_or(source.len(), |offset| start + offset);
+    source[start..end]
+        .char_indices()
+        .nth(column.max(1) - 1)
+        .map_or(end, |(offset, _)| start + offset)
+}
+
 async fn load_initial(workspace: WorkspaceRecord) -> Result<InitialFiles, String> {
     let entries = workspace_client::list_files(workspace.clone(), RelativePath::root()).await?;
     let mut editor_configs = Vec::new();
@@ -1084,6 +1370,54 @@ fn set_success(mut toast: Signal<Option<ToastState>>, message: impl Into<String>
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn file_location_links_round_trip_through_the_router() {
+        let route = crate::app::Route::Files {
+            slug: "syntaxis-demo".into(),
+            query: FilesQuery::location(
+                "src/folder with spaces/main.rs".into(),
+                42,
+                Some(17),
+                Some(42),
+                Some(25),
+            ),
+        };
+        let link = route.to_string();
+        assert_eq!(
+            link,
+            "/workspaces/syntaxis-demo/files?path=src%2Ffolder+with+spaces%2Fmain.rs&at=42:17-25"
+        );
+        assert_eq!(link.parse::<crate::app::Route>().unwrap(), route);
+    }
+
+    #[test]
+    fn file_location_commands_use_one_based_unicode_columns_and_clamp() {
+        let source = "first\nαβγ\nlast";
+        let location = FilesQuery::location("src/main.rs".into(), 2, Some(2), Some(2), Some(4));
+        assert_eq!(
+            location_command(source, &location),
+            EditorCommandKind::Select { start: 8, end: 12 }
+        );
+        assert_eq!(line_column_offset(source, 99, 99), source.len());
+    }
+
+    #[test]
+    fn compact_file_locations_support_lines_columns_and_ranges() {
+        let line = FilesQuery::from("path=src%2Fmain.rs&at=42");
+        assert_eq!((line.line, line.column), (Some(42), None));
+
+        let same_line = FilesQuery::from("path=src%2Fmain.rs&at=42%3A17-25");
+        assert_eq!(same_line.line, Some(42));
+        assert_eq!(same_line.column, Some(17));
+        assert_eq!(same_line.end_line, Some(42));
+        assert_eq!(same_line.end_column, Some(25));
+
+        let multiline = FilesQuery::from("path=src%2Fmain.rs&at=42%3A17-44%3A3");
+        assert_eq!(multiline.end_line, Some(44));
+        assert_eq!(multiline.end_column, Some(3));
+        assert_eq!(compact_location(&multiline).as_deref(), Some("42:17-44:3"));
+    }
+
     #[test]
     fn search_returns_non_overlapping_byte_ranges() {
         assert_eq!(

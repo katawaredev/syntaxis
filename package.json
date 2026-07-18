@@ -3,14 +3,25 @@
   "private": true,
   "scripts": {
     "build:terminal": "bun scripts/build-terminal.mjs",
+    "generate:completions": "bun scripts/generate-completions.mjs",
+    "test:terminal": "bun test assets/terminal/source-links.test.js",
     "lighthouse": "rm -rf target/dx/syntaxis/release/web/public && dx build --platform web --release --locked --debug-symbols false && lhci autorun",
     "lighthouse:open": "lhci open"
   },
   "dependencies": {
-    "@wterm/dom": "^0.1.9",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "esbuild": "^0.25.0"
   },
   "devDependencies": {
-    "@lhci/cli": "0.15.1"
+    "@codemirror/autocomplete": "6.20.3",
+    "@codemirror/lang-css": "6.3.1",
+    "@codemirror/lang-html": "6.4.11",
+    "@codemirror/lang-javascript": "6.2.5",
+    "@codemirror/lang-sql": "6.10.0",
+    "@codemirror/state": "6.7.1",
+    "@lhci/cli": "0.15.1",
+    "mdn-data": "2.29.0",
+    "typescript": "5.9.3"
   }
 }

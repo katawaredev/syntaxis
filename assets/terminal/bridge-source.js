@@ -1,7 +1,12 @@
-import { WTerm } from "@wterm/dom";
+import { FitAddon } from "@xterm/addon-fit";
+import { Terminal } from "@xterm/xterm";
+import { parseSourceLocations } from "./source-links.js";
 
 const instances = new Map();
 
+function themeColor(container, property, fallback) {
+  return getComputedStyle(container).getPropertyValue(property).trim() || fallback;
+}
 function emit(kind, id, detail = {}) {
   window.dispatchEvent(
     new CustomEvent("syntaxis-terminal", {
@@ -10,15 +15,44 @@ function emit(kind, id, detail = {}) {
   );
 }
 
+function sourceLinks(term, id, row) {
+  const line = term.buffer.active.getLine(row - 1);
+  if (!line) return [];
+  const text = line.translateToString(true);
+  const links = [];
+  for (const location of parseSourceLocations(text)) {
+    links.push({
+      range: {
+        start: { x: location.start + 1, y: row },
+        end: { x: location.start + location.text.length, y: row },
+      },
+      text: location.text,
+      decorations: {
+        pointerCursor: true,
+        underline: true,
+      },
+      activate(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        emit("source_link", id, {
+          path: location.path,
+          line: location.line,
+          column: location.column,
+          end_line: location.endLine,
+          end_column: location.endColumn,
+        });
+      },
+    });
+  }
+  return links;
+}
+
 async function mount(id) {
   dispose(id);
 
   const container = document.getElementById(id);
   if (!container) throw new Error(`Terminal container ${id} was not found`);
 
-  // Dioxus may reuse the same DOM node when the keyed terminal component is
-  // replaced. Dispose the renderer that previously owned that node (or any
-  // renderer whose node has already been detached) before mounting a new one.
   for (const [instanceId, instance] of instances) {
     if (instance.container === container || !instance.container.isConnected) {
       dispose(instanceId);
@@ -26,27 +60,63 @@ async function mount(id) {
   }
   container.replaceChildren();
 
-  const term = new WTerm(container, {
-    autoResize: true,
+  const background = themeColor(container, "--card", "#272727");
+  const foreground = themeColor(container, "--foreground", "#d4d4d4");
+  const term = new Terminal({
+    allowTransparency: false,
     cursorBlink: true,
-    onData(data) {
-      emit("input", id, { data });
-    },
-    onResize(cols, rows) {
-      const rect = container.getBoundingClientRect();
-      emit("resize", id, {
-        columns: cols,
-        rows,
-        pixelWidth: Math.min(65535, Math.round(rect.width)),
-        pixelHeight: Math.min(65535, Math.round(rect.height)),
-      });
+    fontFamily: "Menlo, Consolas, 'DejaVu Sans Mono', 'Courier New', monospace",
+    fontSize: 14,
+    lineHeight: 1.2,
+    scrollback: 5000,
+    theme: {
+      // Keep the terminal canvas identical to the editor surface. These resolve
+      // to the same --card/--foreground tokens used by dioxus-code-editor.css.
+      background,
+      foreground,
+      cursor: foreground,
+      selectionBackground: "#569cd64d",
     },
   });
-
-  await term.init();
-  instances.set(id, { term, container });
-
-  // Let the layout settle, then signal readiness.
+  const fitAddon = new FitAddon();
+  term.loadAddon(fitAddon);
+  term.open(container);
+  const dataSubscription = term.onData(data => emit("input", id, { data }));
+  const resizeSubscription = term.onResize(({ cols, rows }) => {
+    const rect = container.getBoundingClientRect();
+    emit("resize", id, {
+      columns: cols,
+      rows,
+      pixelWidth: Math.min(65535, Math.round(rect.width)),
+      pixelHeight: Math.min(65535, Math.round(rect.height)),
+    });
+  });
+  const linkSubscription = term.registerLinkProvider({
+    provideLinks(row, callback) {
+      callback(sourceLinks(term, id, row));
+    },
+  });
+  let fitFrame = null;
+  const fit = () => {
+    if (fitFrame !== null) cancelAnimationFrame(fitFrame);
+    fitFrame = requestAnimationFrame(() => {
+      fitFrame = null;
+      if (instances.get(id)?.term === term) fitAddon.fit();
+    });
+  };
+  const resizeObserver = new ResizeObserver(fit);
+  resizeObserver.observe(container);
+  instances.set(id, {
+    term,
+    fitAddon,
+    container,
+    resizeObserver,
+    subscriptions: [dataSubscription, resizeSubscription, linkSubscription],
+    cancelFit: () => {
+      if (fitFrame !== null) cancelAnimationFrame(fitFrame);
+    },
+  });
+  fit();
   requestAnimationFrame(() => {
     if (instances.get(id)?.term !== term) return;
     emit("ready", id);
@@ -54,9 +124,7 @@ async function mount(id) {
 }
 
 function write(id, data) {
-  const instance = instances.get(id);
-  if (!instance) return;
-  instance.term.write(new Uint8Array(data));
+  instances.get(id)?.term.write(new Uint8Array(data));
 }
 
 async function action(id, name) {
@@ -65,14 +133,14 @@ async function action(id, name) {
     emit("action_result", id, { action: name, ok: false, message: "Terminal is not ready" });
     return;
   }
-  const { term, container } = instance;
+  const { term, fitAddon } = instance;
   try {
     switch (name) {
       case "clear":
-        term.write("\x1b[2J\x1b[H");
+        term.clear();
         break;
       case "copy": {
-        const selection = window.getSelection()?.toString();
+        const selection = term.getSelection();
         if (!selection) throw new Error("Select terminal text before copying");
         if (!navigator.clipboard?.writeText) throw new Error("Clipboard write access is unavailable");
         await navigator.clipboard.writeText(selection);
@@ -83,23 +151,16 @@ async function action(id, name) {
         if (!navigator.clipboard?.readText) throw new Error("Clipboard read access is unavailable");
         const text = await navigator.clipboard.readText();
         if (!text) throw new Error("Clipboard is empty");
-        term.write(text);
+        term.paste(text);
         emit("action_result", id, { action: name, ok: true, message: "Clipboard pasted" });
         break;
       }
-      case "focus": {
-        const textarea = container.querySelector("textarea");
-        if (textarea instanceof HTMLTextAreaElement) textarea.focus({ preventScroll: true });
-        else term.focus();
+      case "focus":
+        term.focus();
         break;
-      }
-      case "fit": {
-        const rect = container.getBoundingClientRect();
-        const cols = Math.max(1, Math.floor(rect.width / 8));
-        const rows = Math.max(1, Math.floor(rect.height / 18));
-        term.resize(cols, rows);
+      case "fit":
+        fitAddon.fit();
         break;
-      }
     }
   } catch (error) {
     emit("action_result", id, {
@@ -113,7 +174,10 @@ async function action(id, name) {
 function dispose(id) {
   const instance = instances.get(id);
   if (!instance) return;
-  instance.term.destroy();
+  instance.cancelFit();
+  instance.resizeObserver.disconnect();
+  for (const subscription of instance.subscriptions) subscription.dispose();
+  instance.term.dispose();
   instances.delete(id);
 }
 

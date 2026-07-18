@@ -1,21 +1,21 @@
 #[allow(unused_imports)] // Dioxus expands the parent glob for RSX hot-reload analysis.
 use super::{
     complete_any_word, complete_with_words, component, dioxus_core, dioxus_elements,
-    dioxus_signals, document, file_glyph, language_slug_for_path, request_close, rsx, save_path,
-    set_error, set_success, spawn, ActionCallback, AnyStorage, AppIcon, ButtonExtension,
-    CanvasExtension, CloseRequest, ControlSize, DataExtension, DetailsExtension, DialogExtension,
-    DropdownMenu, DropdownMenuItem, EditorBuffer, EditorCommand, EditorCommandKind,
-    EditorSelection, Element, EmbedExtension, EventHandler, FieldsetExtension, FormEvent,
-    GlobalAttributesExtension, HasAttributes, HasFormData, HasKeyboardData, HasPointerData,
-    History, Icon, IframeExtension, ImgExtension, InputExtension, Key, KeyboardEvent, Language,
-    LiExtension, LinkExtension, MenuButtonTrigger, MenuContent, MeterExtension, Modifiers,
-    ModifiersInteraction, MpaddedExtension, MspaceExtension, ObjectExtension, OlExtension,
-    OpenDocument, OpenTab, OptgroupExtension, OptionExtension, PanelTab, PanelTabIndicator,
-    PanelTabWidth, ParamExtension, ProgressExtension, Props, ReadableExt, ReadableHashMapExt,
-    ReadableHashSetExt, ReadableOptionExt, ReadableResultExt, ReadableStrExt, ReadableVecExt,
-    SelectExtension, Signal, Storage, SvgAttributesExtension, TextInput, TextInputType,
-    TextareaExtension, ToastState, TrackExtension, UnifiedDiff, VideoExtension, WorkspaceRecord,
-    WritableExt, WritableStringExt, WritableVecExt,
+    dioxus_signals, document, file_glyph, generated_completion_words, language_slug_for_path,
+    request_close, rsx, save_path, set_error, set_success, spawn, ActionCallback, AnyStorage,
+    AppIcon, ButtonExtension, CanvasExtension, CloseRequest, ControlSize, DataExtension,
+    DetailsExtension, DialogExtension, DropdownMenu, DropdownMenuItem, EditorBuffer, EditorCommand,
+    EditorCommandKind, EditorSelection, Element, EmbedExtension, EventHandler, FieldsetExtension,
+    FormEvent, GlobalAttributesExtension, HasAttributes, HasFormData, HasKeyboardData,
+    HasPointerData, History, Icon, IframeExtension, ImgExtension, InputExtension, Key,
+    KeyboardEvent, Language, LiExtension, LinkExtension, MenuButtonTrigger, MenuContent,
+    MeterExtension, Modifiers, ModifiersInteraction, MpaddedExtension, MspaceExtension,
+    ObjectExtension, OlExtension, OpenDocument, OpenTab, OptgroupExtension, OptionExtension,
+    PanelTab, PanelTabIndicator, PanelTabWidth, ParamExtension, ProgressExtension, Props,
+    ReadableExt, ReadableHashMapExt, ReadableHashSetExt, ReadableOptionExt, ReadableResultExt,
+    ReadableStrExt, ReadableVecExt, SelectExtension, Signal, Storage, SvgAttributesExtension,
+    TextInput, TextInputType, TextareaExtension, ToastState, TrackExtension, UnifiedDiff,
+    VideoExtension, WorkspaceRecord, WritableExt, WritableStringExt, WritableVecExt,
 };
 use regex::RegexBuilder;
 use std::{
@@ -670,6 +670,11 @@ fn grammar_completion_words(language: &'static str) -> CompletionDictionary {
             .map(str::to_owned)
             .collect::<Vec<_>>()
     });
+    words.extend(
+        generated_completion_words(language)
+            .iter()
+            .map(|word| (*word).to_owned()),
+    );
     words.sort_unstable();
     words.dedup();
     let words = Arc::<[String]>::from(words);
@@ -724,7 +729,7 @@ pub(super) fn language_for_path(path: &str) -> Language {
 #[cfg(test)]
 mod tests {
     use super::{
-        completion_command, format_editor_reference, grammar_completion_words,
+        completion_command, completions_for, format_editor_reference, grammar_completion_words,
         should_open_completions,
     };
     use crate::files::{EditorBuffer, EditorSelection};
@@ -781,10 +786,25 @@ mod tests {
     #[test]
     fn completion_dictionary_comes_from_the_enabled_grammar() {
         let rust = grammar_completion_words("rust");
+        let javascript = grammar_completion_words("javascript");
+        let typescript = grammar_completion_words("typescript");
+        let html = grammar_completion_words("html");
+        let css = grammar_completion_words("css");
+        let sql = grammar_completion_words("sql");
 
         assert!(rust.iter().any(|word| word == "fn"));
         assert!(rust.iter().any(|word| word == "struct"));
         assert!(!rust.iter().any(|word| word == "identifier"));
+        assert!(javascript.iter().any(|word| word == "document"));
+        assert!(!javascript
+            .iter()
+            .any(|word| word == "AddEventListenerOptions"));
+        assert!(typescript
+            .iter()
+            .any(|word| word == "AddEventListenerOptions"));
+        assert!(html.iter().any(|word| word == "input"));
+        assert!(css.iter().any(|word| word == "display"));
+        assert!(sql.iter().any(|word| word == "select"));
     }
 
     #[test]
@@ -808,6 +828,35 @@ mod tests {
 
         assert!(should_open_completions(&rust, 1));
         assert!(!should_open_completions(&no_match, 3));
+    }
+
+    #[test]
+    fn generated_completion_candidates_are_reachable_from_common_prefixes() {
+        let version = FileVersion {
+            length: 1,
+            modified_unix_nanos: 0,
+        };
+        for (path, prefix, expected) in [
+            ("src/app.js", "doc", "document"),
+            ("src/app.ts", "AddEvent", "AddEventListenerOptions"),
+            ("index.html", "inp", "input"),
+            ("styles.css", "disp", "display"),
+            ("query.sql", "sel", "select"),
+        ] {
+            let buffer = EditorBuffer::open(
+                path,
+                prefix.into(),
+                version.clone(),
+                EditorConfig::default(),
+            );
+
+            assert!(
+                completions_for(&buffer, prefix.len())
+                    .iter()
+                    .any(|word| word == expected),
+                "{expected} should complete {prefix} in {path}",
+            );
+        }
     }
 
     #[test]

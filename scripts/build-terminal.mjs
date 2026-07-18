@@ -1,41 +1,72 @@
 #!/usr/bin/env node
 
-import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import esbuild from "esbuild";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const scriptPath = fileURLToPath(import.meta.url);
+const __dirname = dirname(scriptPath);
 const root = resolve(__dirname, "..");
 const assetsDir = resolve(root, "assets/terminal");
 const bridgeSource = resolve(assetsDir, "bridge-source.js");
+const sourceLinks = resolve(assetsDir, "source-links.js");
 const bundleDest = resolve(assetsDir, "terminal.bundle.js");
+const stampDest = resolve(assetsDir, "terminal.bundle.stamp");
 
-const pkg = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
-const wtermVersion =
-  pkg.dependencies?.["@wterm/dom"] ??
-  pkg.devDependencies?.["@wterm/dom"] ??
-  "unknown";
+function packageVersion(name) {
+  const manifest = resolve(root, "node_modules", name, "package.json");
+  return JSON.parse(readFileSync(manifest, "utf8")).version;
+}
 
-// Embed wterm CSS so the bridge can inject it at first mount without
+const versions = {
+  "@xterm/addon-fit": packageVersion("@xterm/addon-fit"),
+  "@xterm/xterm": packageVersion("@xterm/xterm"),
+  esbuild: packageVersion("esbuild"),
+};
+
+// Embed xterm CSS so the bridge can inject it at first mount without
 // requiring a separate <link> tag or Rust-side changes.
-const cssPath = resolve(root, "node_modules/@wterm/dom/src/terminal.css");
+const cssPath = resolve(root, "node_modules/@xterm/xterm/css/xterm.css");
 const css = readFileSync(cssPath, "utf8");
+const bridgeCode = readFileSync(bridgeSource, "utf8");
+const cacheKey = createHash("sha256")
+  .update("syntaxis-terminal-v1\0")
+  .update(readFileSync(scriptPath))
+  .update(bridgeCode)
+  .update(readFileSync(sourceLinks))
+  .update(css)
+  .update(JSON.stringify(versions))
+  .digest("hex");
+
+if (
+  existsSync(bundleDest) &&
+  existsSync(stampDest) &&
+  readFileSync(stampDest, "utf8").trim() === cacheKey
+) {
+  console.log(`Terminal bundle is current (${cacheKey.slice(0, 12)})`);
+  process.exit(0);
+}
 
 // Prepend a CSS injection snippet to the bridge source.  esbuild will
 // inline the string literal into the bundle.
 const cssInjection =
-  `(()=>{if(typeof document!=="undefined"&&!document.getElementById("wterm-css")){` +
-  `const s=document.createElement("style");s.id="wterm-css";` +
-  `s.textContent=${JSON.stringify(css)};document.head.appendChild(s);` +
+  `(()=>{if(typeof document!=="undefined"&&!document.getElementById("xterm-css")){` +
+  `const s=document.createElement("style");s.id="xterm-css";` +
+  `s.textContent=${JSON.stringify(css + `
+.xterm-host .xterm .xterm-rows span[style*="text-decoration: underline"] {
+  text-decoration-color: var(--primary) !important;
+  text-underline-offset: 2px;
+}
+`)};document.head.appendChild(s);` +
   `}})();\n`;
 
-const bridgeCode = readFileSync(bridgeSource, "utf8");
+const { default: esbuild } = await import("esbuild");
 
 const result = await esbuild.build({
   stdin: {
     contents: cssInjection + bridgeCode,
-    resolveDir: root,
+    resolveDir: assetsDir,
     loader: "js",
   },
   bundle: true,
@@ -52,4 +83,5 @@ if (result.errors.length > 0) {
   process.exit(1);
 }
 
-console.log(`Built terminal bundle with @wterm/dom ${wtermVersion}`);
+writeFileSync(stampDest, `${cacheKey}\n`);
+console.log(`Built terminal bundle with @xterm/xterm ${versions["@xterm/xterm"]} (${cacheKey.slice(0, 12)})`);

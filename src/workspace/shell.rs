@@ -32,7 +32,7 @@ pub fn WorkspaceShell() -> Element {
     use_context_provider(|| event_state);
     let route = use_route::<Route>();
     let (slug, active) = match route {
-        Route::Files { slug } => (slug, Module::Files),
+        Route::Files { slug, .. } => (slug, Module::Files),
         Route::Terminal { slug, .. } => (slug, Module::Terminal),
         Route::Git { slug } => (slug, Module::Git),
         Route::Preview { slug } => (slug, Module::Preview),
@@ -171,7 +171,10 @@ pub fn WorkspaceShell() -> Element {
                     label: "Files",
                     icon: AppIcon::Folder,
                     active: active == Module::Files,
-                    to: Route::Files { slug: slug.clone() },
+                    to: Route::Files {
+                        slug: slug.clone(),
+                        query: crate::files::FilesQuery::default(),
+                    },
                 }
                 NavItem {
                     label: "Terminal",

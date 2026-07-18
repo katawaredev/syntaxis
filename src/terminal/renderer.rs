@@ -2,6 +2,16 @@ use dioxus::prelude::*;
 use serde::Deserialize;
 use std::collections::VecDeque;
 use syntaxis_terminal::{SessionId, TerminalSize};
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+pub struct SourceLink {
+    pub path: String,
+    pub line: usize,
+    pub column: Option<usize>,
+    pub end_line: Option<usize>,
+    pub end_column: Option<usize>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct RendererOutput {
     pub session_id: SessionId,
@@ -86,12 +96,19 @@ enum BridgeEvent {
         ok: bool,
         message: String,
     },
+    SourceLink {
+        path: String,
+        line: usize,
+        column: Option<usize>,
+        end_line: Option<usize>,
+        end_column: Option<usize>,
+    },
     Error {
         message: String,
     },
 }
 #[component]
-pub fn GhosttyRenderer(
+pub fn XtermRenderer(
     session_id: SessionId,
     output: ReadSignal<Option<RendererOutputBatch>>,
     command: ReadSignal<Option<RendererCommand>>,
@@ -99,9 +116,10 @@ pub fn GhosttyRenderer(
     on_resize: EventHandler<TerminalSize>,
     on_ready: EventHandler<()>,
     on_action_result: EventHandler<RendererActionResult>,
+    on_source_link: EventHandler<SourceLink>,
     on_error: EventHandler<String>,
 ) -> Element {
-    let element_id = format!("ghostty-{}", session_id.0);
+    let element_id = format!("xterm-{}", session_id.0);
     let mut last_sequence = use_signal(|| 0_u64);
     let mut event_bridge = use_signal(|| None::<dioxus::document::Eval>);
     use_effect({
@@ -169,6 +187,19 @@ pub fn GhosttyRenderer(
                             action,
                             ok,
                             message,
+                        }),
+                        BridgeEvent::SourceLink {
+                            path,
+                            line,
+                            column,
+                            end_line,
+                            end_column,
+                        } => on_source_link.call(SourceLink {
+                            path,
+                            line,
+                            column,
+                            end_line,
+                            end_column,
                         }),
                         BridgeEvent::Error { message } => on_error.call(message),
                     }
@@ -264,7 +295,7 @@ pub fn GhosttyRenderer(
     rsx! {
         div {
             id: element_id,
-            class: "ghostty-terminal relative size-full min-h-0 overflow-hidden bg-card px-3 py-2.5 outline-none focus-visible:-outline-offset-1 focus-visible:outline-1 focus-visible:outline-primary/65",
+            class: "xterm-host relative size-full min-h-0 overflow-hidden bg-card px-3 py-2.5 outline-none focus-visible:-outline-offset-1 focus-visible:outline-1 focus-visible:outline-primary/65",
             role: "application",
             tabindex: "0",
             "aria-label": "Interactive workspace terminal",

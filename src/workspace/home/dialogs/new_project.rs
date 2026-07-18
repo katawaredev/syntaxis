@@ -454,7 +454,11 @@ pub(super) fn NewProjectDialog(
                             onclick: {
                                 let slug = created.slug.clone();
                                 move |_| {
-                                    navigator.push(Route::Files { slug: slug.clone() });
+                                    navigator
+                                        .push(Route::Files {
+                                            slug: slug.clone(),
+                                            query: crate::files::FilesQuery::default(),
+                                        });
                                 }
                             },
                         }
@@ -471,7 +475,7 @@ pub(super) fn NewProjectDialog(
                         },
                         TextInput {
                             value: project_path(),
-                            placeholder: "testing/MyAwesomeIdea",
+                            placeholder: "MyAwesomeIdea",
                             autofocus: true,
                             disabled: pending,
                             oninput: move |event: FormEvent| {

@@ -1,6 +1,6 @@
 use crate::{
     ai::{Ai, AiQuery},
-    files::Files,
+    files::{Files, FilesQuery},
     git::Git,
     terminal::{Terminal, TerminalQuery},
     workspace::{Home, Preview, WorkspaceShell},
@@ -24,8 +24,8 @@ pub enum Route {
     #[route("/")]
     Home {},
     #[layout(WorkspaceShell)]
-    #[route("/workspaces/:slug/files")]
-    Files { slug: String },
+    #[route("/workspaces/:slug/files?:..query")]
+    Files { slug: String, query: FilesQuery },
     #[route("/workspaces/:slug/terminal?:..query")]
     Terminal { slug: String, query: TerminalQuery },
     #[route("/workspaces/:slug/git")]

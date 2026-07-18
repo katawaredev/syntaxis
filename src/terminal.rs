@@ -2,8 +2,8 @@ pub(crate) mod api;
 mod renderer;
 use self::api::RunCommand;
 use self::renderer::{
-    GhosttyRenderer, RendererAction, RendererActionResult, RendererCommand, RendererOutput,
-    RendererOutputBatch,
+    RendererAction, RendererActionResult, RendererCommand, RendererOutput, RendererOutputBatch,
+    SourceLink, XtermRenderer,
 };
 use dioxus::prelude::*;
 use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
@@ -714,6 +714,21 @@ fn RemoteTerminal(
             });
         }
     });
+    let open_source_link = EventHandler::new({
+        let workspace_slug = workspace_slug.clone();
+        move |link: SourceLink| {
+            navigator.push(crate::app::Route::Files {
+                slug: workspace_slug.clone(),
+                query: crate::files::FilesQuery::location(
+                    link.path,
+                    link.line,
+                    link.column,
+                    link.end_line,
+                    link.end_column,
+                ),
+            });
+        }
+    });
     let connection_ready = connection() == ConnectionState::Ready;
     let connection_label = match connection() {
         ConnectionState::Connecting => "Connecting".into(),
@@ -1213,7 +1228,7 @@ fn RemoteTerminal(
                     },
                     ConnectionState::Ready => rsx! {
                         if let Some(session) = selected.as_ref() {
-                            GhosttyRenderer {
+                            XtermRenderer {
                                 key: "{session.id.0}",
                                 session_id: session.id.clone(),
                                 output,
@@ -1242,6 +1257,7 @@ fn RemoteTerminal(
                                     };
                                     toast.set(Some(message));
                                 },
+                                on_source_link: open_source_link,
                                 on_error: move |message| toast.set(Some(message)),
                             }
                         }
@@ -1262,7 +1278,8 @@ fn RemoteTerminal(
             if !embedded {
                 footer { class: "flex h-6.25 min-h-6.25 items-center justify-between border-t border-border bg-background px-2.75 text-[9px] text-muted-foreground",
                     span { "{connection_label}" }
-                    span {
+                    span { class: "text-primary md:hidden", "Tap file:line to open" }
+                    span { class: "max-md:hidden",
                         if let Some(session) = selected.as_ref() {
                             "{session.size.columns} × {session.size.rows}"
                         }

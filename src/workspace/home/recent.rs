@@ -191,6 +191,7 @@ fn WorkspaceRow(
                 class: "grid min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-3 max-md:grid-cols-[auto_minmax(0,1fr)] max-md:py-2.5",
                 to: Route::Files {
                     slug: workspace.slug.clone(),
+                    query: crate::files::FilesQuery::default(),
                 },
                 onclick: move |event: MouseEvent| {
                     if availability == WorkspaceAvailability::Missing {

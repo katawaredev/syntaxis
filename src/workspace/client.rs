@@ -136,6 +136,24 @@ pub async fn list_files(
     }
 }
 
+pub async fn stat_file(
+    workspace: WorkspaceRecord,
+    path: RelativePath,
+) -> Result<FileEntry, String> {
+    use syntaxis_workspace::WorkspaceFiles;
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::remote::RemoteWorkspaceOperations
+            .stat(&workspace, &path)
+            .await
+            .map_err(|error| error.message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => syntaxis_workspace_host::HostWorkspaceFiles
+            .stat(&workspace, &path)
+            .await
+            .map_err(|error| error.message),
+    }
+}
+
 pub async fn read_text(
     workspace: WorkspaceRecord,
     path: RelativePath,

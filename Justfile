@@ -99,16 +99,20 @@ update-tools: install-binstall
 install-lighthouse:
     bun install
 
-# Build the terminal bundle from the @wterm/dom package.
-build-terminal:
-    #!/usr/bin/env bash
-    set -euo pipefail
+# Install JavaScript dependencies used by generated browser/Rust assets.
+install-js:
+    bun scripts/ensure-js-deps.mjs
 
-    if [[ ! -f node_modules/.bin/esbuild ]]; then
-        bun install --production
-    fi
-
+# Build the terminal bundle when its sources or pinned packages changed.
+build-terminal: install-js
     bun run build:terminal
+
+# Generate Rust completion dictionaries when their generator or packages changed.
+build-completions: install-js
+    bun run generate:completions
+
+# Build all npm-backed application assets. Each generator has its own cache key.
+build-assets: build-terminal build-completions
 
 # -----------------------------------------------------------------------------
 # Environment inspection
@@ -159,7 +163,7 @@ versions:
 # -----------------------------------------------------------------------------
 
 # Start the development server.
-serve platform=default_platform host=default_host port=default_port: build-terminal
+serve platform=default_platform host=default_host port=default_port: build-assets
     dx serve \
         --platform "{{ platform }}" \
         --addr "{{ host }}" \
@@ -167,7 +171,7 @@ serve platform=default_platform host=default_host port=default_port: build-termi
         --force-sequential true
 
 # Start the web development server.
-web host=default_host port=default_port: build-terminal
+web host=default_host port=default_port: build-assets
     dx serve \
         --platform web \
         --addr "{{ host }}" \
@@ -175,14 +179,14 @@ web host=default_host port=default_port: build-terminal
         --force-sequential true
 
 # Start the desktop development server.
-desktop: build-terminal
+desktop: build-assets
     dx serve --platform desktop
 
 # Start the mobile development server.
-mobile: build-terminal
+mobile: build-assets
     dx serve --platform mobile
 
-serve-local port=default_port: build-terminal
+serve-local port=default_port: build-assets
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -207,7 +211,7 @@ serve-local port=default_port: build-terminal
 #   just build
 #   just build desktop
 # just build web release
-build platform=default_platform profile="debug": build-terminal
+build platform=default_platform profile="debug": build-assets
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -224,7 +228,7 @@ build platform=default_platform profile="debug": build-terminal
     dx "${args[@]}"
 
 # Build an optimized release.
-release platform=default_platform: build-terminal
+release platform=default_platform: build-assets
     dx build --platform "{{ platform }}" --release
 
 # Build the production web app and run repeatable local Lighthouse audits.
