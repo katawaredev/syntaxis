@@ -270,7 +270,7 @@ Run the code fix-and-validation workflow when your changes affect Rust source
 code, Cargo manifests, or build/lint configuration that the command checks:
 
 ```bash
-just fix-and-validate
+just qa
 ```
 
 Do not run it after documentation-only changes, asset updates, or other changes

@@ -6,7 +6,7 @@ use dioxus_code::Language;
 use dioxus_code_editor::{
     CodeEditor, EditorCommand, EditorCommandKind, EditorRange, EditorSelection,
 };
-use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem, DropdownMenuTrigger};
+use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
 use syntaxis_editor::{
     apply_editor_config, complete_any_word, complete_with_words, language_label_for_path,
     language_slug_for_path, resolve_editor_config, BufferStatus, EditorBuffer, EditorConfigSource,
@@ -15,9 +15,9 @@ use syntaxis_editor::{
 use syntaxis_git::{ChangeKind as GitChangeKind, DiffKind, RepositoryStatus, UnifiedDiff};
 use syntaxis_ui::prelude::{
     AppIcon, Button, ButtonKind, ControlSize, DangerNote, DialogActions, DialogForm, Drawer, Field,
-    FileIcon, GitChangeBadge, Icon, IconButton, MenuContent, MenuTrigger, Modal, PanelHeader,
-    PanelTab, PanelTabIndicator, PanelTabList, PanelTabWidth, TextInput, TextInputType, Toast,
-    Tone,
+    FileIcon, GitChangeBadge, Icon, IconButton, MenuButtonTrigger, MenuContent, MenuTrigger, Modal,
+    PanelHeader, PanelTab, PanelTabIndicator, PanelTabList, PanelTabWidth, TextInput,
+    TextInputType, Toast, Tone,
 };
 use syntaxis_workspace::{ChangeKind, EntryKind, FileEntry, RelativePath, WorkspaceRecord};
 
@@ -547,6 +547,7 @@ fn WorkspaceFiles(target: WorkspaceRecord) -> Element {
                                 label: "Editor actions",
                                 icon: AppIcon::Menu,
                                 open: editor_menu(),
+                                on_toggle: move |()| editor_menu.toggle(),
                             }
                             MenuContent { class: "right-0 w-51",
                                 EditorMenuItem {

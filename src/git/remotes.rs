@@ -2,12 +2,12 @@
 use super::{
     component, dioxus_core, dioxus_elements, dioxus_signals, display_remote_url, rsx, use_signal,
     ActionCallback, AnyStorage, AppIcon, ButtonExtension, DetailsExtension, DialogExtension,
-    DropdownMenu, DropdownMenuTrigger, Element, EventHandler, FieldsetExtension, FormExtension,
+    DropdownMenu, Element, EventHandler, FieldsetExtension, FormExtension,
     GlobalAttributesExtension, HasAttributes, History, Icon, IframeExtension, ImgExtension,
-    InputExtension, LinkExtension, MapExtension, MenuContent, MetaExtension, ObjectExtension,
-    OutputExtension, ParamExtension, Props, ReadableExt, ReadableHashMapExt, ReadableHashSetExt,
-    ReadableOptionExt, ReadableResultExt, ReadableStrExt, ReadableVecExt, RemoteInfo,
-    SelectExtension, SlotExtension, Storage, StyleExtension, SvgAttributesExtension,
+    InputExtension, LinkExtension, MapExtension, MenuButtonTrigger, MenuContent, MetaExtension,
+    ObjectExtension, OutputExtension, ParamExtension, Props, ReadableExt, ReadableHashMapExt,
+    ReadableHashSetExt, ReadableOptionExt, ReadableResultExt, ReadableStrExt, ReadableVecExt,
+    RemoteInfo, SelectExtension, SlotExtension, Storage, StyleExtension, SvgAttributesExtension,
     TextareaExtension, TrackExtension, WritableExt,
 };
 
@@ -67,10 +67,11 @@ pub(super) fn RemoteManager(
                 }
             },
             div { class: "relative",
-                DropdownMenuTrigger {
+                MenuButtonTrigger {
                     class: "touch-target inline-flex h-7 max-w-44 items-center gap-1 rounded-md px-2 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground",
-                    "aria-label": "Manage Git remotes",
+                    label: "Manage Git remotes",
                     title: "Manage Git remotes",
+                    on_toggle: move |()| open.toggle(),
                     span { class: "truncate", "{label}" }
                 }
                 MenuContent { class: "right-0 w-80",

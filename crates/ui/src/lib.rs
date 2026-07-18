@@ -33,7 +33,7 @@ pub use git_change::GitChangeBadge;
 pub use icon::{AppIcon, Icon};
 pub use icon_button::IconButton;
 pub use input::{TextInput, TextInputType};
-pub use menu::{MenuContent, MenuTrigger};
+pub use menu::{MenuButtonTrigger, MenuContent, MenuTrigger};
 pub use panel::{
     PanelHeader, PanelHeaderKind, PanelTab, PanelTabIndicator, PanelTabList, PanelTabWidth,
 };
@@ -47,8 +47,8 @@ pub use toast::Toast;
 pub mod prelude {
     pub use crate::{
         AppIcon, Button, ButtonKind, Checkbox, ControlSize, DangerNote, DialogActions, DialogForm,
-        Drawer, EmptyState, Field, FileIcon, GitChangeBadge, Icon, IconButton, MenuContent,
-        MenuTrigger, Modal, PanelHeader, PanelHeaderKind, PanelTab, PanelTabIndicator,
+        Drawer, EmptyState, Field, FileIcon, GitChangeBadge, Icon, IconButton, MenuButtonTrigger,
+        MenuContent, MenuTrigger, Modal, PanelHeader, PanelHeaderKind, PanelTab, PanelTabIndicator,
         PanelTabList, PanelTabWidth, ProjectLanguageBadge, ProjectTechnologyBadge,
         ProjectTemplateIcon, Select, StatusBadge, TemplateIcon, TextArea, TextAreaResize,
         TextInput, TextInputType, Toast, Tone,

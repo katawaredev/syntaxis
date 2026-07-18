@@ -133,7 +133,7 @@ pub(super) fn Explorer(
                 }
             }
             div {
-                class: "min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-1.25 pt-1",
+                class: "touch-scroll-region min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-1.25 pt-1",
                 role: "tree",
                 "aria-label": "Workspace files",
                 if nodes.is_empty() {

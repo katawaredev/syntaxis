@@ -1,9 +1,9 @@
 use dioxus::prelude::*;
-use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuTrigger};
+use dioxus_primitives::dropdown_menu::DropdownMenu;
 use syntaxis_git::{BranchInfo, WorktreeCreateRequest, WorktreeInfo};
 use syntaxis_ui::prelude::{
-    AppIcon, Button, ButtonKind, DialogActions, DialogForm, Field, Icon, MenuContent, Modal,
-    TextInput, Toast, Tone,
+    AppIcon, Button, ButtonKind, DialogActions, DialogForm, Field, Icon, MenuButtonTrigger,
+    MenuContent, Modal, TextInput, Toast, Tone,
 };
 
 use crate::{
@@ -124,6 +124,7 @@ pub(super) fn BranchWorktreeMenu(
         AppIcon::GitBranch
     };
     let loading = worktrees().is_none();
+    let trigger_disabled = busy || branches.is_empty() || loading;
 
     let mut activate_worktree = move |workspace_id: String| {
         if files_dirty {
@@ -149,6 +150,7 @@ pub(super) fn BranchWorktreeMenu(
     rsx! {
         DropdownMenu {
             open: menu_open(),
+            disabled: trigger_disabled,
             on_open_change: move |open: bool| {
                 menu_open.set(open);
                 if !open {
@@ -156,11 +158,11 @@ pub(super) fn BranchWorktreeMenu(
                 }
             },
             div { class: "relative",
-                DropdownMenuTrigger {
+                MenuButtonTrigger {
                     class: "touch-target inline-flex h-7 max-w-52 items-center gap-1.5 rounded-md bg-transparent px-1.5 text-xs text-foreground hover:bg-accent disabled:opacity-50",
-                    aria_disabled: busy || branches.is_empty() || loading,
-                    "aria-label": "Branches and worktrees",
+                    label: "Branches and worktrees",
                     title: "Branches and worktrees",
+                    on_toggle: move |()| menu_open.toggle(),
                     Icon { icon: trigger_icon, size: 13 }
                     span { class: "truncate", "{current_branch}" }
                 }

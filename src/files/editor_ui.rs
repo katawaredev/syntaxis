@@ -4,11 +4,11 @@ use super::{
     dioxus_signals, document, file_glyph, language_slug_for_path, request_close, rsx, save_path,
     set_error, set_success, spawn, ActionCallback, AnyStorage, AppIcon, ButtonExtension,
     CanvasExtension, CloseRequest, ControlSize, DataExtension, DetailsExtension, DialogExtension,
-    DropdownMenu, DropdownMenuItem, DropdownMenuTrigger, EditorBuffer, EditorCommand,
-    EditorCommandKind, EditorSelection, Element, EmbedExtension, EventHandler, FieldsetExtension,
-    FormEvent, GlobalAttributesExtension, HasAttributes, HasFormData, HasKeyboardData,
-    HasPointerData, History, Icon, IframeExtension, ImgExtension, InputExtension, Key,
-    KeyboardEvent, Language, LiExtension, LinkExtension, MenuContent, MeterExtension, Modifiers,
+    DropdownMenu, DropdownMenuItem, EditorBuffer, EditorCommand, EditorCommandKind,
+    EditorSelection, Element, EmbedExtension, EventHandler, FieldsetExtension, FormEvent,
+    GlobalAttributesExtension, HasAttributes, HasFormData, HasKeyboardData, HasPointerData,
+    History, Icon, IframeExtension, ImgExtension, InputExtension, Key, KeyboardEvent, Language,
+    LiExtension, LinkExtension, MenuButtonTrigger, MenuContent, MeterExtension, Modifiers,
     ModifiersInteraction, MpaddedExtension, MspaceExtension, ObjectExtension, OlExtension,
     OpenDocument, OpenTab, OptgroupExtension, OptionExtension, PanelTab, PanelTabIndicator,
     PanelTabWidth, ParamExtension, ProgressExtension, Props, ReadableExt, ReadableHashMapExt,
@@ -64,9 +64,10 @@ pub(super) fn MobileTabs(
             class: "relative hidden min-w-0 flex-1 max-md:block",
             open: open(),
             on_open_change: move |next: bool| open.set(next),
-            DropdownMenuTrigger {
+            MenuButtonTrigger {
                 class: "flex h-10 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-left text-xs text-foreground",
-                "aria-label": "Open file tabs",
+                label: "Open file tabs",
+                on_toggle: move |()| open.toggle(),
                 span { class: "truncate", {active_path().unwrap_or_else(|| "No file open".into())} }
                 span { "⌄" }
             }

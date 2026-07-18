@@ -51,8 +51,9 @@ pub(super) fn RecentProjects(
                     on_open_change: move |open: bool| menu_open.set(open),
                     MenuTrigger {
                         label: "Manage mise tools".to_owned(),
-                        icon: AppIcon::More,
+                        icon: AppIcon::MoreVertical,
                         open: menu_open(),
+                        on_toggle: move |()| menu_open.toggle(),
                     }
                     MenuContent { class: "right-0 w-48",
                         DropdownMenuItem::<MiseAction> {
@@ -193,6 +194,7 @@ fn WorkspaceRow(
                     label: format!("Project actions for {}", workspace.name),
                     icon: AppIcon::MoreVertical,
                     open: menu_open(),
+                    on_toggle: move |()| menu_open.toggle(),
                 }
                 MenuContent { class: "right-0 w-40",
                     DropdownMenuItem::<ProjectAction> {
@@ -282,7 +284,7 @@ fn ProjectMetadata(workspace: WorkspaceRecord, desktop: bool) -> Element {
     let last_opened_title = format!("Last opened {last_opened}");
     rsx! {
         if desktop {
-            div { class: "flex shrink-0 flex-col items-center gap-1.5 text-center max-md:hidden",
+            div { class: "flex shrink-0 flex-col items-end gap-1.5 text-right max-md:hidden",
                 if has_badges {
                     ProjectBadgeList {
                         technologies,

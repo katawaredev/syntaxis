@@ -25,7 +25,7 @@ pub fn Drawer(
             },
             class: "mobile-drawer-root fixed inset-0 z-100 grid touch-pan-y place-items-stretch overscroll-contain bg-background/75 backdrop-blur-sm",
             DialogContent {
-                class: "mobile-drawer-content {content_class} max-w-[86vw] overscroll-contain shadow-2xl",
+                class: "mobile-drawer-content min-h-0 overflow-hidden {content_class} max-w-[86vw] touch-pan-y overscroll-contain shadow-2xl",
                 "aria-label": label,
                 div { class: "flex h-12 items-center justify-between border-b border-border px-2.5",
                     DialogTitle { {title} }

@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 use dioxus_icons::lucide::{
-    ArrowDown, ArrowUp, Bell, Bot, CaseSensitive, ChartNoAxesColumn, Check, ChevronDown,
+    ArrowDown, ArrowUp, Bell, Bot, BrainCog, CaseSensitive, ChartNoAxesColumn, Check, ChevronDown,
     ChevronLeft, ChevronRight, Code, Command, Copy, Ellipsis, EllipsisVertical, Eye, FileDiff,
     FileInput, FileMinus, FilePlus, FolderOpen, FolderPlus, GitBranch, GitCommitHorizontal,
     GitFork, Hash, ListChevronsDownUp, ListChevronsUpDown, ListOrdered, Menu, Mic, PanelLeftOpen,
@@ -10,6 +10,7 @@ use dioxus_icons::lucide::{
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum AppIcon {
     Bell,
+    BrainCog,
     Check,
     ChevronDown,
     Close,
@@ -68,6 +69,11 @@ pub fn Icon(icon: AppIcon, #[props(default = 16)] size: u32) -> Element {
         AppIcon::Bell => {
             rsx! {
                 Bell { size }
+            }
+        }
+        AppIcon::BrainCog => {
+            rsx! {
+                BrainCog { size }
             }
         }
         AppIcon::Check => {

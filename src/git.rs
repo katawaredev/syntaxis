@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 use dioxus_code::Language;
 use dioxus_code_editor::{DiffLayout, UnifiedDiffView};
-use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem, DropdownMenuTrigger};
+use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
 use syntaxis_editor::language_slug_for_path;
 use syntaxis_git::{
     parse_diff_hunks, BranchComparison, BranchInfo, BranchRequest, ChangeKind, CommitDetail,
@@ -11,8 +11,8 @@ use syntaxis_git::{
 };
 use syntaxis_ui::prelude::{
     AppIcon, Button, ButtonKind, Checkbox, ControlSize, DialogActions, DialogForm, Drawer, Field,
-    FileIcon, GitChangeBadge, Icon, IconButton, MenuContent, MenuTrigger, Modal, PanelHeader,
-    PanelHeaderKind, TextArea, TextInput, TextInputType, Toast, Tone,
+    FileIcon, GitChangeBadge, Icon, IconButton, MenuButtonTrigger, MenuContent, MenuTrigger, Modal,
+    PanelHeader, PanelHeaderKind, TextArea, TextInput, TextInputType, Toast, Tone,
 };
 
 pub(crate) mod api;
@@ -690,6 +690,7 @@ fn WorkspaceGit(slug: String) -> Element {
                                             icon: AppIcon::MoreVertical,
                                             open: branch_menu(),
                                             size: ControlSize::Small,
+                                            on_toggle: move |()| branch_menu.toggle(),
                                         }
                                         MenuContent { class: "left-0 w-46",
                                             DropdownMenuItem::<GitDialog> {

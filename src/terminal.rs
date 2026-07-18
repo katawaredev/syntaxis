@@ -6,7 +6,7 @@ use self::renderer::{
     RendererOutputBatch,
 };
 use dioxus::prelude::*;
-use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem, DropdownMenuTrigger};
+use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
 use futures_util::{
     future::{select, Either},
     pin_mut, FutureExt, StreamExt,
@@ -19,8 +19,8 @@ use syntaxis_terminal::{
 };
 use syntaxis_ui::prelude::{
     AppIcon, Button, ButtonKind, ControlSize, DialogActions, DialogForm, Field, Icon, IconButton,
-    MenuContent, MenuTrigger, Modal, PanelHeader, PanelTab, PanelTabIndicator, PanelTabList,
-    PanelTabWidth, TextInput, Toast, Tone,
+    MenuButtonTrigger, MenuContent, MenuTrigger, Modal, PanelHeader, PanelTab, PanelTabIndicator,
+    PanelTabList, PanelTabWidth, TextInput, Toast, Tone,
 };
 const MAX_RENDERER_REPLAY_BYTES: usize = 2 * 1024 * 1024;
 const MAX_RECONNECT_ATTEMPTS: u8 = 6;
@@ -886,9 +886,10 @@ fn RemoteTerminal(
                         class: "relative hidden min-w-0 flex-1 max-md:block",
                         open: mobile_tabs_open(),
                         on_open_change: move |open: bool| mobile_tabs_open.set(open),
-                        DropdownMenuTrigger {
+                        MenuButtonTrigger {
                             class: "flex h-10 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-left text-xs text-foreground hover:bg-accent",
-                            "aria-label": "Open terminal tabs",
+                            label: "Open terminal tabs",
+                            on_toggle: move |()| mobile_tabs_open.toggle(),
                             span { class: "flex min-w-0 items-center gap-2 overflow-hidden",
                                 if let Some(session) = selected.as_ref() {
                                     span { class: lifecycle_dot_class(session.lifecycle) }
@@ -939,6 +940,7 @@ fn RemoteTerminal(
                             label: "Run command",
                             icon: AppIcon::Play,
                             open: quick_menu(),
+                            on_toggle: move |()| quick_menu.toggle(),
                         }
                         MenuContent { class: "right-0 max-h-[min(32rem,calc(100svh-4rem))] w-72 overflow-y-auto",
                             if commands_loading() && run_commands.read().is_empty() {
@@ -1029,6 +1031,7 @@ fn RemoteTerminal(
                             label: "Terminal actions",
                             icon: AppIcon::Menu,
                             open: menu(),
+                            on_toggle: move |()| menu.toggle(),
                         }
                         MenuContent { class: "right-0 w-53.75",
                             TerminalMenuItem {

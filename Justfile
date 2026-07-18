@@ -374,7 +374,7 @@ ci platform=default_platform: format-check dx-check (lint platform) test test-do
     @echo "All quality gates passed."
 
 # Auto-fix code-quality issues, then run code validation and doctests.
-fix-and-validate platform=default_platform: (fix platform) test-doc
+qa platform=default_platform: (fix platform) test-doc
     @echo
     @echo "All code quality gates passed."
 

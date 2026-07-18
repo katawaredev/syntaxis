@@ -125,8 +125,24 @@
 }
 
 .mobile-drawer-content {
+  min-height: 0;
+  overflow: hidden;
+  touch-action: pan-y;
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
+}
+.touch-scroll-region {
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+@supports (-webkit-touch-callout: none) {
+  @media (pointer: coarse) {
+    .touch-scroll-region {
+      /* ui.js owns the pan when WebKit strands a scroller in a dialog. */
+      touch-action: none;
+    }
+  }
 }
 
 :where(.overflow-auto, .overflow-y-auto, .overflow-x-auto) {
@@ -195,12 +211,7 @@
   .syntaxis-menu-content,
   .touch-popover {
     position: fixed !important;
-    top: auto !important;
-    right: max(0.5rem, env(safe-area-inset-right)) !important;
-    bottom: max(0.5rem, env(safe-area-inset-bottom)) !important;
-    left: max(0.5rem, env(safe-area-inset-left)) !important;
-    width: auto !important;
-    max-width: none !important;
+    max-width: calc(100vw - 1rem);
     max-height: min(70vh, calc(var(--app-height, 100dvh) - 1rem));
     touch-action: pan-y;
     overflow-y: auto;

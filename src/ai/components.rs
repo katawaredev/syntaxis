@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use dioxus::prelude::*;
-use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem, DropdownMenuTrigger};
+use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
 use dioxus_primitives::popover::{PopoverContent, PopoverRoot, PopoverTrigger};
 use serde::Deserialize;
 use syntaxis_agent::{
@@ -11,7 +11,8 @@ use syntaxis_agent::{
     MAX_PROMPT_IMAGES, MAX_TOTAL_IMAGE_BYTES,
 };
 use syntaxis_ui::prelude::{
-    AppIcon, Button, ButtonKind, DialogActions, DialogForm, Icon, IconButton, MenuContent, Modal,
+    AppIcon, Button, ButtonKind, DialogActions, DialogForm, Icon, IconButton, MenuButtonTrigger,
+    MenuContent, MenuTrigger, Modal,
 };
 
 use crate::files::preview::render_markdown;
@@ -47,7 +48,7 @@ pub(super) fn AgentHeader(
         None
     };
     rsx! {
-        header { class: "flex min-h-12 items-center gap-2 border-b border-border bg-background px-2.5",
+        header { class: "flex min-h-12 items-center gap-2 border-b border-border bg-background px-2.5 max-[520px]:gap-1.5 max-[520px]:px-2",
             div { class: "shrink-0 max-md:hidden",
                 IconButton {
                     label: if sidebar_open { "Hide chats" } else { "Show chats" },
@@ -64,18 +65,18 @@ pub(super) fn AgentHeader(
                 }
             }
             div {
-                class: "flex min-w-0 items-center gap-2",
+                class: "flex min-w-0 flex-1 items-center gap-2",
                 title: "{workspace_name} · {connection}",
                 span { class: if connection_ready { "size-1.5 shrink-0 rounded-full bg-success" } else { "size-1.5 shrink-0 rounded-full bg-warning" } }
-                strong { class: "max-w-42 truncate text-xs max-[520px]:max-w-24", "{session_title}" }
+                strong { class: "min-w-0 truncate text-xs", "{session_title}" }
             }
-            WorkspacePicker {
-                workspace_name: workspace_name.clone(),
-                locked_reason: workspace_locked_reason,
-                new_worktree_disabled_reason,
-                on_new_worktree,
-            }
-            div { class: "ml-auto flex min-w-0 items-center gap-1",
+            div { class: "flex shrink-0 items-center gap-1",
+                WorkspacePicker {
+                    workspace_name: workspace_name.clone(),
+                    locked_reason: workspace_locked_reason,
+                    new_worktree_disabled_reason,
+                    on_new_worktree,
+                }
                 ModelPicker {
                     selected: snapshot.model.clone(),
                     models: snapshot.models.clone(),
@@ -83,7 +84,7 @@ pub(super) fn AgentHeader(
                     on_select: on_model,
                 }
                 select {
-                    class: "h-8 rounded-lg border border-input bg-background px-2 text-[10px] text-foreground max-[430px]:w-16",
+                    class: "h-8 rounded-lg border border-input bg-background px-2 text-[10px] text-foreground max-[520px]:hidden",
                     aria_label: "Thinking level",
                     disabled: controls_disabled,
                     value: snapshot.thinking_level.as_str(),
@@ -97,6 +98,13 @@ pub(super) fn AgentHeader(
                     },
                     for level in ThinkingLevel::ALL {
                         option { value: level.as_str(), "{level.as_str()}" }
+                    }
+                }
+                div { class: "hidden max-[520px]:block",
+                    ThinkingPicker {
+                        selected: snapshot.thinking_level,
+                        disabled: controls_disabled,
+                        on_select: on_thinking,
                     }
                 }
                 UsageMenu { stats: snapshot.session_stats.clone() }
@@ -134,20 +142,22 @@ fn ModelPicker(
                 }
             },
             PopoverTrigger {
-                class: if open() { "flex h-8 min-w-0 max-w-58 items-center gap-2 rounded-lg border border-primary/30 bg-accent px-2.5 text-left shadow-sm max-[590px]:max-w-34" } else { "flex h-8 min-w-0 max-w-58 items-center gap-2 rounded-lg border border-input bg-background/80 px-2.5 text-left shadow-xs transition-colors hover:bg-accent max-[590px]:max-w-34" },
+                class: if open() { "flex h-8 min-w-0 max-w-58 items-center gap-2 rounded-lg border border-primary/30 bg-accent px-2.5 text-left shadow-sm max-[590px]:max-w-34 max-[520px]:size-10 max-[520px]:max-w-none max-[520px]:justify-center max-[520px]:p-0" } else { "flex h-8 min-w-0 max-w-58 items-center gap-2 rounded-lg border border-input bg-background/80 px-2.5 text-left shadow-xs transition-colors hover:bg-accent max-[590px]:max-w-34 max-[520px]:size-10 max-[520px]:max-w-none max-[520px]:justify-center max-[520px]:p-0" },
                 aria_label: "Choose Pi model",
                 aria_expanded: open(),
                 disabled: disabled || models.is_empty(),
                 span { class: "grid size-5 shrink-0 place-items-center rounded-md bg-primary/10 text-primary",
                     ProviderMark { provider: selected_provider.clone(), size: 12 }
                 }
-                span { class: "min-w-0 flex-1",
+                span { class: "min-w-0 flex-1 max-[520px]:hidden",
                     strong { class: "block truncate text-[11px] font-medium", "{selected_name}" }
                     small { class: "block truncate text-[9px] text-muted-foreground",
                         "{selected_provider}"
                     }
                 }
-                Icon { icon: AppIcon::ChevronDown, size: 13 }
+                span { class: "max-[520px]:hidden",
+                    Icon { icon: AppIcon::ChevronDown, size: 13 }
+                }
             }
             PopoverContent { class: "touch-popover absolute top-[calc(100%+6px)] right-0 z-80 w-[min(430px,calc(100vw-1rem))] overflow-hidden rounded-xl border border-border bg-popover shadow-2xl",
                 div { class: "flex items-center gap-2 border-b border-border px-3 py-2",
@@ -176,6 +186,43 @@ fn ModelPicker(
                                 on_select.call(selection);
                                 open.set(false);
                             },
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn ThinkingPicker(
+    selected: ThinkingLevel,
+    disabled: bool,
+    on_select: EventHandler<ThinkingLevel>,
+) -> Element {
+    let mut open = use_signal(|| false);
+    rsx! {
+        DropdownMenu {
+            class: "relative",
+            open: open(),
+            disabled,
+            on_open_change: move |next: bool| open.set(next),
+            MenuTrigger {
+                label: format!("Thinking level: {}", selected.as_str()),
+                icon: AppIcon::BrainCog,
+                class: "max-[520px]:size-10",
+                open: open(),
+                on_toggle: move |()| open.toggle(),
+            }
+            MenuContent { class: "right-0 w-44",
+                for (index, level) in ThinkingLevel::ALL.into_iter().enumerate() {
+                    DropdownMenuItem::<ThinkingLevel> {
+                        value: level,
+                        index,
+                        on_select: move |next| on_select.call(next),
+                        span { "{level.as_str()}" }
+                        if level == selected {
+                            Icon { icon: AppIcon::Check, size: 13 }
                         }
                     }
                 }
@@ -323,7 +370,7 @@ fn UsageMenu(stats: Option<SessionStats>) -> Element {
             open: open(),
             on_open_change: move |next| open.set(next),
             PopoverTrigger {
-                class: if open() { "relative grid size-8 place-items-center rounded-lg bg-accent text-foreground" } else { "relative grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground" },
+                class: if open() { "relative grid size-8 place-items-center rounded-lg bg-accent text-foreground max-[520px]:size-10" } else { "relative grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground max-[520px]:size-10" },
                 aria_label: "Session usage",
                 aria_expanded: open(),
                 title: "Session usage · {percent}% context",
@@ -554,10 +601,11 @@ fn AgentSessionRow(
                 class: "relative flex shrink-0 items-center pr-1",
                 open: menu_open(),
                 on_open_change: move |open: bool| menu_open.set(open),
-                DropdownMenuTrigger {
+                MenuButtonTrigger {
                     class: if menu_open() { "grid size-7 place-items-center rounded-md bg-accent text-foreground" } else { "grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-background/70 hover:text-foreground" },
-                    aria_label: "Chat actions for {session.title}",
+                    label: "Chat actions for {session.title}",
                     title: "Chat actions",
+                    on_toggle: move |()| menu_open.toggle(),
                     Icon { icon: AppIcon::MoreVertical, size: 15 }
                 }
                 MenuContent { class: "top-[calc(50%+16px)] right-0 w-44",
@@ -909,13 +957,15 @@ fn WorkspacePicker(
             open: open(),
             on_open_change: move |next| open.set(next),
             PopoverTrigger {
-                class: "flex h-8 max-w-44 items-center gap-1.5 rounded-lg px-2 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40",
+                class: "flex h-8 max-w-44 items-center gap-1.5 rounded-lg px-2 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 max-[520px]:size-10 max-[520px]:max-w-none max-[520px]:justify-center max-[520px]:p-0",
                 disabled: locked_reason.is_some(),
                 title,
                 aria_label: "Workspace: {workspace_name}",
                 Icon { icon: AppIcon::Worktree, size: 13 }
-                span { class: "truncate", "Current checkout" }
-                Icon { icon: AppIcon::ChevronDown, size: 11 }
+                span { class: "truncate max-[520px]:hidden", "Current checkout" }
+                span { class: "max-[520px]:hidden",
+                    Icon { icon: AppIcon::ChevronDown, size: 11 }
+                }
             }
             PopoverContent { class: "touch-popover absolute top-[calc(100%+6px)] left-0 z-80 w-52 rounded-xl border border-border bg-popover p-1.5 shadow-2xl",
                 div { class: "px-2 py-1.5 text-[9px] font-semibold tracking-wider text-muted-foreground uppercase",

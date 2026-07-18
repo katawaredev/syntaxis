@@ -4,17 +4,52 @@ use dioxus_primitives::dropdown_menu::{DropdownMenuContent, DropdownMenuTrigger}
 use crate::{AppIcon, ControlSize, Icon};
 
 #[component]
+pub fn MenuButtonTrigger(
+    class: String,
+    label: String,
+    #[props(default)] title: String,
+    on_toggle: EventHandler<()>,
+    children: Element,
+) -> Element {
+    let title = if title.is_empty() {
+        label.clone()
+    } else {
+        title
+    };
+    rsx! {
+        DropdownMenuTrigger {
+            class,
+            "aria-label": label,
+            title,
+            r#as: move |attributes: Vec<Attribute>| {
+                let attributes = attributes
+                    .into_iter()
+                    .filter(|attribute| attribute.name != "onclick")
+                    .collect::<Vec<_>>();
+                let children = children.clone();
+                rsx! {
+                    button { onclick: move |_| on_toggle.call(()), ..attributes, {children} }
+                }
+            },
+        }
+    }
+}
+
+#[component]
 pub fn MenuTrigger(
     label: String,
     icon: AppIcon,
+    #[props(default)] class: String,
     #[props(default)] size: ControlSize,
     #[props(default = false)] open: bool,
+    on_toggle: EventHandler<()>,
 ) -> Element {
     rsx! {
-        DropdownMenuTrigger {
-            class: if open { "touch-target inline-flex items-center justify-center bg-accent text-foreground transition-colors {size.icon_button_class()}" } else { "touch-target inline-flex items-center justify-center bg-transparent text-muted-foreground transition-colors hover:bg-accent hover:text-foreground {size.icon_button_class()}" },
-            "aria-label": label.clone(),
+        MenuButtonTrigger {
+            class: if open { "touch-target inline-flex items-center justify-center bg-accent text-foreground transition-colors {size.icon_button_class()} {class}" } else { "touch-target inline-flex items-center justify-center bg-transparent text-muted-foreground transition-colors hover:bg-accent hover:text-foreground {size.icon_button_class()} {class}" },
+            label: label.clone(),
             title: label,
+            on_toggle,
             Icon { icon, size: size.icon_size() }
         }
     }

@@ -11,7 +11,7 @@ use super::{
     TrackExtension, UnifiedDiff, UnifiedDiffView, WritableExt,
 };
 
-const DIFF_TITLEBAR_CLASS: &str = "sticky top-0 z-10 flex min-h-14 min-w-165 items-center justify-between gap-3 border-b border-border bg-background/95 p-3 font-sans backdrop-blur-sm max-md:min-h-13 max-md:px-2.5 max-md:py-2";
+const DIFF_TITLEBAR_CLASS: &str = "sticky top-0 z-10 flex min-h-14 min-w-165 items-center justify-between gap-3 border-b border-border bg-background/95 p-3 font-sans backdrop-blur-sm max-md:min-h-13 max-md:min-w-0 max-md:px-2.5 max-md:py-2";
 
 #[component]
 pub(super) fn GitSidebar(
@@ -57,7 +57,7 @@ pub(super) fn GitSidebar(
                 }
             }
             if view() == SidebarView::Changes {
-                div { class: "min-h-0 flex-1 overflow-y-auto p-2",
+                div { class: "touch-scroll-region min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain p-2",
                     if repository.changes.is_empty() {
                         div { class: "grid h-full min-h-40 place-items-center p-4 text-center text-xs text-muted-foreground",
                             "Working tree clean."
@@ -95,7 +95,7 @@ pub(super) fn GitSidebar(
                     }
                 }
             } else {
-                div { class: "min-h-0 flex-1 space-y-1 overflow-y-auto p-2",
+                div { class: "touch-scroll-region min-h-0 flex-1 touch-pan-y space-y-1 overflow-y-auto overscroll-contain p-2",
                     for commit in commits {
                         button {
                             class: if selected_commit().as_deref() == Some(commit.oid.as_str()) { "flex w-full min-w-0 gap-2 rounded-md bg-muted p-2 text-left text-foreground" } else { "flex w-full min-w-0 gap-2 rounded-md p-2 text-left text-muted-foreground hover:bg-muted/60 hover:text-foreground" },
@@ -238,7 +238,7 @@ pub(super) fn ChangeDetail(
     });
     let result = diff;
     rsx! {
-        div { class: "min-h-full min-w-165",
+        div { class: "min-h-full min-w-165 max-md:min-w-0",
             div { class: DIFF_TITLEBAR_CLASS,
                 div { class: "flex min-w-0 flex-1 items-center gap-1.5",
                     FileIcon { path: selection.path.clone(), size: 16 }
@@ -477,7 +477,7 @@ pub(super) fn HunkDiff(
         };
     }
     rsx! {
-        div { class: "min-w-165 space-y-3 overflow-x-auto p-3",
+        div { class: "min-w-0 space-y-3 p-3",
             for hunk in hunks {
                 HunkCard {
                     hunk,
@@ -500,7 +500,7 @@ fn HunkCard(
     let (original, current) = hunk_sources(&hunk.body);
     let language = diff_language(&selection.path);
     rsx! {
-        section { class: "overflow-hidden rounded-md border border-border bg-card",
+        section { class: "min-w-0 overflow-hidden rounded-md border border-border bg-card",
             header { class: "flex min-h-9 items-center justify-end gap-3 border-b border-border bg-muted/45 px-3 py-1.5 font-sans text-[10px] text-muted-foreground",
                 div { class: "flex shrink-0 items-center gap-1",
                     if hunk.deletions > 0 {
