@@ -38,6 +38,22 @@ pub async fn list_workspaces() -> Result<Vec<WorkspaceRecord>, String> {
     }
 }
 
+pub async fn touch_workspace(workspace_id: String) -> Result<(), String> {
+    use syntaxis_workspace::{WorkspaceId, WorkspaceRegistry};
+
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::remote::RemoteWorkspaceOperations
+            .touch(&WorkspaceId::new(workspace_id))
+            .await
+            .map_err(|error| error.message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => host_registry()?
+            .touch(&WorkspaceId::new(workspace_id))
+            .await
+            .map_err(|error| error.message),
+    }
+}
+
 pub async fn worktrees(workspace: WorkspaceRecord) -> Result<Vec<WorktreeInfo>, String> {
     #[cfg(feature = "desktop")]
     use syntaxis_git::WorktreeOperations;

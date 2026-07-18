@@ -4,7 +4,7 @@ use syntaxis_ui::prelude::{AppIcon, EmptyState, Icon, StatusBadge, Tone};
 use crate::{app::Route, files::use_files_session, mock::WORKSPACES};
 use syntaxis_workspace::{ExecutionLocation, RuntimeState};
 
-use super::client::{list_workspaces, runtime_state};
+use super::client::{list_workspaces, runtime_state, touch_workspace};
 use super::worktrees::use_active_workspace;
 use super::ProjectIcon;
 use super::{events::WorkspaceEventBridge, WorkspaceEventState};
@@ -41,6 +41,7 @@ pub fn WorkspaceShell() -> Element {
     };
     let workspaces = use_resource(list_workspaces);
     let runtime = use_resource(runtime_state);
+    let mut touched_workspace = use_signal(|| None::<String>);
     let registered_workspace = workspaces()
         .as_ref()
         .and_then(|result| result.as_ref().ok())
@@ -61,6 +62,28 @@ pub fn WorkspaceShell() -> Element {
             return;
         };
         active_workspace.set_base(workspace);
+    });
+    let touch_slug = slug.clone();
+    use_effect(move || {
+        let Some(workspace_id) = workspaces()
+            .as_ref()
+            .and_then(|result| result.as_ref().ok())
+            .and_then(|workspaces| {
+                workspaces
+                    .iter()
+                    .find(|workspace| workspace.slug == touch_slug)
+            })
+            .map(|workspace| workspace.id.0.clone())
+        else {
+            return;
+        };
+        if touched_workspace().as_ref() == Some(&workspace_id) {
+            return;
+        }
+        touched_workspace.set(Some(workspace_id.clone()));
+        spawn(async move {
+            let _ = touch_workspace(workspace_id).await;
+        });
     });
     let project_name = registered_workspace.as_ref().map_or_else(
         || {

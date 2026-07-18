@@ -16,6 +16,7 @@ mod panel;
 mod project_badge;
 mod select;
 mod size;
+mod slide_to_confirm;
 mod template_icon;
 mod textarea;
 mod toast;
@@ -40,6 +41,7 @@ pub use panel::{
 pub use project_badge::{ProjectLanguageBadge, ProjectTechnologyBadge};
 pub use select::Select;
 pub use size::ControlSize;
+pub use slide_to_confirm::SlideToConfirm;
 pub use template_icon::{ProjectTemplateIcon, TemplateIcon};
 pub use textarea::{TextArea, TextAreaResize};
 pub use toast::Toast;
@@ -50,7 +52,7 @@ pub mod prelude {
         Drawer, EmptyState, Field, FileIcon, GitChangeBadge, Icon, IconButton, MenuButtonTrigger,
         MenuContent, MenuTrigger, Modal, PanelHeader, PanelHeaderKind, PanelTab, PanelTabIndicator,
         PanelTabList, PanelTabWidth, ProjectLanguageBadge, ProjectTechnologyBadge,
-        ProjectTemplateIcon, Select, StatusBadge, TemplateIcon, TextArea, TextAreaResize,
-        TextInput, TextInputType, Toast, Tone,
+        ProjectTemplateIcon, Select, SlideToConfirm, StatusBadge, TemplateIcon, TextArea,
+        TextAreaResize, TextInput, TextInputType, Toast, Tone,
     };
 }

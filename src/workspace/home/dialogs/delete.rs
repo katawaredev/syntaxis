@@ -1,5 +1,7 @@
 use dioxus::prelude::*;
-use syntaxis_ui::prelude::{Button, ButtonKind, Checkbox, DialogActions, DialogForm, Modal};
+use syntaxis_ui::prelude::{
+    Button, ButtonKind, Checkbox, DialogActions, DialogForm, Modal, SlideToConfirm, Tone,
+};
 
 use syntaxis_workspace::WorkspaceRecord;
 
@@ -19,6 +21,7 @@ pub(super) fn DeleteWorkspaceDialog(
     on_changed: EventHandler<()>,
 ) -> Element {
     let mut delete_files = use_signal(|| false);
+    let mut delete_confirmed = use_signal(|| false);
     let mut request = use_signal(|| RequestState::Idle);
     let pending = request() == RequestState::Pending;
 
@@ -40,6 +43,7 @@ pub(super) fn DeleteWorkspaceDialog(
                         aria_label: "Also delete project files",
                         on_checked_change: move |checked| {
                             delete_files.set(checked);
+                            delete_confirmed.set(false);
                             request.set(RequestState::Idle);
                         },
                     }
@@ -51,8 +55,17 @@ pub(super) fn DeleteWorkspaceDialog(
                     }
                 }
                 if delete_files() {
-                    p { class: "rounded-md border border-destructive/35 bg-destructive/10 px-2.5 py-2 text-xs leading-relaxed text-destructive",
-                        "All files inside {workspaces[index].root} will be permanently deleted."
+                    div { class: "space-y-1.5",
+                        SlideToConfirm {
+                            disabled: pending,
+                            tone: Tone::Destructive,
+                            label: "Slide to confirm delete".to_owned(),
+                            confirmed_label: "Deletion confirmed".to_owned(),
+                            on_confirmed: move |confirmed| delete_confirmed.set(confirmed),
+                        }
+                        small { class: "block truncate px-1 text-[10px] text-muted-foreground",
+                            "Permanently deletes {workspaces[index].root}"
+                        }
                     }
                 }
                 match request() {
@@ -83,7 +96,7 @@ pub(super) fn DeleteWorkspaceDialog(
                     Button {
                         label: if pending { "Removing…" } else if request() == RequestState::Error(DELETE_FILES_ERROR) { "Remove entry only" } else if delete_files() { "Delete files and remove" } else { "Remove workspace" },
                         kind: ButtonKind::Danger,
-                        disabled: pending,
+                        disabled: pending || (delete_files() && !delete_confirmed()),
                         onclick: move |_| {
                             let should_delete_files = delete_files();
                             let remove_entry_only = request() == RequestState::Error(DELETE_FILES_ERROR);
