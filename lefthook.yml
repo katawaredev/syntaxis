@@ -1,6 +1,14 @@
 pre-commit:
   commands:
     check:
+      glob:
+        - "**/*.rs"
+        - "Cargo.toml"
+        - "**/Cargo.toml"
+        - "Cargo.lock"
+        - "clippy.toml"
+        - "Dioxus.toml"
+        - "assets/**"
       run: just pre-commit
       skip:
         - merge

@@ -266,10 +266,14 @@ The initial UI rendered by the component on the client must be identical to the 
 
 # Validation
 
-After making any changes, always run the code-quality-only validation:
+Run the code fix-and-validation workflow when your changes affect Rust source
+code, Cargo manifests, or build/lint configuration that the command checks:
 
 ```bash
-just ci-code
+just fix-and-validate
 ```
 
-This auto-fixes formatting and clippy issues, then reports any remaining errors.
+Do not run it after documentation-only changes, asset updates, or other changes
+unrelated to code quality. The command auto-fixes formatting and Clippy issues,
+then runs code checks, tests, and doctests, so only run it when those provide
+meaningful validation for the files you changed.

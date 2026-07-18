@@ -98,8 +98,7 @@ pub(super) fn GitUrlDialog(
 
     rsx! {
         Modal {
-            title: "Open Git URL",
-            description: "Clone a repository into a root exposed by the connected runtime.",
+            title: "Clone repository",
             on_close: move |()| {
                 if !pending {
                     dialog.set(HomeDialog::None);

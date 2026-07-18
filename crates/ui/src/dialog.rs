@@ -6,7 +6,7 @@ use crate::{AppIcon, Icon};
 #[component]
 pub fn Modal(
     title: String,
-    description: String,
+    #[props(default)] description: String,
     #[props(default)] content_class: String,
     on_close: EventHandler<()>,
     children: Element,
@@ -24,8 +24,10 @@ pub fn Modal(
                 header { class: "flex justify-between gap-4.5 px-5 pt-5 pb-2",
                     div {
                         DialogTitle { class: "text-lg font-semibold text-foreground", {title} }
-                        DialogDescription { class: "mt-1 text-[13px] leading-snug text-muted-foreground",
-                            {description}
+                        if !description.is_empty() {
+                            DialogDescription { class: "mt-1 text-[13px] leading-snug text-muted-foreground",
+                                {description}
+                            }
                         }
                     }
                     button {

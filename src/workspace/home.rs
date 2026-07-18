@@ -39,10 +39,8 @@ impl RuntimePresentation {
         }) = state
         else {
             let footer = match state {
-                Some(RuntimeState::Unavailable { .. }) => {
-                    "Syntaxis UI preview · Runtime unavailable"
-                }
-                _ => "Syntaxis UI preview · Connecting to runtime",
+                Some(RuntimeState::Unavailable { .. }) => "Syntaxis · Runtime unavailable",
+                _ => "Syntaxis · Connecting to runtime",
             };
             return Self {
                 eyebrow: "WORKSPACE DEVELOPMENT".into(),
@@ -73,7 +71,7 @@ impl RuntimePresentation {
             } else {
                 "Browse exposed folders".into()
             },
-            footer: format!("Syntaxis UI preview · {}", identity.label),
+            footer: format!("Syntaxis · {}", identity.label),
             folder_dialog_title: if unrestricted {
                 "Open folder".into()
             } else {
