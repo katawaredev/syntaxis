@@ -44,7 +44,7 @@ pub fn TextArea(
     let aria_invalid = aria_invalid || field.as_ref().is_some_and(|field| field.invalid);
     let required = required || field.as_ref().is_some_and(|field| field.required);
     let class = format!(
-        "w-full border border-input bg-background/95 text-foreground shadow-xs outline-none transition-[color,box-shadow] placeholder:text-muted-foreground/70 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/35 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 {} {} {class}",
+        "touch-input w-full border border-input bg-background/95 text-foreground shadow-xs outline-none transition-[color,box-shadow] placeholder:text-muted-foreground/70 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/35 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 {} {} {class}",
         size.text_area_class(),
         resize.class()
     );

@@ -68,7 +68,7 @@ pub(super) fn RemoteManager(
             },
             div { class: "relative",
                 DropdownMenuTrigger {
-                    class: "inline-flex h-7 max-w-44 items-center gap-1 rounded-md px-2 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground",
+                    class: "touch-target inline-flex h-7 max-w-44 items-center gap-1 rounded-md px-2 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground",
                     "aria-label": "Manage Git remotes",
                     title: "Manage Git remotes",
                     span { class: "truncate", "{label}" }

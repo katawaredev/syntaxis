@@ -23,9 +23,9 @@ pub fn Drawer(
                     restore_focus_after_drawer(&restore_after_dismiss);
                 }
             },
-            class: "fixed inset-0 z-100 grid place-items-stretch bg-background/75 backdrop-blur-sm",
+            class: "mobile-drawer-root fixed inset-0 z-100 grid touch-pan-y place-items-stretch overscroll-contain bg-background/75 backdrop-blur-sm",
             DialogContent {
-                class: "{content_class} max-w-[86vw] shadow-2xl",
+                class: "mobile-drawer-content {content_class} max-w-[86vw] overscroll-contain shadow-2xl",
                 "aria-label": label,
                 div { class: "flex h-12 items-center justify-between border-b border-border px-2.5",
                     DialogTitle { {title} }

@@ -179,7 +179,7 @@ pub(crate) fn NotificationMenu() -> Element {
                     }
                 }
             }
-            PopoverContent { class: "absolute top-[calc(100%+6px)] right-0 z-90 w-[min(360px,calc(100vw-1rem))] overflow-hidden rounded-xl border border-border bg-popover shadow-2xl",
+            PopoverContent { class: "touch-popover absolute top-[calc(100%+6px)] right-0 z-90 w-[min(360px,calc(100vw-1rem))] overflow-hidden rounded-xl border border-border bg-popover shadow-2xl",
                 div { class: "flex items-center justify-between border-b border-border px-3 py-2.5",
                     strong { class: "text-xs", "Notifications" }
                     if count > 0 {

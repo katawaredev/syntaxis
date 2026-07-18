@@ -762,7 +762,7 @@ fn WorkspaceGit(slug: String) -> Element {
                                     {format!("{} conflicts", repository.conflict_count())}
                                 }
                             }
-                            div { class: "min-w-0",
+                            div { class: "min-w-0 max-[520px]:hidden",
                                 RemoteManager {
                                     remotes: remote_list.clone(),
                                     upstream: upstream.to_owned(),
@@ -789,7 +789,7 @@ fn WorkspaceGit(slug: String) -> Element {
                                 }
                             }
                         }
-                        div { class: "flex shrink-0 items-center gap-1",
+                        div { class: "git-toolbar flex shrink-0 items-center gap-1",
                             if repository.conflict_count() > 0 {
                                 button {
                                     class: "h-7 rounded-md bg-destructive/10 px-2 text-[11px] text-destructive hover:bg-destructive/20",

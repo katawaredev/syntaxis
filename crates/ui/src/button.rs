@@ -34,7 +34,7 @@ pub fn Button(
 ) -> Element {
     rsx! {
         button {
-            class: "font-semibold transition-colors {size.button_class()} {kind.class()}",
+            class: "touch-target font-semibold transition-colors {size.button_class()} {kind.class()}",
             disabled,
             onclick: move |event| onclick.call(event),
             {label}

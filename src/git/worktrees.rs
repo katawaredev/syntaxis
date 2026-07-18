@@ -157,7 +157,7 @@ pub(super) fn BranchWorktreeMenu(
             },
             div { class: "relative",
                 DropdownMenuTrigger {
-                    class: "inline-flex h-7 max-w-52 items-center gap-1.5 rounded-md bg-transparent px-1.5 text-xs text-foreground hover:bg-accent disabled:opacity-50",
+                    class: "touch-target inline-flex h-7 max-w-52 items-center gap-1.5 rounded-md bg-transparent px-1.5 text-xs text-foreground hover:bg-accent disabled:opacity-50",
                     aria_disabled: busy || branches.is_empty() || loading,
                     "aria-label": "Branches and worktrees",
                     title: "Branches and worktrees",

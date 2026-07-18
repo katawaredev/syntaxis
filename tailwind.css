@@ -85,6 +85,7 @@
   a {
     @apply cursor-pointer;
     -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
   }
 
   button:disabled {
@@ -112,6 +113,26 @@
 
 }
 
+.app-viewport {
+  height: var(--app-height, 100dvh);
+}
+
+.mobile-modal-root {
+  padding-top: max(1rem, env(safe-area-inset-top));
+  padding-right: max(1rem, env(safe-area-inset-right));
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  padding-left: max(1rem, env(safe-area-inset-left));
+}
+
+.mobile-drawer-content {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+:where(.overflow-auto, .overflow-y-auto, .overflow-x-auto) {
+  -webkit-overflow-scrolling: touch;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -130,5 +151,69 @@
 @media (pointer: coarse) {
   .terminal-mobile-keys {
     display: flex;
+  }
+
+  .touch-target,
+  button[aria-haspopup] {
+    min-width: 2.5rem;
+    min-height: 2.5rem;
+  }
+
+  .touch-input,
+  .git-toolbar button {
+    min-height: 2.5rem;
+  }
+
+  .file-tree-row {
+    height: 2.75rem;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 2.75rem;
+  }
+
+  .file-tree-tab {
+    min-height: 2.5rem;
+  }
+
+  .explorer-toolbar {
+    height: auto;
+    min-height: 3rem;
+  }
+
+  .syntaxis-menu-content [role="option"],
+  .syntaxis-menu-content button {
+    min-height: 2.75rem;
+  }
+}
+
+@media (pointer: coarse) and (max-width: 768px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  .syntaxis-menu-content,
+  .touch-popover {
+    position: fixed !important;
+    top: auto !important;
+    right: max(0.5rem, env(safe-area-inset-right)) !important;
+    bottom: max(0.5rem, env(safe-area-inset-bottom)) !important;
+    left: max(0.5rem, env(safe-area-inset-left)) !important;
+    width: auto !important;
+    max-width: none !important;
+    max-height: min(70vh, calc(var(--app-height, 100dvh) - 1rem));
+    touch-action: pan-y;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-radius: 0.75rem;
+  }
+
+  .touch-popover button,
+  .touch-popover a {
+    min-height: 2.75rem;
+  }
+
+  .touch-only-visible {
+    opacity: 1;
   }
 }

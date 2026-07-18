@@ -74,7 +74,7 @@ pub(super) fn Explorer(
                     "Search"
                 }
             }
-            div { class: "flex h-10.5 min-h-10.5 items-center gap-1 border-b border-border px-1.25",
+            div { class: "explorer-toolbar flex h-10.5 min-h-10.5 items-center gap-1 border-b border-border px-1.25",
                 IconButton {
                     label: "New file",
                     icon: AppIcon::FilePlus,
@@ -128,13 +128,12 @@ pub(super) fn Explorer(
                         value: search(),
                         placeholder: "Search loaded files…",
                         aria_label: "Search files",
-                        autofocus: true,
                         oninput: move |event: FormEvent| search.set(event.value()),
                     }
                 }
             }
             div {
-                class: "min-h-0 flex-1 overflow-y-auto px-1.25 pt-1",
+                class: "min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-1.25 pt-1",
                 role: "tree",
                 "aria-label": "Workspace files",
                 if nodes.is_empty() {
@@ -181,7 +180,7 @@ pub(super) fn render_explorer_row(
     rsx! {
         button {
             key: "{path}",
-            class: if selected { "flex h-7.25 w-full items-center gap-1.5 rounded-sm bg-accent pr-1.5 text-left text-xs text-foreground" } else { "flex h-7.25 w-full items-center gap-1.5 rounded-sm bg-transparent pr-1.5 text-left text-xs text-foreground/90 hover:bg-accent/65" },
+            class: if selected { "file-tree-row flex h-7.25 w-full items-center gap-1.5 rounded-sm bg-accent pr-1.5 text-left text-xs text-foreground" } else { "file-tree-row flex h-7.25 w-full items-center gap-1.5 rounded-sm bg-transparent pr-1.5 text-left text-xs text-foreground/90 hover:bg-accent/65" },
             style: "padding-left: {padding}px",
             role: "treeitem",
             "aria-selected": selected,
@@ -222,9 +221,9 @@ pub(super) fn render_explorer_row(
 
 fn explorer_tab_class(active: bool) -> &'static str {
     if active {
-        "h-8.5 rounded-md bg-muted text-[11px] font-medium text-foreground"
+        "file-tree-tab h-8.5 rounded-md bg-muted text-[11px] font-medium text-foreground"
     } else {
-        "h-8.5 rounded-md bg-transparent text-[11px] text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+        "file-tree-tab h-8.5 rounded-md bg-transparent text-[11px] text-muted-foreground hover:bg-muted/60 hover:text-foreground"
     }
 }
 

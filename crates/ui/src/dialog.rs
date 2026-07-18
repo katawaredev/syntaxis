@@ -19,8 +19,8 @@ pub fn Modal(
                     on_close.call(());
                 }
             },
-            class: "fixed inset-0 z-100 grid place-items-center bg-background/75 p-4.5 backdrop-blur-sm",
-            DialogContent { class: "max-h-[calc(100svh-1.5rem)] w-full max-w-115 overflow-y-auto rounded-xl border border-border bg-popover text-popover-foreground shadow-2xl {content_class}",
+            class: "mobile-modal-root fixed inset-0 z-100 grid touch-pan-y place-items-center overflow-y-auto overscroll-contain bg-background/75 p-4.5 backdrop-blur-sm",
+            DialogContent { class: "max-h-[calc(var(--app-height,100dvh)-1.5rem)] w-full max-w-115 touch-pan-y overflow-y-auto overscroll-contain rounded-xl border border-border bg-popover text-popover-foreground shadow-2xl {content_class}",
                 header { class: "flex justify-between gap-4.5 px-5 pt-5 pb-2",
                     div {
                         DialogTitle { class: "text-lg font-semibold text-foreground", {title} }

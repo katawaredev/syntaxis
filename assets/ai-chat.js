@@ -42,6 +42,13 @@
 
     input.syntaxisSyncHeight = sync;
     input.addEventListener("input", sync);
+    input.addEventListener("keydown", (event) => {
+      // Software keyboards have no practical Shift+Enter gesture. Keep Return
+      // available for multiline prompts; the adjacent Send button submits.
+      if (window.matchMedia("(pointer: coarse)").matches && event.key === "Enter") {
+        event.stopPropagation();
+      }
+    });
     input.addEventListener("paste", async (event) => {
       const clipboardFiles = Array.from(event.clipboardData?.files ?? []);
       const itemFiles = Array.from(event.clipboardData?.items ?? [])

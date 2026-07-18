@@ -27,6 +27,8 @@ const historyLimit = 200;
 const historyByteLimit = 16 * 1024 * 1024;
 let pendingHistory = null;
 let caretScrollFrame = null;
+let selectionFrame = null;
+let composing = false;
 const cloneRanges = source => source.map(([start, end]) => [start, end]);
 const captureHistory = () => ({
     value: input.value,
@@ -125,6 +127,13 @@ const emit = () => {
             start: byteOffset(rangeStart),
             end: byteOffset(rangeEnd),
         })),
+    });
+};
+const queueSelection = () => {
+    if (selectionFrame !== null) cancelAnimationFrame(selectionFrame);
+    selectionFrame = requestAnimationFrame(() => {
+        selectionFrame = null;
+        if (!composing) emit();
     });
 };
 const applyValue = (value, start, end = start) => {
@@ -246,6 +255,7 @@ const addVerticalCursor = direction => {
     emit();
 };
 const onKeyDown = event => {
+    if (event.isComposing || composing) return;
     const mod = event.ctrlKey || event.metaKey;
     const key = event.key.toLowerCase();
     if (mod && !event.altKey && key === "z") {
@@ -336,6 +346,7 @@ const onKeyDown = event => {
     }
 };
 const onBeforeInput = event => {
+    if (event.isComposing || composing) return;
     if (event.inputType === "historyUndo" || event.inputType === "historyRedo") return;
     pendingHistory = captureHistory();
     if (ranges.length < 2) {
@@ -373,13 +384,29 @@ const onBeforeInput = event => {
     commitHistory(before);
 };
 const onInput = () => {
-    if (!pendingHistory) return;
-    const before = pendingHistory;
-    pendingHistory = null;
-    commitHistory(before);
+    if (composing) return;
+    if (pendingHistory) {
+        const before = pendingHistory;
+        pendingHistory = null;
+        commitHistory(before);
+    }
     // Software keyboards do not reliably emit keyup. Report the updated caret
-    // directly from input so mobile completion can react to typing.
-    emit();
+    // after the delegated Dioxus input handler has committed the controlled
+    // value. Emitting synchronously here can re-render an old value on iOS.
+    queueSelection();
+};
+const onCompositionStart = () => {
+    composing = true;
+    pendingHistory = captureHistory();
+};
+const onCompositionEnd = () => {
+    composing = false;
+    if (pendingHistory) {
+        const before = pendingHistory;
+        pendingHistory = null;
+        commitHistory(before);
+    }
+    queueSelection();
 };
 const onSelection = () => {
     if (!input.matches(":focus")) return;
@@ -390,6 +417,8 @@ const onSelection = () => {
 input.addEventListener("keydown", onKeyDown);
 input.addEventListener("beforeinput", onBeforeInput);
 input.addEventListener("input", onInput);
+input.addEventListener("compositionstart", onCompositionStart);
+input.addEventListener("compositionend", onCompositionEnd);
 input.addEventListener("select", onSelection);
 input.addEventListener("keyup", onSelection);
 input.addEventListener("click", onSelection);
@@ -402,7 +431,10 @@ while (true) {
 input.removeEventListener("keydown", onKeyDown);
 input.removeEventListener("beforeinput", onBeforeInput);
 input.removeEventListener("input", onInput);
+input.removeEventListener("compositionstart", onCompositionStart);
+input.removeEventListener("compositionend", onCompositionEnd);
 input.removeEventListener("select", onSelection);
 input.removeEventListener("keyup", onSelection);
 input.removeEventListener("click", onSelection);
 if (caretScrollFrame !== null) cancelAnimationFrame(caretScrollFrame);
+if (selectionFrame !== null) cancelAnimationFrame(selectionFrame);

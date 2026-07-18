@@ -149,13 +149,12 @@ fn ModelPicker(
                 }
                 Icon { icon: AppIcon::ChevronDown, size: 13 }
             }
-            PopoverContent { class: "absolute top-[calc(100%+6px)] right-0 z-80 w-[min(430px,calc(100vw-1rem))] overflow-hidden rounded-xl border border-border bg-popover shadow-2xl",
+            PopoverContent { class: "touch-popover absolute top-[calc(100%+6px)] right-0 z-80 w-[min(430px,calc(100vw-1rem))] overflow-hidden rounded-xl border border-border bg-popover shadow-2xl",
                 div { class: "flex items-center gap-2 border-b border-border px-3 py-2",
                     Icon { icon: AppIcon::Search, size: 14 }
                     input {
                         class: "h-8 min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground",
                         value: query(),
-                        autofocus: true,
                         placeholder: "Search models or providers…",
                         aria_label: "Search Pi models",
                         oninput: move |event| query.set(event.value()),
@@ -336,7 +335,7 @@ fn UsageMenu(stats: Option<SessionStats>) -> Element {
                     }
                 }
             }
-            PopoverContent { class: "absolute top-[calc(100%+6px)] right-0 z-80 w-76 rounded-xl border border-border bg-popover p-3 shadow-2xl",
+            PopoverContent { class: "touch-popover absolute top-[calc(100%+6px)] right-0 z-80 w-76 rounded-xl border border-border bg-popover p-3 shadow-2xl",
                 UsagePopover { stats }
             }
         }
@@ -918,7 +917,7 @@ fn WorkspacePicker(
                 span { class: "truncate", "Current checkout" }
                 Icon { icon: AppIcon::ChevronDown, size: 11 }
             }
-            PopoverContent { class: "absolute top-[calc(100%+6px)] left-0 z-80 w-52 rounded-xl border border-border bg-popover p-1.5 shadow-2xl",
+            PopoverContent { class: "touch-popover absolute top-[calc(100%+6px)] left-0 z-80 w-52 rounded-xl border border-border bg-popover p-1.5 shadow-2xl",
                 div { class: "px-2 py-1.5 text-[9px] font-semibold tracking-wider text-muted-foreground uppercase",
                     "Workspace"
                 }
@@ -1025,7 +1024,7 @@ fn AttachmentPreview(image: ImageAttachment, on_remove: EventHandler<()>) -> Ele
                 alt: image.name.clone(),
             }
             button {
-                class: "absolute top-1 right-1 grid size-5 place-items-center rounded-full bg-background/90 text-foreground opacity-0 shadow transition-opacity group-hover:opacity-100 focus-visible:opacity-100",
+                class: "touch-only-visible absolute top-1 right-1 grid size-7 place-items-center rounded-full bg-background/90 text-foreground opacity-0 shadow transition-opacity group-hover:opacity-100 focus-visible:opacity-100",
                 aria_label: "Remove {image.name}",
                 title: "Remove image",
                 onclick: move |_| on_remove.call(()),

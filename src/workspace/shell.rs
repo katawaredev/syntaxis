@@ -98,7 +98,7 @@ pub fn WorkspaceShell() -> Element {
     };
 
     rsx! {
-        main { class: "flex h-svh w-full flex-col overflow-hidden",
+        main { class: "app-viewport flex w-full flex-col overflow-hidden",
             if let (Some(workspace), Some(location)) = (
                 active_workspace.current(),
                 runtime_location,
@@ -111,7 +111,7 @@ pub fn WorkspaceShell() -> Element {
                     state: event_state,
                 }
             }
-            header { class: "flex h-11.5 min-h-11.5 items-center gap-2 border-b border-border bg-background px-2.5 max-md:h-12 max-md:min-h-12",
+            header { class: "flex h-[calc(2.875rem+env(safe-area-inset-top))] min-h-[calc(2.875rem+env(safe-area-inset-top))] items-center gap-2 border-b border-border bg-background px-[max(0.625rem,env(safe-area-inset-left))] pt-[env(safe-area-inset-top)] max-md:h-[calc(3rem+env(safe-area-inset-top))] max-md:min-h-[calc(3rem+env(safe-area-inset-top))]",
                 Link {
                     class: "inline-flex size-8.5 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground",
                     to: Route::Home {},
@@ -142,7 +142,7 @@ pub fn WorkspaceShell() -> Element {
             }
             div { class: "min-h-0 flex-1 overflow-hidden", Outlet::<Route> {} }
             nav {
-                class: "flex h-14.5 min-h-14.5 items-stretch justify-center border-t border-border bg-background max-md:h-15.5 max-md:min-h-15.5",
+                class: "flex h-[calc(3.625rem+env(safe-area-inset-bottom))] min-h-[calc(3.625rem+env(safe-area-inset-bottom))] items-stretch justify-center border-t border-border bg-background pb-[env(safe-area-inset-bottom)] max-md:h-[calc(3.875rem+env(safe-area-inset-bottom))] max-md:min-h-[calc(3.875rem+env(safe-area-inset-bottom))]",
                 "aria-label": "Workspace modules",
                 NavItem {
                     label: "Files",
