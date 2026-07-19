@@ -7,6 +7,7 @@
 #   just serve desktop
 #   just check
 #   just ci
+#   just update
 #   just lighthouse
 #   just dx doctor
 #
@@ -63,6 +64,7 @@ install-goodies: install-binstall
         cargo-nextest \
         cargo-machete \
         cargo-deny \
+        cargo-edit \
         cargo-expand
 
 # Install lefthook (available as a binary, not via cargo).
@@ -92,6 +94,7 @@ update-tools: install-binstall
         cargo-nextest \
         cargo-machete \
         cargo-deny \
+        cargo-edit \
         cargo-expand
     just install-lefthook
 
@@ -146,6 +149,7 @@ versions:
         cargo-nextest
         cargo-machete
         cargo-deny
+        cargo-upgrade
         cargo-expand
     )
 
@@ -157,6 +161,50 @@ versions:
             printf '%-20s %s\n' "$command" "not installed"
         fi
     done
+
+# Interactively update Bun and Cargo dependencies.
+# Use `just update latest` to allow new major versions and rewrite manifests.
+update mode="compatible":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    mode="{{ mode }}"
+    if [[ "$mode" != "compatible" && "$mode" != "latest" ]]; then
+        echo "Expected 'compatible' or 'latest', got: $mode" >&2
+        exit 2
+    fi
+
+    if [[ "$mode" == "latest" ]] && ! cargo upgrade --version >/dev/null 2>&1; then
+        echo "Latest Cargo upgrades require cargo-edit." >&2
+        echo "Install it with: just install-goodies" >&2
+        exit 1
+    fi
+
+    echo "== Bun dependencies =="
+    if [[ "$mode" == "latest" ]]; then
+        bun update --interactive --latest
+    else
+        bun update --interactive
+    fi
+
+    echo
+    if [[ "$mode" == "latest" ]]; then
+        echo "== Cargo dependencies (latest versions) =="
+        cargo upgrade --dry-run --incompatible allow --pinned allow
+        echo
+        read -r -p "Rewrite Cargo.toml files and update Cargo.lock? [y/N] " answer
+        if [[ "$answer" =~ ^[Yy]$ ]]; then
+            cargo upgrade --incompatible allow --pinned allow
+        fi
+    else
+        echo "== Cargo dependencies (within Cargo.toml constraints) =="
+        cargo update --dry-run
+        echo
+        read -r -p "Apply these Cargo.lock updates? [y/N] " answer
+        if [[ "$answer" =~ ^[Yy]$ ]]; then
+            cargo update
+        fi
+    fi
 
 # -----------------------------------------------------------------------------
 # Dioxus development
@@ -260,9 +308,28 @@ format-check:
     cargo fmt --all -- --check
     dx fmt --check
 
-# Remove Dioxus and Cargo build artifacts.
+# Preview and remove ignored build artifacts while preserving local configuration.
 clean:
-    cargo clean
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    exclusions=(
+        -e ".env"
+        -e ".env.*"
+        -e ".envrc"
+        -e ".direnv/"
+        -e "*.local"
+        -e "*.local.*"
+    )
+
+    echo "The following ignored files and directories will be removed:"
+    git clean -ndX "${exclusions[@]}"
+    echo
+
+    read -r -p "Continue? [y/N] " answer
+    if [[ "$answer" =~ ^[Yy]$ ]]; then
+        git clean -fdX "${exclusions[@]}"
+    fi
 
 # Escape hatch for arbitrary Dioxus CLI commands.
 #

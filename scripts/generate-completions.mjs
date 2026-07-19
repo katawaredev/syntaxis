@@ -39,7 +39,7 @@ if (existsSync(outputPath)) {
   }
 }
 
-const [autocompleteModule, cssModule, htmlModule, javascriptModule, sqlModule, stateModule, mdnModule, tsModule] =
+const [autocompleteModule, cssModule, htmlModule, javascriptModule, sqlModule, stateModule, mdnModule] =
   await Promise.all([
     import("@codemirror/autocomplete"),
     import("@codemirror/lang-css"),
@@ -48,7 +48,6 @@ const [autocompleteModule, cssModule, htmlModule, javascriptModule, sqlModule, s
     import("@codemirror/lang-sql"),
     import("@codemirror/state"),
     import("mdn-data"),
-    import("typescript"),
   ]);
 const { CompletionContext } = autocompleteModule;
 const { css, cssCompletionSource } = cssModule;
@@ -57,7 +56,6 @@ const { snippets: javascriptSnippets } = javascriptModule;
 const { StandardSQL, keywordCompletionSource, sql } = sqlModule;
 const { EditorState } = stateModule;
 const mdn = mdnModule.default;
-const ts = tsModule.default;
 
 function completionContext(marked, extension) {
   const position = marked.indexOf("|");
@@ -80,35 +78,28 @@ function normalized(words) {
     .sort((left, right) => left.localeCompare(right));
 }
 
-function topLevelNames(sourceFile) {
+function topLevelNames(source) {
   const values = [];
   const types = [];
-  const addName = (target, name) => {
-    if (name && ts.isIdentifier(name)) target.push(name.text);
-  };
-  for (const statement of sourceFile.statements) {
-    if (ts.isVariableStatement(statement)) {
-      for (const declaration of statement.declarationList.declarations) {
-        addName(values, declaration.name);
-      }
-    } else if (ts.isFunctionDeclaration(statement)) {
-      addName(values, statement.name);
-    } else if (
-      ts.isClassDeclaration(statement) ||
-      ts.isEnumDeclaration(statement) ||
-      ts.isModuleDeclaration(statement)
-    ) {
-      addName(values, statement.name);
-      addName(types, statement.name);
-    } else if (ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement)) {
-      addName(types, statement.name);
-    }
+
+  for (const match of source.matchAll(
+    /^(?:declare\s+)?(?:const|let|var|function|class|enum|namespace|module)\s+([$A-Z_a-z][$\w]*)/gm,
+  )) {
+    values.push(match[1]);
   }
+  for (const match of source.matchAll(
+    /^(?:declare\s+)?(?:class|enum|namespace|module|interface|type)\s+([$A-Z_a-z][$\w]*)/gm,
+  )) {
+    types.push(match[1]);
+  }
+
   return { values, types };
 }
 
 function typescriptGlobalNames() {
-  const libDirectory = dirname(ts.getDefaultLibFilePath({ target: ts.ScriptTarget.ES2024 }));
+  const platformPackage = `@typescript/typescript-${process.platform}-${process.arch}`;
+  const platformManifest = fileURLToPath(import.meta.resolve(`${platformPackage}/package.json`));
+  const libDirectory = resolve(dirname(platformManifest), "lib");
   const pending = [
     "lib.es2024.d.ts",
     "lib.dom.d.ts",
@@ -125,12 +116,11 @@ function typescriptGlobalNames() {
     visited.add(fileName);
     const path = resolve(libDirectory, fileName);
     const source = readFileSync(path, "utf8");
-    const parsed = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, false);
-    const names = topLevelNames(parsed);
+    const names = topLevelNames(source);
     values.push(...names.values);
     types.push(...names.types);
-    for (const reference of ts.preProcessFile(source).libReferenceDirectives) {
-      pending.push(`lib.${reference.fileName}.d.ts`);
+    for (const reference of source.matchAll(/^\/\/\/\s*<reference\s+lib=["']([^"']+)["']/gm)) {
+      pending.push(`lib.${reference[1]}.d.ts`);
     }
   }
 

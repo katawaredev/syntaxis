@@ -7,7 +7,7 @@ publish = false
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 syntaxis-notifications = { path = "../notifications" }
-tokio = { version = "1.46.1", features = ["sync"] }
+tokio = { version = "1.53.0", features = ["sync"] }
 
 [lints]
 workspace = true

@@ -6,11 +6,11 @@ license = "MIT"
 publish = false
 
 [dependencies]
-async-trait = "0.1.89"
-serde = { version = "1.0.219", features = ["derive"] }
+async-trait = "0.1.91"
+serde = { version = "1.0.229", features = ["derive"] }
 
 [dev-dependencies]
-futures-lite = "2.6.0"
+futures-lite = "2.6.1"
 
 [lints]
 workspace = true
