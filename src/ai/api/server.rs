@@ -15,6 +15,11 @@ use syntaxis_workspace::WorkspaceId;
 
 use super::AgentEncoding;
 
+mod management;
+pub(super) use management::{
+    manage_pi_package, pi_packages, pi_settings, update_pi, update_pi_setting,
+};
+
 const HANDSHAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 static AGENTS: OnceLock<HostAgentManager> = OnceLock::new();
 

@@ -114,8 +114,12 @@ build-terminal: install-js
 build-completions: install-js
     bun run generate:completions
 
+# Generate Pi settings metadata from the pinned coding-agent package.
+build-pi-settings: install-js
+    bun run generate:pi-settings
+
 # Build all npm-backed application assets. Each generator has its own cache key.
-build-assets: build-terminal build-completions
+build-assets: build-terminal build-completions build-pi-settings
 
 # -----------------------------------------------------------------------------
 # Environment inspection

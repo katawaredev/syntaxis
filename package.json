@@ -4,6 +4,7 @@
   "scripts": {
     "build:terminal": "bun scripts/build-terminal.mjs",
     "generate:completions": "bun scripts/generate-completions.mjs",
+    "generate:pi-settings": "bun scripts/generate-pi-settings.mjs",
     "test:terminal": "bun test assets/terminal/source-links.test.js",
     "lighthouse": "rm -rf target/dx/syntaxis/release/web/public && dx build --platform web --release --locked --debug-symbols false && lhci autorun",
     "lighthouse:open": "lhci open"
@@ -20,6 +21,7 @@
     "@codemirror/lang-javascript": "6.2.5",
     "@codemirror/lang-sql": "6.10.0",
     "@codemirror/state": "6.7.1",
+    "@earendil-works/pi-coding-agent": "0.80.10",
     "@lhci/cli": "0.15.1",
     "mdn-data": "2.29.0",
     "typescript": "7.0.2"

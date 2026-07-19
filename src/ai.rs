@@ -1,5 +1,8 @@
 pub(crate) mod api;
 mod components;
+mod extensions;
+mod generated_settings;
+mod management;
 pub(crate) mod notifications;
 
 use dioxus::html::HasFileData;
@@ -21,6 +24,11 @@ use syntaxis_workspace::WorkspaceId;
 use self::components::{
     AgentComposer, AgentHeader, AgentSessionSidebar, AgentTimeline, ComposerSubmission,
     ExtensionRequestDialog,
+};
+use self::extensions::ExtensionsPanel;
+use self::management::{
+    default_settings_section, AiPanel, AiSidebarTabs, SettingsPanel, SettingsSidebar,
+    EXTENSIONS_SECTION,
 };
 
 const AI_CHAT_CSS: Asset = asset!("/assets/ai/chat.css");
@@ -115,12 +123,16 @@ fn RemoteAgent(
     let mut new_session_error = use_signal(|| None::<String>);
     let mut drawer = use_signal(|| false);
     let mut sidebar_open = use_signal(|| true);
+    let panel = use_signal(AiPanel::default);
+    let selected_settings_section = use_signal(default_settings_section);
+    let management_revision = use_signal(|| 0_u64);
     let mut attachments = use_signal(Vec::new);
     let mut composer_error = use_signal(|| None::<String>);
     let mut drag_active = use_signal(|| false);
     let mut delete_target = use_signal(|| None::<AgentSessionSummary>);
     let mut session_toast = use_signal(|| None::<(String, Tone)>);
     let mut draft_session = use_signal(|| false);
+    let mut creating_session = use_signal(|| false);
     let mut pending_new_prompt = use_signal(|| None::<ComposerSubmission>);
     let worktrees = use_resource(move || {
         let base = active_workspace.base();
@@ -248,6 +260,15 @@ fn RemoteAgent(
                                             selected_id.set(None);
                                             snapshot.set(AgentSnapshot::default());
                                             draft_session.set(true);
+                                            creating_session.set(true);
+                                            if socket
+                                                .send(ClientMessage::CreateSession)
+                                                .await
+                                                .is_err()
+                                            {
+                                                attempt = attempt.saturating_add(1).max(1);
+                                                break;
+                                            }
                                         }
                                         if create_requested {
                                             active_workspace.complete_agent_session_request(
@@ -277,6 +298,7 @@ fn RemoteAgent(
                                 }
                                 if let ServerMessage::SelectedSession { session_id, .. } = &message
                                 {
+                                    creating_session.set(false);
                                     replacement_selection_pending = false;
                                     if let Some(submission) = pending_new_prompt() {
                                         let action = session_action(
@@ -302,6 +324,11 @@ fn RemoteAgent(
                                         attachments.set(submission.images);
                                     }
                                     draft_session.set(true);
+                                    creating_session.set(false);
+                                } else if matches!(message, ServerMessage::Error { .. })
+                                    && creating_session()
+                                {
+                                    creating_session.set(false);
                                 }
                                 apply_server_message(
                                     message,
@@ -387,8 +414,9 @@ fn RemoteAgent(
                     },
                 },
             ));
-        } else if draft_session() && pending_new_prompt().is_none() {
+        } else if draft_session() && !creating_session() && pending_new_prompt().is_none() {
             pending_new_prompt.set(Some(prompt));
+            creating_session.set(true);
             client.send(ClientMessage::CreateSession);
         } else {
             return;
@@ -418,187 +446,236 @@ fn RemoteAgent(
         .or_else(&*error)
         .map(|message| (message, Tone::Destructive));
     let toast_message = error_toast.or_else(&*session_toast);
-    let composer_connected =
-        connected && (active_id.is_some() || draft_session()) && pending_new_prompt().is_none();
+    let composer_connected = connected
+        && (active_id.is_some() || draft_session())
+        && !creating_session()
+        && pending_new_prompt().is_none();
     rsx! {
         document::Stylesheet { href: AI_CHAT_CSS }
         div { class: if sidebar_open() { "grid size-full min-h-0 min-w-0 grid-cols-[260px_minmax(0,1fr)] overflow-hidden max-md:block" } else { "grid size-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] overflow-hidden max-md:block" },
             if sidebar_open() {
-                aside { class: "min-h-0 min-w-0 border-r border-border bg-sidebar max-md:hidden",
-                    AgentSessionSidebar {
-                        sessions: sessions(),
-                        selected_id: active_id.clone(),
-                        connected,
-                        on_select: move |session_id: String| {
-                            attachments.set(Vec::new());
-                            composer_error.set(None);
-                            draft_session.set(false);
-                            pending_new_prompt.set(None);
-                            selected_id.set(Some(session_id.clone()));
-                            snapshot.set(AgentSnapshot::default());
-                            extension_request.set(None);
-                            client
-                                .send(ClientMessage::SelectSession {
-                                    session_id,
-                                });
-                        },
-                        on_new: move |()| {
-                            attachments.set(Vec::new());
-                            composer_error.set(None);
-                            draft.set(String::new());
-                            selected_id.set(None);
-                            snapshot.set(AgentSnapshot::default());
-                            extension_request.set(None);
-                            pending_new_prompt.set(None);
-                            draft_session.set(true);
-                        },
-                        on_delete: move |session_id: String| {
-                            delete_target
-                                .set(sessions().into_iter().find(|session| session.id == session_id));
-                        },
+                aside { class: "flex min-h-0 min-w-0 flex-col border-r border-border bg-sidebar max-md:hidden",
+                    AiSidebarTabs { panel, on_change: move |_| {} }
+                    if panel() == AiPanel::Chat {
+                        div { class: "min-h-0 flex-1",
+                            AgentSessionSidebar {
+                                sessions: sessions(),
+                                selected_id: active_id.clone(),
+                                connected,
+                                on_select: move |session_id: String| {
+                                    attachments.set(Vec::new());
+                                    composer_error.set(None);
+                                    draft_session.set(false);
+                                    pending_new_prompt.set(None);
+                                    selected_id.set(Some(session_id.clone()));
+                                    snapshot.set(AgentSnapshot::default());
+                                    extension_request.set(None);
+                                    client
+                                        .send(ClientMessage::SelectSession {
+                                            session_id,
+                                        });
+                                },
+                                on_new: move |()| {
+                                    attachments.set(Vec::new());
+                                    composer_error.set(None);
+                                    draft.set(String::new());
+                                    selected_id.set(None);
+                                    snapshot.set(AgentSnapshot::default());
+                                    extension_request.set(None);
+                                    pending_new_prompt.set(None);
+                                    draft_session.set(true);
+                                    creating_session.set(true);
+                                    client.send(ClientMessage::CreateSession);
+                                },
+                                on_delete: move |session_id: String| {
+                                    delete_target
+                                        .set(sessions().into_iter().find(|session| session.id == session_id));
+                                },
+                            }
+                        }
+                    } else {
+                        SettingsSidebar {
+                            selected: selected_settings_section,
+                            on_selected: move |()| {},
+                        }
                     }
                 }
             }
             if drawer() {
                 Drawer {
-                    title: "Pi chats",
-                    label: "AI chat sessions",
+                    title: "Pi",
+                    label: "AI sidebar",
                     content_class: "h-full w-[min(330px,88vw)] justify-self-start border-0 border-r border-border bg-sidebar shadow-[15px_0_50px_#0008]",
-                    restore_focus: "button[aria-label='Open chats']",
+                    restore_focus: "button[aria-label='Open AI sidebar']",
                     on_close: move |()| drawer.set(false),
-                    AgentSessionSidebar {
-                        sessions: sessions(),
-                        selected_id: active_id.clone(),
-                        connected,
-                        on_select: move |session_id: String| {
-                            attachments.set(Vec::new());
-                            composer_error.set(None);
-                            draft_session.set(false);
-                            pending_new_prompt.set(None);
-                            selected_id.set(Some(session_id.clone()));
-                            snapshot.set(AgentSnapshot::default());
-                            extension_request.set(None);
-                            client
-                                .send(ClientMessage::SelectSession {
-                                    session_id,
-                                });
-                            drawer.set(false);
-                        },
-                        on_new: move |()| {
-                            drawer.set(false);
-                            attachments.set(Vec::new());
-                            composer_error.set(None);
-                            draft.set(String::new());
-                            selected_id.set(None);
-                            snapshot.set(AgentSnapshot::default());
-                            extension_request.set(None);
-                            pending_new_prompt.set(None);
-                            draft_session.set(true);
-                        },
-                        on_delete: move |session_id: String| {
-                            delete_target
-                                .set(sessions().into_iter().find(|session| session.id == session_id));
-                        },
+                    div { class: "flex h-full min-h-0 flex-col",
+                        AiSidebarTabs { panel, on_change: move |_| drawer.set(false) }
+                        if panel() == AiPanel::Chat {
+                            div { class: "min-h-0 flex-1",
+                                AgentSessionSidebar {
+                                    sessions: sessions(),
+                                    selected_id: active_id.clone(),
+                                    connected,
+                                    on_select: move |session_id: String| {
+                                        attachments.set(Vec::new());
+                                        composer_error.set(None);
+                                        draft_session.set(false);
+                                        pending_new_prompt.set(None);
+                                        selected_id.set(Some(session_id.clone()));
+                                        snapshot.set(AgentSnapshot::default());
+                                        extension_request.set(None);
+                                        client
+                                            .send(ClientMessage::SelectSession {
+                                                session_id,
+                                            });
+                                        drawer.set(false);
+                                    },
+                                    on_new: move |()| {
+                                        drawer.set(false);
+                                        attachments.set(Vec::new());
+                                        composer_error.set(None);
+                                        draft.set(String::new());
+                                        selected_id.set(None);
+                                        snapshot.set(AgentSnapshot::default());
+                                        extension_request.set(None);
+                                        pending_new_prompt.set(None);
+                                        draft_session.set(true);
+                                        creating_session.set(true);
+                                        client.send(ClientMessage::CreateSession);
+                                    },
+                                    on_delete: move |session_id: String| {
+                                        delete_target
+                                            .set(sessions().into_iter().find(|session| session.id == session_id));
+                                    },
+                                }
+                            }
+                        } else {
+                            SettingsSidebar {
+                                selected: selected_settings_section,
+                                on_selected: move |()| drawer.set(false),
+                            }
+                        }
                     }
                 }
             }
             section { class: "flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-card max-md:h-full",
-                AgentHeader {
-                    workspace_name: workspace_name.clone(),
-                    connection: connection_label(&connection()),
-                    session_title,
-                    snapshot: current.clone(),
-                    controls_disabled: !connected || active_id.is_none() || is_working,
-                    workspace_locked: !current.items.is_empty() || is_working,
-                    new_worktree_disabled_reason,
-                    sidebar_open: sidebar_open(),
-                    on_toggle_sidebar: move |()| sidebar_open.toggle(),
-                    on_open_sidebar: move |()| drawer.set(true),
-                    on_new_worktree: move |()| {
-                        isolated_branch.set(default_isolated_branch());
-                        new_session_error.set(None);
-                        new_session_dialog.set(true);
-                    },
-                    on_model: move |(provider, model_id)| {
-                        if let Some(session_id) = selected_id() {
-                            client
-                                .send(
-                                    session_action(
-                                        session_id,
-                                        ClientMessage::SetModel {
-                                            provider,
-                                            model_id,
-                                        },
-                                    ),
-                                );
-                        }
-                    },
-                    on_thinking: move |level| {
-                        if let Some(session_id) = selected_id() {
-                            client
-                                .send(
-                                    session_action(
-                                        session_id,
-                                        ClientMessage::SetThinkingLevel {
-                                            level,
-                                        },
-                                    ),
-                                );
-                        }
-                    },
-                }
-                if let Some(message) = connection_banner(&connection()) {
-                    div { class: "border-b border-warning/25 bg-warning/8 px-3 py-2 text-center text-[11px] text-warning",
-                        "{message}"
-                    }
-                }
-                div {
-                    class: "relative flex min-h-0 flex-1 flex-col overflow-hidden",
-                    ondragover: move |event: DragEvent| {
-                        event.prevent_default();
-                        if accepts_images && connected {
-                            drag_active.set(true);
-                        }
-                    },
-                    ondragleave: move |_| drag_active.set(false),
-                    ondrop: move |event: DragEvent| {
-                        event.prevent_default();
-                        drag_active.set(false);
-                        if accepts_images && connected {
-                            spawn(components::load_images(event.files(), attachments, composer_error));
-                        }
-                    },
-                    AgentTimeline {
-                        items: current.items.clone(),
-                        status: current.status,
-                        on_suggestion: move |text: String| {
-                            send_prompt
-                                .call(ComposerSubmission {
-                                    text,
-                                    images: Vec::new(),
-                                });
+                if panel() == AiPanel::Chat {
+                    AgentHeader {
+                        workspace_name: workspace_name.clone(),
+                        connection: connection_label(&connection()),
+                        session_title,
+                        snapshot: current.clone(),
+                        controls_disabled: !connected || active_id.is_none() || is_working,
+                        workspace_locked: !current.items.is_empty() || is_working,
+                        new_worktree_disabled_reason,
+                        sidebar_open: sidebar_open(),
+                        on_toggle_sidebar: move |()| sidebar_open.toggle(),
+                        on_open_sidebar: move |()| drawer.set(true),
+                        on_new_worktree: move |()| {
+                            isolated_branch.set(default_isolated_branch());
+                            new_session_error.set(None);
+                            new_session_dialog.set(true);
                         },
-                    }
-                    AgentComposer {
-                        draft,
-                        attachments,
-                        composer_error,
-                        connected: composer_connected,
-                        working: is_working,
-                        pending_messages: current.pending_messages,
-                        commands: current.commands.clone(),
-                        accepts_images,
-                        on_send: send_prompt,
-                        on_abort: move |()| {
+                        on_model: move |(provider, model_id)| {
                             if let Some(session_id) = selected_id() {
-                                client.send(session_action(session_id, ClientMessage::Abort));
+                                client
+                                    .send(
+                                        session_action(
+                                            session_id,
+                                            ClientMessage::SetModel {
+                                                provider,
+                                                model_id,
+                                            },
+                                        ),
+                                    );
+                            }
+                        },
+                        on_thinking: move |level| {
+                            if let Some(session_id) = selected_id() {
+                                client
+                                    .send(
+                                        session_action(
+                                            session_id,
+                                            ClientMessage::SetThinkingLevel {
+                                                level,
+                                            },
+                                        ),
+                                    );
                             }
                         },
                     }
-                    if drag_active() {
-                        div { class: "pointer-events-none absolute inset-3 z-90 grid place-items-center rounded-2xl border-2 border-dashed border-primary bg-primary/10 text-sm font-medium text-primary backdrop-blur-sm",
-                            "Drop images to attach"
+                    if let Some(message) = connection_banner(&connection()) {
+                        div { class: "border-b border-warning/25 bg-warning/8 px-3 py-2 text-center text-[11px] text-warning",
+                            "{message}"
                         }
+                    }
+                    div {
+                        class: "relative flex min-h-0 flex-1 flex-col overflow-hidden",
+                        ondragover: move |event: DragEvent| {
+                            event.prevent_default();
+                            if accepts_images && connected {
+                                drag_active.set(true);
+                            }
+                        },
+                        ondragleave: move |_| drag_active.set(false),
+                        ondrop: move |event: DragEvent| {
+                            event.prevent_default();
+                            drag_active.set(false);
+                            if accepts_images && connected {
+                                spawn(components::load_images(event.files(), attachments, composer_error));
+                            }
+                        },
+                        AgentTimeline {
+                            items: current.items.clone(),
+                            status: current.status,
+                            on_suggestion: move |text: String| {
+                                send_prompt
+                                    .call(ComposerSubmission {
+                                        text,
+                                        images: Vec::new(),
+                                    });
+                            },
+                        }
+                        AgentComposer {
+                            draft,
+                            attachments,
+                            composer_error,
+                            connected: composer_connected,
+                            working: is_working,
+                            pending_messages: current.pending_messages,
+                            commands: current.commands.clone(),
+                            accepts_images,
+                            on_send: send_prompt,
+                            on_abort: move |()| {
+                                if let Some(session_id) = selected_id() {
+                                    client.send(session_action(session_id, ClientMessage::Abort));
+                                }
+                            },
+                        }
+                        if drag_active() {
+                            div { class: "pointer-events-none absolute inset-3 z-90 grid place-items-center rounded-2xl border-2 border-dashed border-primary bg-primary/10 text-sm font-medium text-primary backdrop-blur-sm",
+                                "Drop images to attach"
+                            }
+                        }
+                    }
+                } else if selected_settings_section() == EXTENSIONS_SECTION {
+                    ExtensionsPanel {
+                        workspace_id: workspace_id.clone(),
+                        revision: management_revision,
+                        toast: session_toast,
+                        sidebar_open: sidebar_open(),
+                        on_toggle_sidebar: move |()| sidebar_open.toggle(),
+                        on_open_sidebar: move |()| drawer.set(true),
+                    }
+                } else {
+                    SettingsPanel {
+                        workspace_id: workspace_id.clone(),
+                        revision: management_revision,
+                        toast: session_toast,
+                        selected_section: selected_settings_section,
+                        sidebar_open: sidebar_open(),
+                        on_toggle_sidebar: move |()| sidebar_open.toggle(),
+                        on_open_sidebar: move |()| drawer.set(true),
                     }
                 }
             }

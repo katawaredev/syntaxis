@@ -94,6 +94,7 @@ url = "2.5.8"
 gloo-timers = { version = "0.4.0", features = ["futures"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reqwest = { version = "0.12.28", default-features = false, features = ["json", "rustls-tls"], optional = true }
 tokio = { version = "1.53.0", features = ["io-util", "macros", "process", "rt", "sync", "time"], optional = true }
 tokio-util = { version = "0.7.18", features = ["rt"], optional = true }
 
@@ -116,6 +117,7 @@ server = [
     "dep:syntaxis-notifications-host",
     "dep:syntaxis-terminal-host",
     "dep:syntaxis-workspace-host",
+    "dep:reqwest",
     "dep:tokio",
     "dep:tokio-util",
 ]

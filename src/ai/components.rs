@@ -51,7 +51,7 @@ pub(super) fn AgentHeader(
         header { class: "flex min-h-12 items-center gap-2 border-b border-border bg-background px-2.5 max-[520px]:gap-1.5 max-[520px]:px-2",
             div { class: "shrink-0 max-md:hidden",
                 IconButton {
-                    label: if sidebar_open { "Hide chats" } else { "Show chats" },
+                    label: if sidebar_open { "Hide AI sidebar" } else { "Show AI sidebar" },
                     icon: AppIcon::Explorer,
                     pressed: sidebar_open,
                     onclick: move |_| on_toggle_sidebar.call(()),
@@ -59,7 +59,7 @@ pub(super) fn AgentHeader(
             }
             div { class: "hidden shrink-0 max-md:block",
                 IconButton {
-                    label: "Open chats",
+                    label: "Open AI sidebar",
                     icon: AppIcon::Explorer,
                     onclick: move |_| on_open_sidebar.call(()),
                 }

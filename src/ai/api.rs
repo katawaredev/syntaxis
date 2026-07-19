@@ -1,11 +1,53 @@
 use bytes::Bytes;
 use dioxus::fullstack::{CborEncoding, Encoding, WebSocketOptions, Websocket};
 use dioxus::prelude::*;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use syntaxis_agent::{ClientMessage, ServerMessage};
 use syntaxis_notifications::{NotificationClientMessage, NotificationServerMessage};
 
 const MAX_AGENT_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub(crate) struct PiPackageSummary {
+    pub name: String,
+    pub version: String,
+    pub description: String,
+    pub publisher: String,
+    pub published_at: String,
+    pub monthly_downloads: u64,
+    pub kinds: Vec<String>,
+    pub installed_scopes: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub(crate) struct PiPackageSearch {
+    pub packages: Vec<PiPackageSummary>,
+    pub catalog_total: usize,
+    pub start_offset: usize,
+    pub next_offset: usize,
+    pub has_more: bool,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum PiPackageAction {
+    Install,
+    Uninstall,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub(crate) struct PiOperationResult {
+    pub message: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub(crate) struct PiSettingsSnapshot {
+    pub pi_version: String,
+    pub schema_version: String,
+    pub compatible: bool,
+    pub compatibility_message: Option<String>,
+    pub values: serde_json::Value,
+}
 
 pub(crate) struct AgentEncoding;
 
@@ -57,6 +99,43 @@ pub async fn notification_socket(
     ServerFnError,
 > {
     server::notification_socket(options).await
+}
+
+#[post("/api/pi/packages/search")]
+pub(crate) async fn pi_packages(
+    workspace_id: String,
+    query: String,
+    offset: usize,
+) -> Result<PiPackageSearch, ServerFnError> {
+    server::pi_packages(WorkspaceId::new(workspace_id), query, offset).await
+}
+
+#[post("/api/pi/packages/manage")]
+pub(crate) async fn manage_pi_package(
+    workspace_id: String,
+    name: String,
+    action: PiPackageAction,
+) -> Result<PiOperationResult, ServerFnError> {
+    server::manage_pi_package(WorkspaceId::new(workspace_id), name, action).await
+}
+
+#[post("/api/pi/settings")]
+pub(crate) async fn pi_settings(workspace_id: String) -> Result<PiSettingsSnapshot, ServerFnError> {
+    server::pi_settings(WorkspaceId::new(workspace_id)).await
+}
+
+#[post("/api/pi/settings/update")]
+pub(crate) async fn update_pi_setting(
+    workspace_id: String,
+    path: String,
+    value: serde_json::Value,
+) -> Result<PiSettingsSnapshot, ServerFnError> {
+    server::update_pi_setting(WorkspaceId::new(workspace_id), path, value).await
+}
+
+#[post("/api/pi/update")]
+pub(crate) async fn update_pi(workspace_id: String) -> Result<PiOperationResult, ServerFnError> {
+    server::update_pi(WorkspaceId::new(workspace_id)).await
 }
 
 #[cfg(feature = "server")]

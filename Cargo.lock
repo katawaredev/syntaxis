@@ -6391,6 +6391,7 @@ dependencies = [
  "gloo-timers 0.4.0",
  "pulldown-cmark",
  "regex",
+ "reqwest",
  "serde",
  "serde_json",
  "syntaxis-agent",
