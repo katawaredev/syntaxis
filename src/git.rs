@@ -866,7 +866,7 @@ fn WorkspaceGit(slug: String) -> Element {
                             }
                         }
                     }
-                    div { class: "min-h-0 min-w-0 flex-1 overflow-auto bg-background",
+                    div { class: "touch-scroll-region min-h-0 min-w-0 flex-1 touch-pan-y overflow-auto bg-background",
                         if view() == SidebarView::History {
                             HistoryDetail {
                                 detail: commit_detail().flatten(),

@@ -2,7 +2,7 @@ use dioxus::fullstack::{WebSocketOptions, Websocket};
 use dioxus::prelude::*;
 use syntaxis_workspace::{
     BinaryFile, BrowseDirectory, BrowseRoot, EventBatch, FileEntry, FileVersion, RuntimeState,
-    TextFile, WorkspaceRecord,
+    TextFile, WorkspaceRecord, WorkspaceSession,
 };
 #[cfg(feature = "server")]
 use syntaxis_workspace::{
@@ -37,6 +37,19 @@ pub async fn remove_workspace(
 #[post("/api/workspaces/touch")]
 pub async fn touch_workspace(workspace_id: String) -> Result<(), ServerFnError> {
     server::touch_workspace(&WorkspaceId::new(workspace_id)).await
+}
+#[get("/api/workspaces/{workspace_id}/session")]
+pub async fn load_workspace_session(
+    workspace_id: String,
+) -> Result<WorkspaceSession, ServerFnError> {
+    server::load_workspace_session(&WorkspaceId::new(workspace_id)).await
+}
+#[post("/api/workspaces/{workspace_id}/session")]
+pub async fn save_workspace_session(
+    workspace_id: String,
+    session: WorkspaceSession,
+) -> Result<(), ServerFnError> {
+    server::save_workspace_session(&WorkspaceId::new(workspace_id), session).await
 }
 #[post("/api/workspaces/{workspace_id}/refresh")]
 pub async fn refresh_workspace(workspace_id: String) -> Result<WorkspaceRecord, ServerFnError> {

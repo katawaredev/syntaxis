@@ -28,7 +28,6 @@ use super::search::{
 pub(super) enum ExplorerView {
     #[default]
     Files,
-    Changes,
     Search,
 }
 
@@ -38,6 +37,7 @@ pub(super) fn Explorer(
     tree: Signal<ExplorerTree>,
     mut selected_entry: Signal<Option<FileEntry>>,
     mut view: Signal<ExplorerView>,
+    mut changed_only: Signal<bool>,
     mut search: Signal<String>,
     git_status: Option<RepositoryStatus>,
     ignored_paths: BTreeSet<String>,
@@ -61,12 +61,14 @@ pub(super) fn Explorer(
     let git_paths = changes_by_path.keys().cloned().collect::<BTreeSet<_>>();
     let directory_changes = directory_change_kinds(&changes_by_path);
     let active_view = view();
+    let filter_changes = active_view == ExplorerView::Files && changed_only();
     let search_query = search();
-    let nodes = tree.read().flattened(
+    let nodes = tree.read().flattened_with_expansion(
         "",
-        (active_view == ExplorerView::Changes).then_some(&git_paths),
+        filter_changes.then_some(&git_paths),
         &ignored_paths,
         show_ignored,
+        filter_changes,
     );
     let search_results = use_resource(move || {
         let query = search();
@@ -86,16 +88,11 @@ pub(super) fn Explorer(
     });
     rsx! {
         div { class: "flex h-full min-h-0 flex-col",
-            div { class: "grid h-12 min-h-12 grid-cols-3 items-center gap-1 border-b border-border p-1.25",
+            div { class: "grid h-12 min-h-12 grid-cols-2 items-center gap-1 border-b border-border p-1.25",
                 button {
                     class: explorer_tab_class(active_view == ExplorerView::Files),
                     onclick: move |_| view.set(ExplorerView::Files),
                     "Files"
-                }
-                button {
-                    class: explorer_tab_class(active_view == ExplorerView::Changes),
-                    onclick: move |_| view.set(ExplorerView::Changes),
-                    "Changes ({changes_by_path.len()})"
                 }
                 button {
                     class: explorer_tab_class(active_view == ExplorerView::Search),
@@ -142,6 +139,14 @@ pub(super) fn Explorer(
                         onclick: move |_| on_action.call(FileAction::Delete),
                     }
                     span { class: "flex-1" }
+                    IconButton {
+                        label: if changed_only() { "Show all files" } else { "Show changed files only" },
+                        icon: AppIcon::FileDiff,
+                        size: ControlSize::Small,
+                        pressed: changed_only(),
+                        disabled: changes_by_path.is_empty() && !changed_only(),
+                        onclick: move |_| changed_only.toggle(),
+                    }
                     IconButton {
                         label: "Refresh files",
                         icon: AppIcon::Refresh,
@@ -264,9 +269,9 @@ pub(super) fn Explorer(
                 } else if nodes.is_empty() {
                     div { class: "p-3 text-xs text-muted-foreground",
                         match active_view {
-                            ExplorerView::Files => "This workspace is empty.",
-                            ExplorerView::Changes => "No Git changes.",
+                            ExplorerView::Files if changed_only() => "No Git changes.",
                             ExplorerView::Search => unreachable!(),
+                            ExplorerView::Files => "This workspace is empty.",
                         }
                     }
                 }
@@ -282,6 +287,7 @@ pub(super) fn Explorer(
                                 selected_entry,
                                 on_open,
                                 on_expand,
+                                filter_changes,
                             )
                         }
                     }
@@ -399,6 +405,7 @@ pub(super) fn render_explorer_row(
     mut selected_entry: Signal<Option<FileEntry>>,
     on_open: EventHandler<FileEntry>,
     on_expand: EventHandler<FileEntry>,
+    lock_directories_open: bool,
 ) -> Element {
     let entry = node.entry;
     let path = entry.path.as_str().to_owned();
@@ -421,7 +428,9 @@ pub(super) fn render_explorer_row(
             onclick: move |_| {
                 selected_entry.set(Some(entry_for_click.clone()));
                 if is_directory {
-                    on_expand.call(entry_for_click.clone());
+                    if !lock_directories_open {
+                        on_expand.call(entry_for_click.clone());
+                    }
                 } else {
                     on_open.call(entry_for_click.clone());
                 }
@@ -511,7 +520,7 @@ pub(super) fn expand_directory(
     entry: FileEntry,
     workspace: Option<WorkspaceRecord>,
     mut tree: Signal<ExplorerTree>,
-    mut editor_configs: Signal<Vec<EditorConfigSource>>,
+    editor_configs: Signal<Vec<EditorConfigSource>>,
     toast: Signal<Option<ToastState>>,
 ) {
     let path = entry.path.as_str().to_owned();
@@ -522,6 +531,45 @@ pub(super) fn expand_directory(
     let Some(workspace) = workspace else {
         return;
     };
+    expand_loaded_directory(entry, workspace, tree, editor_configs, toast);
+}
+
+pub(super) fn load_change_directories(
+    directories: Vec<String>,
+    workspace: Option<WorkspaceRecord>,
+    tree: Signal<ExplorerTree>,
+    editor_configs: Signal<Vec<EditorConfigSource>>,
+    toast: Signal<Option<ToastState>>,
+) {
+    let Some(workspace) = workspace else {
+        return;
+    };
+    for path in directories {
+        if tree.read().is_loaded(&path) {
+            continue;
+        }
+        let Ok(relative) = RelativePath::try_from(path.clone()) else {
+            continue;
+        };
+        let entry = FileEntry {
+            name: path.rsplit('/').next().unwrap_or(&path).to_owned(),
+            path: relative,
+            kind: EntryKind::Directory,
+            size: 0,
+            version: None,
+        };
+        expand_loaded_directory(entry, workspace.clone(), tree, editor_configs, toast);
+    }
+}
+
+fn expand_loaded_directory(
+    entry: FileEntry,
+    workspace: WorkspaceRecord,
+    mut tree: Signal<ExplorerTree>,
+    mut editor_configs: Signal<Vec<EditorConfigSource>>,
+    toast: Signal<Option<ToastState>>,
+) {
+    let path = entry.path.as_str().to_owned();
     spawn(async move {
         match workspace_client::list_files(workspace.clone(), entry.path).await {
             Ok(entries) => {

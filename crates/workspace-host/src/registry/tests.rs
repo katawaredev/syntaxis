@@ -1,6 +1,6 @@
 use std::fs;
 
-use syntaxis_workspace::{ErrorCode, WorkspaceRegistry};
+use syntaxis_workspace::{ErrorCode, FileSession, WorkspaceRegistry, WorkspaceSession};
 use tempfile::tempdir;
 
 use crate::{RegistrationPolicy, WorkspaceRegistryStore};
@@ -30,6 +30,49 @@ fn registry_persists_and_reports_missing_workspaces() {
         records[0].availability,
         syntaxis_workspace::WorkspaceAvailability::Missing
     );
+}
+
+#[test]
+fn workspace_sessions_are_scoped_sanitized_and_removed_with_registration() {
+    let data = tempdir().unwrap();
+    let project = tempdir().unwrap();
+    let registry = data.path().join("workspaces.json");
+    let store = WorkspaceRegistryStore::open(&registry, RegistrationPolicy::Unrestricted).unwrap();
+    let registered =
+        futures_lite::future::block_on(store.register(project.path().to_str().unwrap())).unwrap();
+    store
+        .save_session(
+            &registered.id,
+            WorkspaceSession {
+                files: FileSession {
+                    tabs: vec![
+                        "src/main.rs".into(),
+                        "../escape".into(),
+                        "src/main.rs".into(),
+                    ],
+                    active: Some("src/main.rs".into()),
+                },
+                ..WorkspaceSession::default()
+            },
+        )
+        .unwrap();
+
+    let session_path = data
+        .path()
+        .join("workspaces")
+        .join(&registered.id.0)
+        .join("session.json");
+    assert!(session_path.is_file());
+    assert_eq!(
+        store.load_session(&registered.id).unwrap().files,
+        FileSession {
+            tabs: vec!["src/main.rs".into()],
+            active: Some("src/main.rs".into()),
+        }
+    );
+
+    futures_lite::future::block_on(store.remove(&registered.id)).unwrap();
+    assert!(!session_path.exists());
 }
 
 #[test]

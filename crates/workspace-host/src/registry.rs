@@ -1,4 +1,5 @@
 use std::{
+    collections::{HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
     sync::{Mutex, MutexGuard},
@@ -7,8 +8,8 @@ use std::{
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use syntaxis_workspace::{
-    ErrorCode, WorkspaceAvailability, WorkspaceError, WorkspaceIcon, WorkspaceId, WorkspaceProfile,
-    WorkspaceRecord, WorkspaceRegistry, WorkspaceResult,
+    ErrorCode, RelativePath, WorkspaceAvailability, WorkspaceError, WorkspaceIcon, WorkspaceId,
+    WorkspaceProfile, WorkspaceRecord, WorkspaceRegistry, WorkspaceResult, WorkspaceSession,
 };
 use uuid::Uuid;
 
@@ -94,6 +95,7 @@ const fn registry_version() -> u32 {
 
 pub struct WorkspaceRegistryStore {
     file: Mutex<RegistryFile>,
+    sessions: Mutex<HashMap<WorkspaceId, WorkspaceSession>>,
     path: Option<PathBuf>,
     policy: RegistrationPolicy,
 }
@@ -126,6 +128,7 @@ impl WorkspaceRegistryStore {
         }
         Ok(Self {
             file: Mutex::new(file),
+            sessions: Mutex::new(HashMap::new()),
             path: Some(path),
             policy: policy.canonicalize()?,
         })
@@ -139,6 +142,7 @@ impl WorkspaceRegistryStore {
     pub fn open_in_memory(policy: RegistrationPolicy) -> WorkspaceResult<Self> {
         Ok(Self {
             file: Mutex::new(RegistryFile::default()),
+            sessions: Mutex::new(HashMap::new()),
             path: None,
             policy: policy.canonicalize()?,
         })
@@ -169,6 +173,75 @@ impl WorkspaceRegistryStore {
         self.save(&next)?;
         *current = next;
         Ok(result)
+    }
+
+    /// Loads the versioned UI session associated with a registered workspace.
+    ///
+    /// Missing or unsupported session files are treated as an empty session.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the workspace is unknown or its session cannot be read.
+    pub fn load_session(&self, id: &WorkspaceId) -> WorkspaceResult<WorkspaceSession> {
+        self.get_record(id)?;
+        let Some(path) = self.session_path(id) else {
+            return self
+                .sessions
+                .lock()
+                .map_err(|_| WorkspaceError::internal())
+                .map(|sessions| sessions.get(id).cloned().unwrap_or_default());
+        };
+        let bytes = match fs::read(path) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(WorkspaceSession::default());
+            }
+            Err(error) => return Err(map_io_error(error)),
+        };
+        let session = serde_json::from_slice::<WorkspaceSession>(&bytes)
+            .map_err(|_| WorkspaceError::internal())?;
+        if session.version == WorkspaceSession::default().version {
+            Ok(session)
+        } else {
+            Ok(WorkspaceSession::default())
+        }
+    }
+
+    /// Atomically saves a workspace's versioned UI session.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the workspace is unknown or the session cannot be written.
+    pub fn save_session(
+        &self,
+        id: &WorkspaceId,
+        mut session: WorkspaceSession,
+    ) -> WorkspaceResult<()> {
+        self.get_record(id)?;
+        sanitize_session(&mut session);
+        session.version = WorkspaceSession::default().version;
+        let Some(path) = self.session_path(id) else {
+            self.sessions
+                .lock()
+                .map_err(|_| WorkspaceError::internal())?
+                .insert(id.clone(), session);
+            return Ok(());
+        };
+        let directory = path.parent().ok_or_else(WorkspaceError::internal)?;
+        fs::create_dir_all(directory).map_err(map_io_error)?;
+        let bytes = serde_json::to_vec_pretty(&session).map_err(|_| WorkspaceError::internal())?;
+        let temporary = path.with_extension("json.tmp");
+        fs::write(&temporary, bytes)
+            .and_then(|()| fs::rename(&temporary, path))
+            .map_err(map_io_error)
+    }
+
+    fn session_path(&self, id: &WorkspaceId) -> Option<PathBuf> {
+        self.path.as_ref().and_then(|registry| {
+            registry
+                .parent()
+                .map(|data| data.join("workspaces").join(&id.0).join("session.json"))
+        })
     }
 
     fn list_records(&self) -> WorkspaceResult<Vec<WorkspaceRecord>> {
@@ -344,7 +417,23 @@ impl WorkspaceRegistryStore {
                 .ok_or_else(workspace_not_found)?;
             file.workspaces.remove(index);
             Ok(())
-        })
+        })?;
+        if let Some(path) = self
+            .session_path(id)
+            .and_then(|path| path.parent().map(Path::to_owned))
+        {
+            match fs::remove_dir_all(path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(map_io_error(error)),
+            }
+        } else {
+            self.sessions
+                .lock()
+                .map_err(|_| WorkspaceError::internal())?
+                .remove(id);
+        }
+        Ok(())
     }
 
     /// Permanently deletes a registered workspace directory after validating it again.
@@ -373,6 +462,23 @@ impl WorkspaceRegistryStore {
             ));
         }
         fs::remove_dir_all(canonical).map_err(map_io_error)
+    }
+}
+
+fn sanitize_session(session: &mut WorkspaceSession) {
+    let mut seen = HashSet::new();
+    session.files.tabs.retain(|path| {
+        seen.insert(path.clone())
+            && RelativePath::try_from(path.clone()).is_ok_and(|path| !path.is_root())
+    });
+    session.files.tabs.truncate(20);
+    if session
+        .files
+        .active
+        .as_ref()
+        .is_some_and(|active| !session.files.tabs.contains(active))
+    {
+        session.files.active = None;
     }
 }
 

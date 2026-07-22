@@ -1,6 +1,7 @@
 #[allow(unused_imports)] // Dioxus expands the parent glob for RSX hot-reload analysis.
 use super::*;
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn open_document(
     entry: FileEntry,
     workspace: Option<WorkspaceRecord>,
@@ -9,6 +10,7 @@ pub(super) fn open_document(
     mut active_path: Signal<Option<String>>,
     mut loading_path: Signal<Option<String>>,
     mut loading_documents: Signal<BTreeSet<String>>,
+    diff_request: Option<OpenDiffRequest>,
 ) {
     let path = entry.path.as_str().to_owned();
     if documents
@@ -16,8 +18,18 @@ pub(super) fn open_document(
         .iter()
         .any(|document| document.path() == path)
     {
-        active_path.set(Some(path));
+        active_path.set(Some(path.clone()));
         loading_path.set(None);
+        if let Some(request) = diff_request {
+            show_diff(
+                request.slug,
+                path,
+                request.kind,
+                request.diff,
+                request.toast,
+                active_path,
+            );
+        }
         return;
     }
     let Some(workspace) = workspace else {
@@ -28,36 +40,7 @@ pub(super) fn open_document(
         return;
     }
     spawn(async move {
-        let result = if entry.size > MAX_TEXT_BYTES {
-            Ok(OpenDocument::Large {
-                path: path.clone(),
-                size: entry.size,
-            })
-        } else if let Some(mime) = image_mime(&path) {
-            workspace_client::read_binary(workspace.clone(), entry.path.clone(), MAX_PREVIEW_BYTES)
-                .await
-                .map(|file| OpenDocument::Image {
-                    path: path.clone(),
-                    data_url: format!("data:{mime};base64,{}", BASE64.encode(file.content)),
-                    size: entry.size,
-                })
-        } else {
-            workspace_client::read_text(workspace, entry.path, MAX_TEXT_BYTES)
-                .await
-                .map(|file| {
-                    OpenDocument::Text(EditorBuffer::open(
-                        path.clone(),
-                        file.content,
-                        file.version,
-                        resolve_editor_config(&configs, &path),
-                    ))
-                })
-        };
-        let document = result.unwrap_or_else(|reason| OpenDocument::Unsupported {
-            path: path.clone(),
-            size: entry.size,
-            reason,
-        });
+        let document = load_document(entry, workspace, configs).await;
         let opened_path = document.path().to_owned();
         if !documents
             .read()
@@ -68,10 +51,147 @@ pub(super) fn open_document(
         }
         loading_documents.write().remove(&opened_path);
         if loading_path.peek().as_deref() == Some(&opened_path) {
-            active_path.set(Some(opened_path));
+            active_path.set(Some(opened_path.clone()));
             loading_path.set(None);
+            if let Some(request) = diff_request {
+                show_diff(
+                    request.slug,
+                    opened_path,
+                    request.kind,
+                    request.diff,
+                    request.toast,
+                    active_path,
+                );
+            }
         }
     });
+}
+
+pub(super) fn restore_documents(
+    session: FileSession,
+    workspace: WorkspaceRecord,
+    configs: Vec<EditorConfigSource>,
+    mut documents: Signal<Vec<OpenDocument>>,
+    mut active_path: Signal<Option<String>>,
+    mut session_ready: Signal<bool>,
+) {
+    use futures_util::{stream, StreamExt};
+
+    spawn(async move {
+        let active = session
+            .active
+            .clone()
+            .filter(|active| session.tabs.contains(active));
+        let mut loaded = std::collections::HashMap::<String, OpenDocument>::new();
+        if let Some(path) = active.as_ref() {
+            if let Some(document) = load_restored_document(&workspace, &configs, path).await {
+                loaded.insert(path.clone(), document.clone());
+                if documents.peek().is_empty() {
+                    documents.set(vec![document]);
+                    active_path.set(Some(path.clone()));
+                }
+            }
+        }
+
+        let remaining = session
+            .tabs
+            .iter()
+            .filter(|path| Some(*path) != active.as_ref())
+            .cloned()
+            .collect::<Vec<_>>();
+        let restored = stream::iter(remaining)
+            .map(|path| {
+                let workspace = workspace.clone();
+                let configs = configs.clone();
+                async move {
+                    load_restored_document(&workspace, &configs, &path)
+                        .await
+                        .map(|document| (path, document))
+                }
+            })
+            .buffered(4)
+            .filter_map(|document| async move { document })
+            .collect::<Vec<_>>()
+            .await;
+        loaded.extend(restored);
+
+        let current = std::mem::take(&mut *documents.write());
+        let current_paths = current
+            .iter()
+            .map(|document| document.path().to_owned())
+            .collect::<Vec<_>>();
+        for document in current {
+            loaded.insert(document.path().to_owned(), document);
+        }
+        let mut ordered = session
+            .tabs
+            .into_iter()
+            .filter_map(|path| loaded.remove(&path))
+            .collect::<Vec<_>>();
+        ordered.extend(
+            current_paths
+                .into_iter()
+                .filter_map(|path| loaded.remove(&path)),
+        );
+        let restored_active = active
+            .filter(|active| ordered.iter().any(|document| document.path() == active))
+            .or_else(|| ordered.first().map(|document| document.path().to_owned()));
+        documents.set(ordered);
+        if active_path.peek().is_none() {
+            active_path.set(restored_active);
+        }
+        session_ready.set(true);
+    });
+}
+
+async fn load_restored_document(
+    workspace: &WorkspaceRecord,
+    configs: &[EditorConfigSource],
+    path: &str,
+) -> Option<OpenDocument> {
+    let relative = RelativePath::try_from(path.to_owned()).ok()?;
+    let entry = workspace_client::stat_file(workspace.clone(), relative)
+        .await
+        .ok()?;
+    Some(load_document(entry, workspace.clone(), configs.to_vec()).await)
+}
+
+async fn load_document(
+    entry: FileEntry,
+    workspace: WorkspaceRecord,
+    configs: Vec<EditorConfigSource>,
+) -> OpenDocument {
+    let path = entry.path.as_str().to_owned();
+    let result = if entry.size > MAX_TEXT_BYTES {
+        Ok(OpenDocument::Large {
+            path: path.clone(),
+            size: entry.size,
+        })
+    } else if let Some(mime) = image_mime(&path) {
+        workspace_client::read_binary(workspace.clone(), entry.path.clone(), MAX_PREVIEW_BYTES)
+            .await
+            .map(|file| OpenDocument::Image {
+                path: path.clone(),
+                data_url: format!("data:{mime};base64:{}", BASE64.encode(file.content)),
+                size: entry.size,
+            })
+    } else {
+        workspace_client::read_text(workspace, entry.path, MAX_TEXT_BYTES)
+            .await
+            .map(|file| {
+                OpenDocument::Text(EditorBuffer::open(
+                    path.clone(),
+                    file.content,
+                    file.version,
+                    resolve_editor_config(&configs, &path),
+                ))
+            })
+    };
+    result.unwrap_or_else(|reason| OpenDocument::Unsupported {
+        path,
+        size: entry.size,
+        reason,
+    })
 }
 
 pub(super) fn reconcile_workspace_change(

@@ -19,7 +19,9 @@ use syntaxis_ui::prelude::{
     PanelHeader, PanelTab, PanelTabIndicator, PanelTabList, PanelTabWidth, TextInput,
     TextInputType, Toast, Tone,
 };
-use syntaxis_workspace::{ChangeKind, EntryKind, FileEntry, RelativePath, WorkspaceRecord};
+use syntaxis_workspace::{
+    ChangeKind, EntryKind, FileEntry, FileSession, RelativePath, WorkspaceRecord, WorkspaceSession,
+};
 
 use crate::{
     git::api as git_api,
@@ -40,7 +42,7 @@ pub use location::FilesQuery;
 use dialogs::{DirtyClosePrompt, FileMutationDialog, GitDiscardPrompt, GoToLineDialog};
 use documents::{
     close_documents, edit_document, open_document, reconcile_workspace_change, reload_document,
-    request_close, request_close_many, save_all, save_and_close, save_path,
+    request_close, request_close_many, restore_documents, save_all, save_and_close, save_path,
 };
 use editor_ui::{
     apply_completion, copy_editor_reference, find_matches, format_editor_reference,
@@ -50,7 +52,7 @@ use editor_ui::{
 };
 use explorer::{expand_directory, Explorer, ExplorerView};
 use git_actions::{
-    discard_git_change, revert_active, run_file_action, toggle_diff, toggle_stage,
+    discard_git_change, revert_active, run_file_action, show_diff, toggle_diff, toggle_stage,
     GitDiscardContext,
 };
 use location::location_command;
@@ -162,6 +164,14 @@ struct GitRevertRequest {
     action: RevertAction,
 }
 
+#[derive(Clone)]
+struct OpenDiffRequest {
+    slug: String,
+    kind: DiffKind,
+    diff: Signal<Option<UnifiedDiff>>,
+    toast: Signal<Option<ToastState>>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 struct FileActionDialog {
     action: FileAction,
@@ -186,10 +196,12 @@ struct InitialFiles {
     editor_configs: Vec<EditorConfigSource>,
     git_status: Option<RepositoryStatus>,
     ignored_paths: BTreeSet<String>,
+    session: FileSession,
 }
 
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) struct FilesSessionState {
+    workspace_id: Signal<Option<String>>,
     documents: Signal<Vec<OpenDocument>>,
     active_path: Signal<Option<String>>,
     processed_event_revision: Signal<u64>,
@@ -197,6 +209,7 @@ pub(crate) struct FilesSessionState {
 
 pub(crate) fn use_files_session() -> FilesSessionState {
     FilesSessionState {
+        workspace_id: use_signal(|| None),
         documents: use_signal(Vec::new),
         active_path: use_signal(|| None),
         processed_event_revision: use_signal(|| 0),
@@ -209,6 +222,17 @@ impl FilesSessionState {
     }
 
     pub(crate) fn reset(mut self) {
+        self.workspace_id.set(None);
+        self.documents.set(Vec::new());
+        self.active_path.set(None);
+        self.processed_event_revision.set(0);
+    }
+
+    fn activate(mut self, workspace_id: String) {
+        if self.workspace_id.peek().as_deref() == Some(&workspace_id) {
+            return;
+        }
+        self.workspace_id.set(Some(workspace_id));
         self.documents.set(Vec::new());
         self.active_path.set(None);
         self.processed_event_revision.set(0);
@@ -244,7 +268,10 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
         let _ = refresh();
         async move { load_initial(workspace).await }
     });
-    let target_id = target.id.0;
+    let target_id = target.id.0.clone();
+    let restore_workspace = target.clone();
+    let activate_workspace_id = target.id.0.clone();
+    let session_workspace_id = target.id.0.clone();
     let mut workspace = use_signal(|| None::<WorkspaceRecord>);
     let mut tree = use_signal(ExplorerTree::default);
     let mut editor_configs = use_signal(Vec::<EditorConfigSource>::new);
@@ -252,6 +279,13 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
     let mut ignored_paths = use_signal(BTreeSet::<String>::new);
     let session = use_context::<FilesSessionState>();
     let documents = session.documents;
+    let open_paths = use_memo(move || {
+        documents
+            .read()
+            .iter()
+            .map(|document| document.path().to_owned())
+            .collect::<Vec<_>>()
+    });
     let mut active_path = session.active_path;
     let selected_entry = use_signal(|| None::<FileEntry>);
     let loading_path = use_signal(|| None::<String>);
@@ -259,6 +293,8 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
     let mut drawer = use_signal(|| false);
     let mut sidebar_open = use_signal(|| true);
     let explorer_view = use_signal(ExplorerView::default);
+    let changed_only = use_signal(|| false);
+    let mut auto_loaded_change_directories = use_signal(BTreeSet::<String>::new);
     let explorer_search = use_signal(String::new);
     let mut explorer_highlights = use_signal(|| None::<(String, Vec<EditorRange>)>);
     let mut pending_search_navigation = use_signal(|| None::<(String, EditorRange)>);
@@ -284,7 +320,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
     let mut autocomplete = use_signal(|| false);
     let mut completion_after_input = use_signal(|| false);
     let mut suppress_next_completion = use_signal(|| false);
-    let diff = use_signal(|| None::<UnifiedDiff>);
+    let mut diff = use_signal(|| None::<UnifiedDiff>);
     let pending = use_signal(|| false);
     let mut file_dialog = use_signal(|| None::<FileActionDialog>);
     let close_request = use_signal(|| None::<CloseRequest>);
@@ -293,6 +329,11 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
     let mut processed_event_revision = session.processed_event_revision;
     let mut requested_location = use_signal(|| None::<FilesQuery>);
     let mut pending_location = use_signal(|| None::<FilesQuery>);
+    let mut session_ready = use_signal(|| false);
+    let mut session_revision = use_signal(|| 0_u64);
+    let has_initial_location = query.path.is_some();
+
+    use_effect(move || session.activate(activate_workspace_id.clone()));
 
     use_effect(move || {
         let Some((path, target)) = pending_search_navigation() else {
@@ -315,17 +356,79 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
     });
 
     use_effect(move || {
+        if !changed_only() {
+            auto_loaded_change_directories.write().clear();
+            return;
+        }
+        let Some(status) = git_status() else { return };
+        let directories = changed_parent_directories(&status);
+        let pending = directories
+            .difference(&auto_loaded_change_directories())
+            .cloned()
+            .collect::<Vec<_>>();
+        if pending.is_empty() {
+            return;
+        }
+        auto_loaded_change_directories
+            .write()
+            .extend(pending.iter().cloned());
+        explorer::load_change_directories(pending, workspace(), tree, editor_configs, toast);
+    });
+
+    use_effect(move || {
         let Some(result) = initial() else { return };
         match result {
             Ok(loaded) => {
+                let should_restore = !has_initial_location
+                    && documents.peek().is_empty()
+                    && !loaded.session.tabs.is_empty();
                 workspace.set(Some(loaded.workspace));
                 tree.write().replace_directory("", loaded.entries);
-                editor_configs.set(loaded.editor_configs);
+                editor_configs.set(loaded.editor_configs.clone());
                 git_status.set(loaded.git_status);
                 ignored_paths.set(loaded.ignored_paths);
+                if should_restore {
+                    restore_documents(
+                        loaded.session,
+                        restore_workspace.clone(),
+                        loaded.editor_configs,
+                        documents,
+                        active_path,
+                        session_ready,
+                    );
+                } else if !has_initial_location {
+                    session_ready.set(true);
+                }
             }
             Err(message) => set_error(toast, message),
         }
+    });
+
+    use_effect(move || {
+        if !session_ready() {
+            return;
+        }
+        let session = WorkspaceSession {
+            files: FileSession {
+                tabs: open_paths(),
+                active: active_path(),
+            },
+            ..WorkspaceSession::default()
+        };
+        let revision = session_revision.peek().saturating_add(1);
+        session_revision.set(revision);
+        let workspace_id = session_workspace_id.clone();
+        spawn(async move {
+            dioxus_sdk_time::sleep(std::time::Duration::from_millis(500)).await;
+            if *session_revision.peek() != revision {
+                return;
+            }
+            if let Err(message) =
+                workspace_client::save_workspace_session(workspace_id, session).await
+            {
+                set_error(toast, format!("Could not remember open files: {message}"));
+            }
+        });
     });
 
     use_effect({
@@ -345,11 +448,13 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                 Ok(relative) if !relative.is_root() => relative,
                 Ok(_) => {
                     pending_location.set(None);
+                    session_ready.set(true);
                     set_error(toast, "A source link must point to a file.");
                     return;
                 }
                 Err(error) => {
                     pending_location.set(None);
+                    session_ready.set(true);
                     set_error(toast, error.message);
                     return;
                 }
@@ -367,13 +472,16 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                         active_path,
                         loading_path,
                         loading_documents,
+                        None,
                     ),
                     Ok(_) => {
                         pending_location.set(None);
+                        session_ready.set(true);
                         set_error(toast, format!("{path} is not a file."));
                     }
                     Err(message) => {
                         pending_location.set(None);
+                        session_ready.set(true);
                         set_error(toast, format!("Could not open {path}: {message}"));
                     }
                 }
@@ -392,6 +500,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
         if active_path().as_deref() != Some(path) {
             return;
         }
+        session_ready.set(true);
         let Some(source) = text_document_contents(path, documents) else {
             return;
         };
@@ -508,6 +617,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                 .cloned()
         })
     });
+    let active_diff_kind = active_changed.as_ref().map(diff_kind_for_change);
     let active_revert_action = if active_buffer
         .as_ref()
         .is_some_and(ActiveBufferMeta::is_dirty)
@@ -573,7 +683,9 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
     let diff_slug = target_id.clone();
     let stage_slug = target_id.clone();
     let stage_change = active_changed.clone();
-    let discard_slug = target_id;
+    let discard_slug = target_id.clone();
+    let sidebar_diff_slug = target_id.clone();
+    let drawer_diff_slug = target_id;
 
     rsx! {
         div { class: if sidebar_open() { "grid size-full min-h-0 min-w-0 grid-cols-[248px_minmax(0,1fr)] overflow-hidden max-md:block" } else { "grid size-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] overflow-hidden max-md:block" },
@@ -584,14 +696,27 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                         tree,
                         selected_entry,
                         view: explorer_view,
+                        changed_only,
                         search: explorer_search,
                         git_status: git_status(),
                         ignored_paths: ignored_paths(),
                         show_ignored: show_ignored(),
                         pending: pending(),
-                        on_open: move |entry| {
+                        on_open: move |entry: FileEntry| {
+                            diff.set(None);
                             explorer_highlights.set(None);
                             pending_search_navigation.set(None);
+                            let diff_request = changed_only()
+                                .then(|| {
+                                    open_diff_request(
+                                        sidebar_diff_slug.clone(),
+                                        entry.path.as_str(),
+                                        git_status.read().as_ref(),
+                                        diff,
+                                        toast,
+                                    )
+                                })
+                                .flatten();
                             open_document(
                                 entry,
                                 workspace(),
@@ -600,9 +725,11 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                 active_path,
                                 loading_path,
                                 loading_documents,
+                                diff_request,
                             );
                         },
                         on_search_open: move |result: WorkspaceSearchResult| {
+                            diff.set(None);
                             let path = result.entry.path.as_str().to_owned();
                             explorer_highlights.set(Some((path.clone(), result.matches.clone())));
                             pending_search_navigation.set(result.target.map(|target| (path, target)));
@@ -614,6 +741,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                 active_path,
                                 loading_path,
                                 loading_documents,
+                                None,
                             );
                         },
                         on_expand: move |entry| expand_directory(entry, workspace(), tree, editor_configs, toast),
@@ -642,14 +770,27 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                         tree,
                         selected_entry,
                         view: explorer_view,
+                        changed_only,
                         search: explorer_search,
                         git_status: git_status(),
                         ignored_paths: ignored_paths(),
                         show_ignored: show_ignored(),
                         pending: pending(),
-                        on_open: move |entry| {
+                        on_open: move |entry: FileEntry| {
+                            diff.set(None);
                             explorer_highlights.set(None);
                             pending_search_navigation.set(None);
+                            let diff_request = changed_only()
+                                .then(|| {
+                                    open_diff_request(
+                                        drawer_diff_slug.clone(),
+                                        entry.path.as_str(),
+                                        git_status.read().as_ref(),
+                                        diff,
+                                        toast,
+                                    )
+                                })
+                                .flatten();
                             open_document(
                                 entry,
                                 workspace(),
@@ -658,10 +799,12 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                 active_path,
                                 loading_path,
                                 loading_documents,
+                                diff_request,
                             );
                             drawer.set(false);
                         },
                         on_search_open: move |result: WorkspaceSearchResult| {
+                            diff.set(None);
                             let path = result.entry.path.as_str().to_owned();
                             explorer_highlights.set(Some((path.clone(), result.matches.clone())));
                             pending_search_navigation.set(result.target.map(|target| (path, target)));
@@ -673,6 +816,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                 active_path,
                                 loading_path,
                                 loading_documents,
+                                None,
                             );
                             drawer.set(false);
                         },
@@ -867,8 +1011,15 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                     index: 8,
                                     icon: AppIcon::FileDiff,
                                     label: if diff().is_some() { "Hide Changes" } else { "View Changes" },
-                                    disabled: active_changed.as_ref().is_none_or(|change| !change.is_unstaged()),
-                                    onclick: move |()| toggle_diff(diff_slug.clone(), active_path(), diff, toast),
+                                    disabled: diff().is_none() && active_diff_kind.is_none(),
+                                    onclick: move |()| toggle_diff(
+                                        diff_slug.clone(),
+                                        active_path(),
+                                        active_diff_kind,
+                                        diff,
+                                        toast,
+                                        active_path,
+                                    ),
                                 }
                                 EditorMenuItem {
                                     index: 10,
@@ -1289,9 +1440,10 @@ async fn load_initial(workspace: WorkspaceRecord) -> Result<InitialFiles, String
             });
         }
     }
-    let (git_status, ignored_paths) = futures_util::join!(
+    let (git_status, ignored_paths, session) = futures_util::join!(
         git_api::repository_status(workspace.id.0.clone()),
         git_api::ignored_paths(workspace.id.0.clone()),
+        workspace_client::load_workspace_session(workspace.id.0.clone()),
     );
     let git_status = git_status.ok();
     let ignored_paths = ignored_paths.unwrap_or_default().into_iter().collect();
@@ -1301,6 +1453,52 @@ async fn load_initial(workspace: WorkspaceRecord) -> Result<InitialFiles, String
         editor_configs,
         git_status,
         ignored_paths,
+        session: session.unwrap_or_default().files,
+    })
+}
+
+fn changed_parent_directories(status: &RepositoryStatus) -> BTreeSet<String> {
+    status
+        .changes
+        .iter()
+        .flat_map(|change| {
+            let path = change.path.as_str();
+            let mut parents = Vec::new();
+            let mut parent = path.rsplit_once('/').map(|(parent, _)| parent);
+            while let Some(directory) = parent {
+                parents.push(directory.to_owned());
+                parent = directory.rsplit_once('/').map(|(parent, _)| parent);
+            }
+            parents
+        })
+        .collect()
+}
+
+fn diff_kind_for_change(change: &syntaxis_git::FileChange) -> DiffKind {
+    if change.is_unstaged() {
+        DiffKind::Worktree
+    } else {
+        DiffKind::Staged
+    }
+}
+
+fn open_diff_request(
+    slug: String,
+    path: &str,
+    status: Option<&RepositoryStatus>,
+    diff: Signal<Option<UnifiedDiff>>,
+    toast: Signal<Option<ToastState>>,
+) -> Option<OpenDiffRequest> {
+    let kind = status?
+        .changes
+        .iter()
+        .find(|change| change.path.as_str() == path)
+        .map(diff_kind_for_change)?;
+    Some(OpenDiffRequest {
+        slug,
+        kind,
+        diff,
+        toast,
     })
 }
 

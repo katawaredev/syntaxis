@@ -60,6 +60,7 @@
     position: sticky;
     left: 0;
     z-index: 2;
+    height: max-content;
     padding: 14px 0;
     border-right: 1px solid var(--border);
     background: var(--dxc-editor-gutter-background);
@@ -171,6 +172,8 @@
     padding: 0;
 }
 .dxc-diff-editor.dxc-diff-layout-full-file {
+    overflow: visible;
+    overscroll-behavior: auto;
     padding-top: 8px;
 }
 .dxc-diff-row,

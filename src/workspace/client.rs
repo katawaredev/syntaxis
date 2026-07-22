@@ -3,7 +3,7 @@ use syntaxis_git::{WorktreeCreateRequest, WorktreeInfo};
 use syntaxis_workspace::ExecutionLocation;
 use syntaxis_workspace::{
     BinaryFile, BrowseDirectory, FileEntry, FileVersion, RelativePath, RuntimeState, TextFile,
-    WorkspaceRecord,
+    WorkspaceRecord, WorkspaceSession,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -50,6 +50,33 @@ pub async fn touch_workspace(workspace_id: String) -> Result<(), String> {
         RuntimeTarget::DesktopLocal => host_registry()?
             .touch(&WorkspaceId::new(workspace_id))
             .await
+            .map_err(|error| error.message),
+    }
+}
+
+pub async fn load_workspace_session(workspace_id: String) -> Result<WorkspaceSession, String> {
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::api::load_workspace_session(workspace_id)
+            .await
+            .map_err(server_error_message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => host_registry()?
+            .load_session(&WorkspaceId::new(workspace_id))
+            .map_err(|error| error.message),
+    }
+}
+
+pub async fn save_workspace_session(
+    workspace_id: String,
+    session: WorkspaceSession,
+) -> Result<(), String> {
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::api::save_workspace_session(workspace_id, session)
+            .await
+            .map_err(server_error_message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => host_registry()?
+            .save_session(&WorkspaceId::new(workspace_id), session)
             .map_err(|error| error.message),
     }
 }

@@ -21,6 +21,7 @@ struct FlattenOptions<'a> {
     git_paths: Option<&'a BTreeSet<String>>,
     ignored_paths: &'a BTreeSet<String>,
     show_ignored: bool,
+    expand_all: bool,
 }
 
 impl ExplorerTree {
@@ -52,6 +53,17 @@ impl ExplorerTree {
         ignored_paths: &BTreeSet<String>,
         show_ignored: bool,
     ) -> Vec<ExplorerNode> {
+        self.flattened_with_expansion(search, git_paths, ignored_paths, show_ignored, false)
+    }
+
+    pub fn flattened_with_expansion(
+        &self,
+        search: &str,
+        git_paths: Option<&BTreeSet<String>>,
+        ignored_paths: &BTreeSet<String>,
+        show_ignored: bool,
+        expand_all: bool,
+    ) -> Vec<ExplorerNode> {
         let search = search.trim().to_ascii_lowercase();
         let mut result = Vec::new();
         let options = FlattenOptions {
@@ -59,6 +71,7 @@ impl ExplorerTree {
             git_paths,
             ignored_paths,
             show_ignored,
+            expand_all,
         };
         self.push_directory("", 0, &options, &mut result);
         result
@@ -94,11 +107,15 @@ impl ExplorerTree {
                 result.push(ExplorerNode {
                     entry: entry.clone(),
                     depth,
-                    expanded: is_directory && self.expanded.contains(path),
+                    expanded: is_directory && (options.expand_all || self.expanded.contains(path)),
                     ignored,
                 });
             }
-            if is_directory && (self.expanded.contains(path) || !options.search.is_empty()) {
+            if is_directory
+                && (options.expand_all
+                    || self.expanded.contains(path)
+                    || !options.search.is_empty())
+            {
                 self.push_directory(path, depth + 1, options, result);
             }
         }
@@ -137,6 +154,20 @@ mod tests {
         assert_eq!(tree.flattened("", None, &BTreeSet::new(), false).len(), 1);
         tree.expand("src");
         assert_eq!(tree.flattened("", None, &BTreeSet::new(), false).len(), 2);
+    }
+
+    #[test]
+    fn view_only_expansion_does_not_change_tree_state() {
+        let mut tree = ExplorerTree::default();
+        tree.replace_directory("", vec![entry("src", EntryKind::Directory)]);
+        tree.replace_directory("src", vec![entry("src/main.rs", EntryKind::File)]);
+
+        assert_eq!(
+            tree.flattened_with_expansion("", None, &BTreeSet::new(), false, true)
+                .len(),
+            2
+        );
+        assert_eq!(tree.flattened("", None, &BTreeSet::new(), false).len(), 1);
     }
 
     #[test]

@@ -12,6 +12,7 @@ use dioxus::{
 use syntaxis_workspace::{
     BinaryFile, BrowseDirectory, BrowseRoot, EventBatch, FileEntry, FileVersion, RelativePath,
     TextFile, WorkspaceBrowser, WorkspaceFiles, WorkspaceId, WorkspaceRecord, WorkspaceRegistry,
+    WorkspaceSession,
 };
 use syntaxis_workspace_host::{
     HostWorkspaceBrowser, HostWorkspaceFiles, RegistrationPolicy, WorkspaceRegistryStore,
@@ -78,6 +79,19 @@ pub(super) async fn remove_workspace(
 
 pub(super) async fn touch_workspace(id: &WorkspaceId) -> Result<(), ServerFnError> {
     registry()?.touch(id).await.map_err(server_error)
+}
+
+pub(super) async fn load_workspace_session(
+    id: &WorkspaceId,
+) -> Result<WorkspaceSession, ServerFnError> {
+    registry()?.load_session(id).map_err(server_error)
+}
+
+pub(super) async fn save_workspace_session(
+    id: &WorkspaceId,
+    session: WorkspaceSession,
+) -> Result<(), ServerFnError> {
+    registry()?.save_session(id, session).map_err(server_error)
 }
 
 pub(super) async fn refresh_workspace(id: &WorkspaceId) -> Result<WorkspaceRecord, ServerFnError> {

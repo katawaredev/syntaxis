@@ -11,8 +11,10 @@ use super::{
 pub(super) fn toggle_diff(
     slug: String,
     path: Option<String>,
+    kind: Option<DiffKind>,
     mut diff: Signal<Option<UnifiedDiff>>,
     toast: Signal<Option<ToastState>>,
+    active_path: Signal<Option<String>>,
 ) {
     if diff().is_some() {
         diff.set(None);
@@ -21,10 +23,27 @@ pub(super) fn toggle_diff(
     let Some(path) = path else {
         return;
     };
+    let Some(kind) = kind else {
+        return;
+    };
+    show_diff(slug, path, kind, diff, toast, active_path);
+}
+
+pub(super) fn show_diff(
+    slug: String,
+    path: String,
+    kind: DiffKind,
+    mut diff: Signal<Option<UnifiedDiff>>,
+    toast: Signal<Option<ToastState>>,
+    active_path: Signal<Option<String>>,
+) {
     spawn(async move {
-        match git_api::repository_diff(slug, path, DiffKind::Worktree, false).await {
-            Ok(next) => diff.set(Some(next)),
-            Err(error) => set_error(toast, error.to_string()),
+        match git_api::repository_diff(slug, path.clone(), kind, false).await {
+            Ok(next) if active_path.peek().as_deref() == Some(&path) => diff.set(Some(next)),
+            Err(error) if active_path.peek().as_deref() == Some(&path) => {
+                set_error(toast, error.to_string());
+            }
+            Ok(_) | Err(_) => {}
         }
     });
 }

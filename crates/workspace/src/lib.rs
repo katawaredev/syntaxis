@@ -9,6 +9,7 @@ mod mock_browser;
 mod mock_files;
 mod operations;
 mod runtime;
+mod session;
 mod workspace;
 
 pub use browser::{BrowseDirectory, BrowseRoot, WorkspaceBrowser};
@@ -22,6 +23,7 @@ pub use operations::{WorkspaceFiles, WorkspaceRegistry};
 pub use runtime::{
     ExecutionLocation, RuntimeCapabilities, RuntimeCapability, RuntimeIdentity, RuntimeState,
 };
+pub use session::{FileSession, WorkspaceSession};
 pub use workspace::{
     WorkspaceAvailability, WorkspaceIcon, WorkspaceIconSymbol, WorkspaceId, WorkspaceLanguage,
     WorkspaceProfile, WorkspaceRecord, WorkspaceTechnology,
