@@ -286,11 +286,12 @@ pub fn CodeEditor(props: CodeEditorProps) -> Element {
                         active_range: props.active_search_match,
                     }
                 }
-                if multi_selections.read().iter().any(|range| range.start != range.end) {
+                if multi_selections.read().len() > 1 {
                     RangeOverlay {
                         class: "dxc-editor-multi-selections",
                         lines: multi_selection_lines,
                         range_class: "dxc-editor-multi-selection",
+                        active_range: multi_selections.read().len().checked_sub(1),
                     }
                 }
                 textarea {
@@ -617,6 +618,7 @@ fn collapse_unchanged_lines(lines: &[DiffLine]) -> Vec<DiffRow> {
 struct OverlaySegment {
     text: String,
     range_index: Option<usize>,
+    is_caret: bool,
 }
 
 fn overlay_lines(source: &str, ranges: &[EditorRange]) -> Vec<Vec<OverlaySegment>> {
@@ -625,7 +627,7 @@ fn overlay_lines(source: &str, ranges: &[EditorRange]) -> Vec<Vec<OverlaySegment
         .copied()
         .enumerate()
         .filter(|(_, range)| {
-            range.start < range.end
+            range.start <= range.end
                 && range.end <= source.len()
                 && source.is_char_boundary(range.start)
                 && source.is_char_boundary(range.end)
@@ -641,6 +643,26 @@ fn overlay_lines(source: &str, ranges: &[EditorRange]) -> Vec<Vec<OverlaySegment
             let mut cursor = 0;
             let mut segments = Vec::new();
             for (index, range) in ranges.iter().copied() {
+                if range.start == range.end {
+                    if range.start < line_start || range.start > line_end {
+                        continue;
+                    }
+                    let caret = range.start - line_start;
+                    if cursor < caret {
+                        segments.push(OverlaySegment {
+                            text: line[cursor..caret].to_owned(),
+                            range_index: None,
+                            is_caret: false,
+                        });
+                    }
+                    segments.push(OverlaySegment {
+                        text: String::new(),
+                        range_index: Some(index),
+                        is_caret: true,
+                    });
+                    cursor = cursor.max(caret);
+                    continue;
+                }
                 if range.end <= line_start || range.start >= line_end {
                     continue;
                 }
@@ -653,11 +675,13 @@ fn overlay_lines(source: &str, ranges: &[EditorRange]) -> Vec<Vec<OverlaySegment
                     segments.push(OverlaySegment {
                         text: line[cursor..start].to_owned(),
                         range_index: None,
+                        is_caret: false,
                     });
                 }
                 segments.push(OverlaySegment {
                     text: line[start..end].to_owned(),
                     range_index: Some(index),
+                    is_caret: false,
                 });
                 cursor = end;
             }
@@ -665,6 +689,7 @@ fn overlay_lines(source: &str, ranges: &[EditorRange]) -> Vec<Vec<OverlaySegment
                 segments.push(OverlaySegment {
                     text: line[cursor..].to_owned(),
                     range_index: None,
+                    is_caret: false,
                 });
             }
             line_start = line_end + 1;
@@ -686,7 +711,9 @@ fn RangeOverlay(
                 div { class: "dxc-editor-line",
                     for segment in line {
                         if let Some(index) = segment.range_index {
-                            mark { class: if active_range == Some(index) { "{range_class} dxc-editor-range-active" } else { "{range_class}" },
+                            mark {
+                                class: if active_range == Some(index) { "{range_class} dxc-editor-range-active" } else { "{range_class}" },
+                                "data-caret": segment.is_caret.then_some("true"),
                                 "{segment.text}"
                             }
                         } else {
@@ -807,6 +834,22 @@ mod tests {
 
         assert_eq!(lines[0][1].text, "root");
         assert_eq!(lines[0][1].range_index, Some(0));
+    }
+
+    #[test]
+    fn overlay_lines_preserve_collapsed_carets() {
+        let lines = overlay_lines(
+            "root\nvalue",
+            &[
+                EditorRange { start: 2, end: 2 },
+                EditorRange { start: 10, end: 10 },
+            ],
+        );
+
+        assert_eq!(lines[0][1].range_index, Some(0));
+        assert!(lines[0][1].is_caret);
+        assert_eq!(lines[1][1].range_index, Some(1));
+        assert!(lines[1][1].is_caret);
     }
 
     #[test]

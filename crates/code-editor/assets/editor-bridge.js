@@ -254,6 +254,32 @@ const addVerticalCursor = direction => {
     input.setSelectionRange(target, target);
     emit();
 };
+const moveHorizontalCursors = direction => {
+    ranges = ranges.map(([start, end]) => {
+        if (start !== end) {
+            const caret = direction < 0 ? start : end;
+            return [caret, caret];
+        }
+        let caret = Math.max(0, Math.min(input.value.length, start + direction));
+        // Textarea offsets are UTF-16 code units. Keep supplementary characters
+        // intact instead of placing a caret between their surrogate halves.
+        if (direction < 0
+            && caret > 0
+            && /[\uDC00-\uDFFF]/.test(input.value[caret])
+            && /[\uD800-\uDBFF]/.test(input.value[caret - 1])) {
+            caret -= 1;
+        } else if (direction > 0
+            && caret < input.value.length
+            && /[\uDC00-\uDFFF]/.test(input.value[caret])
+            && /[\uD800-\uDBFF]/.test(input.value[caret - 1])) {
+            caret += 1;
+        }
+        return [caret, caret];
+    });
+    const active = ranges.at(-1);
+    input.setSelectionRange(active[0], active[1]);
+    emit();
+};
 const onKeyDown = event => {
     if (event.isComposing || composing) return;
     const mod = event.ctrlKey || event.metaKey;
@@ -287,6 +313,12 @@ const onKeyDown = event => {
     if (event.altKey && event.shiftKey && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
         event.preventDefault();
         addVerticalCursor(event.key === "ArrowDown" ? 1 : -1);
+        return;
+    }
+    if (!mod && !event.altKey && !event.shiftKey && ranges.length > 1
+        && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+        event.preventDefault();
+        moveHorizontalCursors(event.key === "ArrowLeft" ? -1 : 1);
         return;
     }
     if (event.key === "Escape") ranges = [];
