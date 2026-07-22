@@ -2,7 +2,7 @@ use dioxus::fullstack::{WebSocketOptions, Websocket};
 use dioxus::prelude::*;
 use syntaxis_workspace::{
     BinaryFile, BrowseDirectory, BrowseRoot, EventBatch, FileEntry, FileVersion, RuntimeState,
-    TextFile, WorkspaceRecord, WorkspaceSession,
+    TextFile, WorkspaceCleanupEntry, WorkspaceRecord, WorkspaceSession,
 };
 #[cfg(feature = "server")]
 use syntaxis_workspace::{
@@ -50,6 +50,30 @@ pub async fn save_workspace_session(
     session: WorkspaceSession,
 ) -> Result<(), ServerFnError> {
     server::save_workspace_session(&WorkspaceId::new(workspace_id), session).await
+}
+#[get("/api/workspaces/{workspace_id}/notes")]
+pub async fn load_workspace_notes(workspace_id: String) -> Result<String, ServerFnError> {
+    server::load_workspace_notes(&WorkspaceId::new(workspace_id)).await
+}
+#[post("/api/workspaces/{workspace_id}/notes")]
+pub async fn save_workspace_notes(
+    workspace_id: String,
+    notes: String,
+) -> Result<(), ServerFnError> {
+    server::save_workspace_notes(&WorkspaceId::new(workspace_id), notes).await
+}
+#[get("/api/workspaces/{workspace_id}/cleanup")]
+pub async fn workspace_cleanup_entries(
+    workspace_id: String,
+) -> Result<Vec<WorkspaceCleanupEntry>, ServerFnError> {
+    server::workspace_cleanup_entries(&WorkspaceId::new(workspace_id)).await
+}
+#[post("/api/workspaces/{workspace_id}/cleanup")]
+pub async fn cleanup_workspace_files(
+    workspace_id: String,
+    selected: Vec<String>,
+) -> Result<usize, ServerFnError> {
+    server::cleanup_workspace_files(&WorkspaceId::new(workspace_id), &selected).await
 }
 #[post("/api/workspaces/{workspace_id}/refresh")]
 pub async fn refresh_workspace(workspace_id: String) -> Result<WorkspaceRecord, ServerFnError> {

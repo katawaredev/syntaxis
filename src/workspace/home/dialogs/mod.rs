@@ -1,17 +1,20 @@
 mod bootstrap;
+mod cleanup;
 mod delete;
 mod folder;
 mod git_url;
 mod mise_tools;
 mod new_project;
+mod notes;
 mod update_tools;
 
 use dioxus::prelude::*;
 
 use self::{
-    bootstrap::BootstrapProjectDialog, delete::DeleteWorkspaceDialog,
-    folder::WorkspaceFolderDialog, git_url::GitUrlDialog, mise_tools::ClearMiseToolsDialog,
-    new_project::NewProjectDialog, update_tools::UpdateProjectToolsDialog,
+    bootstrap::BootstrapProjectDialog, cleanup::CleanupWorkspaceDialog,
+    delete::DeleteWorkspaceDialog, folder::WorkspaceFolderDialog, git_url::GitUrlDialog,
+    mise_tools::ClearMiseToolsDialog, new_project::NewProjectDialog, notes::WorkspaceNotesDialog,
+    update_tools::UpdateProjectToolsDialog,
 };
 use super::{HomeDialog, RuntimePresentation};
 use syntaxis_workspace::WorkspaceRecord;
@@ -57,6 +60,22 @@ pub(super) fn HomeDialogs(
         }
         if let HomeDialog::UpdateTools(index) = dialog() {
             UpdateProjectToolsDialog {
+                index,
+                dialog,
+                workspaces: workspaces.clone(),
+                on_notice,
+            }
+        }
+        if let HomeDialog::Notes(index) = dialog() {
+            WorkspaceNotesDialog {
+                index,
+                dialog,
+                workspaces: workspaces.clone(),
+                on_notice,
+            }
+        }
+        if let HomeDialog::Cleanup(index) = dialog() {
+            CleanupWorkspaceDialog {
                 index,
                 dialog,
                 workspaces: workspaces.clone(),

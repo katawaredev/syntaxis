@@ -39,6 +39,12 @@ pub enum WorkspaceIconSymbol {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct WorkspaceCleanupEntry {
+    pub path: String,
+    pub directory: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum WorkspaceIcon {
     Image {

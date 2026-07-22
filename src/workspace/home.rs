@@ -18,6 +18,8 @@ pub(super) enum HomeDialog {
     NewProject,
     Bootstrap(usize),
     UpdateTools(usize),
+    Notes(usize),
+    Cleanup(usize),
     ClearMiseTools,
     Delete(usize),
 }
@@ -156,6 +158,8 @@ pub fn Home() -> Element {
                     backend_error: workspace_error,
                     on_bootstrap: move |index| dialog.set(HomeDialog::Bootstrap(index)),
                     on_update_tools: move |index| dialog.set(HomeDialog::UpdateTools(index)),
+                    on_notes: move |index| dialog.set(HomeDialog::Notes(index)),
+                    on_cleanup: move |index| dialog.set(HomeDialog::Cleanup(index)),
                     on_clear_mise_tools: move |()| dialog.set(HomeDialog::ClearMiseTools),
                     on_delete: move |index| dialog.set(HomeDialog::Delete(index)),
                     on_notice: move |message| toast.set(Some(message)),

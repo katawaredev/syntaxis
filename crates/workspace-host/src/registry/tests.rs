@@ -1,4 +1,4 @@
-use std::fs;
+use std::{fs, process::Command};
 
 use syntaxis_workspace::{ErrorCode, FileSession, WorkspaceRegistry, WorkspaceSession};
 use tempfile::tempdir;
@@ -73,6 +73,73 @@ fn workspace_sessions_are_scoped_sanitized_and_removed_with_registration() {
 
     futures_lite::future::block_on(store.remove(&registered.id)).unwrap();
     assert!(!session_path.exists());
+}
+
+#[test]
+fn workspace_notes_are_kept_beside_the_session() {
+    let data = tempdir().unwrap();
+    let project = tempdir().unwrap();
+    let registry = data.path().join("workspaces.json");
+    let store = WorkspaceRegistryStore::open(&registry, RegistrationPolicy::Unrestricted).unwrap();
+    let registered =
+        futures_lite::future::block_on(store.register(project.path().to_str().unwrap())).unwrap();
+
+    store
+        .save_notes(&registered.id, "Remember this".into())
+        .unwrap();
+
+    let notes_path = data
+        .path()
+        .join("workspaces")
+        .join(&registered.id.0)
+        .join("notes.txt");
+    assert_eq!(fs::read_to_string(notes_path).unwrap(), "Remember this");
+    assert_eq!(store.load_notes(&registered.id).unwrap(), "Remember this");
+}
+
+#[test]
+fn cleanup_lists_ignored_directories_once_and_removes_only_the_selection() {
+    let data = tempdir().unwrap();
+    let project = tempdir().unwrap();
+    assert!(Command::new("git")
+        .args(["init", "-q"])
+        .current_dir(project.path())
+        .status()
+        .unwrap()
+        .success());
+    fs::write(
+        project.path().join(".gitignore"),
+        "target/\nnode_modules/\n",
+    )
+    .unwrap();
+    fs::create_dir(project.path().join("target")).unwrap();
+    fs::write(project.path().join("target/output"), "build").unwrap();
+    fs::create_dir(project.path().join("node_modules")).unwrap();
+    fs::write(project.path().join("node_modules/package"), "cache").unwrap();
+
+    let store = WorkspaceRegistryStore::open(
+        data.path().join("workspaces.json"),
+        RegistrationPolicy::Unrestricted,
+    )
+    .unwrap();
+    let registered =
+        futures_lite::future::block_on(store.register(project.path().to_str().unwrap())).unwrap();
+    let entries = store.cleanup_entries(&registered.id).unwrap();
+    assert!(entries
+        .iter()
+        .any(|entry| entry.path == "target" && entry.directory));
+    assert!(entries
+        .iter()
+        .any(|entry| entry.path == "node_modules" && entry.directory));
+
+    assert_eq!(
+        store
+            .cleanup_files(&registered.id, &["target".into()])
+            .unwrap(),
+        1
+    );
+    assert!(!project.path().join("target").exists());
+    assert!(project.path().join("node_modules").exists());
 }
 
 #[test]

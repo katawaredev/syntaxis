@@ -11,8 +11,8 @@ use dioxus::{
 };
 use syntaxis_workspace::{
     BinaryFile, BrowseDirectory, BrowseRoot, EventBatch, FileEntry, FileVersion, RelativePath,
-    TextFile, WorkspaceBrowser, WorkspaceFiles, WorkspaceId, WorkspaceRecord, WorkspaceRegistry,
-    WorkspaceSession,
+    TextFile, WorkspaceBrowser, WorkspaceCleanupEntry, WorkspaceFiles, WorkspaceId,
+    WorkspaceRecord, WorkspaceRegistry, WorkspaceSession,
 };
 use syntaxis_workspace_host::{
     HostWorkspaceBrowser, HostWorkspaceFiles, RegistrationPolicy, WorkspaceRegistryStore,
@@ -92,6 +92,32 @@ pub(super) async fn save_workspace_session(
     session: WorkspaceSession,
 ) -> Result<(), ServerFnError> {
     registry()?.save_session(id, session).map_err(server_error)
+}
+
+pub(super) async fn load_workspace_notes(id: &WorkspaceId) -> Result<String, ServerFnError> {
+    registry()?.load_notes(id).map_err(server_error)
+}
+
+pub(super) async fn save_workspace_notes(
+    id: &WorkspaceId,
+    notes: String,
+) -> Result<(), ServerFnError> {
+    registry()?.save_notes(id, notes).map_err(server_error)
+}
+
+pub(super) async fn workspace_cleanup_entries(
+    id: &WorkspaceId,
+) -> Result<Vec<WorkspaceCleanupEntry>, ServerFnError> {
+    registry()?.cleanup_entries(id).map_err(server_error)
+}
+
+pub(super) async fn cleanup_workspace_files(
+    id: &WorkspaceId,
+    selected: &[String],
+) -> Result<usize, ServerFnError> {
+    registry()?
+        .cleanup_files(id, selected)
+        .map_err(server_error)
 }
 
 pub(super) async fn refresh_workspace(id: &WorkspaceId) -> Result<WorkspaceRecord, ServerFnError> {

@@ -2,14 +2,16 @@ use std::{
     collections::{HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
+    process::Command,
     sync::{Mutex, MutexGuard},
 };
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use syntaxis_workspace::{
-    ErrorCode, RelativePath, WorkspaceAvailability, WorkspaceError, WorkspaceIcon, WorkspaceId,
-    WorkspaceProfile, WorkspaceRecord, WorkspaceRegistry, WorkspaceResult, WorkspaceSession,
+    ErrorCode, RelativePath, WorkspaceAvailability, WorkspaceCleanupEntry, WorkspaceError,
+    WorkspaceIcon, WorkspaceId, WorkspaceProfile, WorkspaceRecord, WorkspaceRegistry,
+    WorkspaceResult, WorkspaceSession,
 };
 use uuid::Uuid;
 
@@ -22,6 +24,15 @@ use crate::{
 };
 
 const REGISTRY_VERSION: u32 = 1;
+const NOTES_LIMIT: usize = 256 * 1024;
+const CLEAN_EXCLUSIONS: &[&str] = &[
+    ".env",
+    ".env.*",
+    ".envrc",
+    ".direnv/",
+    "*.local",
+    "*.local.*",
+];
 
 #[derive(Clone, Deserialize, Serialize)]
 struct RegistryFile {
@@ -96,6 +107,7 @@ const fn registry_version() -> u32 {
 pub struct WorkspaceRegistryStore {
     file: Mutex<RegistryFile>,
     sessions: Mutex<HashMap<WorkspaceId, WorkspaceSession>>,
+    notes: Mutex<HashMap<WorkspaceId, String>>,
     path: Option<PathBuf>,
     policy: RegistrationPolicy,
 }
@@ -129,6 +141,7 @@ impl WorkspaceRegistryStore {
         Ok(Self {
             file: Mutex::new(file),
             sessions: Mutex::new(HashMap::new()),
+            notes: Mutex::new(HashMap::new()),
             path: Some(path),
             policy: policy.canonicalize()?,
         })
@@ -143,6 +156,7 @@ impl WorkspaceRegistryStore {
         Ok(Self {
             file: Mutex::new(RegistryFile::default()),
             sessions: Mutex::new(HashMap::new()),
+            notes: Mutex::new(HashMap::new()),
             path: None,
             policy: policy.canonicalize()?,
         })
@@ -237,11 +251,118 @@ impl WorkspaceRegistryStore {
     }
 
     fn session_path(&self, id: &WorkspaceId) -> Option<PathBuf> {
+        self.workspace_data_path(id, "session.json")
+    }
+
+    fn workspace_data_path(&self, id: &WorkspaceId, name: &str) -> Option<PathBuf> {
         self.path.as_ref().and_then(|registry| {
             registry
                 .parent()
-                .map(|data| data.join("workspaces").join(&id.0).join("session.json"))
+                .map(|data| data.join("workspaces").join(&id.0).join(name))
         })
+    }
+
+    /// Loads the plain-text notes associated with a registered workspace.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the workspace is unknown or its notes cannot be read.
+    pub fn load_notes(&self, id: &WorkspaceId) -> WorkspaceResult<String> {
+        self.get_record(id)?;
+        let Some(path) = self.workspace_data_path(id, "notes.txt") else {
+            return self
+                .notes
+                .lock()
+                .map_err(|_| WorkspaceError::internal())
+                .map(|notes| notes.get(id).cloned().unwrap_or_default());
+        };
+        match fs::read_to_string(path) {
+            Ok(notes) if notes.len() <= NOTES_LIMIT => Ok(notes),
+            Ok(_) => Err(WorkspaceError::new(
+                ErrorCode::TooLarge,
+                "Workspace notes are too large to open.",
+            )),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+            Err(error) => Err(map_io_error(error)),
+        }
+    }
+
+    /// Atomically saves the plain-text notes associated with a registered workspace.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the workspace is unknown, the notes exceed the size limit, or the
+    /// notes file cannot be written.
+    pub fn save_notes(&self, id: &WorkspaceId, notes: String) -> WorkspaceResult<()> {
+        self.get_record(id)?;
+        if notes.len() > NOTES_LIMIT {
+            return Err(WorkspaceError::new(
+                ErrorCode::TooLarge,
+                "Workspace notes must be smaller than 256 KiB.",
+            ));
+        }
+        let Some(path) = self.workspace_data_path(id, "notes.txt") else {
+            self.notes
+                .lock()
+                .map_err(|_| WorkspaceError::internal())?
+                .insert(id.clone(), notes);
+            return Ok(());
+        };
+        let directory = path.parent().ok_or_else(WorkspaceError::internal)?;
+        fs::create_dir_all(directory).map_err(map_io_error)?;
+        let temporary = path.with_extension("txt.tmp");
+        fs::write(&temporary, notes)
+            .and_then(|()| fs::rename(&temporary, path))
+            .map_err(map_io_error)
+    }
+
+    /// Lists ignored files that the workspace cleanup action can remove.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the workspace is unknown or Git cannot inspect its ignored files.
+    pub fn cleanup_entries(&self, id: &WorkspaceId) -> WorkspaceResult<Vec<WorkspaceCleanupEntry>> {
+        let record = self.get_record(id)?;
+        cleanup_preview(Path::new(&record.root))
+    }
+
+    /// Removes selected entries after checking them against a fresh cleanup preview.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the workspace or selection is invalid, or Git cannot remove the
+    /// selected entries.
+    pub fn cleanup_files(&self, id: &WorkspaceId, selected: &[String]) -> WorkspaceResult<usize> {
+        let record = self.get_record(id)?;
+        let root = Path::new(&record.root);
+        let available = cleanup_preview(root)?
+            .into_iter()
+            .map(|entry| entry.path)
+            .collect::<HashSet<_>>();
+        if selected.iter().any(|path| !available.contains(path)) {
+            return Err(WorkspaceError::invalid_path(
+                "The cleanup selection is no longer valid.",
+            ));
+        }
+        let mut unique = HashSet::new();
+        let selected = selected
+            .iter()
+            .filter(|path| unique.insert((*path).clone()))
+            .cloned()
+            .collect::<Vec<_>>();
+        if selected.is_empty() {
+            return Ok(0);
+        }
+        let mut command = cleanup_command(root, false);
+        command.arg("--").args(&selected);
+        let output = command.output().map_err(map_io_error)?;
+        if !output.status.success() {
+            return Err(WorkspaceError::new(
+                ErrorCode::Unavailable,
+                "Git could not clean the selected workspace files.",
+            ));
+        }
+        Ok(selected.len())
     }
 
     fn list_records(&self) -> WorkspaceResult<Vec<WorkspaceRecord>> {
@@ -432,6 +553,10 @@ impl WorkspaceRegistryStore {
                 .lock()
                 .map_err(|_| WorkspaceError::internal())?
                 .remove(id);
+            self.notes
+                .lock()
+                .map_err(|_| WorkspaceError::internal())?
+                .remove(id);
         }
         Ok(())
     }
@@ -463,6 +588,34 @@ impl WorkspaceRegistryStore {
         }
         fs::remove_dir_all(canonical).map_err(map_io_error)
     }
+}
+
+fn cleanup_command(root: &Path, preview: bool) -> Command {
+    let mut command = Command::new("git");
+    command.current_dir(root).arg("clean");
+    command.arg(if preview { "-ndX" } else { "-fdX" });
+    for exclusion in CLEAN_EXCLUSIONS {
+        command.args(["-e", exclusion]);
+    }
+    command
+}
+
+fn cleanup_preview(root: &Path) -> WorkspaceResult<Vec<WorkspaceCleanupEntry>> {
+    let output = cleanup_command(root, true).output().map_err(map_io_error)?;
+    if !output.status.success() {
+        return Err(WorkspaceError::new(
+            ErrorCode::Unavailable,
+            "Git could not inspect ignored workspace files.",
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| line.strip_prefix("Would remove "))
+        .map(|path| WorkspaceCleanupEntry {
+            directory: path.ends_with('/'),
+            path: path.trim_end_matches('/').to_owned(),
+        })
+        .collect())
 }
 
 fn sanitize_session(session: &mut WorkspaceSession) {

@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 use dioxus_devicons::devicons::{color, monochrome};
-use dioxus_icons::lucide::{Atom, Code};
+use dioxus_icons::lucide::Code;
 use syntaxis_workspace::{WorkspaceLanguage, WorkspaceTechnology};
 
 #[component]
@@ -72,7 +72,13 @@ fn technology_icon(technology: WorkspaceTechnology, size: u32) -> Element {
             color::DjangoIcon { size }
         },
         WorkspaceTechnology::Dioxus => rsx! {
-            Atom { size, stroke_width: 1.8 }
+            img {
+                class: "object-contain",
+                width: size,
+                height: size,
+                src: asset!("/assets/dioxus_color.svg"),
+                alt: "",
+            }
         },
         WorkspaceTechnology::Docker => rsx! {
             color::DockerIcon { size }

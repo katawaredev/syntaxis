@@ -1,11 +1,12 @@
 use dioxus::prelude::*;
 use dioxus_icons::lucide::{
-    ArrowDown, ArrowUp, Bell, Bot, BrainCog, CaseSensitive, ChartNoAxesColumn, Check, ChevronDown,
-    ChevronLeft, ChevronRight, Code, Command, Copy, Ellipsis, EllipsisVertical, Eye, FileDiff,
-    FileInput, FileMinus, FilePlus, FolderOpen, FolderPlus, GitBranch, GitCommitHorizontal,
-    GitFork, Hash, ListChevronsDownUp, ListChevronsUpDown, ListOrdered, Menu, Mic, PanelLeftOpen,
-    Paperclip, Play, Plus, RefreshCw, Regex, Repeat1, Replace, ReplaceAll, RotateCcw, Save, Search,
-    Send, Sparkles, Square, SquarePen, SquareTerminal, Trash2, Type, WholeWord, X,
+    ArrowDown, ArrowUp, Bell, Bot, BrainCog, BrushCleaning, CaseSensitive, ChartNoAxesColumn,
+    Check, ChevronDown, ChevronLeft, ChevronRight, Code, Command, Copy, Ellipsis, EllipsisVertical,
+    Eye, FileDiff, FileInput, FileMinus, FilePlus, FolderOpen, FolderPlus, GitBranch,
+    GitCommitHorizontal, GitFork, Hash, ListChevronsDownUp, ListChevronsUpDown, ListOrdered, Menu,
+    Mic, PanelLeftOpen, Paperclip, Play, Plus, RefreshCw, Regex, Repeat1, Replace, ReplaceAll,
+    RotateCcw, Save, Search, Send, Sparkles, Square, SquarePen, SquareTerminal, Trash2, Type,
+    WholeWord, X,
 };
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum AppIcon {
@@ -20,6 +21,7 @@ pub enum AppIcon {
     Attachment,
     Microphone,
     Usage,
+    Cleanup,
     Delete,
     Terminal,
     Commit,
@@ -119,6 +121,11 @@ pub fn Icon(icon: AppIcon, #[props(default = 16)] size: u32) -> Element {
         AppIcon::Usage => {
             rsx! {
                 ChartNoAxesColumn { size }
+            }
+        }
+        AppIcon::Cleanup => {
+            rsx! {
+                BrushCleaning { size }
             }
         }
         AppIcon::Delete => {

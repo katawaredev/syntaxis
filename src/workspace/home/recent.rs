@@ -16,6 +16,8 @@ const MIN_LANGUAGE_PERMILLE: u64 = 20;
 enum ProjectAction {
     Bootstrap,
     UpdateTools,
+    Notes,
+    Cleanup,
     Refresh,
     Delete,
 }
@@ -33,6 +35,8 @@ pub(super) fn RecentProjects(
     backend_error: bool,
     on_bootstrap: EventHandler<usize>,
     on_update_tools: EventHandler<usize>,
+    on_notes: EventHandler<usize>,
+    on_cleanup: EventHandler<usize>,
     on_clear_mise_tools: EventHandler<()>,
     on_delete: EventHandler<usize>,
     on_notice: EventHandler<String>,
@@ -137,6 +141,8 @@ pub(super) fn RecentProjects(
                     workspaces,
                     on_bootstrap,
                     on_update_tools,
+                    on_notes,
+                    on_cleanup,
                     on_delete,
                     on_notice,
                     on_changed: on_refresh,
@@ -150,6 +156,8 @@ fn WorkspaceRows(
     workspaces: Vec<WorkspaceRecord>,
     on_bootstrap: EventHandler<usize>,
     on_update_tools: EventHandler<usize>,
+    on_notes: EventHandler<usize>,
+    on_cleanup: EventHandler<usize>,
     on_delete: EventHandler<usize>,
     on_notice: EventHandler<String>,
     on_changed: EventHandler<()>,
@@ -162,6 +170,8 @@ fn WorkspaceRows(
                     index,
                     on_bootstrap,
                     on_update_tools,
+                    on_notes,
+                    on_cleanup,
                     on_delete,
                     on_notice,
                     on_changed,
@@ -176,6 +186,8 @@ fn WorkspaceRow(
     index: usize,
     on_bootstrap: EventHandler<usize>,
     on_update_tools: EventHandler<usize>,
+    on_notes: EventHandler<usize>,
+    on_cleanup: EventHandler<usize>,
     on_delete: EventHandler<usize>,
     on_notice: EventHandler<String>,
     on_changed: EventHandler<()>,
@@ -253,8 +265,18 @@ fn WorkspaceRow(
                         }
                     }
                     DropdownMenuItem::<ProjectAction> {
-                        value: ProjectAction::Refresh,
+                        value: ProjectAction::Notes,
                         index: 2_usize,
+                        disabled: refreshing(),
+                        on_select: move |_: ProjectAction| on_notes.call(index),
+                        span { class: "flex items-center gap-2",
+                            Icon { icon: AppIcon::NewChat, size: 14 }
+                            "Notes"
+                        }
+                    }
+                    DropdownMenuItem::<ProjectAction> {
+                        value: ProjectAction::Refresh,
+                        index: 3_usize,
                         disabled: refreshing() || availability == WorkspaceAvailability::Missing,
                         on_select: move |_: ProjectAction| {
                             if refreshing() {
@@ -284,8 +306,19 @@ fn WorkspaceRow(
                         }
                     }
                     DropdownMenuItem::<ProjectAction> {
+                        value: ProjectAction::Cleanup,
+                        index: 4_usize,
+                        class: "!text-destructive",
+                        disabled: refreshing() || availability == WorkspaceAvailability::Missing,
+                        on_select: move |_: ProjectAction| on_cleanup.call(index),
+                        span { class: "flex items-center gap-2",
+                            Icon { icon: AppIcon::Cleanup, size: 14 }
+                            "Cleanup files"
+                        }
+                    }
+                    DropdownMenuItem::<ProjectAction> {
                         value: ProjectAction::Delete,
-                        index: 3_usize,
+                        index: 5_usize,
                         class: "!text-destructive",
                         disabled: refreshing(),
                         on_select: move |_: ProjectAction| on_delete.call(index),

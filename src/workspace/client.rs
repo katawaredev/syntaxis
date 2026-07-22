@@ -1,10 +1,10 @@
 use syntaxis_git::{WorktreeCreateRequest, WorktreeInfo};
-#[cfg(feature = "desktop")]
-use syntaxis_workspace::ExecutionLocation;
 use syntaxis_workspace::{
     BinaryFile, BrowseDirectory, FileEntry, FileVersion, RelativePath, RuntimeState, TextFile,
-    WorkspaceRecord, WorkspaceSession,
+    WorkspaceCleanupEntry, WorkspaceRecord, WorkspaceSession,
 };
+#[cfg(feature = "desktop")]
+use syntaxis_workspace::{ExecutionLocation, WorkspaceId};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[allow(dead_code)] // Phase 6 will make the compiled remote/host choice user-selectable.
@@ -77,6 +77,62 @@ pub async fn save_workspace_session(
         #[cfg(feature = "desktop")]
         RuntimeTarget::DesktopLocal => host_registry()?
             .save_session(&WorkspaceId::new(workspace_id), session)
+            .map_err(|error| error.message),
+    }
+}
+
+pub async fn load_workspace_notes(workspace_id: String) -> Result<String, String> {
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::api::load_workspace_notes(workspace_id)
+            .await
+            .map_err(server_error_message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => host_registry()?
+            .load_notes(&syntaxis_workspace::WorkspaceId::new(workspace_id))
+            .map_err(|error| error.message),
+    }
+}
+
+pub async fn save_workspace_notes(workspace_id: String, notes: String) -> Result<(), String> {
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::api::save_workspace_notes(workspace_id, notes)
+            .await
+            .map_err(server_error_message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => host_registry()?
+            .save_notes(&syntaxis_workspace::WorkspaceId::new(workspace_id), notes)
+            .map_err(|error| error.message),
+    }
+}
+
+pub async fn workspace_cleanup_entries(
+    workspace_id: String,
+) -> Result<Vec<WorkspaceCleanupEntry>, String> {
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::api::workspace_cleanup_entries(workspace_id)
+            .await
+            .map_err(server_error_message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => host_registry()?
+            .cleanup_entries(&syntaxis_workspace::WorkspaceId::new(workspace_id))
+            .map_err(|error| error.message),
+    }
+}
+
+pub async fn cleanup_workspace_files(
+    workspace_id: String,
+    selected: Vec<String>,
+) -> Result<usize, String> {
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::api::cleanup_workspace_files(workspace_id, selected)
+            .await
+            .map_err(server_error_message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => host_registry()?
+            .cleanup_files(
+                &syntaxis_workspace::WorkspaceId::new(workspace_id),
+                &selected,
+            )
             .map_err(|error| error.message),
     }
 }
