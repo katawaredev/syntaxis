@@ -459,6 +459,7 @@ fn RemoteAgent(
                     if panel() == AiPanel::Chat {
                         div { class: "min-h-0 flex-1",
                             AgentSessionSidebar {
+                                workspace_id: workspace_id.clone(),
                                 sessions: sessions(),
                                 selected_id: active_id.clone(),
                                 connected,
@@ -513,6 +514,7 @@ fn RemoteAgent(
                         if panel() == AiPanel::Chat {
                             div { class: "min-h-0 flex-1",
                                 AgentSessionSidebar {
+                                    workspace_id: workspace_id.clone(),
                                     sessions: sessions(),
                                     selected_id: active_id.clone(),
                                     connected,

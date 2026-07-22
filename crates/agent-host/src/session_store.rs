@@ -1,14 +1,18 @@
 use std::{
     env, fs,
-    io::{Read, Seek, SeekFrom},
+    io::{BufRead, BufReader, Read, Seek, SeekFrom},
     path::{Path, PathBuf},
     time::UNIX_EPOCH,
 };
 
+use regex::RegexBuilder;
 use serde_json::Value;
+use syntaxis_agent::{ConversationMatchRole, ConversationSearchResult};
 
 const HEAD_BYTES: usize = 64 * 1024;
 const TAIL_BYTES: usize = 256 * 1024;
+const MAX_SEARCH_RESULTS: usize = 30;
+const SNIPPET_CONTEXT_CHARS: usize = 60;
 
 #[derive(Clone, Debug)]
 pub(crate) struct PersistedSession {
@@ -29,6 +33,88 @@ pub(crate) fn discover(workspace_root: &Path) -> Vec<PersistedSession> {
         .collect::<Vec<_>>();
     sessions.sort_by_key(|session| std::cmp::Reverse(session.updated_at_ms));
     sessions
+}
+
+pub(crate) fn search(workspace_root: &Path, query: &str) -> Vec<ConversationSearchResult> {
+    let query = query.trim();
+    if query.chars().count() < 2 {
+        return Vec::new();
+    }
+    let Ok(pattern) = RegexBuilder::new(&regex::escape(query))
+        .case_insensitive(true)
+        .build()
+    else {
+        return Vec::new();
+    };
+    discover(workspace_root)
+        .into_iter()
+        .filter_map(|session| search_session(&session, &pattern))
+        .take(MAX_SEARCH_RESULTS)
+        .collect()
+}
+
+fn search_session(
+    session: &PersistedSession,
+    pattern: &regex::Regex,
+) -> Option<ConversationSearchResult> {
+    let file = fs::File::open(&session.path).ok()?;
+    let mut first_match = None;
+    let mut match_count = 0;
+    for line in BufReader::new(file).lines().map_while(Result::ok) {
+        let Ok(entry) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
+        if entry.get("type").and_then(Value::as_str) != Some("message") {
+            continue;
+        }
+        let Some(message) = entry.get("message") else {
+            continue;
+        };
+        let role = match message.get("role").and_then(Value::as_str) {
+            Some("user") => ConversationMatchRole::User,
+            Some("assistant") => ConversationMatchRole::Assistant,
+            _ => continue,
+        };
+        let Some(content) = message.get("content") else {
+            continue;
+        };
+        let Some(text) = message_text(content) else {
+            continue;
+        };
+        let Some(found) = pattern.find(&text) else {
+            continue;
+        };
+        match_count += 1;
+        first_match.get_or_insert_with(|| (role, snippet(&text, found.start(), found.end())));
+    }
+    let (role, snippet) = first_match?;
+    Some(ConversationSearchResult {
+        session_id: session.id.clone(),
+        title: session.title.clone(),
+        updated_at_ms: session.updated_at_ms,
+        role,
+        snippet,
+        match_count,
+    })
+}
+
+fn snippet(text: &str, match_start: usize, match_end: usize) -> String {
+    let start = text[..match_start]
+        .char_indices()
+        .rev()
+        .nth(SNIPPET_CONTEXT_CHARS)
+        .map_or(0, |(index, _)| index);
+    let end = text[match_end..]
+        .char_indices()
+        .nth(SNIPPET_CONTEXT_CHARS)
+        .map_or(text.len(), |(index, _)| match_end + index);
+    let flattened = text[start..end]
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let prefix = if start > 0 { "…" } else { "" };
+    let suffix = if end < text.len() { "…" } else { "" };
+    format!("{prefix}{flattened}{suffix}")
 }
 
 pub(crate) fn delete(workspace_root: &Path, session_id: &str, path: &Path) -> std::io::Result<()> {
@@ -276,5 +362,31 @@ mod tests {
         assert!(path.exists());
         delete(&workspace, "session-1", &path).unwrap();
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn searches_only_user_and_assistant_text() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("session.jsonl");
+        let mut file = fs::File::create(&path).unwrap();
+        writeln!(file, "{}", serde_json::json!({"type":"message","message":{"role":"toolResult","content":"Needle in tool output"}})).unwrap();
+        writeln!(file, "{}", serde_json::json!({"type":"message","message":{"role":"user","content":"Find the Needle here"}})).unwrap();
+        writeln!(file, "{}", serde_json::json!({"type":"message","message":{"role":"assistant","content":[{"type":"thinking","thinking":"Needle in reasoning"},{"type":"text","text":"Another needle"}]}})).unwrap();
+        let session = PersistedSession {
+            id: "session-1".into(),
+            path,
+            title: "Search test".into(),
+            updated_at_ms: 42,
+        };
+        let pattern = RegexBuilder::new("needle")
+            .case_insensitive(true)
+            .build()
+            .unwrap();
+
+        let result = search_session(&session, &pattern).unwrap();
+
+        assert_eq!(result.role, ConversationMatchRole::User);
+        assert_eq!(result.snippet, "Find the Needle here");
+        assert_eq!(result.match_count, 2);
     }
 }

@@ -128,6 +128,33 @@ fn agents() -> &'static HostAgentManager {
     AGENTS.get_or_init(HostAgentManager::default)
 }
 
+pub(super) async fn search_conversations(
+    workspace_id: WorkspaceId,
+    query: String,
+) -> Result<Vec<syntaxis_agent::ConversationSearchResult>, ServerFnError> {
+    let query = query.trim().to_owned();
+    let query_chars = query.chars().count();
+    if query_chars < 2 {
+        return Ok(Vec::new());
+    }
+    if query_chars > 200 {
+        return Err(ServerFnError::ServerError {
+            message: "Conversation search is limited to 200 characters".into(),
+            code: 400,
+            details: None,
+        });
+    }
+    let workspace = crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
+    let agent = agents().workspace(&workspace);
+    tokio::task::spawn_blocking(move || agent.search_sessions(&query))
+        .await
+        .map_err(|error| ServerFnError::ServerError {
+            message: format!("Could not search conversations: {error}"),
+            code: 500,
+            details: None,
+        })
+}
+
 pub(super) async fn notification_socket(
     options: WebSocketOptions,
 ) -> Result<

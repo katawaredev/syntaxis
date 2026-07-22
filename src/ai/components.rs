@@ -6,9 +6,10 @@ use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
 use dioxus_primitives::popover::{PopoverContent, PopoverRoot, PopoverTrigger};
 use serde::Deserialize;
 use syntaxis_agent::{
-    AgentSessionSummary, AgentSnapshot, AgentStatus, ChatItem, ExtensionUiRequest, ImageAttachment,
-    ItemStatus, ModelSummary, PiCommand, SessionStats, ThinkingLevel, MAX_IMAGE_BYTES,
-    MAX_PROMPT_IMAGES, MAX_TOTAL_IMAGE_BYTES,
+    AgentSessionSummary, AgentSnapshot, AgentStatus, ChatItem, ConversationMatchRole,
+    ConversationSearchResult, ExtensionUiRequest, ImageAttachment, ItemStatus, ModelSummary,
+    PiCommand, SessionStats, ThinkingLevel, MAX_IMAGE_BYTES, MAX_PROMPT_IMAGES,
+    MAX_TOTAL_IMAGE_BYTES,
 };
 use syntaxis_ui::prelude::{
     AppIcon, Button, ButtonKind, DialogActions, DialogForm, Icon, IconButton, MenuButtonTrigger,
@@ -16,6 +17,8 @@ use syntaxis_ui::prelude::{
 };
 
 use crate::files::preview::render_markdown;
+
+use super::api;
 
 #[derive(Clone)]
 pub(super) struct ComposerSubmission {
@@ -497,6 +500,7 @@ fn format_cost(microusd: u64) -> String {
 
 #[component]
 pub(super) fn AgentSessionSidebar(
+    workspace_id: String,
     sessions: Vec<AgentSessionSummary>,
     selected_id: Option<String>,
     connected: bool,
@@ -504,14 +508,52 @@ pub(super) fn AgentSessionSidebar(
     on_new: EventHandler<()>,
     on_delete: EventHandler<String>,
 ) -> Element {
+    let mut query = use_signal(String::new);
+    let search_workspace_id = workspace_id.clone();
+    let search_results = use_resource(move || {
+        let workspace_id = search_workspace_id.clone();
+        let resource_query = query().trim().to_owned();
+        async move {
+            if resource_query.chars().count() < 2 {
+                return (resource_query, Ok(Vec::new()));
+            }
+            dioxus_sdk_time::sleep(std::time::Duration::from_millis(300)).await;
+            let result = api::search_conversations(workspace_id, resource_query.clone()).await;
+            (resource_query, result)
+        }
+    });
+    let active_query = query().trim().to_owned();
     rsx! {
         nav {
             class: "flex h-full min-h-0 flex-col bg-sidebar",
             aria_label: "Pi chats",
-            div { class: "flex min-h-12 items-center border-b border-border px-3",
-                div { class: "min-w-0 flex-1",
-                    strong { class: "block text-xs font-semibold", "Chats" }
-                    small { class: "block text-[10px] text-muted-foreground", "This project" }
+            div { class: "flex min-h-12 items-center gap-1 border-b border-border px-2",
+                div { class: "flex min-w-0 flex-1 items-center gap-2 rounded-md border border-input bg-background/70 px-2 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/35",
+                    Icon { icon: AppIcon::Search, size: 14 }
+                    input {
+                        class: "h-8 min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground",
+                        r#type: "search",
+                        value: query(),
+                        placeholder: "Search conversations…",
+                        aria_label: "Search conversations",
+                        maxlength: 200,
+                        oninput: move |event| query.set(event.value()),
+                        onkeydown: move |event| {
+                            if event.key() == Key::Escape {
+                                query.set(String::new());
+                            }
+                        },
+                    }
+                    if !query().is_empty() {
+                        button {
+                            class: "grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground",
+                            r#type: "button",
+                            aria_label: "Clear conversation search",
+                            title: "Clear search",
+                            onclick: move |_| query.set(String::new()),
+                            Icon { icon: AppIcon::Close, size: 12 }
+                        }
+                    }
                 }
                 IconButton {
                     label: "New chat",
@@ -521,7 +563,41 @@ pub(super) fn AgentSessionSidebar(
                 }
             }
             div { class: "min-h-0 flex-1 overflow-y-auto p-2",
-                if sessions.is_empty() {
+                if active_query.chars().count() >= 2 {
+                    match search_results() {
+                        None => rsx! {
+                            ConversationSearchState { message: "Searching…" }
+                        },
+                        Some((resource_query, _)) if resource_query != active_query => rsx! {
+                            ConversationSearchState { message: "Searching…" }
+                        },
+                        Some((_, Err(error))) => rsx! {
+                            ConversationSearchState { destructive: true, message: format!("Search failed: {error}") }
+                        },
+                        Some((_, Ok(results))) if results.is_empty() => rsx! {
+                            ConversationSearchState { message: "No conversations match." }
+                        },
+                        Some((_, Ok(results))) => rsx! {
+                            div { class: "mb-1 px-2 py-1 text-[9px] font-semibold tracking-wider text-muted-foreground uppercase",
+                                "Message matches"
+                            }
+                            ul { class: "space-y-1",
+                                for result in results {
+                                    ConversationSearchRow {
+                                        key: "{result.session_id}",
+                                        result,
+                                        query: active_query.clone(),
+                                        connected,
+                                        on_select: move |session_id| {
+                                            query.set(String::new());
+                                            on_select.call(session_id);
+                                        },
+                                    }
+                                }
+                            }
+                        },
+                    }
+                } else if sessions.is_empty() {
                     div { class: "flex h-full flex-col items-center justify-center px-4 text-center",
                         div { class: "grid size-9 place-items-center rounded-xl bg-secondary text-primary",
                             Icon { icon: AppIcon::Sparkles, size: 17 }
@@ -555,11 +631,97 @@ pub(super) fn AgentSessionSidebar(
                     }
                 }
             }
-            div { class: "border-t border-border px-3 py-2 text-[9px] leading-relaxed text-muted-foreground",
-                "Chats keep running on the host when you leave this screen."
+        }
+    }
+}
+
+#[component]
+fn ConversationSearchState(message: String, #[props(default)] destructive: bool) -> Element {
+    rsx! {
+        div { class: if destructive { "px-3 py-8 text-center text-[11px] leading-relaxed text-destructive" } else { "px-3 py-8 text-center text-[11px] leading-relaxed text-muted-foreground" },
+            "{message}"
+        }
+    }
+}
+
+#[component]
+fn ConversationSearchRow(
+    result: ConversationSearchResult,
+    query: String,
+    connected: bool,
+    on_select: EventHandler<String>,
+) -> Element {
+    let session_id = result.session_id.clone();
+    let role = match result.role {
+        ConversationMatchRole::User => "You",
+        ConversationMatchRole::Assistant => "Pi",
+    };
+    let matches = if result.match_count == 1 {
+        "1 match".to_owned()
+    } else {
+        format!("{} matches", result.match_count)
+    };
+    rsx! {
+        li {
+            button {
+                class: "w-full rounded-lg border border-transparent px-2.5 py-2.5 text-left hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50",
+                disabled: !connected,
+                onclick: move |_| on_select.call(session_id.clone()),
+                strong { class: "block truncate text-[11px] font-medium", "{result.title}" }
+                p { class: "mt-1 line-clamp-2 text-[10px] leading-relaxed text-muted-foreground",
+                    span { class: "font-medium text-foreground/80", "{role}: " }
+                    HighlightedConversationSnippet { text: result.snippet, query }
+                }
+                div { class: "mt-1 flex items-center gap-2 text-[9px] text-muted-foreground",
+                    span { class: "min-w-0 flex-1", "{matches}" }
+                    time { class: "shrink-0", {session_age(result.updated_at_ms)} }
+                }
             }
         }
     }
+}
+
+#[component]
+fn HighlightedConversationSnippet(text: String, query: String) -> Element {
+    let parts = highlighted_parts(&text, &query);
+    rsx! {
+        for (index, (part, matched)) in parts.into_iter().enumerate() {
+            if matched {
+                mark {
+                    key: "search-match-{index}",
+                    class: "rounded-sm bg-warning/25 px-0.5 text-foreground",
+                    "{part}"
+                }
+            } else {
+                span { key: "search-text-{index}", "{part}" }
+            }
+        }
+    }
+}
+
+fn highlighted_parts(text: &str, query: &str) -> Vec<(String, bool)> {
+    let Ok(pattern) = regex::RegexBuilder::new(&regex::escape(query))
+        .case_insensitive(true)
+        .build()
+    else {
+        return vec![(text.to_owned(), false)];
+    };
+    let mut parts = Vec::new();
+    let mut previous = 0;
+    for found in pattern.find_iter(text) {
+        if found.start() > previous {
+            parts.push((text[previous..found.start()].to_owned(), false));
+        }
+        parts.push((found.as_str().to_owned(), true));
+        previous = found.end();
+    }
+    if previous < text.len() {
+        parts.push((text[previous..].to_owned(), false));
+    }
+    if parts.is_empty() {
+        parts.push((text.to_owned(), false));
+    }
+    parts
 }
 
 #[component]

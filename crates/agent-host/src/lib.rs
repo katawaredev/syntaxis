@@ -12,8 +12,9 @@ use std::{
 };
 use syntaxis_agent::{
     AgentError, AgentErrorCode, AgentSessionSummary, AgentSnapshot, AgentStatus, ChatItem,
-    ClientMessage, ExtensionUiRequest, ImageAttachment, ItemStatus, ModelSummary, PiCommand,
-    PromptDelivery, ServerMessage, SessionStats, ThinkingLevel, TokenUsage,
+    ClientMessage, ConversationSearchResult, ExtensionUiRequest, ImageAttachment, ItemStatus,
+    ModelSummary, PiCommand, PromptDelivery, ServerMessage, SessionStats, ThinkingLevel,
+    TokenUsage,
 };
 use syntaxis_notifications::{AppNotification, NotificationKind, NotificationTarget};
 use syntaxis_notifications_host::{notifications as global_notifications, HostNotificationHub};
@@ -111,6 +112,9 @@ impl HostAgentWorkspace {
             .collect::<Vec<_>>();
         sessions.sort_by_key(|session| std::cmp::Reverse(session.updated_at_ms));
         sessions
+    }
+    pub fn search_sessions(&self, query: &str) -> Vec<ConversationSearchResult> {
+        session_store::search(Path::new(&self.workspace.root), query)
     }
     pub fn subscribe(&self) -> broadcast::Receiver<ServerMessage> {
         self.events.subscribe()

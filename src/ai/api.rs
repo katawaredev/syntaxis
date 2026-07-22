@@ -2,7 +2,7 @@ use bytes::Bytes;
 use dioxus::fullstack::{CborEncoding, Encoding, WebSocketOptions, Websocket};
 use dioxus::prelude::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use syntaxis_agent::{ClientMessage, ServerMessage};
+use syntaxis_agent::{ClientMessage, ConversationSearchResult, ServerMessage};
 use syntaxis_notifications::{NotificationClientMessage, NotificationServerMessage};
 
 const MAX_AGENT_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
@@ -108,6 +108,14 @@ pub(crate) async fn pi_packages(
     offset: usize,
 ) -> Result<PiPackageSearch, ServerFnError> {
     server::pi_packages(WorkspaceId::new(workspace_id), query, offset).await
+}
+
+#[post("/api/pi/sessions/search")]
+pub(crate) async fn search_conversations(
+    workspace_id: String,
+    query: String,
+) -> Result<Vec<ConversationSearchResult>, ServerFnError> {
+    server::search_conversations(WorkspaceId::new(workspace_id), query).await
 }
 
 #[post("/api/pi/packages/manage")]

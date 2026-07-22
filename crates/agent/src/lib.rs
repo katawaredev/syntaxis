@@ -68,6 +68,21 @@ pub struct AgentSessionSummary {
 }
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+pub enum ConversationMatchRole {
+    User,
+    Assistant,
+}
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ConversationSearchResult {
+    pub session_id: String,
+    pub title: String,
+    pub updated_at_ms: u64,
+    pub role: ConversationMatchRole,
+    pub snippet: String,
+    pub match_count: usize,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ItemStatus {
     Streaming,
     Running,
