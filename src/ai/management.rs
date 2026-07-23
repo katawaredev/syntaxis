@@ -8,6 +8,9 @@ use super::{
 };
 
 pub(super) const EXTENSIONS_SECTION: &str = "Extensions";
+pub(super) const GENERAL_SECTION: &str = "General";
+pub(super) const PROMPT_TEMPLATES_SECTION: &str = "Prompt templates";
+pub(super) const SKILLS_SECTION: &str = "Skills";
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) enum AiPanel {
@@ -55,7 +58,7 @@ fn SidebarTab(label: &'static str, active: bool, onclick: EventHandler<()>) -> E
 }
 
 pub(super) fn default_settings_section() -> String {
-    EXTENSIONS_SECTION.to_owned()
+    GENERAL_SECTION.to_owned()
 }
 
 #[component]
@@ -140,12 +143,7 @@ pub(super) fn SettingsPanel(
                         p { class: "text-xs text-destructive", "{error}" }
                     },
                     Some(Ok(snapshot)) => rsx! {
-                        SettingsForm {
-                            workspace_id: workspace_id.clone(),
-                            snapshot,
-                            revision,
-                            selected_section,
-                        }
+                        SettingsForm { workspace_id: workspace_id.clone(), snapshot, selected_section }
                     },
                 }
             }
@@ -182,16 +180,10 @@ pub(super) fn ManagementSidebarButton(
 fn SettingsForm(
     workspace_id: String,
     snapshot: PiSettingsSnapshot,
-    mut revision: Signal<u64>,
     selected_section: ReadSignal<String>,
 ) -> Element {
     let saving = use_signal(|| None::<String>);
     let error = use_signal(|| None::<String>);
-    let definitions = PI_SETTING_DEFINITIONS
-        .iter()
-        .copied()
-        .filter(|definition| definition.section == selected_section())
-        .collect::<Vec<_>>();
     rsx! {
         div { class: "mx-auto max-w-3xl",
             if let Some(message) = snapshot.compatibility_message.clone() {
@@ -204,18 +196,32 @@ fn SettingsForm(
                     "{message}"
                 }
             }
-            div { class: "divide-y divide-border overflow-hidden rounded-xl border border-border bg-background",
-                for definition in definitions {
-                    SettingRow {
-                        key: "{definition.path}-{revision}",
-                        definition,
-                        values: snapshot.values.clone(),
-                        disabled: !snapshot.compatible || saving().is_some(),
-                        saving: saving().as_deref() == Some(definition.path),
-                        workspace_id: workspace_id.clone(),
-                        saving_state: saving,
-                        error,
-                        revision,
+            if selected_section() == GENERAL_SECTION {
+                div { class: "space-y-5",
+                    for section in definition_sections() {
+                        section {
+                            h3 { class: "mb-2 px-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground",
+                                "{section}"
+                            }
+                            div { class: "divide-y divide-border overflow-hidden rounded-xl border border-border bg-background",
+                                for definition in PI_SETTING_DEFINITIONS
+                                    .iter()
+                                    .copied()
+                                    .filter(|definition| definition.section == section)
+                                {
+                                    SettingRow {
+                                        key: "{definition.path}",
+                                        definition,
+                                        current: setting_value(&snapshot.values, definition),
+                                        disabled: !snapshot.compatible || saving().is_some(),
+                                        saving: saving().as_deref() == Some(definition.path),
+                                        workspace_id: workspace_id.clone(),
+                                        saving_state: saving,
+                                        error,
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -226,24 +232,30 @@ fn SettingsForm(
 #[component]
 fn SettingRow(
     definition: PiSettingDefinition,
-    values: Value,
+    current: String,
     disabled: bool,
     saving: bool,
     workspace_id: String,
     mut saving_state: Signal<Option<String>>,
     mut error: Signal<Option<String>>,
-    mut revision: Signal<u64>,
 ) -> Element {
-    let current = setting_value(&values, definition);
     let mut draft = use_signal(|| current.clone());
+    use_effect(use_reactive((&current,), move |(current,)| {
+        draft.set(current);
+    }));
+    let previous_value = current.clone();
     let save = EventHandler::new(move |value: Value| {
         saving_state.set(Some(definition.path.into()));
         error.set(None);
         let workspace_id = workspace_id.clone();
+        let rollback_value = previous_value.clone();
         spawn(async move {
             match api::update_pi_setting(workspace_id, definition.path.into(), value).await {
-                Ok(_) => revision.with_mut(|revision| *revision += 1),
-                Err(update_error) => error.set(Some(update_error.to_string())),
+                Ok(snapshot) => draft.set(setting_value(&snapshot.values, definition)),
+                Err(update_error) => {
+                    draft.set(rollback_value);
+                    error.set(Some(update_error.to_string()));
+                }
             }
             saving_state.set(None);
         });
@@ -262,8 +274,12 @@ fn SettingRow(
                         select {
                             class: "h-8 w-full rounded-lg border border-input bg-background px-2 text-xs",
                             disabled,
-                            value: current,
-                            onchange: move |event| save.call(json!(event.value() == "true")),
+                            value: draft(),
+                            onchange: move |event| {
+                                let value = event.value();
+                                draft.set(value.clone());
+                                save.call(json!(value == "true"));
+                            },
                             option { value: "true", "On" }
                             option { value: "false", "Off" }
                         }
@@ -272,40 +288,59 @@ fn SettingRow(
                         select {
                             class: "h-8 w-full rounded-lg border border-input bg-background px-2 text-xs",
                             disabled,
-                            value: current,
-                            onchange: move |event| save.call(json!(event.value())),
+                            value: draft(),
+                            onchange: move |event| {
+                                let value = event.value();
+                                draft.set(value.clone());
+                                save.call(json!(value));
+                            },
+                            if definition.default_value.is_empty() {
+                                option { value: "", "Not set" }
+                            }
                             for option in options {
                                 option { value: option, "{option}" }
                             }
                         }
                     },
-                    PiSettingKind::Number | PiSettingKind::Text => rsx! {
-                        input {
-                            class: "h-8 w-full rounded-lg border border-input bg-background px-2 text-xs",
-                            r#type: if definition.kind == PiSettingKind::Number { "number" } else { "text" },
-                            disabled,
-                            value: draft(),
-                            oninput: move |event| draft.set(event.value()),
-                            onblur: move |_| {
-                                let value = draft();
-                                if value != current {
-                                    if definition.kind == PiSettingKind::Number {
-                                        if let Ok(number) = value.parse::<u64>() {
-                                            save.call(json!(number));
+                    PiSettingKind::Number | PiSettingKind::Text | PiSettingKind::StringArray => {
+                        rsx! {
+                            input {
+                                class: "h-8 w-full rounded-lg border border-input bg-background px-2 text-xs",
+                                r#type: if definition.kind == PiSettingKind::Number { "number" } else { "text" },
+                                placeholder: if definition.kind == PiSettingKind::StringArray { "Comma-separated values" } else { "" },
+                                disabled,
+                                value: draft(),
+                                oninput: move |event| draft.set(event.value()),
+                                onblur: move |_| {
+                                    let value = draft();
+                                    if value != current {
+                                        if let Some(value) = draft_setting_value(definition.kind, &value) {
+                                            save.call(value);
                                         }
-                                    } else {
-                                        save.call(json!(value));
                                     }
-                                }
-                            },
+                                },
+                            }
                         }
-                    },
+                    }
                 }
                 if saving {
                     small { class: "text-[9px] text-muted-foreground", "Saving…" }
                 }
             }
         }
+    }
+}
+
+fn draft_setting_value(kind: PiSettingKind, value: &str) -> Option<Value> {
+    match kind {
+        PiSettingKind::Number => value.parse::<u64>().ok().map(|number| json!(number)),
+        PiSettingKind::StringArray => Some(json!(value
+            .split(',')
+            .map(str::trim)
+            .filter(|item| !item.is_empty())
+            .collect::<Vec<_>>())),
+        PiSettingKind::Text => Some(json!(value)),
+        PiSettingKind::Toggle | PiSettingKind::Select(_) => None,
     }
 }
 
@@ -318,12 +353,26 @@ fn setting_value(values: &Value, definition: PiSettingDefinition) -> String {
         Some(Value::Bool(value)) => value.to_string(),
         Some(Value::Number(value)) => value.to_string(),
         Some(Value::String(value)) => value.clone(),
+        Some(Value::Array(values)) => values
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<Vec<_>>()
+            .join(", "),
         _ => definition.default_value.into(),
     }
 }
 
 fn setting_sections() -> Vec<&'static str> {
-    let mut sections = vec![EXTENSIONS_SECTION];
+    vec![
+        GENERAL_SECTION,
+        PROMPT_TEMPLATES_SECTION,
+        SKILLS_SECTION,
+        EXTENSIONS_SECTION,
+    ]
+}
+
+fn definition_sections() -> Vec<&'static str> {
+    let mut sections = Vec::new();
     for definition in PI_SETTING_DEFINITIONS {
         if !sections.contains(&definition.section) {
             sections.push(definition.section);

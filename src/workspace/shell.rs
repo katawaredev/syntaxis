@@ -36,7 +36,7 @@ pub fn WorkspaceShell() -> Element {
         Route::Terminal { slug, .. } => (slug, Module::Terminal),
         Route::Git { slug } => (slug, Module::Git),
         Route::Preview { slug } => (slug, Module::Preview),
-        Route::Ai { slug, .. } => (slug, Module::Ai),
+        Route::Ai { slug, .. } | Route::AiSettings { slug } => (slug, Module::Ai),
         Route::Home {} => ("syntaxis".into(), Module::Files),
     };
     let workspaces = use_resource(list_workspaces);

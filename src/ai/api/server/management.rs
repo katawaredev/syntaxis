@@ -8,12 +8,15 @@ use std::{
 
 use dioxus::prelude::ServerFnError;
 use futures_util::{stream, StreamExt};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use syntaxis_workspace::WorkspaceId;
 
 use crate::ai::{
     api::{
-        PiOperationResult, PiPackageAction, PiPackageSearch, PiPackageSummary, PiSettingsSnapshot,
+        PiOperationResult, PiPackageAction, PiPackageSearch, PiPackageSummary, PiResourceScope,
+        PiSettingsSnapshot, PiSkill, PromptTemplate, SkillCatalogView, SkillSearchPage,
+        SkillSearchResult,
     },
     generated_settings::{PiSettingKind, PI_SETTINGS_SCHEMA_VERSION, PI_SETTING_DEFINITIONS},
 };
@@ -21,6 +24,9 @@ use crate::ai::{
 const COMMAND_TIMEOUT: Duration = Duration::from_mins(3);
 const HTTP_TIMEOUT: Duration = Duration::from_secs(20);
 const PACKAGE_PAGE_SIZE: usize = 20;
+const SKILL_PAGE_SIZE: usize = 20;
+const MAX_RESOURCE_BYTES: usize = 512 * 1024;
+const MAX_SKILL_DOWNLOAD_BYTES: usize = 8 * 1024 * 1024;
 
 pub(crate) async fn pi_packages(
     workspace_id: WorkspaceId,
@@ -207,6 +213,647 @@ pub(crate) async fn update_pi(
             output
         },
     })
+}
+
+pub(crate) async fn prompt_templates(
+    workspace_id: WorkspaceId,
+) -> Result<Vec<PromptTemplate>, ServerFnError> {
+    let workspace = crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
+    let root = Path::new(&workspace.root);
+    let mut templates = Vec::new();
+    for scope in [PiResourceScope::Global, PiResourceScope::Project] {
+        let directory = prompt_directory(root, scope);
+        let Ok(entries) = fs::read_dir(directory) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|value| value.to_str()) != Some("md") {
+                continue;
+            }
+            let Some(name) = path.file_stem().and_then(|value| value.to_str()) else {
+                continue;
+            };
+            let Ok(source) = fs::read_to_string(&path) else {
+                continue;
+            };
+            let (metadata, content) = split_frontmatter(&source);
+            let description = metadata_value(metadata, "description").unwrap_or_else(|| {
+                content
+                    .lines()
+                    .find(|line| !line.trim().is_empty())
+                    .unwrap_or_default()
+                    .trim()
+                    .to_owned()
+            });
+            templates.push(PromptTemplate {
+                name: name.to_owned(),
+                description,
+                argument_hint: metadata_value(metadata, "argument-hint").unwrap_or_default(),
+                content: content.trim().to_owned(),
+                scope,
+            });
+        }
+    }
+    templates.sort_by(|left, right| {
+        left.name
+            .cmp(&right.name)
+            .then(left.scope.cmp(&right.scope))
+    });
+    Ok(templates)
+}
+
+pub(crate) async fn save_prompt_template(
+    workspace_id: WorkspaceId,
+    original_name: Option<String>,
+    template: PromptTemplate,
+) -> Result<(), ServerFnError> {
+    validate_prompt_name(&template.name)?;
+    validate_resource_text(&template.description, 1024, "description")?;
+    validate_resource_text(&template.argument_hint, 256, "argument hint")?;
+    validate_resource_text(&template.content, MAX_RESOURCE_BYTES, "prompt")?;
+    let workspace = crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
+    let directory = prompt_directory(Path::new(&workspace.root), template.scope);
+    fs::create_dir_all(&directory).map_err(|error| {
+        server_error(format!("Could not create {}: {error}", directory.display()))
+    })?;
+    let destination = directory.join(format!("{}.md", template.name));
+    if original_name.as_deref() != Some(template.name.as_str()) && destination.exists() {
+        return Err(client_error(
+            "A prompt template with this name already exists",
+        ));
+    }
+    let source = format!(
+        "---\ndescription: {}\n{}---\n\n{}\n",
+        serde_json::to_string(&template.description).unwrap_or_else(|_| "\"\"".into()),
+        if template.argument_hint.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "argument-hint: {}\n",
+                serde_json::to_string(&template.argument_hint).unwrap_or_else(|_| "\"\"".into())
+            )
+        },
+        template.content.trim()
+    );
+    write_atomic(&destination, source.as_bytes())?;
+    if let Some(original_name) = original_name {
+        validate_prompt_name(&original_name)?;
+        let original = directory.join(format!("{original_name}.md"));
+        if original != destination && original.exists() {
+            fs::remove_file(&original).map_err(|error| {
+                server_error(format!("Could not remove {}: {error}", original.display()))
+            })?;
+        }
+    }
+    Ok(())
+}
+
+pub(crate) async fn delete_prompt_template(
+    workspace_id: WorkspaceId,
+    name: String,
+    scope: PiResourceScope,
+) -> Result<(), ServerFnError> {
+    validate_prompt_name(&name)?;
+    let workspace = crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
+    let path = prompt_directory(Path::new(&workspace.root), scope).join(format!("{name}.md"));
+    fs::remove_file(&path)
+        .map_err(|error| server_error(format!("Could not remove {}: {error}", path.display())))
+}
+
+pub(crate) async fn pi_skills(workspace_id: WorkspaceId) -> Result<Vec<PiSkill>, ServerFnError> {
+    let workspace = crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
+    let root = Path::new(&workspace.root);
+    let mut skills = Vec::new();
+    for scope in [PiResourceScope::Global, PiResourceScope::Project] {
+        let directory = skill_directory(root, scope);
+        let Ok(entries) = fs::read_dir(directory) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let single_file = !path.is_dir();
+            let skill_file = if single_file {
+                if path.extension().and_then(|value| value.to_str()) != Some("md") {
+                    continue;
+                }
+                path.clone()
+            } else {
+                path.join("SKILL.md")
+            };
+            if !skill_file.is_file() {
+                continue;
+            }
+            let Ok(source) = fs::read_to_string(skill_file) else {
+                continue;
+            };
+            let (metadata, content) = split_frontmatter(&source);
+            let Some(name) = metadata_value(metadata, "name") else {
+                continue;
+            };
+            let Some(description) = metadata_value(metadata, "description") else {
+                continue;
+            };
+            skills.push(PiSkill {
+                name,
+                description,
+                content: content.trim().to_owned(),
+                scope,
+                storage_name: path
+                    .file_stem()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or_default()
+                    .to_owned(),
+                single_file,
+                extra_frontmatter: metadata
+                    .lines()
+                    .filter(|line| {
+                        line.split_once(':')
+                            .is_none_or(|(key, _)| !matches!(key.trim(), "name" | "description"))
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            });
+        }
+    }
+    skills.sort_by(|left, right| {
+        left.name
+            .cmp(&right.name)
+            .then(left.scope.cmp(&right.scope))
+    });
+    Ok(skills)
+}
+
+pub(crate) async fn save_pi_skill(
+    workspace_id: WorkspaceId,
+    original_name: Option<String>,
+    skill: PiSkill,
+) -> Result<(), ServerFnError> {
+    validate_resource_name(&skill.name)?;
+    validate_resource_text(&skill.description, 1024, "description")?;
+    if skill.description.trim().is_empty() {
+        return Err(client_error("A skill description is required"));
+    }
+    validate_resource_text(&skill.content, MAX_RESOURCE_BYTES, "skill instructions")?;
+    validate_resource_text(&skill.extra_frontmatter, 16 * 1024, "skill frontmatter")?;
+    let workspace = crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
+    let root = skill_directory(Path::new(&workspace.root), skill.scope);
+    fs::create_dir_all(&root)
+        .map_err(|error| server_error(format!("Could not create {}: {error}", root.display())))?;
+    let destination = if skill.single_file {
+        root.join(format!("{}.md", skill.name))
+    } else {
+        root.join(&skill.name)
+    };
+    reject_symlink(&destination)?;
+    let expected_storage_name = destination
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+    if original_name.as_deref() != Some(expected_storage_name) && destination.exists() {
+        return Err(client_error("A skill with this name already exists"));
+    }
+    if let Some(original_name) = original_name.as_deref() {
+        validate_resource_name(original_name)?;
+        let original = if skill.single_file {
+            root.join(format!("{original_name}.md"))
+        } else {
+            root.join(original_name)
+        };
+        reject_symlink(&original)?;
+        if original != destination && original.exists() {
+            fs::rename(&original, &destination).map_err(|error| {
+                server_error(format!("Could not rename {}: {error}", original.display()))
+            })?;
+        }
+    }
+    let skill_file = if skill.single_file {
+        destination.clone()
+    } else {
+        fs::create_dir_all(&destination).map_err(|error| {
+            server_error(format!(
+                "Could not create {}: {error}",
+                destination.display()
+            ))
+        })?;
+        destination.join("SKILL.md")
+    };
+    let source = format!(
+        "---\nname: {}\ndescription: {}\n{}---\n\n{}\n",
+        serde_json::to_string(&skill.name).unwrap_or_else(|_| "\"\"".into()),
+        serde_json::to_string(&skill.description).unwrap_or_else(|_| "\"\"".into()),
+        if skill.extra_frontmatter.is_empty() {
+            String::new()
+        } else {
+            format!("{}\n", skill.extra_frontmatter.trim())
+        },
+        skill.content.trim()
+    );
+    write_atomic(&skill_file, source.as_bytes())?;
+    Ok(())
+}
+
+pub(crate) async fn delete_pi_skill(
+    workspace_id: WorkspaceId,
+    storage_name: String,
+    scope: PiResourceScope,
+    single_file: bool,
+) -> Result<(), ServerFnError> {
+    validate_resource_name(&storage_name)?;
+    let workspace = crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
+    let path = skill_directory(Path::new(&workspace.root), scope).join(if single_file {
+        format!("{storage_name}.md")
+    } else {
+        storage_name
+    });
+    reject_symlink(&path)?;
+    if single_file {
+        fs::remove_file(&path)
+    } else {
+        fs::remove_dir_all(&path)
+    }
+    .map_err(|error| server_error(format!("Could not remove {}: {error}", path.display())))
+}
+
+pub(crate) async fn search_pi_skills(
+    query: String,
+    offset: usize,
+) -> Result<SkillSearchPage, ServerFnError> {
+    let query = query.trim();
+    if query.len() < 2 || query.len() > 100 {
+        return Ok(SkillSearchPage {
+            skills: Vec::new(),
+            start_offset: 0,
+            next_offset: 0,
+            has_more: false,
+        });
+    }
+    let requested = offset.saturating_add(SKILL_PAGE_SIZE).min(100);
+    let response = http_client()?
+        .get("https://skills.sh/api/search")
+        .query(&[("q", query), ("limit", &requested.to_string())])
+        .send()
+        .await
+        .map_err(|error| server_error(format!("Could not search skills.sh: {error}")))?
+        .error_for_status()
+        .map_err(|error| server_error(format!("skills.sh rejected the search: {error}")))?
+        .json::<SkillSearchResponse>()
+        .await
+        .map_err(|error| server_error(format!("skills.sh returned invalid data: {error}")))?;
+    let result_count = response.skills.len();
+    let skills = response
+        .skills
+        .into_iter()
+        .skip(offset)
+        .map(|skill| SkillSearchResult {
+            name: skill.name,
+            page_url: skill_page_url(&skill.source, &skill.id),
+            installable: skill.source.split('/').count() == 2,
+            slug: skill.id,
+            source: skill.source,
+            installs: skill.installs,
+        })
+        .collect::<Vec<_>>();
+    let next_offset = offset.saturating_add(skills.len());
+    Ok(SkillSearchPage {
+        skills,
+        start_offset: offset,
+        next_offset,
+        has_more: requested < 100 && result_count == requested && next_offset > offset,
+    })
+}
+
+pub(crate) async fn browse_pi_skills(
+    view: SkillCatalogView,
+    offset: usize,
+) -> Result<SkillSearchPage, ServerFnError> {
+    let token = env::var("VERCEL_OIDC_TOKEN")
+        .map_err(|_| client_error("Set VERCEL_OIDC_TOKEN to enable the skills.sh leaderboard"))?;
+    fetch_authenticated_skill_page(view, offset, &token).await
+}
+
+pub(crate) fn skill_catalog_available() -> bool {
+    env::var_os("VERCEL_OIDC_TOKEN").is_some()
+}
+
+async fn fetch_authenticated_skill_page(
+    view: SkillCatalogView,
+    offset: usize,
+    token: &str,
+) -> Result<SkillSearchPage, ServerFnError> {
+    let view = match view {
+        SkillCatalogView::AllTime => "all-time",
+        SkillCatalogView::Trending => "trending",
+        SkillCatalogView::Hot => "hot",
+    };
+    let response = http_client()?
+        .get("https://www.skills.sh/api/v1/skills")
+        .bearer_auth(token)
+        .query(&[
+            ("view", view),
+            ("page", &(offset / SKILL_PAGE_SIZE).to_string()),
+            ("per_page", &SKILL_PAGE_SIZE.to_string()),
+        ])
+        .send()
+        .await
+        .map_err(|error| server_error(format!("Could not load skills.sh: {error}")))?
+        .error_for_status()
+        .map_err(|error| server_error(format!("skills.sh rejected the catalog request: {error}")))?
+        .json::<SkillV1Response>()
+        .await
+        .map_err(|error| {
+            server_error(format!("skills.sh returned invalid catalog data: {error}"))
+        })?;
+    let skills = response
+        .data
+        .into_iter()
+        .map(|skill| SkillSearchResult {
+            name: skill.name,
+            page_url: skill.url,
+            installable: skill.source.split('/').count() == 2,
+            slug: skill.id,
+            source: skill.source,
+            installs: skill.installs,
+        })
+        .collect::<Vec<_>>();
+    let next_offset = offset.saturating_add(skills.len());
+    Ok(SkillSearchPage {
+        skills,
+        start_offset: offset,
+        next_offset,
+        has_more: response.pagination.has_more && next_offset > offset,
+    })
+}
+
+fn skill_page_url(source: &str, slug: &str) -> String {
+    if source.contains('/') {
+        format!("https://www.skills.sh/{slug}")
+    } else {
+        let skill_id = slug.rsplit('/').next().unwrap_or(slug);
+        format!("https://www.skills.sh/site/{source}/{skill_id}")
+    }
+}
+
+pub(crate) async fn install_pi_skill(
+    workspace_id: WorkspaceId,
+    slug: String,
+    scope: PiResourceScope,
+) -> Result<(), ServerFnError> {
+    let parts = slug.split('/').collect::<Vec<_>>();
+    if parts.len() != 3 {
+        return Err(client_error("Invalid skills.sh skill identifier"));
+    }
+    validate_remote_segment(parts[0])?;
+    validate_remote_segment(parts[1])?;
+    validate_resource_name(parts[2])?;
+    let workspace = crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
+    let root = skill_directory(Path::new(&workspace.root), scope);
+    let destination = root.join(parts[2]);
+    reject_symlink(&destination)?;
+    if destination.exists() {
+        return Err(client_error(
+            "This skill is already installed in that scope",
+        ));
+    }
+    let response = http_client()?
+        .get(format!(
+            "https://skills.sh/api/download/{}/{}/{}",
+            parts[0], parts[1], parts[2]
+        ))
+        .send()
+        .await
+        .map_err(|error| server_error(format!("Could not download skill: {error}")))?
+        .error_for_status()
+        .map_err(|error| server_error(format!("skills.sh rejected the download: {error}")))?;
+    if response
+        .content_length()
+        .is_some_and(|length| length > MAX_SKILL_DOWNLOAD_BYTES as u64)
+    {
+        return Err(server_error("The skill download is too large"));
+    }
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|error| server_error(format!("Could not read skill download: {error}")))?;
+    if bytes.len() > MAX_SKILL_DOWNLOAD_BYTES {
+        return Err(server_error("The skill download is too large"));
+    }
+    let snapshot: SkillDownload = serde_json::from_slice(&bytes)
+        .map_err(|error| server_error(format!("skills.sh returned invalid data: {error}")))?;
+    if !snapshot
+        .files
+        .iter()
+        .any(|file| file.path.eq_ignore_ascii_case("SKILL.md"))
+    {
+        return Err(server_error("The downloaded skill has no SKILL.md"));
+    }
+    let files = snapshot
+        .files
+        .into_iter()
+        .map(|file| {
+            let path = safe_relative_path(&file.path)?;
+            validate_resource_text(&file.contents, MAX_RESOURCE_BYTES, "skill file")?;
+            Ok((path, file.contents))
+        })
+        .collect::<Result<Vec<_>, ServerFnError>>()?;
+    fs::create_dir_all(&destination).map_err(|error| {
+        server_error(format!(
+            "Could not create {}: {error}",
+            destination.display()
+        ))
+    })?;
+    for (relative, contents) in files {
+        let path = destination.join(relative);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|error| {
+                server_error(format!("Could not create {}: {error}", parent.display()))
+            })?;
+        }
+        if let Err(error) = write_atomic(&path, contents.as_bytes()) {
+            let _ = fs::remove_dir_all(&destination);
+            return Err(error);
+        }
+    }
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct SkillSearchResponse {
+    skills: Vec<SkillSearchItem>,
+}
+
+#[derive(Deserialize)]
+struct SkillSearchItem {
+    id: String,
+    name: String,
+    source: String,
+    installs: u64,
+}
+
+#[derive(Deserialize)]
+struct SkillV1Response {
+    data: Vec<SkillV1Item>,
+    pagination: SkillV1Pagination,
+}
+
+#[derive(Deserialize)]
+struct SkillV1Item {
+    id: String,
+    name: String,
+    source: String,
+    installs: u64,
+    url: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SkillV1Pagination {
+    has_more: bool,
+}
+
+#[derive(Deserialize)]
+struct SkillDownload {
+    files: Vec<SkillDownloadFile>,
+}
+
+#[derive(Deserialize)]
+struct SkillDownloadFile {
+    path: String,
+    contents: String,
+}
+
+fn prompt_directory(root: &Path, scope: PiResourceScope) -> PathBuf {
+    match scope {
+        PiResourceScope::Global => agent_dir(root).join("prompts"),
+        PiResourceScope::Project => root.join(".pi/prompts"),
+    }
+}
+
+fn skill_directory(root: &Path, scope: PiResourceScope) -> PathBuf {
+    match scope {
+        PiResourceScope::Global => agent_dir(root).join("skills"),
+        PiResourceScope::Project => root.join(".pi/skills"),
+    }
+}
+
+fn validate_resource_name(name: &str) -> Result<(), ServerFnError> {
+    let valid = !name.is_empty()
+        && name.len() <= 64
+        && !name.starts_with('-')
+        && !name.ends_with('-')
+        && !name.contains("--")
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-');
+    if valid {
+        Ok(())
+    } else {
+        Err(client_error(
+            "Names must use 1–64 lowercase letters, numbers, or single hyphens",
+        ))
+    }
+}
+
+fn validate_prompt_name(name: &str) -> Result<(), ServerFnError> {
+    let valid = !name.is_empty()
+        && name.len() <= 100
+        && !name.starts_with('.')
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"._-".contains(&byte));
+    if valid {
+        Ok(())
+    } else {
+        Err(client_error(
+            "Template names may use letters, numbers, dots, underscores, and hyphens",
+        ))
+    }
+}
+
+fn validate_remote_segment(value: &str) -> Result<(), ServerFnError> {
+    let valid = !value.is_empty()
+        && value.len() <= 100
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"._-".contains(&byte));
+    if valid {
+        Ok(())
+    } else {
+        Err(client_error("Invalid skill source"))
+    }
+}
+
+fn validate_resource_text(value: &str, max_bytes: usize, label: &str) -> Result<(), ServerFnError> {
+    if value.len() <= max_bytes {
+        Ok(())
+    } else {
+        Err(client_error(format!("The {label} is too large")))
+    }
+}
+
+fn split_frontmatter(source: &str) -> (&str, &str) {
+    let Some(rest) = source.strip_prefix("---\n") else {
+        return ("", source);
+    };
+    let Some(end) = rest.find("\n---") else {
+        return ("", source);
+    };
+    (
+        &rest[..end],
+        rest[end + 4..].trim_start_matches(['\r', '\n']),
+    )
+}
+
+fn metadata_value(metadata: &str, key: &str) -> Option<String> {
+    metadata.lines().find_map(|line| {
+        let (candidate, value) = line.split_once(':')?;
+        if candidate.trim() != key {
+            return None;
+        }
+        let value = value.trim();
+        serde_json::from_str::<String>(value)
+            .ok()
+            .or_else(|| Some(value.trim_matches(['\'', '"']).to_owned()))
+    })
+}
+
+fn safe_relative_path(value: &str) -> Result<PathBuf, ServerFnError> {
+    let path = Path::new(value);
+    let safe = !value.is_empty()
+        && value.len() <= 512
+        && path
+            .components()
+            .all(|component| matches!(component, std::path::Component::Normal(_)));
+    if safe {
+        Ok(path.to_owned())
+    } else {
+        Err(server_error("The skill download contains an unsafe path"))
+    }
+}
+
+fn reject_symlink(path: &Path) -> Result<(), ServerFnError> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            Err(client_error("Syntaxis will not modify a linked skill"))
+        }
+        Ok(_) | Err(_) => Ok(()),
+    }
+}
+
+fn write_atomic(path: &Path, contents: &[u8]) -> Result<(), ServerFnError> {
+    let Some(parent) = path.parent() else {
+        return Err(server_error("Invalid resource path"));
+    };
+    let file_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("resource");
+    let temporary = parent.join(format!(".{file_name}.syntaxis-{}", std::process::id()));
+    fs::write(&temporary, contents).map_err(|error| {
+        server_error(format!("Could not write {}: {error}", temporary.display()))
+    })?;
+    fs::rename(&temporary, path)
+        .map_err(|error| server_error(format!("Could not save {}: {error}", path.display())))
 }
 
 async fn settings_snapshot(root: &Path) -> Result<PiSettingsSnapshot, ServerFnError> {
@@ -428,6 +1075,14 @@ fn validate_setting_value(kind: PiSettingKind, value: &Value) -> Result<(), Serv
         PiSettingKind::Text => value
             .as_str()
             .is_some_and(|value| value.len() <= 512 && !value.contains(['\n', '\r'])),
+        PiSettingKind::StringArray => value.as_array().is_some_and(|values| {
+            values.len() <= 64
+                && values.iter().all(|value| {
+                    value
+                        .as_str()
+                        .is_some_and(|value| value.len() <= 512 && !value.contains(['\n', '\r']))
+                })
+        }),
     };
     if valid {
         Ok(())
@@ -624,5 +1279,34 @@ mod tests {
             validate_setting_value(PiSettingKind::Select(&["auto", "sse"]), &json!("other"))
                 .is_err()
         );
+        assert!(
+            validate_setting_value(PiSettingKind::StringArray, &json!(["mise", "npm"])).is_ok()
+        );
+        assert!(validate_setting_value(PiSettingKind::StringArray, &json!("npm")).is_err());
+    }
+
+    #[test]
+    fn pi_resource_names_and_download_paths_are_restricted() {
+        assert!(validate_resource_name("code-review").is_ok());
+        assert!(validate_resource_name("../review").is_err());
+        assert!(validate_resource_name("CodeReview").is_err());
+        assert!(validate_prompt_name("review_PR.v2").is_ok());
+        assert!(validate_prompt_name("../review").is_err());
+        assert!(safe_relative_path("references/guide.md").is_ok());
+        assert!(safe_relative_path("../SKILL.md").is_err());
+        assert!(safe_relative_path("/tmp/SKILL.md").is_err());
+    }
+
+    #[test]
+    fn frontmatter_fields_are_read_without_losing_the_body() {
+        let source =
+            "---\nname: \"review\"\ndescription: Review changes\nargument-hint: \"<path>\"\n---\n\nDo it.";
+        let (metadata, body) = split_frontmatter(source);
+        assert_eq!(metadata_value(metadata, "name").as_deref(), Some("review"));
+        assert_eq!(
+            metadata_value(metadata, "argument-hint").as_deref(),
+            Some("<path>")
+        );
+        assert_eq!(body, "Do it.");
     }
 }

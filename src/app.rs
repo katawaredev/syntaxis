@@ -1,5 +1,5 @@
 use crate::{
-    ai::{Ai, AiQuery},
+    ai::{Ai, AiQuery, AiSettings},
     files::{Files, FilesQuery},
     git::Git,
     terminal::{Terminal, TerminalQuery},
@@ -34,6 +34,8 @@ pub enum Route {
     Preview { slug: String },
     #[route("/workspaces/:slug/ai?:..query")]
     Ai { slug: String, query: AiQuery },
+    #[route("/workspaces/:slug/ai/settings")]
+    AiSettings { slug: String },
 }
 #[component]
 pub fn App() -> Element {

@@ -4,6 +4,7 @@ mod extensions;
 mod generated_settings;
 mod management;
 pub(crate) mod notifications;
+mod resources;
 
 use dioxus::html::HasFileData;
 use dioxus::prelude::*;
@@ -28,8 +29,9 @@ use self::components::{
 use self::extensions::ExtensionsPanel;
 use self::management::{
     default_settings_section, AiPanel, AiSidebarTabs, SettingsPanel, SettingsSidebar,
-    EXTENSIONS_SECTION,
+    EXTENSIONS_SECTION, PROMPT_TEMPLATES_SECTION, SKILLS_SECTION,
 };
+use self::resources::{PromptTemplatesPanel, SkillsPanel};
 
 const AI_CHAT_CSS: Asset = asset!("/assets/ai/chat.css");
 const MAX_RECONNECT_ATTEMPTS: u8 = 6;
@@ -78,6 +80,24 @@ enum ConnectionState {
 
 #[component]
 pub fn Ai(slug: String, query: AiQuery) -> Element {
+    rsx! {
+        AiRoute {
+            slug,
+            requested_session_id: query.session_id,
+            settings_open: false,
+        }
+    }
+}
+
+#[component]
+pub fn AiSettings(slug: String) -> Element {
+    rsx! {
+        AiRoute { slug, requested_session_id: None, settings_open: true }
+    }
+}
+
+#[component]
+fn AiRoute(slug: String, requested_session_id: Option<String>, settings_open: bool) -> Element {
     let active = use_context::<crate::workspace::ActiveWorkspace>();
     match active.current() {
         Some(workspace) => rsx! {
@@ -86,7 +106,8 @@ pub fn Ai(slug: String, query: AiQuery) -> Element {
                 workspace_id: workspace.id.0,
                 workspace_name: workspace.name,
                 workspace_slug: slug,
-                requested_session_id: query.session_id,
+                requested_session_id,
+                settings_open,
             }
         },
         None => rsx! {
@@ -104,6 +125,7 @@ fn RemoteAgent(
     workspace_name: String,
     workspace_slug: String,
     requested_session_id: Option<String>,
+    settings_open: bool,
 ) -> Element {
     let active_workspace = use_context::<crate::workspace::ActiveWorkspace>();
     let notification_center = use_context::<notifications::NotificationCenter>();
@@ -123,7 +145,20 @@ fn RemoteAgent(
     let mut new_session_error = use_signal(|| None::<String>);
     let mut drawer = use_signal(|| false);
     let mut sidebar_open = use_signal(|| true);
-    let panel = use_signal(AiPanel::default);
+    let mut panel = use_signal(|| {
+        if settings_open {
+            AiPanel::Settings
+        } else {
+            AiPanel::Chat
+        }
+    });
+    use_effect(use_reactive((&settings_open,), move |(settings_open,)| {
+        panel.set(if settings_open {
+            AiPanel::Settings
+        } else {
+            AiPanel::Chat
+        });
+    }));
     let selected_settings_section = use_signal(default_settings_section);
     let management_revision = use_signal(|| 0_u64);
     let mut attachments = use_signal(Vec::new);
@@ -356,6 +391,12 @@ fn RemoteAgent(
     use_effect({
         let workspace_slug = workspace_slug.clone();
         move || {
+            if panel() == AiPanel::Settings {
+                navigator.replace(crate::app::Route::AiSettings {
+                    slug: workspace_slug.clone(),
+                });
+                return;
+            }
             if draft_session() {
                 navigator.replace(crate::app::Route::Ai {
                     slug: workspace_slug.clone(),
@@ -662,6 +703,24 @@ fn RemoteAgent(
                     }
                 } else if selected_settings_section() == EXTENSIONS_SECTION {
                     ExtensionsPanel {
+                        workspace_id: workspace_id.clone(),
+                        revision: management_revision,
+                        toast: session_toast,
+                        sidebar_open: sidebar_open(),
+                        on_toggle_sidebar: move |()| sidebar_open.toggle(),
+                        on_open_sidebar: move |()| drawer.set(true),
+                    }
+                } else if selected_settings_section() == PROMPT_TEMPLATES_SECTION {
+                    PromptTemplatesPanel {
+                        workspace_id: workspace_id.clone(),
+                        revision: management_revision,
+                        toast: session_toast,
+                        sidebar_open: sidebar_open(),
+                        on_toggle_sidebar: move |()| sidebar_open.toggle(),
+                        on_open_sidebar: move |()| drawer.set(true),
+                    }
+                } else if selected_settings_section() == SKILLS_SECTION {
+                    SkillsPanel {
                         workspace_id: workspace_id.clone(),
                         revision: management_revision,
                         toast: session_toast,
@@ -1093,6 +1152,16 @@ mod tests {
             link,
             "/workspaces/syntaxis-demo/ai?sessionId=session%2Fwith+spaces"
         );
+        assert_eq!(link.parse::<crate::app::Route>().unwrap(), route);
+    }
+
+    #[test]
+    fn settings_links_do_not_include_a_session() {
+        let route = crate::app::Route::AiSettings {
+            slug: "syntaxis-demo".into(),
+        };
+        let link = route.to_string();
+        assert_eq!(link, "/workspaces/syntaxis-demo/ai/settings");
         assert_eq!(link.parse::<crate::app::Route>().unwrap(), route);
     }
 }

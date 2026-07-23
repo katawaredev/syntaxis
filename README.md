@@ -21,6 +21,9 @@ server restart; selecting a saved chat resumes its transcript with Pi directly.
 
 If `pi` is not on the server's `PATH`, set `SYNTAXIS_PI_COMMAND` to the executable path. Syntaxis does
 not embed a model provider, store API keys, or route the AI section through ACP or another agent SDK.
+The optional All time, Trending, and Hot skills.sh leaderboards require a
+`VERCEL_OIDC_TOKEN`; Syntaxis leaves those controls disabled when the token is
+not present.
 
 # Development
 
