@@ -71,7 +71,10 @@ pub struct EditorCommand {
 }
 
 #[derive(Props, Clone, PartialEq)]
-#[allow(clippy::struct_excessive_bools)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "independent editor toggles are clearer than an artificial nested configuration"
+)]
 pub struct CodeEditorProps {
     #[props(into)]
     pub value: String,
@@ -177,7 +180,7 @@ pub fn CodeEditor(props: CodeEditorProps) -> Element {
                 return;
             }
             let mut events = document::eval(EDITOR_BRIDGE);
-            let _ = events.send((editor_id.clone(), indent.clone()));
+            drop(events.send((editor_id.clone(), indent.clone())));
             event_bridge.set(Some(events));
             spawn(async move {
                 while let Ok(selection) = events.recv::<EditorSelection>().await {
@@ -189,7 +192,7 @@ pub fn CodeEditor(props: CodeEditorProps) -> Element {
     });
     use_drop(move || {
         if let Some(events) = event_bridge() {
-            let _ = events.send(true);
+            drop(events.send(true));
         }
         if let Some(mut command) = props.command {
             command.set(None);
@@ -650,7 +653,10 @@ fn overlay_lines(source: &str, ranges: &[EditorRange]) -> Vec<Vec<OverlaySegment
                     let caret = range.start - line_start;
                     if cursor < caret {
                         segments.push(OverlaySegment {
-                            text: line[cursor..caret].to_owned(),
+                            text: line
+                                .get(cursor..caret)
+                                .expect("validated source offsets stay on UTF-8 boundaries")
+                                .to_owned(),
                             range_index: None,
                             is_caret: false,
                         });
@@ -673,13 +679,19 @@ fn overlay_lines(source: &str, ranges: &[EditorRange]) -> Vec<Vec<OverlaySegment
                 }
                 if cursor < start {
                     segments.push(OverlaySegment {
-                        text: line[cursor..start].to_owned(),
+                        text: line
+                            .get(cursor..start)
+                            .expect("validated source offsets stay on UTF-8 boundaries")
+                            .to_owned(),
                         range_index: None,
                         is_caret: false,
                     });
                 }
                 segments.push(OverlaySegment {
-                    text: line[start..end].to_owned(),
+                    text: line
+                        .get(start..end)
+                        .expect("validated source offsets stay on UTF-8 boundaries")
+                        .to_owned(),
                     range_index: Some(index),
                     is_caret: false,
                 });
@@ -687,7 +699,10 @@ fn overlay_lines(source: &str, ranges: &[EditorRange]) -> Vec<Vec<OverlaySegment
             }
             if cursor < line.len() {
                 segments.push(OverlaySegment {
-                    text: line[cursor..].to_owned(),
+                    text: line
+                        .get(cursor..)
+                        .expect("validated source offsets stay on UTF-8 boundaries")
+                        .to_owned(),
                     range_index: None,
                     is_caret: false,
                 });
@@ -757,7 +772,7 @@ fn source_edit_from_diff(old: &str, new: &str) -> Option<SourceEdit> {
     let mut new_end = new.len();
     while old_end > start
         && new_end > start
-        && old.as_bytes()[old_end - 1] == new.as_bytes()[new_end - 1]
+        && old.as_bytes().get(old_end - 1) == new.as_bytes().get(new_end - 1)
     {
         old_end -= 1;
         new_end -= 1;
@@ -785,7 +800,8 @@ mod tests {
 
     #[test]
     fn source_diff_stays_on_utf8_boundaries() {
-        let edit = source_edit_from_diff("aéz", "aèz").unwrap();
+        let edit =
+            source_edit_from_diff("aéz", "aèz").expect("different strings should produce an edit");
         assert_eq!(edit.start_byte, 1);
         assert_eq!(edit.old_end_byte, 3);
         assert_eq!(edit.new_end_byte, 3);
@@ -801,7 +817,7 @@ mod tests {
                 end: 6,
             },
         };
-        let serialized = serde_json::to_value(command).unwrap();
+        let serialized = serde_json::to_value(command).expect("editor command should serialize");
 
         assert_eq!(serialized["revision"], 7);
         assert_eq!(serialized["kind"], "replace");
@@ -856,10 +872,14 @@ mod tests {
     fn incremental_edit_handles_a_bounded_large_buffer() {
         let original = "fn value() -> usize { 42 }\n".repeat(18_000);
         let updated = format!("{original}// edited\n");
-        let mut buffer = Buffer::new(Language::Rust, original.clone()).unwrap();
-        let edit = source_edit_from_diff(&original, &updated).unwrap();
+        let mut buffer =
+            Buffer::new(Language::Rust, original.clone()).expect("Rust buffer should initialize");
+        let edit = source_edit_from_diff(&original, &updated)
+            .expect("different buffers should produce an edit");
 
-        buffer.edit(edit, updated).unwrap();
+        buffer
+            .edit(edit, updated)
+            .expect("bounded incremental edit should apply");
 
         assert!(buffer.highlighted().lines().len() > 18_000);
     }
@@ -913,7 +933,7 @@ mod tests {
     fn unified_diff_collapses_large_unchanged_regions() {
         let mut original = String::new();
         for line in 1..=30 {
-            writeln!(original, "line {line}").unwrap();
+            writeln!(original, "line {line}").expect("writing to a String cannot fail");
         }
         let current = original.replace("line 15\n", "changed 15\n");
         let rows = unified_diff_rows(&original, &current, Language::Rust, 0, 0, true);

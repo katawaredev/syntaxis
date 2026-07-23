@@ -61,7 +61,9 @@ impl MockWorkspaceFiles {
     fn lock(
         &self,
     ) -> WorkspaceResult<std::sync::MutexGuard<'_, HashMap<(String, String), MockNode>>> {
-        self.nodes.lock().map_err(|_| WorkspaceError::internal())
+        self.nodes
+            .lock()
+            .map_err(|_poison_error| WorkspaceError::internal())
     }
 }
 
@@ -343,7 +345,7 @@ fn entry(path: RelativePath, node: &MockNode) -> FileEntry {
             path,
             name,
             kind: EntryKind::File,
-            size: content.len() as u64,
+            size: u64::try_from(content.len()).unwrap_or(u64::MAX),
             version: Some(version(content, *revision)),
         },
     }
@@ -351,7 +353,7 @@ fn entry(path: RelativePath, node: &MockNode) -> FileEntry {
 
 fn version(content: &str, revision: u128) -> FileVersion {
     FileVersion {
-        length: content.len() as u64,
+        length: u64::try_from(content.len()).unwrap_or(u64::MAX),
         modified_unix_nanos: revision,
     }
 }

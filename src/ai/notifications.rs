@@ -47,7 +47,10 @@ impl NotificationCenter {
     }
 }
 
-#[allow(clippy::too_many_lines)] // The reconnecting bidirectional websocket is one state machine.
+#[expect(
+    clippy::too_many_lines,
+    reason = "the reconnecting bidirectional websocket is one state machine"
+)]
 pub(crate) fn use_notification_center() -> NotificationCenter {
     let mut items = use_signal(Vec::<AppNotification>::new);
     let viewing = use_signal(|| None::<(String, NotificationTarget)>);

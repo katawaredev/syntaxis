@@ -7,7 +7,10 @@ use syntaxis_workspace::{
 use syntaxis_workspace::{ExecutionLocation, WorkspaceId};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[allow(dead_code)] // Phase 6 will make the compiled remote/host choice user-selectable.
+#[allow(
+    dead_code,
+    reason = "the compiled remote/host choice is not user-selectable yet"
+)]
 enum RuntimeTarget {
     Remote,
     #[cfg(feature = "desktop")]
@@ -492,7 +495,6 @@ async fn run_local_mise(arguments: &[&str]) -> Result<(), String> {
         .ok_or_else(|| "mise could not manage the installed tools".to_owned())
 }
 
-#[allow(clippy::unused_async)] // The desktop and remote implementations share one async API.
 pub async fn runtime_state() -> Result<RuntimeState, String> {
     match selected_runtime() {
         RuntimeTarget::Remote => super::api::runtime_state()

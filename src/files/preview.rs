@@ -1,4 +1,7 @@
-#[allow(unused_imports)] // Dioxus expands the parent glob for RSX hot-reload analysis.
+#[allow(
+    unused_imports,
+    reason = "Dioxus expands the parent glob for RSX hot-reload analysis"
+)]
 use super::*;
 use pulldown_cmark::{html, CowStr, Event, Options, Parser, Tag};
 

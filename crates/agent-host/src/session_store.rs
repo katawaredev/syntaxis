@@ -99,16 +99,22 @@ fn search_session(
 }
 
 fn snippet(text: &str, match_start: usize, match_end: usize) -> String {
-    let start = text[..match_start]
+    let start = text
+        .get(..match_start)
+        .expect("regex match starts are UTF-8 boundaries")
         .char_indices()
         .rev()
         .nth(SNIPPET_CONTEXT_CHARS)
         .map_or(0, |(index, _)| index);
-    let end = text[match_end..]
+    let end = text
+        .get(match_end..)
+        .expect("regex match ends are UTF-8 boundaries")
         .char_indices()
         .nth(SNIPPET_CONTEXT_CHARS)
         .map_or(text.len(), |(index, _)| match_end + index);
-    let flattened = text[start..end]
+    let flattened = text
+        .get(start..end)
+        .expect("snippet offsets are derived from character boundaries")
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ");

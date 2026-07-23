@@ -168,7 +168,15 @@ impl ClientMessage {
     pub fn validate_handshake(&self) -> Result<(), TerminalError> {
         match self {
             Self::Hello { .. } => self.validate(),
-            _ => Err(TerminalError::new(
+            Self::List
+            | Self::Create { .. }
+            | Self::Attach { .. }
+            | Self::Detach { .. }
+            | Self::Write { .. }
+            | Self::Resize { .. }
+            | Self::Close { .. }
+            | Self::CloseAll
+            | Self::Ping { .. } => Err(TerminalError::new(
                 TerminalErrorCode::InvalidProtocol,
                 "Terminal protocol handshake required",
             )),
@@ -256,29 +264,32 @@ mod tests {
             session_id: SessionId::new("session"),
             size: TerminalSize::DEFAULT,
         };
-        let json = serde_json::to_value(&message).unwrap();
+        let json = serde_json::to_value(&message).expect("client message should serialize");
         assert_eq!(json["type"], "resize");
         assert_eq!(json["session_id"], "session");
         assert_eq!(
-            serde_json::from_value::<ClientMessage>(json).unwrap(),
+            serde_json::from_value::<ClientMessage>(json)
+                .expect("serialized client message should deserialize"),
             message
         );
     }
     #[test]
     fn handshake_rejects_missing_and_incompatible_hello_messages() {
-        let missing = ClientMessage::List.validate_handshake().unwrap_err();
+        let missing = ClientMessage::List
+            .validate_handshake()
+            .expect_err("non-handshake messages must be rejected");
         assert_eq!(missing.code, TerminalErrorCode::InvalidProtocol);
         let incompatible = ClientMessage::Hello {
             version: PROTOCOL_VERSION + 1,
         }
         .validate_handshake()
-        .unwrap_err();
+        .expect_err("incompatible protocol versions must be rejected");
         assert_eq!(incompatible.code, TerminalErrorCode::InvalidProtocol);
         ClientMessage::Hello {
             version: PROTOCOL_VERSION,
         }
         .validate_handshake()
-        .unwrap();
+        .expect("the current protocol version must be accepted");
     }
     #[test]
     fn validation_rejects_oversized_transport_fields() {
@@ -286,7 +297,7 @@ mod tests {
         assert_eq!(
             ClientMessage::Attach { session_id }
                 .validate()
-                .unwrap_err()
+                .expect_err("oversized session identifiers must be rejected")
                 .code,
             TerminalErrorCode::InvalidRequest,
         );
@@ -295,7 +306,10 @@ mod tests {
             data: vec![0; MAX_INPUT_BYTES + 1],
         };
         assert_eq!(
-            write.validate().unwrap_err().code,
+            write
+                .validate()
+                .expect_err("oversized terminal input must be rejected")
+                .code,
             TerminalErrorCode::InvalidRequest,
         );
         let create = ClientMessage::Create {
@@ -303,13 +317,18 @@ mod tests {
             size: TerminalSize::DEFAULT,
         };
         assert_eq!(
-            create.validate().unwrap_err().code,
+            create
+                .validate()
+                .expect_err("oversized session names must be rejected")
+                .code,
             TerminalErrorCode::InvalidRequest,
         );
     }
     #[test]
     fn malformed_and_unknown_messages_do_not_decode() {
-        assert!(serde_json::from_str::<ClientMessage>(r#"{"type":"unknown"}"#).is_err());
-        assert!(serde_json::from_str::<ClientMessage>(r#"{"type":"resize"}"#).is_err());
+        serde_json::from_str::<ClientMessage>(r#"{"type":"unknown"}"#)
+            .expect_err("unknown message types must not deserialize");
+        serde_json::from_str::<ClientMessage>(r#"{"type":"resize"}"#)
+            .expect_err("messages with missing fields must not deserialize");
     }
 }

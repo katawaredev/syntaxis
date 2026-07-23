@@ -4,7 +4,10 @@ fn main() {
     println!("cargo:rerun-if-changed=tailwind.css");
     println!("cargo:rerun-if-changed=src/wasm_stderr.c");
 
-    let manifest_dir = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    let manifest_dir = PathBuf::from(
+        env::var_os("CARGO_MANIFEST_DIR")
+            .expect("Cargo must provide CARGO_MANIFEST_DIR to build scripts"),
+    );
     let output = manifest_dir.join("assets/tailwind.css");
 
     // `asset!` validates paths during ordinary Cargo checks, while Dioxus only

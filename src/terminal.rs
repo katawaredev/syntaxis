@@ -1520,8 +1520,14 @@ fn choose_active(
 ) -> Option<SessionId> {
     requested
         .and_then(|id| sessions.iter().find(|session| &session.id == id))
-        .or_else(|| active.and_then(|id| sessions.iter().find(|session| &session.id == id)))
-        .or_else(|| remembered.and_then(|id| sessions.iter().find(|session| &session.id == id)))
+        .or_else(|| {
+            let id = active?;
+            sessions.iter().find(|session| &session.id == id)
+        })
+        .or_else(|| {
+            let id = remembered?;
+            sessions.iter().find(|session| &session.id == id)
+        })
         .or_else(|| sessions.first())
         .map(|session| session.id.clone())
 }

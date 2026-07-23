@@ -47,8 +47,10 @@ pub fn TextInput(
 ) -> Element {
     let field = try_consume_context::<FieldContext>();
     let id = id.or_else(|| field.as_ref().map(|field| field.control_id.clone()));
-    let aria_describedby =
-        aria_describedby.or_else(|| field.as_ref().and_then(|field| field.describedby.clone()));
+    let aria_describedby = aria_describedby.or_else(|| {
+        let field = field.as_ref()?;
+        field.describedby.clone()
+    });
     let aria_invalid = aria_invalid || field.as_ref().is_some_and(|field| field.invalid);
     let required = required || field.as_ref().is_some_and(|field| field.required);
     let class = format!(

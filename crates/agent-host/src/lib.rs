@@ -317,6 +317,10 @@ impl HostAgentWorkspace {
         let mut changed = false;
         let mut notification = None;
         if let Some(session) = lock(&self.sessions).get_mut(id) {
+            #[expect(
+                clippy::wildcard_enum_match_arm,
+                reason = "this notification projection intentionally ignores unrelated protocol events"
+            )]
             match event {
                 ServerMessage::Status {
                     status, message, ..
@@ -647,7 +651,10 @@ impl HostAgentSession {
         })
     }
 }
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the process task owns a fixed set of independent runtime channels and handles"
+)]
 async fn run_pi_process(
     mut child: tokio::process::Child,
     mut stdin: tokio::process::ChildStdin,

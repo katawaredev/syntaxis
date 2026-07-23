@@ -1,7 +1,13 @@
-#[allow(unused_imports)] // Dioxus expands the parent glob for RSX hot-reload analysis.
+#[allow(
+    unused_imports,
+    reason = "Dioxus expands the parent glob for RSX hot-reload analysis"
+)]
 use super::*;
 
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the document tab receives independent reactive handles from its Dioxus owner"
+)]
 pub(super) fn open_document(
     entry: FileEntry,
     workspace: Option<WorkspaceRecord>,

@@ -124,7 +124,11 @@ pub fn FileIcon(
 
 // This is intentionally one exhaustive visual catalog: keeping every glyph-to-component
 // association together makes missing and duplicate brand mappings obvious during review.
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    clippy::cognitive_complexity,
+    reason = "the exhaustive glyph catalog is clearer as one declarative match"
+)]
 fn render_glyph(glyph: FileIconGlyph, size: u32) -> Element {
     match glyph {
         FileIconGlyph::Folder => rsx! {
@@ -376,6 +380,10 @@ fn render_glyph(glyph: FileIconGlyph, size: u32) -> Element {
 }
 
 fn glyph_tone(glyph: FileIconGlyph) -> &'static str {
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "only generic glyphs need a fallback color; branded glyphs carry their own colors"
+    )]
     match glyph {
         FileIconGlyph::Folder | FileIconGlyph::FolderOpen => "text-warning",
         FileIconGlyph::Symlink | FileIconGlyph::Code => "text-sky-400",

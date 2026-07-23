@@ -126,7 +126,10 @@ impl Encoding for AgentEncoding {
         Some(encoded)
     }
 
-    fn decode<Output: DeserializeOwned>(bytes: Bytes) -> Option<Output> {
+    fn decode<Output>(bytes: Bytes) -> Option<Output>
+    where
+        Output: DeserializeOwned,
+    {
         (bytes.len() <= MAX_AGENT_MESSAGE_BYTES)
             .then(|| CborEncoding::decode(bytes))
             .flatten()

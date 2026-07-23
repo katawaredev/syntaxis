@@ -134,14 +134,15 @@ mod tests {
     fn image_candidates_take_priority() {
         let root = tempdir().unwrap();
         fs::write(root.path().join("favicon.svg"), "<svg/>").unwrap();
-        let WorkspaceIcon::Image {
+        let icon = detect_workspace_icon(root.path());
+        assert!(matches!(icon, WorkspaceIcon::Image { .. }));
+        if let WorkspaceIcon::Image {
             relative_path,
             data_url,
-        } = detect_workspace_icon(root.path())
-        else {
-            panic!("expected image icon");
-        };
-        assert_eq!(relative_path, "favicon.svg");
-        assert!(data_url.unwrap().starts_with("data:image/svg+xml;base64,"));
+        } = icon
+        {
+            assert_eq!(relative_path, "favicon.svg");
+            assert!(data_url.unwrap().starts_with("data:image/svg+xml;base64,"));
+        }
     }
 }

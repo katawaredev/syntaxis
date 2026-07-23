@@ -190,13 +190,30 @@ fn expand_braces(pattern: &str) -> Vec<String> {
     let Some(open) = pattern.find('{') else {
         return vec![pattern.to_owned()];
     };
-    let Some(relative_close) = pattern[open + 1..].find('}') else {
+    let Some(relative_close) = pattern
+        .get(open + 1..)
+        .expect("the opening brace offset is a UTF-8 boundary")
+        .find('}')
+    else {
         return vec![pattern.to_owned()];
     };
     let close = open + relative_close + 1;
-    pattern[open + 1..close]
+    pattern
+        .get(open + 1..close)
+        .expect("brace offsets are UTF-8 boundaries")
         .split(',')
-        .map(|choice| format!("{}{}{}", &pattern[..open], choice, &pattern[close + 1..]))
+        .map(|choice| {
+            format!(
+                "{}{}{}",
+                pattern
+                    .get(..open)
+                    .expect("the opening brace offset is a UTF-8 boundary"),
+                choice,
+                pattern
+                    .get(close + 1..)
+                    .expect("the closing brace offset is a UTF-8 boundary")
+            )
+        })
         .collect()
 }
 

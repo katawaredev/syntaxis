@@ -33,7 +33,7 @@ pub fn complete_with_words(
 ) -> WordCompletions {
     let cursor = char_boundary_at_or_before(source, cursor.min(source.len()));
     let from = word_start(source, cursor);
-    let prefix = &source[from..cursor];
+    let prefix = source.get(from..cursor).unwrap_or_default();
     let mut seen = HashSet::new();
     let mut options = Vec::new();
 
@@ -70,13 +70,15 @@ fn completion_window(source: &str, cursor: usize) -> (usize, &str) {
     let mut start =
         char_boundary_at_or_before(source, cursor.saturating_sub(DOCUMENT_COMPLETION_RADIUS));
     if start > 0
-        && source[..start]
+        && source
+            .get(..start)
+            .unwrap_or_default()
             .chars()
             .next_back()
             .is_some_and(is_word_character)
     {
         while start < cursor {
-            let Some(character) = source[start..].chars().next() else {
+            let Some(character) = source.get(start..).unwrap_or_default().chars().next() else {
                 break;
             };
             if !is_word_character(character) {
@@ -93,13 +95,15 @@ fn completion_window(source: &str, cursor: usize) -> (usize, &str) {
             .min(source.len()),
     );
     if end < source.len()
-        && source[..end]
+        && source
+            .get(..end)
+            .unwrap_or_default()
             .chars()
             .next_back()
             .is_some_and(is_word_character)
     {
         while end > cursor {
-            let Some(character) = source[..end].chars().next_back() else {
+            let Some(character) = source.get(..end).unwrap_or_default().chars().next_back() else {
                 break;
             };
             if !is_word_character(character) {
@@ -109,11 +113,13 @@ fn completion_window(source: &str, cursor: usize) -> (usize, &str) {
         }
     }
 
-    (start, &source[start..end])
+    (start, source.get(start..end).unwrap_or_default())
 }
 
 fn word_start(source: &str, cursor: usize) -> usize {
-    source[..cursor]
+    source
+        .get(..cursor)
+        .unwrap_or_default()
         .char_indices()
         .rev()
         .find_map(|(index, character)| {
@@ -134,7 +140,7 @@ fn words(source: &str) -> impl Iterator<Item = (usize, &str)> {
             } else {
                 word_start
                     .take()
-                    .map(|start| (start, &source[start..index]))
+                    .map(|start| (start, source.get(start..index).unwrap_or_default()))
             }
         })
 }

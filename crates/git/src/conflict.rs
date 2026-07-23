@@ -98,9 +98,17 @@ fn resolved_document(
     blocks: &[ParsedBlock],
 ) -> ResolvedConflict {
     let mut resolved = String::with_capacity(content.len());
-    resolved.push_str(&content[..block.start]);
+    resolved.push_str(
+        content
+            .get(..block.start)
+            .expect("parsed conflict starts are UTF-8 boundaries"),
+    );
     resolved.push_str(replacement);
-    resolved.push_str(&content[block.end..]);
+    resolved.push_str(
+        content
+            .get(block.end..)
+            .expect("parsed conflict ends are UTF-8 boundaries"),
+    );
     ResolvedConflict {
         content: resolved,
         complete: blocks.len() == 1,
@@ -213,7 +221,10 @@ fn parse_blocks(content: &str) -> GitResult<Vec<ParsedBlock>> {
             incoming_label,
             current,
             incoming,
-            source: content[start..end].to_owned(),
+            source: content
+                .get(start..end)
+                .expect("conflict offsets are derived from complete input lines")
+                .to_owned(),
         });
     }
     Ok(blocks)
@@ -277,19 +288,18 @@ mod tests {
     #[test]
     fn rejects_malformed_and_stale_conflict_blocks() {
         let malformed = "<<<<<<< HEAD\ncurrent\n>>>>>>> feature\n";
-        assert!(
-            parse_conflict_file(RelativePath::try_from("file.txt").unwrap(), malformed).is_err()
-        );
+        parse_conflict_file(RelativePath::try_from("file.txt").unwrap(), malformed)
+            .expect_err("malformed conflicts must be rejected");
 
         let source = "<<<<<<< HEAD\ncurrent\n=======\nincoming\n>>>>>>> feature\n";
         let parsed =
             parse_conflict_file(RelativePath::try_from("file.txt").unwrap(), source).unwrap();
-        assert!(resolve_conflict_block(
+        resolve_conflict_block(
             source,
             0,
             parsed.blocks[0].fingerprint ^ 1,
             ConflictChoice::Current,
         )
-        .is_err());
+        .expect_err("stale conflict fingerprints must be rejected");
     }
 }

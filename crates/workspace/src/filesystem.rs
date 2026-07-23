@@ -48,7 +48,10 @@ impl TryFrom<&str> for RelativePath {
             .components()
             .filter_map(|component| match component {
                 Component::Normal(part) => Some(part.to_string_lossy()),
-                _ => None,
+                Component::Prefix(_)
+                | Component::RootDir
+                | Component::CurDir
+                | Component::ParentDir => None,
             })
             .collect::<Vec<_>>()
             .join("/");
@@ -106,14 +109,16 @@ mod tests {
 
     #[test]
     fn relative_paths_reject_escape_attempts() {
-        assert!(RelativePath::try_from("../secret").is_err());
-        assert!(RelativePath::try_from("folder/../../secret").is_err());
-        assert!(RelativePath::try_from("/etc/passwd").is_err());
+        RelativePath::try_from("../secret").expect_err("parent traversal must be rejected");
+        RelativePath::try_from("folder/../../secret")
+            .expect_err("nested parent traversal must be rejected");
+        RelativePath::try_from("/etc/passwd").expect_err("absolute paths must be rejected");
     }
 
     #[test]
     fn relative_paths_are_normalized() {
-        let path = RelativePath::try_from("./src/./main.rs").unwrap();
+        let path = RelativePath::try_from("./src/./main.rs")
+            .expect("valid relative path should normalize");
         assert_eq!(path.as_str(), "src/main.rs");
     }
 }

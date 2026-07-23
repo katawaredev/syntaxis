@@ -89,7 +89,8 @@ impl HostWorkspaceFiles {
             .take(max_bytes.saturating_add(1))
             .read_to_end(&mut bytes)
             .map_err(map_io_error)?;
-        require_size(bytes.len() as u64, max_bytes)?;
+        let size = u64::try_from(bytes.len()).map_err(|_| too_large(max_bytes))?;
+        require_size(size, max_bytes)?;
         let content = String::from_utf8(bytes).map_err(|_| {
             WorkspaceError::new(
                 ErrorCode::UnsupportedEncoding,
@@ -119,7 +120,8 @@ impl HostWorkspaceFiles {
             .take(max_bytes.saturating_add(1))
             .read_to_end(&mut content)
             .map_err(map_io_error)?;
-        require_size(content.len() as u64, max_bytes)?;
+        let size = u64::try_from(content.len()).map_err(|_| too_large(max_bytes))?;
+        require_size(size, max_bytes)?;
         Ok(BinaryFile {
             content,
             version: version_from_metadata(&metadata)?,
@@ -206,7 +208,8 @@ impl HostWorkspaceFiles {
         expected: Option<&FileVersion>,
         max_bytes: u64,
     ) -> WorkspaceResult<FileVersion> {
-        require_size(content.len() as u64, max_bytes)?;
+        let size = u64::try_from(content.len()).map_err(|_| too_large(max_bytes))?;
+        require_size(size, max_bytes)?;
         let scope = PathScope::for_workspace(workspace)?;
         let path = scope.existing(relative)?;
         let metadata = path.metadata().map_err(map_io_error)?;

@@ -45,7 +45,7 @@ pub(super) fn WorkspaceFolderDialog(
                     control_id: "workspace-path",
                     label: "Folder path",
                     error: match request() {
-                        RequestState::Error(message) => Some(message.to_string()),
+                        RequestState::Error(message) => Some(message.to_owned()),
                         _ => None,
                     },
                     TextInput {

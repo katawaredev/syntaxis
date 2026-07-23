@@ -22,7 +22,13 @@ pub struct PiSettingDefinition {
     pub setter: &'static str,
 }
 
-#[cfg_attr(not(feature = "server"), allow(dead_code))]
+#[cfg_attr(
+    not(feature = "server"),
+    allow(
+        dead_code,
+        reason = "generated server metadata is intentionally dormant in client builds"
+    )
+)]
 pub const PI_SETTINGS_SCHEMA_VERSION: &str = "0.80.10";
 
 pub const PI_SETTING_DEFINITIONS: &[PiSettingDefinition] = &[

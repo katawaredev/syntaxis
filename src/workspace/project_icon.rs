@@ -32,7 +32,7 @@ pub fn ProjectIcon(
 
 fn project_initial(name: &str) -> String {
     name.trim().chars().next().map_or_else(
-        || "?".to_string(),
+        || "?".to_owned(),
         |character| character.to_uppercase().collect(),
     )
 }

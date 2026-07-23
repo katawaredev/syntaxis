@@ -47,7 +47,11 @@ pub fn ProjectLanguageBadge(
     }
 }
 
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    clippy::cognitive_complexity,
+    reason = "the technology-to-icon catalog is clearer as one declarative match"
+)]
 fn technology_icon(technology: WorkspaceTechnology, size: u32) -> Element {
     match technology {
         WorkspaceTechnology::Angular => rsx! {
@@ -217,7 +221,10 @@ fn ViteBadgeIcon(size: u32) -> Element {
     }
 }
 
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "the language-to-icon catalog is clearer as one declarative match"
+)]
 fn language_icon(language: &str, size: u32) -> Element {
     match language.to_ascii_lowercase().as_str() {
         "c" => rsx! {

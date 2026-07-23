@@ -651,11 +651,10 @@ fn resolve_command(command: &Path) -> Option<PathBuf> {
     if command.components().count() > 1 {
         return Some(command.to_owned());
     }
-    env::var_os("PATH").and_then(|paths| {
-        env::split_paths(&paths)
-            .map(|path| path.join(command))
-            .find(|candidate| candidate.is_file())
-    })
+    let paths = env::var_os("PATH")?;
+    env::split_paths(&paths)
+        .map(|path| path.join(command))
+        .find(|candidate| candidate.is_file())
 }
 
 fn pi_command() -> PathBuf {
@@ -773,31 +772,31 @@ mod tests {
 
     #[test]
     fn generated_setting_values_are_type_checked() {
-        assert!(validate_setting_value(PiSettingKind::Toggle, &json!(true)).is_ok());
-        assert!(validate_setting_value(PiSettingKind::Toggle, &json!("true")).is_err());
-        assert!(
-            validate_setting_value(PiSettingKind::Select(&["auto", "sse"]), &json!("auto")).is_ok()
-        );
-        assert!(
-            validate_setting_value(PiSettingKind::Select(&["auto", "sse"]), &json!("other"))
-                .is_err()
-        );
-        assert!(
-            validate_setting_value(PiSettingKind::StringArray, &json!(["mise", "npm"])).is_ok()
-        );
-        assert!(validate_setting_value(PiSettingKind::StringArray, &json!("npm")).is_err());
+        validate_setting_value(PiSettingKind::Toggle, &json!(true))
+            .expect("boolean toggle values must be accepted");
+        validate_setting_value(PiSettingKind::Toggle, &json!("true"))
+            .expect_err("string toggle values must be rejected");
+        validate_setting_value(PiSettingKind::Select(&["auto", "sse"]), &json!("auto"))
+            .expect("known select values must be accepted");
+        validate_setting_value(PiSettingKind::Select(&["auto", "sse"]), &json!("other"))
+            .expect_err("unknown select values must be rejected");
+        validate_setting_value(PiSettingKind::StringArray, &json!(["mise", "npm"]))
+            .expect("string arrays must be accepted");
+        validate_setting_value(PiSettingKind::StringArray, &json!("npm"))
+            .expect_err("scalar strings must be rejected for string arrays");
     }
 
     #[test]
     fn pi_resource_names_and_download_paths_are_restricted() {
-        assert!(validate_resource_name("code-review").is_ok());
-        assert!(validate_resource_name("../review").is_err());
-        assert!(validate_resource_name("CodeReview").is_err());
-        assert!(validate_prompt_name("review_PR.v2").is_ok());
-        assert!(validate_prompt_name("../review").is_err());
-        assert!(safe_relative_path("references/guide.md").is_ok());
-        assert!(safe_relative_path("../SKILL.md").is_err());
-        assert!(safe_relative_path("/tmp/SKILL.md").is_err());
+        validate_resource_name("code-review").expect("kebab-case resource names must be accepted");
+        validate_resource_name("../review").expect_err("path traversal must be rejected");
+        validate_resource_name("CodeReview")
+            .expect_err("uppercase resource names must be rejected");
+        validate_prompt_name("review_PR.v2").expect("valid prompt names must be accepted");
+        validate_prompt_name("../review").expect_err("prompt path traversal must be rejected");
+        safe_relative_path("references/guide.md").expect("safe relative paths must be accepted");
+        safe_relative_path("../SKILL.md").expect_err("parent traversal must be rejected");
+        safe_relative_path("/tmp/SKILL.md").expect_err("absolute paths must be rejected");
     }
 
     #[test]

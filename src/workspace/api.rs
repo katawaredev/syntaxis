@@ -92,7 +92,6 @@ pub async fn clear_mise_tools() -> Result<(), ServerFnError> {
     server::clear_mise_tools().await
 }
 #[get("/api/runtime")]
-#[allow(clippy::unused_async)]
 pub async fn runtime_state() -> Result<RuntimeState, ServerFnError> {
     Ok(RuntimeState::Ready {
         identity: RuntimeIdentity {

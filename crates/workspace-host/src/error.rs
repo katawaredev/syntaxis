@@ -3,6 +3,10 @@ use syntaxis_workspace::{ErrorCode, WorkspaceError};
 pub(crate) fn map_io_error(error: std::io::Error) -> WorkspaceError {
     let kind = error.kind();
     drop(error);
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "unknown and future I/O error kinds intentionally map to a stable internal error"
+    )]
     let (code, message) = match kind {
         std::io::ErrorKind::NotFound => (ErrorCode::NotFound, "The requested path was not found."),
         std::io::ErrorKind::PermissionDenied => (

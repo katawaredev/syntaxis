@@ -45,10 +45,10 @@ impl HostNotificationHub {
     pub fn clear(&self, workspace_id: &str, target: &NotificationTarget) {
         let key = (workspace_id.to_owned(), target.clone());
         if lock(&self.items).remove(&key).is_some() {
-            let _ = self.events.send(NotificationServerMessage::Removed {
+            drop(self.events.send(NotificationServerMessage::Removed {
                 workspace_id: workspace_id.to_owned(),
                 target: target.clone(),
-            });
+            }));
         }
     }
 
@@ -65,11 +65,11 @@ impl HostNotificationHub {
             }
             removed
         };
-        for (workspace_id, target) in removed {
-            let _ = self.events.send(NotificationServerMessage::Removed {
-                workspace_id,
+        for (removed_workspace_id, target) in removed {
+            drop(self.events.send(NotificationServerMessage::Removed {
+                workspace_id: removed_workspace_id,
                 target,
-            });
+            }));
         }
     }
 
@@ -79,9 +79,10 @@ impl HostNotificationHub {
             notification.target.clone(),
         );
         lock(&self.items).insert(key, notification.clone());
-        let _ = self
-            .events
-            .send(NotificationServerMessage::Upsert { notification });
+        drop(
+            self.events
+                .send(NotificationServerMessage::Upsert { notification }),
+        );
     }
 }
 

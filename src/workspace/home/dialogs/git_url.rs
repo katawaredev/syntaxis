@@ -110,7 +110,7 @@ pub(super) fn GitUrlDialog(
                     label: "Repository URL",
                     error: match request() {
                         RequestState::Error(message) if message != DESTINATION_ERROR => {
-                            Some(message.to_string())
+                            Some(message.to_owned())
                         }
                         _ => None,
                     },

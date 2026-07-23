@@ -87,9 +87,10 @@ mod tests {
         let target = NotificationTarget::Terminal {
             session_id: "terminal-1".into(),
         };
-        let json = serde_json::to_string(&target).unwrap();
+        let json = serde_json::to_string(&target).expect("notification target should serialize");
         assert_eq!(
-            serde_json::from_str::<NotificationTarget>(&json).unwrap(),
+            serde_json::from_str::<NotificationTarget>(&json)
+                .expect("serialized notification target should deserialize"),
             target
         );
     }

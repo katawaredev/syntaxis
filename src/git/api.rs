@@ -20,7 +20,6 @@ pub async fn clone_repository(
 }
 
 #[get("/api/git/clone-stream")]
-#[allow(clippy::unused_async)]
 pub async fn clone_repository_stream(
     options: WebSocketOptions,
 ) -> Result<Websocket<CloneClientMessage, CloneServerMessage>, ServerFnError> {

@@ -101,7 +101,11 @@ fn detect_languages(root: &Path) -> Vec<WorkspaceLanguage> {
     languages
 }
 
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    clippy::cognitive_complexity,
+    reason = "technology detection is a linear declarative catalog kept together for auditability"
+)]
 fn detect_technologies(root: &Path) -> Vec<Technology> {
     let mut technologies = Vec::new();
     let package = read_json(&root.join("package.json"));

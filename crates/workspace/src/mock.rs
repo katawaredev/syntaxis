@@ -21,7 +21,9 @@ impl MockWorkspaceRegistry {
     }
 
     fn lock(&self) -> WorkspaceResult<std::sync::MutexGuard<'_, Vec<WorkspaceRecord>>> {
-        self.records.lock().map_err(|_| WorkspaceError::internal())
+        self.records
+            .lock()
+            .map_err(|_poison_error| WorkspaceError::internal())
     }
 }
 
@@ -112,10 +114,16 @@ mod tests {
     #[test]
     fn mock_registry_exercises_the_same_contract() {
         let registry = MockWorkspaceRegistry::default();
-        let registered = block_on(registry.register("/mock/Project One")).unwrap();
+        let registered = block_on(registry.register("/mock/Project One"))
+            .expect("mock workspace should register");
         assert_eq!(registered.slug, "project-one");
-        assert_eq!(block_on(registry.list()).unwrap(), vec![registered.clone()]);
-        block_on(registry.remove(&registered.id)).unwrap();
-        assert!(block_on(registry.list()).unwrap().is_empty());
+        assert_eq!(
+            block_on(registry.list()).expect("mock workspaces should list"),
+            vec![registered.clone()]
+        );
+        block_on(registry.remove(&registered.id)).expect("mock workspace should be removed");
+        assert!(block_on(registry.list())
+            .expect("mock workspaces should list")
+            .is_empty());
     }
 }

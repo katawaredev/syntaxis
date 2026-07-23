@@ -15,7 +15,6 @@ mod discovery;
 
 use discovery::discover;
 
-const MAX_COMMANDS: usize = 200;
 const MAX_LABEL_BYTES: usize = 120;
 const MAX_COMMAND_BYTES: usize = 4 * 1024;
 

@@ -316,7 +316,8 @@ fn parse_clone_progress(line: &str) -> Option<CloneProgress> {
 
 fn parse_percent(line: &str) -> Option<u8> {
     let percent = line.find('%')?;
-    let digits = line[..percent]
+    let digits = line
+        .get(..percent)?
         .rsplit(|character: char| !character.is_ascii_digit())
         .next()?;
     digits.parse::<u8>().ok().filter(|value| *value <= 100)

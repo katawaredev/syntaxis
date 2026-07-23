@@ -38,7 +38,10 @@ impl Encoding for TerminalEncoding {
         Some(encoded)
     }
 
-    fn decode<Output: DeserializeOwned>(bytes: Bytes) -> Option<Output> {
+    fn decode<Output>(bytes: Bytes) -> Option<Output>
+    where
+        Output: DeserializeOwned,
+    {
         (bytes.len() <= MAX_TERMINAL_MESSAGE_BYTES)
             .then(|| CborEncoding::decode(bytes))
             .flatten()

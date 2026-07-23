@@ -255,11 +255,10 @@ impl WorkspaceRegistryStore {
     }
 
     fn workspace_data_path(&self, id: &WorkspaceId, name: &str) -> Option<PathBuf> {
-        self.path.as_ref().and_then(|registry| {
-            registry
-                .parent()
-                .map(|data| data.join("workspaces").join(&id.0).join(name))
-        })
+        let registry = self.path.as_ref()?;
+        registry
+            .parent()
+            .map(|data| data.join("workspaces").join(&id.0).join(name))
     }
 
     /// Loads the plain-text notes associated with a registered workspace.

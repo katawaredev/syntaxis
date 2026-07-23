@@ -1,4 +1,7 @@
-#[allow(unused_imports)] // Dioxus expands the parent glob for RSX hot-reload analysis.
+#[allow(
+    unused_imports,
+    reason = "Dioxus expands the parent glob for RSX hot-reload analysis"
+)]
 use super::{
     close_documents, git_api, set_error, set_success, spawn, workspace_client, AnyStorage,
     DiffKind, FileAction, FileActionDialog, FormExtension, GlobalAttributesExtension,
@@ -159,7 +162,10 @@ pub(super) fn revert_active(path: Option<String>, mut documents: Signal<Vec<Open
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the dispatcher receives independent reactive handles from its Dioxus owner"
+)]
 pub(super) fn run_file_action(
     dialog: FileActionDialog,
     destination: String,

@@ -355,7 +355,17 @@ impl ClientMessage {
     pub fn validate_handshake(&self) -> Result<(), AgentError> {
         match self {
             Self::Hello { .. } => self.validate(),
-            _ => Err(AgentError::new(
+            Self::CreateSession
+            | Self::SelectSession { .. }
+            | Self::DeleteSession { .. }
+            | Self::Prompt { .. }
+            | Self::Abort
+            | Self::SetModel { .. }
+            | Self::SetThinkingLevel { .. }
+            | Self::Refresh
+            | Self::SessionAction { .. }
+            | Self::ExtensionUiResponse { .. }
+            | Self::Ping { .. } => Err(AgentError::new(
                 AgentErrorCode::InvalidProtocol,
                 "AI protocol handshake required",
             )),
@@ -460,11 +470,12 @@ mod tests {
             delivery: PromptDelivery::Prompt,
             images: Vec::new(),
         };
-        let value = serde_json::to_value(&message).unwrap();
+        let value = serde_json::to_value(&message).expect("client message should serialize");
         assert_eq!(value["type"], "prompt");
         assert_eq!(value["delivery"], "prompt");
         assert_eq!(
-            serde_json::from_value::<ClientMessage>(value).unwrap(),
+            serde_json::from_value::<ClientMessage>(value)
+                .expect("serialized client message should deserialize"),
             message
         );
     }

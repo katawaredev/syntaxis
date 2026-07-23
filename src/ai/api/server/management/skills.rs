@@ -341,8 +341,7 @@ async fn download_skill(slug: &str) -> Result<Vec<(PathBuf, String)>, ServerFnEr
     let (owner, repository, skill) = validate_skill_slug(slug)?;
     let response = http_client()?
         .get(format!(
-            "https://skills.sh/api/download/{}/{}/{}",
-            owner, repository, skill
+            "https://skills.sh/api/download/{owner}/{repository}/{skill}"
         ))
         .send()
         .await
@@ -351,7 +350,7 @@ async fn download_skill(slug: &str) -> Result<Vec<(PathBuf, String)>, ServerFnEr
         .map_err(|error| server_error(format!("skills.sh rejected the download: {error}")))?;
     if response
         .content_length()
-        .is_some_and(|length| length > MAX_SKILL_DOWNLOAD_BYTES as u64)
+        .is_some_and(|length| length > u64::try_from(MAX_SKILL_DOWNLOAD_BYTES).unwrap_or(u64::MAX))
     {
         return Err(server_error("The skill download is too large"));
     }
@@ -387,7 +386,7 @@ fn write_downloaded_skill(
     slug: &str,
     files: Vec<(PathBuf, String)>,
 ) -> Result<(), ServerFnError> {
-    fs::create_dir_all(&destination).map_err(|error| {
+    fs::create_dir_all(destination).map_err(|error| {
         server_error(format!(
             "Could not create {}: {error}",
             destination.display()

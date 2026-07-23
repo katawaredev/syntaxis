@@ -1,4 +1,7 @@
-#[allow(unused_imports)] // Dioxus expands the parent glob for RSX hot-reload analysis.
+#[allow(
+    unused_imports,
+    reason = "Dioxus expands the parent glob for RSX hot-reload analysis"
+)]
 use super::{
     complete_any_word, complete_with_words, component, dioxus_core, dioxus_elements,
     dioxus_signals, document, file_glyph, generated_completion_words, language_slug_for_path,
@@ -224,7 +227,10 @@ fn line_column_at(source: &str, offset: usize) -> (usize, usize) {
     (line, column)
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the editor view receives independent reactive handles from its Dioxus owner"
+)]
 pub(super) fn handle_editor_shortcut(
     event: &KeyboardEvent,
     workspace: Option<WorkspaceRecord>,

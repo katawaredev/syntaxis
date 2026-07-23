@@ -1555,7 +1555,7 @@ fn apply_untracked_stats(root: &Path, status: &mut RepositoryStatus, max_bytes: 
         let Ok(metadata) = path.symlink_metadata() else {
             continue;
         };
-        if !metadata.is_file() || metadata.len() > max_bytes as u64 {
+        if !metadata.is_file() || metadata.len() > u64::try_from(max_bytes).unwrap_or(u64::MAX) {
             continue;
         }
         let Ok(contents) = std::fs::read(path) else {

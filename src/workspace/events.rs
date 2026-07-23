@@ -45,7 +45,10 @@ fn RemoteWorkspaceEvents(workspace_id: String, state: WorkspaceEventState) -> El
                 state.latest.set(Some(batch));
                 *state.revision.write() += 1;
             }
-            #[allow(unreachable_code)]
+            #[allow(
+                unreachable_code,
+                reason = "the platform-specific return above is exhaustive per compiled target"
+            )]
             Ok::<(), String>(())
         }
     });
@@ -88,7 +91,10 @@ fn HostWorkspaceEvents(workspace: WorkspaceRecord, mut state: WorkspaceEventStat
                     *state.revision.write() += 1;
                 }
             }
-            #[allow(unreachable_code)]
+            #[allow(
+                unreachable_code,
+                reason = "the platform-specific return above is exhaustive per compiled target"
+            )]
             Ok::<(), String>(())
         }
     });

@@ -17,13 +17,15 @@ pub fn Checkbox(
     #[props(default)] aria_describedby: Option<String>,
     #[props(default)] aria_invalid: bool,
     #[props(default)] name: String,
-    #[props(default = "on".to_string())] value: String,
+    #[props(default = "on".to_owned())] value: String,
     on_checked_change: EventHandler<bool>,
 ) -> Element {
     let field = try_consume_context::<FieldContext>();
     let id = id.or_else(|| field.as_ref().map(|field| field.control_id.clone()));
-    let aria_describedby =
-        aria_describedby.or_else(|| field.as_ref().and_then(|field| field.describedby.clone()));
+    let aria_describedby = aria_describedby.or_else(|| {
+        let field = field.as_ref()?;
+        field.describedby.clone()
+    });
     let aria_invalid = aria_invalid || field.as_ref().is_some_and(|field| field.invalid);
     let required = required || field.as_ref().is_some_and(|field| field.required);
     let state = if indeterminate {

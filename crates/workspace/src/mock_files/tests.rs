@@ -25,14 +25,16 @@ fn workspace() -> WorkspaceRecord {
 fn mock_files_implement_the_full_mutation_contract() {
     let workspace = workspace();
     let files = MockWorkspaceFiles::default();
-    let source = RelativePath::try_from("src").unwrap();
-    let file = RelativePath::try_from("src/main.rs").unwrap();
-    let copy = RelativePath::try_from("src/copy.rs").unwrap();
-    let moved = RelativePath::try_from("src/moved.rs").unwrap();
+    let source = RelativePath::try_from("src").expect("source path should be valid");
+    let file = RelativePath::try_from("src/main.rs").expect("file path should be valid");
+    let copy = RelativePath::try_from("src/copy.rs").expect("copy path should be valid");
+    let moved = RelativePath::try_from("src/moved.rs").expect("moved path should be valid");
 
-    block_on(files.create_directory(&workspace, &source)).unwrap();
-    block_on(files.create_file(&workspace, &file)).unwrap();
-    let initial = block_on(files.read_text(&workspace, &file, 1024)).unwrap();
+    block_on(files.create_directory(&workspace, &source))
+        .expect("source directory should be created");
+    block_on(files.create_file(&workspace, &file)).expect("file should be created");
+    let initial =
+        block_on(files.read_text(&workspace, &file, 1024)).expect("file should be readable");
     block_on(files.write_text(
         &workspace,
         &file,
@@ -40,10 +42,15 @@ fn mock_files_implement_the_full_mutation_contract() {
         Some(&initial.version),
         1024,
     ))
-    .unwrap();
-    block_on(files.copy(&workspace, &file, &copy)).unwrap();
-    block_on(files.move_entry(&workspace, &copy, &moved)).unwrap();
-    assert_eq!(block_on(files.list(&workspace, &source)).unwrap().len(), 2);
-    block_on(files.delete(&workspace, &moved)).unwrap();
-    assert!(block_on(files.stat(&workspace, &moved)).is_err());
+    .expect("file should be writable");
+    block_on(files.copy(&workspace, &file, &copy)).expect("file should be copied");
+    block_on(files.move_entry(&workspace, &copy, &moved)).expect("file should be moved");
+    assert_eq!(
+        block_on(files.list(&workspace, &source))
+            .expect("source directory should be listable")
+            .len(),
+        2
+    );
+    block_on(files.delete(&workspace, &moved)).expect("moved file should be deleted");
+    block_on(files.stat(&workspace, &moved)).expect_err("deleted file must not exist");
 }

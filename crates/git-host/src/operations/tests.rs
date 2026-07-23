@@ -38,7 +38,10 @@ async fn initializes_a_workspace_once_with_a_main_branch() {
 }
 
 #[tokio::test]
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the end-to-end test intentionally exercises one continuous repository workflow"
+)]
 async fn hunk_actions_match_git_index_and_worktree_semantics() {
     let repository = init_repository();
     let original = (1..=30).fold(String::new(), |mut output, line| {
@@ -359,7 +362,6 @@ async fn comparison_merge_conflict_abort_and_clean_merge_use_real_state() {
 }
 
 #[tokio::test]
-#[allow(clippy::too_many_lines)]
 async fn current_incoming_and_both_resolve_real_merge_blocks() {
     let repository = init_repository();
     let base = (1..=90).fold(String::new(), |mut output, line| {

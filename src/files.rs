@@ -1549,7 +1549,7 @@ mod tests {
             regex: true,
             ..SearchOptions::default()
         };
-        assert!(find_matches("anything", "[", regex).is_err());
+        find_matches("anything", "[", regex).expect_err("invalid regexes must be rejected");
     }
     #[test]
     fn replacement_supports_literal_dollars_and_regex_captures() {

@@ -348,14 +348,17 @@ dx *args:
 # Rust quality
 # -----------------------------------------------------------------------------
 
-# Run Clippy with warnings treated as errors.
-lint platform=default_platform:
+# Run the project's strict Clippy configuration with warnings treated as errors.
+clippy platform=default_platform:
     cargo clippy \
         --workspace \
         --all-targets \
         --no-default-features \
         --features "{{ platform }}" \
         -- -D warnings
+
+# Backwards-compatible name for the Clippy quality gate.
+lint platform=default_platform: (clippy platform)
 
 # Run tests using cargo-nextest.
 test filter="":

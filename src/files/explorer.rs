@@ -1,4 +1,7 @@
-#[allow(unused_imports)] // Dioxus expands the parent glob for RSX hot-reload analysis.
+#[allow(
+    unused_imports,
+    reason = "Dioxus expands the parent glob for RSX hot-reload analysis"
+)]
 use super::{
     component, dioxus_core, dioxus_elements, dioxus_signals, rsx, set_error, spawn,
     workspace_client, ActionCallback, AnyStorage, AppIcon, ButtonExtension, ControlSize,
