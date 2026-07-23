@@ -1,5 +1,12 @@
 use super::*;
 
+const SKILL_SOURCE_FILE: &str = ".syntaxis-source.json";
+
+#[derive(Deserialize, Serialize)]
+struct InstalledSkillSource {
+    slug: String,
+}
+
 pub(crate) async fn pi_skills(workspace_id: WorkspaceId) -> Result<Vec<PiSkill>, ServerFnError> {
     let workspace = crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
     let root = Path::new(&workspace.root);
@@ -278,26 +285,64 @@ pub(crate) async fn install_pi_skill(
     slug: String,
     scope: PiResourceScope,
 ) -> Result<(), ServerFnError> {
-    let parts = slug.split('/').collect::<Vec<_>>();
-    if parts.len() != 3 {
-        return Err(client_error("Invalid skills.sh skill identifier"));
-    }
-    validate_remote_segment(parts[0])?;
-    validate_remote_segment(parts[1])?;
-    validate_resource_name(parts[2])?;
+    let (_, _, storage_name) = validate_skill_slug(&slug)?;
     let workspace = crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
     let root = skill_directory(Path::new(&workspace.root), scope);
-    let destination = root.join(parts[2]);
+    let destination = root.join(storage_name);
     reject_symlink(&destination)?;
     if destination.exists() {
         return Err(client_error(
             "This skill is already installed in that scope",
         ));
     }
+    let files = download_skill(&slug).await?;
+    if let Err(error) = write_downloaded_skill(&destination, &slug, files) {
+        let _ = fs::remove_dir_all(&destination);
+        return Err(error);
+    }
+    Ok(())
+}
+
+pub(crate) async fn update_tracked_pi_skills(
+    workspace_root: &Path,
+) -> Result<usize, ServerFnError> {
+    let mut tracked = Vec::new();
+    for scope in [PiResourceScope::Global, PiResourceScope::Project] {
+        tracked.extend(tracked_skills(&skill_directory(workspace_root, scope))?);
+    }
+    for (destination, slug) in &tracked {
+        let files = download_skill(slug).await?;
+        replace_downloaded_skill(destination, slug, files)?;
+    }
+    Ok(tracked.len())
+}
+
+fn validate_skill_slug(slug: &str) -> Result<(&str, &str, &str), ServerFnError> {
+    let mut parts = slug.split('/');
+    let owner = parts
+        .next()
+        .ok_or_else(|| client_error("Invalid skills.sh skill identifier"))?;
+    let repository = parts
+        .next()
+        .ok_or_else(|| client_error("Invalid skills.sh skill identifier"))?;
+    let skill = parts
+        .next()
+        .ok_or_else(|| client_error("Invalid skills.sh skill identifier"))?;
+    if parts.next().is_some() {
+        return Err(client_error("Invalid skills.sh skill identifier"));
+    }
+    validate_remote_segment(owner)?;
+    validate_remote_segment(repository)?;
+    validate_resource_name(skill)?;
+    Ok((owner, repository, skill))
+}
+
+async fn download_skill(slug: &str) -> Result<Vec<(PathBuf, String)>, ServerFnError> {
+    let (owner, repository, skill) = validate_skill_slug(slug)?;
     let response = http_client()?
         .get(format!(
             "https://skills.sh/api/download/{}/{}/{}",
-            parts[0], parts[1], parts[2]
+            owner, repository, skill
         ))
         .send()
         .await
@@ -326,7 +371,7 @@ pub(crate) async fn install_pi_skill(
     {
         return Err(server_error("The downloaded skill has no SKILL.md"));
     }
-    let files = snapshot
+    snapshot
         .files
         .into_iter()
         .map(|file| {
@@ -334,7 +379,14 @@ pub(crate) async fn install_pi_skill(
             validate_resource_text(&file.contents, MAX_RESOURCE_BYTES, "skill file")?;
             Ok((path, file.contents))
         })
-        .collect::<Result<Vec<_>, ServerFnError>>()?;
+        .collect::<Result<Vec<_>, ServerFnError>>()
+}
+
+fn write_downloaded_skill(
+    destination: &Path,
+    slug: &str,
+    files: Vec<(PathBuf, String)>,
+) -> Result<(), ServerFnError> {
     fs::create_dir_all(&destination).map_err(|error| {
         server_error(format!(
             "Could not create {}: {error}",
@@ -348,12 +400,90 @@ pub(crate) async fn install_pi_skill(
                 server_error(format!("Could not create {}: {error}", parent.display()))
             })?;
         }
-        if let Err(error) = write_atomic(&path, contents.as_bytes()) {
-            let _ = fs::remove_dir_all(&destination);
-            return Err(error);
-        }
+        write_atomic(&path, contents.as_bytes())?;
     }
+    let source = serde_json::to_vec_pretty(&InstalledSkillSource {
+        slug: slug.to_owned(),
+    })
+    .map_err(|error| server_error(format!("Could not record skill source: {error}")))?;
+    write_atomic(&destination.join(SKILL_SOURCE_FILE), &source)?;
     Ok(())
+}
+
+fn tracked_skills(root: &Path) -> Result<Vec<(PathBuf, String)>, ServerFnError> {
+    let Ok(entries) = fs::read_dir(root) else {
+        return Ok(Vec::new());
+    };
+    let mut tracked = Vec::new();
+    for entry in entries.flatten() {
+        let destination = entry.path();
+        if !destination.is_dir() || destination.is_symlink() {
+            continue;
+        }
+        let marker = destination.join(SKILL_SOURCE_FILE);
+        let Ok(source) = fs::read(&marker) else {
+            continue;
+        };
+        let source: InstalledSkillSource = serde_json::from_slice(&source).map_err(|error| {
+            server_error(format!("Could not read {}: {error}", marker.display()))
+        })?;
+        let (_, _, storage_name) = validate_skill_slug(&source.slug)?;
+        if destination.file_name().and_then(|name| name.to_str()) != Some(storage_name) {
+            return Err(server_error(format!(
+                "Tracked skill source does not match {}",
+                destination.display()
+            )));
+        }
+        tracked.push((destination, source.slug));
+    }
+    tracked.sort_by(|left, right| left.0.cmp(&right.0));
+    Ok(tracked)
+}
+
+fn replace_downloaded_skill(
+    destination: &Path,
+    slug: &str,
+    files: Vec<(PathBuf, String)>,
+) -> Result<(), ServerFnError> {
+    reject_symlink(destination)?;
+    let parent = destination
+        .parent()
+        .ok_or_else(|| server_error("Skill directory has no parent"))?;
+    let name = destination
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| server_error("Skill directory has an invalid name"))?;
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let staging = parent.join(format!(".{name}.syntaxis-update-{nonce}"));
+    let backup = parent.join(format!(".{name}.syntaxis-backup-{nonce}"));
+    if let Err(error) = write_downloaded_skill(&staging, slug, files) {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(error);
+    }
+    fs::rename(destination, &backup).map_err(|error| {
+        let _ = fs::remove_dir_all(&staging);
+        server_error(format!(
+            "Could not prepare {} for update: {error}",
+            destination.display()
+        ))
+    })?;
+    if let Err(error) = fs::rename(&staging, destination) {
+        let _ = fs::rename(&backup, destination);
+        let _ = fs::remove_dir_all(&staging);
+        return Err(server_error(format!(
+            "Could not update {}: {error}",
+            destination.display()
+        )));
+    }
+    fs::remove_dir_all(&backup).map_err(|error| {
+        server_error(format!(
+            "Updated the skill but could not remove {}: {error}",
+            backup.display()
+        ))
+    })
 }
 
 #[derive(Deserialize)]
@@ -401,4 +531,55 @@ struct SkillDownloadFile {
     contents: String,
 }
 
+#[cfg(test)]
+mod tests {
+    use tempfile::tempdir;
 
+    use super::*;
+
+    #[test]
+    fn downloaded_skills_record_their_source_for_future_updates() {
+        let root = tempdir().unwrap();
+        let destination = root.path().join("example");
+        write_downloaded_skill(
+            &destination,
+            "owner/repository/example",
+            vec![(PathBuf::from("SKILL.md"), "# Example".into())],
+        )
+        .unwrap();
+
+        assert_eq!(
+            tracked_skills(root.path()).unwrap(),
+            vec![(destination, "owner/repository/example".into())]
+        );
+    }
+
+    #[test]
+    fn replacing_a_downloaded_skill_removes_files_missing_upstream() {
+        let root = tempdir().unwrap();
+        let destination = root.path().join("example");
+        write_downloaded_skill(
+            &destination,
+            "owner/repository/example",
+            vec![
+                (PathBuf::from("SKILL.md"), "old".into()),
+                (PathBuf::from("removed.md"), "stale".into()),
+            ],
+        )
+        .unwrap();
+
+        replace_downloaded_skill(
+            &destination,
+            "owner/repository/example",
+            vec![(PathBuf::from("SKILL.md"), "new".into())],
+        )
+        .unwrap();
+
+        assert_eq!(
+            fs::read_to_string(destination.join("SKILL.md")).unwrap(),
+            "new"
+        );
+        assert!(!destination.join("removed.md").exists());
+        assert_eq!(tracked_skills(root.path()).unwrap().len(), 1);
+    }
+}

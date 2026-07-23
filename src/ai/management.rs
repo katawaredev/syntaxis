@@ -115,7 +115,7 @@ pub(super) fn SettingsPanel(
                     small { class: "text-[9px] text-muted-foreground", "Pi settings" }
                 }
                 Button {
-                    label: if pending() { "Checking…" } else { "Check for updates" },
+                    label: if pending() { "Updating…" } else { "Update everything" },
                     kind: ButtonKind::Ghost,
                     disabled: pending(),
                     onclick: move |_| {

@@ -8,7 +8,7 @@ use std::{
 
 use dioxus::prelude::ServerFnError;
 use futures_util::{stream, StreamExt};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use syntaxis_workspace::WorkspaceId;
 
@@ -19,6 +19,15 @@ use crate::ai::{
         SkillSearchResult,
     },
     generated_settings::{PiSettingKind, PI_SETTINGS_SCHEMA_VERSION, PI_SETTING_DEFINITIONS},
+};
+
+mod prompts;
+mod skills;
+
+pub(crate) use prompts::{delete_prompt_template, prompt_templates, save_prompt_template};
+pub(crate) use skills::{
+    browse_pi_skills, delete_pi_skill, install_pi_skill, pi_skills, save_pi_skill,
+    search_pi_skills, skill_catalog_available, update_tracked_pi_skills,
 };
 
 const COMMAND_TIMEOUT: Duration = Duration::from_mins(3);
@@ -200,17 +209,18 @@ pub(crate) async fn update_pi(
     workspace_id: WorkspaceId,
 ) -> Result<PiOperationResult, ServerFnError> {
     let workspace = crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
-    let output = run_pi(
-        &workspace.root,
-        &["update", "--self", "--no-approve"],
-        false,
-    )
-    .await?;
+    let output = run_pi(&workspace.root, &["update", "--all", "--no-approve"], false).await?;
+    let updated_skills = update_tracked_pi_skills(Path::new(&workspace.root)).await?;
+    let skill_message = match updated_skills {
+        0 => "No tracked skills.sh skills needed refreshing.".to_owned(),
+        1 => "Refreshed 1 tracked skills.sh skill.".to_owned(),
+        count => format!("Refreshed {count} tracked skills.sh skills."),
+    };
     Ok(PiOperationResult {
         message: if output.is_empty() {
-            "Pi is already up to date".into()
+            skill_message
         } else {
-            output
+            format!("{}\n{skill_message}", output.trim())
         },
     })
 }

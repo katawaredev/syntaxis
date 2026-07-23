@@ -1,0 +1,32 @@
+services:
+  syntaxis:
+    build:
+      context: .
+      target: development
+    image: syntaxis:dev
+    container_name: syntaxis-dev
+    hostname: syntaxis-dev
+    user: "${PUID:-1000}:${PGID:-1000}"
+    stdin_open: true
+    tty: true
+    environment:
+      HOME: /home/dev
+      SHELL: /bin/bash
+      SYNTAXIS_PROJECTS_ROOT: /Projects
+      VERCEL_OIDC_TOKEN: "${VERCEL_OIDC_TOKEN:-}"
+    ports:
+      - "${SYNTAXIS_DEV_PORT:-8080}:8080"
+      - "${SYNTAXIS_PREVIEW_PORT:-5173}:5173"
+    volumes:
+      - "${SYNTAXIS_DEV_HOME:-./data/dev-home}:/home/dev"
+      - "${HOST_HOME:-${HOME}}/.ssh:/home/dev/.ssh:ro"
+      - "${HOST_HOME:-${HOME}}/.gnupg:/home/dev/.gnupg"
+      - "${HOST_PROJECTS:-${HOME}/Projects}:/Projects"
+      - syntaxis-cargo-registry:/home/dev/.cargo/registry
+      - syntaxis-cargo-git:/home/dev/.cargo/git
+    working_dir: /Projects/syntaxis
+    restart: unless-stopped
+
+volumes:
+  syntaxis-cargo-registry:
+  syntaxis-cargo-git:

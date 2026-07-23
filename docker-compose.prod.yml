@@ -1,0 +1,36 @@
+services:
+  syntaxis:
+    build:
+      context: .
+      target: production
+    image: "${SYNTAXIS_IMAGE:-docker.io/arvigeus/syntaxis:latest}"
+    container_name: syntaxis
+    hostname: syntaxis
+    user: "${PUID:-1000}:${PGID:-1000}"
+    environment:
+      HOME: /home/dev
+      SHELL: /bin/bash
+      IP: 0.0.0.0
+      PORT: 8080
+      SYNTAXIS_PROJECTS_ROOT: /Projects
+      VERCEL_OIDC_TOKEN: "${VERCEL_OIDC_TOKEN:-}"
+    expose:
+      - "8080"
+    volumes:
+      - "${DATA:-./data}/syntaxis/home:/home/dev"
+      - "${HOST_HOME:-${HOME}}/.ssh:/home/dev/.ssh:ro"
+      - "${HOST_HOME:-${HOME}}/.gnupg:/home/dev/.gnupg"
+      - "${HOST_PROJECTS:-${HOME}/Projects}:/Projects"
+    working_dir: /Projects
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  default:
+    external: true
+    name: "${DOCKER_NETWORK:-caddy_net}"

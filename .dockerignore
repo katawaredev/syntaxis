@@ -1,0 +1,13 @@
+.git
+.github
+.lighthouseci
+.zed
+data
+lighthouse-reports
+node_modules
+target
+
+# These are reproducibly generated during the image build.
+assets/tailwind.css
+assets/terminal/terminal.bundle.js
+assets/terminal/terminal.bundle.stamp

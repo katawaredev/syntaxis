@@ -25,6 +25,63 @@ The optional All time, Trending, and Hot skills.sh leaderboards require a
 `VERCEL_OIDC_TOKEN`; Syntaxis leaves those controls disabled when the token is
 not present.
 
+## Docker
+
+The repository provides separate development and production targets in one multi-stage
+`Dockerfile`. Both variants expose the host's projects at `/Projects`, mount SSH configuration
+read-only, and mount GnuPG configuration read-write so Git operations behave like the local setup.
+
+### Development
+
+The default Compose file mounts the entire host `${HOME}/Projects` directory and starts the Dioxus
+development server from `/Projects/syntaxis`:
+
+```bash
+docker compose up --build
+```
+
+Open <http://localhost:8080>. Changes made on the host are visible immediately in the container.
+The container home is persisted under `./data/dev-home`; Cargo downloads use named volumes.
+Authenticate the bundled Pi CLI once with `docker compose exec syntaxis pi`; its credentials and
+sessions remain in the persisted container home.
+
+Pi itself is installed under `/home/dev/.local`, so the **Update everything** button can update Pi
+and all installed Pi packages without root access. Packages can contain extensions, skills, prompts,
+and themes. Skills installed directly from skills.sh are also refreshed when their recorded source
+is available.
+
+The defaults assume UID/GID `1000`. Override paths, IDs, or ports without editing Compose:
+
+```bash
+PUID="$(id -u)" PGID="$(id -g)" \
+HOST_HOME="$HOME" HOST_PROJECTS="$HOME/Projects" \
+SYNTAXIS_DEV_PORT=8080 docker compose up --build
+```
+
+### Production
+
+The production target compiles an optimized Dioxus fullstack server and contains only its runtime,
+Node.js, Pi, and the command-line tools used by Syntaxis:
+
+```bash
+docker compose -f docker-compose.prod.yml build
+docker compose -f docker-compose.prod.yml up -d
+```
+
+Production Compose joins the external `${DOCKER_NETWORK:-caddy_net}` network and exposes port `8080`
+to other containers on that network. Its persistent home defaults to
+`${DATA:-./data}/syntaxis/home`. Run `pi` once inside the container to authenticate; the resulting
+state and user-updated Pi installation survive image upgrades:
+
+```bash
+docker exec -it syntaxis pi
+```
+
+For `arvigeus.one`, the service can use the published
+`${SYNTAXIS_IMAGE:-docker.io/arvigeus/syntaxis:latest}` image, keep the same `/Projects`, SSH, and
+GnuPG mounts, and proxy Caddy to `syntaxis:8080`. Set `HOST_PROJECTS` to the server's projects
+directory; this replaces devbox's old `/workspace` convention.
+
 # Development
 
 Your new bare-bones project includes minimal organization with a single `main.rs` file and a few assets.

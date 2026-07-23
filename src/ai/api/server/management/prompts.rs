@@ -105,5 +105,3 @@ pub(crate) async fn delete_prompt_template(
     fs::remove_file(&path)
         .map_err(|error| server_error(format!("Could not remove {}: {error}", path.display())))
 }
-
-
