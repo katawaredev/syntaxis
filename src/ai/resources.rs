@@ -135,6 +135,7 @@ pub(super) fn SkillsPanel(
     let mut results = use_signal(Vec::<SkillSearchResult>::new);
     let mut next_offset = use_signal(|| 0_usize);
     let mut has_more = use_signal(|| false);
+    let mut loading_more = use_signal(|| false);
     let installing = use_signal(|| None::<String>);
     let search = use_resource(move || {
         let query = submitted_query();
@@ -161,12 +162,18 @@ pub(super) fn SkillsPanel(
         }
     });
     use_effect(move || {
-        let Some((resource_query, resource_view, Ok(page))) = search() else {
+        let Some((resource_query, resource_view, result)) = search() else {
             return;
         };
         if resource_query != submitted_query() || resource_view != catalog_view() {
             return;
         }
+        if loading_more() {
+            loading_more.set(false);
+        }
+        let Ok(page) = result else {
+            return;
+        };
         if page.start_offset == 0 {
             results.set(page.skills);
         } else {
@@ -232,6 +239,7 @@ pub(super) fn SkillsPanel(
                         results,
                         offset,
                         has_more,
+                        loading_more,
                         search_revision,
                     }
                     if let Some(ref error) = search_error {
@@ -269,10 +277,13 @@ pub(super) fn SkillsPanel(
                         if has_more() {
                             div { class: "mx-auto mt-4 grid max-w-48",
                                 Button {
-                                    label: if searching { "Loading…" } else { "Load more" },
+                                    label: if loading_more() { "Loading more…" } else { "Load more" },
                                     kind: ButtonKind::Ghost,
-                                    disabled: searching,
-                                    onclick: move |_| offset.set(next_offset()),
+                                    disabled: searching || loading_more(),
+                                    onclick: move |_| {
+                                        loading_more.set(true);
+                                        offset.set(next_offset());
+                                    },
                                 }
                             }
                         } else {
@@ -355,6 +366,7 @@ fn SkillDiscoveryControls(
     mut results: Signal<Vec<SkillSearchResult>>,
     mut offset: Signal<usize>,
     mut has_more: Signal<bool>,
+    mut loading_more: Signal<bool>,
     mut search_revision: Signal<u64>,
 ) -> Element {
     let query_length = query().trim().len();
@@ -382,6 +394,7 @@ fn SkillDiscoveryControls(
                     results.set(Vec::new());
                     offset.set(0);
                     has_more.set(false);
+                    loading_more.set(false);
                     catalog_view.set(next);
                 },
                 option { value: "all-time", "All time" }
@@ -396,6 +409,7 @@ fn SkillDiscoveryControls(
                     results.set(Vec::new());
                     offset.set(0);
                     has_more.set(false);
+                    loading_more.set(false);
                     submitted_query.set(query().trim().to_owned());
                     search_revision.with_mut(|value| *value += 1);
                 },

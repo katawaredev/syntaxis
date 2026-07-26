@@ -109,7 +109,18 @@ pub enum ChatItem {
         name: String,
         summary: String,
         output: String,
+        args: Option<serde_json::Value>,
+        details: Option<serde_json::Value>,
+        args_truncated: bool,
+        details_truncated: bool,
         status: ItemStatus,
+    },
+    Custom {
+        id: String,
+        label: String,
+        text: String,
+        details: Option<serde_json::Value>,
+        details_truncated: bool,
     },
     Notice {
         id: String,
@@ -123,6 +134,7 @@ impl ChatItem {
             Self::User { id, .. }
             | Self::Assistant { id, .. }
             | Self::Tool { id, .. }
+            | Self::Custom { id, .. }
             | Self::Notice { id, .. } => id,
         }
     }
@@ -153,6 +165,8 @@ pub struct PiCommand {
     pub description: String,
     pub source: String,
     pub location: Option<String>,
+    pub argument_hint: Option<String>,
+    pub invocation: Option<String>,
 }
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct TokenUsage {

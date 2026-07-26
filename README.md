@@ -19,6 +19,21 @@ long-lived `pi --mode rpc` process, so multiple chats and projects can work in p
 you leave the AI screen. The sidebar is rebuilt from Pi's own persisted sessions after a Syntaxis
 server restart; selecting a saved chat resumes its transcript with Pi directly.
 
+The host treats `agent_settled` as Pi's authoritative idle boundary, preserves steering and
+follow-up queue counts, and batches streaming deltas to at most roughly 30 UI updates per second.
+RPC records, structured tool details, extension dialog queues, stderr, tool output, and rendered
+transcript rows are explicitly bounded. Up to three settled background chats remain warm per
+workspace; older settled processes are stopped and lazily resumed from Pi's session file. Chats
+that are still working are never stopped by this limit.
+
+Completed tool output is rendered as safe Markdown and may expose bounded structured arguments and
+details. Displayable extension custom messages are retained in the timeline, while blocking
+extension dialogs are shown in arrival order. Commands requiring Pi's terminal-only interactive UI
+are labeled and rejected with an explanation instead of being submitted as model prompts.
+
+Deleting a chat stops its process and moves the Pi JSONL session to the server operating system's
+trash rather than permanently unlinking it.
+
 If `pi` is not on the server's `PATH`, set `SYNTAXIS_PI_COMMAND` to the executable path. Syntaxis does
 not embed a model provider, store API keys, or route the AI section through ACP or another agent SDK.
 The optional All time, Trending, and Hot skills.sh leaderboards require a

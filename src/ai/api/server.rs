@@ -66,6 +66,7 @@ pub(super) async fn agent_socket(
             }
 
             let mut events = agent.subscribe();
+            let mut selected_session_id = None::<String>;
             loop {
                 tokio::select! {
                     incoming = socket.recv() => {
@@ -96,6 +97,15 @@ pub(super) async fn agent_socket(
                         };
                         match result {
                             Ok(message) => {
+                                if let ServerMessage::SelectedSession { session_id, .. } = &message {
+                                    selected_session_id = Some(session_id.clone());
+                                } else if let ServerMessage::Sessions { sessions } = &message {
+                                    if selected_session_id.as_ref().is_some_and(|selected| {
+                                        !sessions.iter().any(|session| session.id == *selected)
+                                    }) {
+                                        selected_session_id = None;
+                                    }
+                                }
                                 if socket.send(message).await.is_err() {
                                     break;
                                 }
@@ -116,6 +126,23 @@ pub(super) async fn agent_socket(
                         Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
                             if socket.send(ServerMessage::Sessions { sessions: agent.sessions() }).await.is_err() {
                                 break;
+                            }
+                            if let Some(session_id) = selected_session_id.clone() {
+                                match agent.select_session(&session_id).await {
+                                    Ok(snapshot) => {
+                                        if socket.send(ServerMessage::SelectedSession {
+                                            session_id,
+                                            snapshot,
+                                        }).await.is_err() {
+                                            break;
+                                        }
+                                    }
+                                    Err(error) => {
+                                        if socket.send(ServerMessage::Error { error }).await.is_err() {
+                                            break;
+                                        }
+                                    }
+                                }
                             }
                         }
                         Err(tokio::sync::broadcast::error::RecvError::Closed) => break,

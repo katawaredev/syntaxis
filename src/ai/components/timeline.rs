@@ -4,6 +4,9 @@ use syntaxis_ui::prelude::{AppIcon, Icon};
 
 use crate::files::preview::render_markdown;
 
+const INITIAL_RENDER_ITEMS: usize = 150;
+const RENDER_PAGE_ITEMS: usize = 100;
+
 #[component]
 pub(crate) fn AgentTimeline(
     items: Vec<ChatItem>,
@@ -11,6 +14,9 @@ pub(crate) fn AgentTimeline(
     on_suggestion: EventHandler<String>,
 ) -> Element {
     let is_empty = items.is_empty();
+    let mut visible_count = use_signal(|| INITIAL_RENDER_ITEMS);
+    let hidden_count = items.len().saturating_sub(visible_count());
+    let visible_items = items.into_iter().skip(hidden_count).collect::<Vec<_>>();
     rsx! {
         div {
             class: "min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4 [scrollbar-gutter:stable] max-md:px-2.5",
@@ -38,7 +44,17 @@ pub(crate) fn AgentTimeline(
                 }
             } else {
                 div { class: "mx-auto flex w-full max-w-3xl flex-col gap-3 pb-2",
-                    for item in items {
+                    if hidden_count > 0 {
+                        button {
+                            class: "mx-auto rounded-lg border border-border bg-background px-3 py-2 text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground",
+                            r#type: "button",
+                            onclick: move |_| {
+                                *visible_count.write() += RENDER_PAGE_ITEMS;
+                            },
+                            "Show {hidden_count.min(RENDER_PAGE_ITEMS)} earlier items"
+                        }
+                    }
+                    for item in visible_items {
                         AgentTimelineItem { key: "{item.id()}", item }
                     }
                     if matches!(status, AgentStatus::Working | AgentStatus::Compacting) {
@@ -129,6 +145,10 @@ fn AgentTimelineItem(item: ChatItem) -> Element {
             name,
             summary,
             output,
+            args,
+            details,
+            args_truncated,
+            details_truncated,
             status,
             ..
         } => {
@@ -137,6 +157,9 @@ fn AgentTimelineItem(item: ChatItem) -> Element {
                 ItemStatus::Running | ItemStatus::Streaming => "text-primary",
                 ItemStatus::Complete | ItemStatus::Stopped => "text-success",
             };
+            let rendered_output = matches!(status, ItemStatus::Complete | ItemStatus::Stopped)
+                .then(|| render_markdown(&output));
+            let line_changes = tool_line_changes(&output);
             rsx! {
                 details { class: "rounded-lg border border-border bg-background/65 text-[11px]",
                     summary { class: "flex min-h-9 cursor-pointer list-none items-center gap-2 px-3 py-2 select-none [&::-webkit-details-marker]:hidden",
@@ -147,13 +170,94 @@ fn AgentTimelineItem(item: ChatItem) -> Element {
                         span { class: "min-w-0 flex-1 truncate text-muted-foreground",
                             "{summary}"
                         }
+                        if let Some((added, removed)) = line_changes {
+                            span { class: "shrink-0 font-mono text-[9px]",
+                                if added > 0 {
+                                    span { class: "text-success", "+{added}" }
+                                }
+                                if removed > 0 {
+                                    span { class: "ml-1 text-destructive", "-{removed}" }
+                                }
+                            }
+                        }
                         small { class: "shrink-0 text-[9px] capitalize text-muted-foreground",
                             "{status:?}"
                         }
                     }
                     if !output.is_empty() {
-                        pre { class: "max-h-70 overflow-auto border-t border-border bg-background px-3 py-2 font-mono text-[10px] leading-relaxed whitespace-pre-wrap text-muted-foreground",
-                            "{output}"
+                        div { class: "max-h-80 overflow-auto border-t border-border bg-background px-3 py-2 text-[10px] leading-relaxed text-muted-foreground",
+                            if let Some(rendered) = rendered_output {
+                                div {
+                                    class: "ai-markdown ai-tool-markdown",
+                                    dangerous_inner_html: rendered,
+                                }
+                            } else {
+                                pre { class: "font-mono whitespace-pre-wrap", "{output}" }
+                            }
+                        }
+                    }
+                    if let Some(args) = args {
+                        details { class: "border-t border-border px-3 py-2",
+                            summary { class: "cursor-pointer font-medium text-foreground",
+                                if args_truncated {
+                                    "Arguments (truncated)"
+                                } else {
+                                    "Arguments"
+                                }
+                            }
+                            pre { class: "mt-2 max-h-60 overflow-auto font-mono text-[10px] whitespace-pre-wrap text-muted-foreground",
+                                {pretty_json(&args)}
+                            }
+                        }
+                    }
+                    if let Some(structured_details) = details {
+                        details { class: "border-t border-border px-3 py-2",
+                            summary { class: "cursor-pointer font-medium text-foreground",
+                                if details_truncated {
+                                    "Details (truncated)"
+                                } else {
+                                    "Details"
+                                }
+                            }
+                            pre { class: "mt-2 max-h-60 overflow-auto font-mono text-[10px] whitespace-pre-wrap text-muted-foreground",
+                                {pretty_json(&structured_details)}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        ChatItem::Custom {
+            label,
+            text,
+            details,
+            details_truncated,
+            ..
+        } => {
+            let rendered = render_markdown(&text);
+            rsx! {
+                article { class: "rounded-lg border border-primary/20 bg-primary/5 px-3 py-2.5 text-[11px]",
+                    header { class: "mb-1 font-mono text-[9px] font-semibold tracking-wide text-primary uppercase",
+                        "{label}"
+                    }
+                    if !text.is_empty() {
+                        div {
+                            class: "ai-markdown",
+                            dangerous_inner_html: rendered,
+                        }
+                    }
+                    if let Some(structured_details) = details {
+                        details { class: "mt-2 border-t border-border pt-2",
+                            summary { class: "cursor-pointer text-muted-foreground",
+                                if details_truncated {
+                                    "Details (truncated)"
+                                } else {
+                                    "Details"
+                                }
+                            }
+                            pre { class: "mt-2 max-h-72 overflow-auto font-mono text-[10px] whitespace-pre-wrap text-muted-foreground",
+                                {pretty_json(&structured_details)}
+                            }
                         }
                     }
                 }
@@ -165,4 +269,24 @@ fn AgentTimelineItem(item: ChatItem) -> Element {
             }
         },
     }
+}
+
+fn pretty_json(value: &serde_json::Value) -> String {
+    serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
+}
+
+fn tool_line_changes(output: &str) -> Option<(usize, usize)> {
+    let mut added = 0;
+    let mut removed = 0;
+    for line in output.lines() {
+        if line.starts_with("+++") || line.starts_with("---") {
+            continue;
+        }
+        if line.starts_with('+') {
+            added += 1;
+        } else if line.starts_with('-') {
+            removed += 1;
+        }
+    }
+    (added > 0 || removed > 0).then_some((added, removed))
 }

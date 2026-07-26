@@ -128,6 +128,22 @@ Chat URLs identify the selected conversation with `?sessionId=...`. Settings
 use the session-independent `/workspaces/:slug/ai/settings` route. Switching
 back to Chat restores the selected session URL.
 
+## Runtime boundaries
+
+Syntaxis frames Pi stdout on raw LF bytes with a 32 MiB maximum RPC record and strips only the
+optional CR immediately before LF. Invalid and oversized records are discarded without losing the
+next valid record. Adjacent assistant text and reasoning deltas are combined on a 33 ms cadence;
+completion, errors, dialogs, and other state boundaries flush pending text first.
+
+`agent_end` completes the current assistant message, but only `agent_settled` makes the session
+idle. Steering and follow-up counts come from Pi's `queue_update` events. Switching chats preserves
+working processes and keeps at most three settled background sessions warm per workspace. Older
+settled processes are stopped and resume from Pi's JSONL session when selected again.
+
+The browser initially renders the newest 150 timeline items and exposes earlier retained items in
+100-item increments. The host retains at most 400 projected items per live process; Pi's JSONL file
+remains the complete source of truth.
+
 ## Update button
 
 "Check for updates" runs `pi update --self`. Pi performs its normal version

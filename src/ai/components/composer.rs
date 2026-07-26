@@ -32,15 +32,8 @@ pub(crate) fn AgentComposer(
         && (!draft().trim().is_empty() || !images.is_empty())
         && (images.is_empty() || accepts_images);
     let first_command = matching_commands(&commands, &draft()).first().cloned();
-    let mut submit = move || {
-        if can_send {
-            on_send.call(ComposerSubmission {
-                text: draft(),
-                images: attachments(),
-            });
-            attachments.set(Vec::new());
-        }
-    };
+    let keyboard_commands = commands.clone();
+    let button_commands = commands.clone();
     rsx! {
         footer { class: "bg-card px-2.5 pt-1 pb-[max(0.65rem,env(safe-area-inset-bottom))]",
             div { class: "relative mx-auto max-w-3xl",
@@ -75,7 +68,14 @@ pub(crate) fn AgentComposer(
                                     if let Some(command) = first_command.as_ref() {
                                         draft.set(format!("/{} ", command.name));
                                     } else {
-                                        submit();
+                                        submit_composer(
+                                            can_send,
+                                            draft,
+                                            attachments,
+                                            composer_error,
+                                            &keyboard_commands,
+                                            on_send,
+                                        );
                                     }
                                 }
                             },
@@ -129,7 +129,16 @@ pub(crate) fn AgentComposer(
                             disabled: !can_send,
                             aria_label: if working { "Steer Pi" } else { "Send message" },
                             title: if working { "Steer Pi" } else { "Send message" },
-                            onclick: move |_| submit(),
+                            onclick: move |_| {
+                                submit_composer(
+                                    can_send,
+                                    draft,
+                                    attachments,
+                                    composer_error,
+                                    &button_commands,
+                                    on_send,
+                                );
+                            },
                             Icon { icon: AppIcon::Send, size: 15 }
                         }
                     }
@@ -142,6 +151,33 @@ pub(crate) fn AgentComposer(
             }
         }
     }
+}
+
+fn submit_composer(
+    can_send: bool,
+    draft: Signal<String>,
+    mut attachments: Signal<Vec<ImageAttachment>>,
+    mut composer_error: Signal<Option<String>>,
+    commands: &[PiCommand],
+    on_send: EventHandler<ComposerSubmission>,
+) {
+    if !can_send {
+        return;
+    }
+    if let Some(command) = exact_command(commands, &draft())
+        .filter(|command| command.invocation.as_deref() == Some("interactive"))
+    {
+        composer_error.set(Some(format!(
+            "/{} requires Pi's terminal interface and cannot run here.",
+            command.name
+        )));
+        return;
+    }
+    on_send.call(ComposerSubmission {
+        text: draft(),
+        images: attachments(),
+    });
+    attachments.set(Vec::new());
 }
 
 #[component]
@@ -177,6 +213,11 @@ fn SlashCommandRow(command: PiCommand, mut draft: Signal<String>) -> Element {
             }
             span { class: "min-w-0 flex-1",
                 strong { class: "block truncate font-mono text-[11px]", "/{command.name}" }
+                if let Some(argument_hint) = command.argument_hint.as_ref() {
+                    small { class: "ml-1 font-mono text-[9px] text-muted-foreground",
+                        "{argument_hint}"
+                    }
+                }
                 if !command.description.is_empty() {
                     small { class: "block truncate text-[9px] text-muted-foreground",
                         "{command.description}"
@@ -184,7 +225,11 @@ fn SlashCommandRow(command: PiCommand, mut draft: Signal<String>) -> Element {
                 }
             }
             span { class: "shrink-0 rounded bg-secondary px-1.5 py-0.5 text-[8px] text-muted-foreground",
-                "{command.source}"
+                if command.invocation.as_deref() == Some("interactive") {
+                    "terminal"
+                } else {
+                    "{command.source}"
+                }
             }
         }
     }
@@ -443,4 +488,9 @@ fn matching_commands(commands: &[PiCommand], draft: &str) -> Vec<PiCommand> {
         .take(10)
         .cloned()
         .collect()
+}
+
+fn exact_command<'a>(commands: &'a [PiCommand], draft: &str) -> Option<&'a PiCommand> {
+    let name = draft.trim().strip_prefix('/')?.split_whitespace().next()?;
+    commands.iter().find(|command| command.name == name)
 }

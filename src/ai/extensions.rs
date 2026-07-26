@@ -26,6 +26,7 @@ pub(super) fn ExtensionsPanel(
     let mut catalog_total = use_signal(|| 0_usize);
     let mut next_offset = use_signal(|| 0_usize);
     let mut has_more = use_signal(|| true);
+    let mut loading_more = use_signal(|| false);
     let pending = use_signal(|| None::<String>);
     let mut confirm = use_signal(|| None::<(PiPackageSummary, PiPackageAction)>);
     let packages_workspace_id = workspace_id.clone();
@@ -52,12 +53,18 @@ pub(super) fn ExtensionsPanel(
         .clone()
         .unwrap_or_else(|| "Could not load packages".to_owned());
     use_effect(move || {
-        let Some((resource_query, Ok(search))) = packages() else {
+        let Some((resource_query, result)) = packages() else {
             return;
         };
         if resource_query != query() {
             return;
         }
+        if loading_more() {
+            loading_more.set(false);
+        }
+        let Ok(search) = result else {
+            return;
+        };
         let mut merged = if search.start_offset == 0 {
             search.packages.clone()
         } else {
@@ -109,6 +116,7 @@ pub(super) fn ExtensionsPanel(
                         aria_label: "Filter Pi packages",
                         oninput: move |event| {
                             query.set(event.value());
+                            loading_more.set(false);
                             reset_results(&mut offset, &mut loaded, &mut has_more);
                         },
                     }
@@ -150,6 +158,7 @@ pub(super) fn ExtensionsPanel(
                             package_type.set("all".into());
                             installation.set("all".into());
                             sort.set("downloads".into());
+                            loading_more.set(false);
                             reset_results(&mut offset, &mut loaded, &mut has_more);
                         },
                     }
@@ -186,10 +195,13 @@ pub(super) fn ExtensionsPanel(
                     if has_more() {
                         div { class: "mx-auto mt-4 grid max-w-48",
                             Button {
-                                label: if loading { "Loading…" } else { "Load more" },
+                                label: if loading_more() { "Loading more…" } else { "Load more" },
                                 kind: ButtonKind::Ghost,
-                                disabled: loading,
-                                onclick: move |_| offset.set(next_offset()),
+                                disabled: loading || loading_more(),
+                                onclick: move |_| {
+                                    loading_more.set(true);
+                                    offset.set(next_offset());
+                                },
                             }
                         }
                     } else {

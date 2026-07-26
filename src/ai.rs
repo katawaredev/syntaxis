@@ -819,7 +819,7 @@ fn RemoteAgent(
         if let Some(session) = delete_target() {
             Modal {
                 title: "Delete chat?",
-                description: "This permanently removes the Pi session and its saved conversation. This action cannot be undone.",
+                description: "This stops the chat and moves its Pi session file to the server's system trash.",
                 on_close: move |()| delete_target.set(None),
                 div { class: "rounded-lg border border-border bg-secondary/35 px-3 py-2 text-xs",
                     strong { class: "block truncate", "{session.title}" }

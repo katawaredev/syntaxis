@@ -3,7 +3,7 @@
 mod session_store;
 use serde_json::{json, Value};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     env,
     path::{Path, PathBuf},
     process::Stdio,
@@ -20,16 +20,24 @@ use syntaxis_notifications::{AppNotification, NotificationKind, NotificationTarg
 use syntaxis_notifications_host::{notifications as global_notifications, HostNotificationHub};
 use syntaxis_workspace::{WorkspaceId, WorkspaceRecord};
 use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
     process::Command,
     sync::{broadcast, mpsc, oneshot, Mutex as AsyncMutex},
+    time::{interval, MissedTickBehavior},
 };
 use uuid::Uuid;
 const EVENT_CAPACITY: usize = 512;
 const COMMAND_CAPACITY: usize = 64;
+const MAX_RPC_RECORD_BYTES: usize = 32 * 1024 * 1024;
 const MAX_HISTORY_ITEMS: usize = 400;
 const MAX_TOOL_OUTPUT_CHARS: usize = 24 * 1024;
+const MAX_STRUCTURED_DEPTH: usize = 6;
+const MAX_STRUCTURED_ITEMS: usize = 64;
+const MAX_STRUCTURED_STRING_CHARS: usize = 4 * 1024;
 const STDERR_BUFFER_CHARS: usize = 8 * 1024;
+const STREAM_BATCH_INTERVAL: std::time::Duration = std::time::Duration::from_millis(33);
+const MAX_SETTLED_BACKGROUND_SESSIONS: usize = 3;
+const MAX_EXTENSION_REQUESTS: usize = 16;
 #[derive(Clone)]
 pub struct HostAgentManager {
     workspaces: Arc<Mutex<HashMap<WorkspaceId, HostAgentWorkspace>>>,
@@ -146,6 +154,7 @@ impl HostAgentWorkspace {
         );
         self.bridge(id.clone(), process.subscribe());
         process.refresh();
+        self.retire_excess_settled_sessions(&id).await;
         self.emit_sessions();
         Ok((id, snapshot))
     }
@@ -191,10 +200,11 @@ impl HostAgentWorkspace {
         }
         self.bridge(id.to_owned(), process.subscribe());
         process.refresh();
+        self.retire_excess_settled_sessions(id).await;
         self.emit_sessions();
         Ok(snapshot)
     }
-    /// Stop and permanently remove one Pi session owned by this workspace.
+    /// Stop and move one Pi session owned by this workspace to the system trash.
     ///
     /// # Errors
     ///
@@ -401,6 +411,29 @@ impl HostAgentWorkspace {
             sessions: self.sessions(),
         });
     }
+    async fn retire_excess_settled_sessions(&self, selected_id: &str) {
+        let mut candidates = lock(&self.sessions)
+            .iter()
+            .filter_map(|(id, session)| {
+                let process = session.process.as_ref()?;
+                (id != selected_id && process.snapshot().status == AgentStatus::Ready)
+                    .then(|| (id.clone(), session.summary.updated_at_ms, process.clone()))
+            })
+            .collect::<Vec<_>>();
+        candidates.sort_by_key(|(_, updated_at_ms, _)| std::cmp::Reverse(*updated_at_ms));
+        for (id, _, process) in candidates.into_iter().skip(MAX_SETTLED_BACKGROUND_SESSIONS) {
+            if process.shutdown().await.is_err() {
+                continue;
+            }
+            if let Some(session) = lock(&self.sessions).get_mut(&id) {
+                session.path = session.path.clone().or_else(|| process.session_file());
+                session.process = None;
+                session.summary.running = false;
+                session.summary.status = AgentStatus::Stopped;
+                session.summary.status_message = "Saved".into();
+            }
+        }
+    }
     fn notification(
         &self,
         session_id: &str,
@@ -431,6 +464,7 @@ pub struct HostAgentSession {
     commands: mpsc::Sender<Value>,
     shutdown: mpsc::Sender<oneshot::Sender<()>>,
     events: broadcast::Sender<ServerMessage>,
+    event_input: mpsc::UnboundedSender<ServerMessage>,
     state: Arc<Mutex<RuntimeState>>,
 }
 struct RuntimeState {
@@ -438,6 +472,7 @@ struct RuntimeState {
     session_file: Option<PathBuf>,
     current_assistant: Option<String>,
     accept_initial_history: bool,
+    extension_requests: VecDeque<ExtensionUiRequest>,
 }
 impl HostAgentSession {
     fn start(workspace: &WorkspaceRecord, target: LaunchTarget) -> Result<Self, AgentError> {
@@ -480,14 +515,17 @@ impl HostAgentSession {
         let (commands, command_rx) = mpsc::channel(COMMAND_CAPACITY);
         let (shutdown, shutdown_rx) = mpsc::channel(1);
         let (events, _) = broadcast::channel(EVENT_CAPACITY);
+        let (event_input, event_rx) = mpsc::unbounded_channel();
         let state = Arc::new(Mutex::new(RuntimeState {
             snapshot: AgentSnapshot::default(),
             session_file: None,
             current_assistant: None,
             accept_initial_history: true,
+            extension_requests: VecDeque::new(),
         }));
         let stderr_buffer = Arc::new(Mutex::new(String::new()));
         tokio::spawn(capture_stderr(stderr, Arc::clone(&stderr_buffer)));
+        tokio::spawn(batch_session_events(event_rx, events.clone()));
         tokio::spawn(run_pi_process(
             child,
             stdin,
@@ -495,7 +533,7 @@ impl HostAgentSession {
             command_rx,
             shutdown_rx,
             commands.clone(),
-            events.clone(),
+            event_input.clone(),
             Arc::clone(&state),
             stderr_buffer,
         ));
@@ -503,6 +541,7 @@ impl HostAgentSession {
             commands,
             shutdown,
             events,
+            event_input,
             state,
         })
     }
@@ -532,6 +571,10 @@ impl HostAgentSession {
     /// # Errors
     ///
     /// Returns an unavailable error if the process command queue is closed.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "the protocol dispatcher keeps all Pi command mappings in one auditable match"
+    )]
     pub async fn handle(&self, message: ClientMessage) -> Result<(), AgentError> {
         message.validate()?;
         match message {
@@ -557,7 +600,7 @@ impl HostAgentSession {
                         state.snapshot.pending_messages.saturating_add(1);
                     state.accept_initial_history = false;
                 }
-                let _ = self.events.send(ServerMessage::ItemAdded { item });
+                let _ = self.event_input.send(ServerMessage::ItemAdded { item });
                 let images = images.iter().map(pi_image).collect::<Vec<_>>();
                 let command = match delivery {
                     PromptDelivery::Prompt => {
@@ -587,7 +630,7 @@ impl HostAgentSession {
                     lock(&self.state).snapshot.thinking_level = level;
                 }
                 let snapshot = self.snapshot();
-                let _ = self.events.send(ServerMessage::ModelChanged {
+                let _ = self.event_input.send(ServerMessage::ModelChanged {
                     model: snapshot.model,
                     thinking_level: level,
                 });
@@ -606,7 +649,19 @@ impl HostAgentSession {
                 confirmed,
                 cancelled,
             } => {
-                lock(&self.state).snapshot.pending_extension_request = None;
+                let next_request = {
+                    let mut state = lock(&self.state);
+                    if let Some(index) = state
+                        .extension_requests
+                        .iter()
+                        .position(|request| request.id == request_id)
+                    {
+                        state.extension_requests.remove(index);
+                    }
+                    let next = state.extension_requests.front().cloned();
+                    state.snapshot.pending_extension_request.clone_from(&next);
+                    next
+                };
                 let mut response = json!(
                     { "type" : "extension_ui_response", "id" : request_id, }
                 );
@@ -617,7 +672,13 @@ impl HostAgentSession {
                 } else if let Some(confirmed) = confirmed {
                     response["confirmed"] = Value::Bool(confirmed);
                 }
-                self.send(response).await
+                self.send(response).await?;
+                if let Some(request) = next_request {
+                    let _ = self
+                        .event_input
+                        .send(ServerMessage::ExtensionUiRequest { request });
+                }
+                Ok(())
             }
             ClientMessage::CreateSession
             | ClientMessage::SelectSession { .. }
@@ -651,6 +712,142 @@ impl HostAgentSession {
         })
     }
 }
+async fn batch_session_events(
+    mut input: mpsc::UnboundedReceiver<ServerMessage>,
+    output: broadcast::Sender<ServerMessage>,
+) {
+    let mut ticker = interval(STREAM_BATCH_INTERVAL);
+    ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    let mut pending_delta = None::<(String, String, bool)>;
+    loop {
+        tokio::select! {
+            _ = ticker.tick() => flush_item_delta(&output, &mut pending_delta),
+            event = input.recv() => {
+                let Some(event) = event else {
+                    flush_item_delta(&output, &mut pending_delta);
+                    break;
+                };
+                if let ServerMessage::ItemDelta { item_id, text, thinking } = event {
+                    if let Some((pending_id, pending_text, pending_thinking)) = &mut pending_delta {
+                        if *pending_id == item_id && *pending_thinking == thinking {
+                            pending_text.push_str(&text);
+                        } else {
+                            flush_item_delta(&output, &mut pending_delta);
+                            pending_delta = Some((item_id, text, thinking));
+                        }
+                    } else {
+                        pending_delta = Some((item_id, text, thinking));
+                    }
+                } else {
+                    flush_item_delta(&output, &mut pending_delta);
+                    let _ = output.send(event);
+                }
+            }
+        }
+    }
+}
+
+fn flush_item_delta(
+    output: &broadcast::Sender<ServerMessage>,
+    pending: &mut Option<(String, String, bool)>,
+) {
+    if let Some((item_id, text, thinking)) = pending.take() {
+        let _ = output.send(ServerMessage::ItemDelta {
+            item_id,
+            text,
+            thinking,
+        });
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum FramedLine {
+    Line(Vec<u8>),
+    Oversized,
+}
+
+struct BoundedLfFramer {
+    limit: usize,
+    record: Vec<u8>,
+    oversized: bool,
+}
+
+impl BoundedLfFramer {
+    fn new(limit: usize) -> Self {
+        Self {
+            limit,
+            record: Vec::with_capacity(limit.min(8 * 1024)),
+            oversized: false,
+        }
+    }
+
+    fn push(&mut self, chunk: &[u8]) -> Vec<FramedLine> {
+        let mut frames = Vec::new();
+        for byte in chunk {
+            if *byte == b'\n' {
+                if let Some(frame) = self.complete() {
+                    frames.push(frame);
+                }
+            } else if !self.oversized {
+                if self.record.len() >= self.limit {
+                    self.record.clear();
+                    self.oversized = true;
+                } else {
+                    self.record.push(*byte);
+                }
+            }
+        }
+        frames
+    }
+
+    fn finish(&mut self) -> Option<FramedLine> {
+        self.complete()
+    }
+
+    fn complete(&mut self) -> Option<FramedLine> {
+        if self.oversized {
+            self.oversized = false;
+            self.record.clear();
+            return Some(FramedLine::Oversized);
+        }
+        if self.record.last() == Some(&b'\r') {
+            self.record.pop();
+        }
+        if self.record.is_empty() {
+            return None;
+        }
+        Some(FramedLine::Line(std::mem::take(&mut self.record)))
+    }
+}
+
+fn process_pi_frame(
+    frame: FramedLine,
+    state: &Arc<Mutex<RuntimeState>>,
+    events: &mpsc::UnboundedSender<ServerMessage>,
+    command_tx: &mpsc::Sender<Value>,
+) {
+    let FramedLine::Line(record) = frame else {
+        let _ = events.send(ServerMessage::Error {
+            error: AgentError::new(
+                AgentErrorCode::Internal,
+                "Pi emitted an oversized protocol record; it was discarded",
+            ),
+        });
+        return;
+    };
+    match serde_json::from_slice::<Value>(&record) {
+        Ok(value) => handle_pi_record(&value, state, events, command_tx),
+        Err(error) => {
+            let _ = events.send(ServerMessage::Error {
+                error: AgentError::new(
+                    AgentErrorCode::Internal,
+                    format!("Pi emitted invalid protocol JSON: {error}"),
+                ),
+            });
+        }
+    }
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "the process task owns a fixed set of independent runtime channels and handles"
@@ -662,15 +859,15 @@ async fn run_pi_process(
     mut commands: mpsc::Receiver<Value>,
     mut shutdown: mpsc::Receiver<oneshot::Sender<()>>,
     command_tx: mpsc::Sender<Value>,
-    events: broadcast::Sender<ServerMessage>,
+    events: mpsc::UnboundedSender<ServerMessage>,
     state: Arc<Mutex<RuntimeState>>,
     stderr_buffer: Arc<Mutex<String>>,
 ) {
-    let mut stdout = BufReader::new(stdout);
-    let mut line = String::new();
+    let mut stdout = stdout;
+    let mut chunk = [0_u8; 8 * 1024];
+    let mut framer = BoundedLfFramer::new(MAX_RPC_RECORD_BYTES);
     let mut shutdown_completed = None;
     loop {
-        line.clear();
         tokio::select! {
             request = shutdown.recv() => {
                 if let Some(completed) = request {
@@ -679,15 +876,28 @@ async fn run_pi_process(
                 }
                 break;
             }
-            command = commands.recv() => { let Some(command) = command else { break; };
-            let Ok(mut encoded) = serde_json::to_vec(& command) else { continue; };
-            encoded.push(b'\n'); if stdin.write_all(& encoded). await .is_err() || stdin
-            .flush(). await .is_err() { break; } } read = stdout.read_line(& mut line) =>
-            { match read { Ok(0) | Err(_) => break, Ok(_) => { let record = line
-            .trim_end_matches(['\r', '\n']); if let Ok(value) = serde_json::from_str::<
-            Value > (record) { handle_pi_record(& value, & state, & events, &
-            command_tx); } } } }
+            command = commands.recv() => {
+                let Some(command) = command else { break; };
+                let Ok(mut encoded) = serde_json::to_vec(&command) else { continue; };
+                encoded.push(b'\n');
+                if stdin.write_all(&encoded).await.is_err() || stdin.flush().await.is_err() {
+                    break;
+                }
+            }
+            read = stdout.read(&mut chunk) => {
+                match read {
+                    Ok(0) | Err(_) => break,
+                    Ok(count) => {
+                        for frame in framer.push(&chunk[..count]) {
+                            process_pi_frame(frame, &state, &events, &command_tx);
+                        }
+                    }
+                }
+            }
         }
+    }
+    if let Some(frame) = framer.finish() {
+        process_pi_frame(frame, &state, &events, &command_tx);
     }
     drop(stdin);
     let status = child.wait().await.ok();
@@ -739,7 +949,7 @@ async fn capture_stderr(stderr: tokio::process::ChildStderr, buffer: Arc<Mutex<S
 fn handle_pi_record(
     record: &Value,
     state: &Arc<Mutex<RuntimeState>>,
-    events: &broadcast::Sender<ServerMessage>,
+    events: &mpsc::UnboundedSender<ServerMessage>,
     command_tx: &mpsc::Sender<Value>,
 ) {
     let Some(kind) = record.get("type").and_then(Value::as_str) else {
@@ -753,7 +963,15 @@ fn handle_pi_record(
         "agent_start" | "turn_start" => {
             set_status(state, events, AgentStatus::Working, "Pi is working…", None);
         }
-        "agent_end" | "agent_settled" => {
+        "agent_end" => {
+            let mut guard = lock(state);
+            let finalized = finalize_current_assistant(&mut guard, ItemStatus::Complete);
+            drop(guard);
+            if let Some(item) = finalized {
+                let _ = events.send(ServerMessage::ItemUpdated { item });
+            }
+        }
+        "agent_settled" => {
             let mut guard = lock(state);
             let finalized = finalize_current_assistant(&mut guard, ItemStatus::Complete);
             guard.snapshot.pending_messages = 0;
@@ -772,6 +990,23 @@ fn handle_pi_record(
                 { "id" : new_id("syntaxis-stats"), "type" : "get_session_stats",
                 }
             ));
+        }
+        "queue_update" => {
+            let pending_messages = ["steering", "followUp"]
+                .iter()
+                .filter_map(|field| record.get(*field).and_then(Value::as_array))
+                .map(Vec::len)
+                .sum();
+            let mut guard = lock(state);
+            guard.snapshot.pending_messages = pending_messages;
+            let status = guard.snapshot.status;
+            let message = guard.snapshot.status_message.clone();
+            drop(guard);
+            let _ = events.send(ServerMessage::Status {
+                status,
+                message,
+                pending_messages,
+            });
         }
         "message_start" => handle_message_start(record, state, events),
         "message_update" => handle_message_update(record, state, events),
@@ -811,7 +1046,7 @@ fn handle_pi_record(
 fn handle_pi_response(
     response: &Value,
     state: &Arc<Mutex<RuntimeState>>,
-    events: &broadcast::Sender<ServerMessage>,
+    events: &mpsc::UnboundedSender<ServerMessage>,
 ) {
     if response.get("success").and_then(Value::as_bool) == Some(false) {
         let message =
@@ -914,7 +1149,7 @@ fn handle_pi_response(
 fn handle_message_start(
     record: &Value,
     state: &Arc<Mutex<RuntimeState>>,
-    events: &broadcast::Sender<ServerMessage>,
+    events: &mpsc::UnboundedSender<ServerMessage>,
 ) {
     let message = record.get("message").unwrap_or(&Value::Null);
     if message.get("role").and_then(Value::as_str) != Some("assistant") {
@@ -932,7 +1167,7 @@ fn handle_message_start(
 fn handle_message_update(
     record: &Value,
     state: &Arc<Mutex<RuntimeState>>,
-    events: &broadcast::Sender<ServerMessage>,
+    events: &mpsc::UnboundedSender<ServerMessage>,
 ) {
     let update = record.get("assistantMessageEvent").unwrap_or(&Value::Null);
     let update_type = update
@@ -974,10 +1209,29 @@ fn handle_message_update(
 fn handle_message_end(
     record: &Value,
     state: &Arc<Mutex<RuntimeState>>,
-    events: &broadcast::Sender<ServerMessage>,
+    events: &mpsc::UnboundedSender<ServerMessage>,
 ) {
     let message = record.get("message").unwrap_or(&Value::Null);
-    if message.get("role").and_then(Value::as_str) != Some("assistant") {
+    let role = message.get("role").and_then(Value::as_str);
+    if !matches!(role, Some("assistant" | "user" | "toolResult")) {
+        if let Some(item) = custom_item_from_message(message) {
+            let mut guard = lock(state);
+            if let Some(existing) = guard
+                .snapshot
+                .items
+                .iter_mut()
+                .find(|candidate| candidate.id() == item.id())
+            {
+                existing.clone_from(&item);
+            } else {
+                push_item(&mut guard.snapshot.items, item.clone());
+            }
+            drop(guard);
+            let _ = events.send(ServerMessage::ItemUpdated { item });
+        }
+        return;
+    }
+    if role != Some("assistant") {
         return;
     }
     let mut guard = lock(state);
@@ -1010,16 +1264,21 @@ fn handle_message_end(
 fn handle_tool_start(
     record: &Value,
     state: &Arc<Mutex<RuntimeState>>,
-    events: &broadcast::Sender<ServerMessage>,
+    events: &mpsc::UnboundedSender<ServerMessage>,
 ) {
     let id = string_field(record, "toolCallId").unwrap_or_else(|| new_id("tool"));
     let name = string_field(record, "toolName").unwrap_or_else(|| "tool".into());
     let summary = summarize_tool(&name, record.get("args"));
+    let (args, args_truncated) = bounded_json(record.get("args"));
     let item = ChatItem::Tool {
         id,
         name,
         summary,
         output: String::new(),
+        args,
+        details: None,
+        args_truncated,
+        details_truncated: false,
         status: ItemStatus::Running,
     };
     push_item(&mut lock(state).snapshot.items, item.clone());
@@ -1028,7 +1287,7 @@ fn handle_tool_start(
 fn handle_tool_update(
     record: &Value,
     state: &Arc<Mutex<RuntimeState>>,
-    events: &broadcast::Sender<ServerMessage>,
+    events: &mpsc::UnboundedSender<ServerMessage>,
     complete: bool,
 ) {
     let Some(id) = string_field(record, "toolCallId") else {
@@ -1041,6 +1300,10 @@ fn handle_tool_update(
         record.get("partialResult")
     };
     let output = result.map_or_else(String::new, extract_result_text);
+    let detail_source = result
+        .and_then(|value| value.get("details"))
+        .or_else(|| record.get("details"));
+    let (next_details, next_details_truncated) = bounded_json(detail_source);
     let status = if complete {
         if record.get("isError").and_then(Value::as_bool) == Some(true) {
             ItemStatus::Failed
@@ -1056,6 +1319,10 @@ fn handle_tool_update(
         name: existing_name,
         summary,
         output: existing_output,
+        args,
+        details,
+        args_truncated,
+        details_truncated,
         status: existing_status,
         ..
     }) = existing
@@ -1065,11 +1332,19 @@ fn handle_tool_update(
         }
         existing_name.clone_from(&name);
         *existing_status = status;
+        if next_details.is_some() {
+            details.clone_from(&next_details);
+            *details_truncated = next_details_truncated;
+        }
         ChatItem::Tool {
             id: id.clone(),
             name: existing_name.clone(),
             summary: summary.clone(),
             output: existing_output.clone(),
+            args: args.clone(),
+            details: details.clone(),
+            args_truncated: *args_truncated,
+            details_truncated: *details_truncated,
             status,
         }
     } else {
@@ -1078,6 +1353,10 @@ fn handle_tool_update(
             name,
             summary: String::new(),
             output,
+            args: None,
+            details: next_details,
+            args_truncated: false,
+            details_truncated: next_details_truncated,
             status,
         }
     };
@@ -1090,7 +1369,7 @@ fn handle_tool_update(
 fn handle_extension_request(
     record: &Value,
     state: &Arc<Mutex<RuntimeState>>,
-    events: &broadcast::Sender<ServerMessage>,
+    events: &mpsc::UnboundedSender<ServerMessage>,
 ) {
     let method = string_field(record, "method").unwrap_or_else(|| "notify".into());
     if method == "set_editor_text" {
@@ -1139,12 +1418,31 @@ fn handle_extension_request(
         placeholder: string_field(record, "placeholder"),
         prefill: string_field(record, "prefill"),
     };
-    lock(state).snapshot.pending_extension_request = Some(request.clone());
-    let _ = events.send(ServerMessage::ExtensionUiRequest { request });
+    let should_display = {
+        let mut state = lock(state);
+        if state.extension_requests.len() >= MAX_EXTENSION_REQUESTS {
+            let _ = events.send(ServerMessage::Error {
+                error: AgentError::new(
+                    AgentErrorCode::Unavailable,
+                    "A Pi extension opened too many dialogs; the newest request was discarded",
+                ),
+            });
+            return;
+        }
+        let should_display = state.extension_requests.is_empty();
+        state.extension_requests.push_back(request.clone());
+        if should_display {
+            state.snapshot.pending_extension_request = Some(request.clone());
+        }
+        should_display
+    };
+    if should_display {
+        let _ = events.send(ServerMessage::ExtensionUiRequest { request });
+    }
 }
 fn ensure_current_assistant(
     state: &mut RuntimeState,
-    events: &broadcast::Sender<ServerMessage>,
+    events: &mpsc::UnboundedSender<ServerMessage>,
 ) -> String {
     if let Some(id) = state.current_assistant.as_ref() {
         return id.clone();
@@ -1181,7 +1479,7 @@ fn finalize_current_assistant(state: &mut RuntimeState, status: ItemStatus) -> O
 }
 fn set_status(
     state: &Arc<Mutex<RuntimeState>>,
-    events: &broadcast::Sender<ServerMessage>,
+    events: &mpsc::UnboundedSender<ServerMessage>,
     status: AgentStatus,
     message: &str,
     pending_messages: Option<usize>,
@@ -1260,6 +1558,8 @@ fn parse_command(value: &Value) -> Option<PiCommand> {
         description: string_field(value, "description").unwrap_or_default(),
         source: string_field(value, "source").unwrap_or_else(|| "command".into()),
         location: string_field(value, "location"),
+        argument_hint: string_field(value, "argumentHint"),
+        invocation: string_field(value, "invocation"),
     })
 }
 fn parse_session_stats(value: &Value) -> SessionStats {
@@ -1316,7 +1616,7 @@ fn map_history(messages: &[Value]) -> Vec<ChatItem> {
     let mut items = Vec::new();
     for (index, message) in messages.iter().enumerate() {
         match message.get("role").and_then(Value::as_str) {
-            Some("user" | "custom") => {
+            Some("user") => {
                 let text = extract_message_text(message);
                 if !text.trim().is_empty() {
                     push_item(
@@ -1327,6 +1627,15 @@ fn map_history(messages: &[Value]) -> Vec<ChatItem> {
                             images: extract_message_images(message),
                         },
                     );
+                }
+            }
+            Some("custom") => {
+                if let Some(mut item) = custom_item_from_message(message) {
+                    if let ChatItem::Custom { id, .. } = &mut item {
+                        *id = string_field(message, "id")
+                            .unwrap_or_else(|| format!("history-custom-{index}"));
+                    }
+                    push_item(&mut items, item);
                 }
             }
             Some("assistant") => {
@@ -1353,6 +1662,7 @@ fn map_history(messages: &[Value]) -> Vec<ChatItem> {
                             let id = string_field(part, "id")
                                 .unwrap_or_else(|| format!("history-tool-{index}"));
                             let name = string_field(part, "name").unwrap_or_else(|| "tool".into());
+                            let (args, args_truncated) = bounded_json(part.get("arguments"));
                             push_item(
                                 &mut items,
                                 ChatItem::Tool {
@@ -1360,6 +1670,10 @@ fn map_history(messages: &[Value]) -> Vec<ChatItem> {
                                     summary: summarize_tool(&name, part.get("arguments")),
                                     name,
                                     output: String::new(),
+                                    args,
+                                    details: None,
+                                    args_truncated,
+                                    details_truncated: false,
                                     status: ItemStatus::Complete,
                                 },
                             );
@@ -1374,11 +1688,18 @@ fn map_history(messages: &[Value]) -> Vec<ChatItem> {
                         .map_or_else(String::new, extract_result_text);
                     if let Some(ChatItem::Tool {
                         output: existing,
+                        details,
+                        details_truncated,
                         status,
                         ..
                     }) = items.iter_mut().find(|item| item.id() == id)
                     {
                         existing.clone_from(&output);
+                        let (next_details, next_truncated) = bounded_json(message.get("details"));
+                        if next_details.is_some() {
+                            details.clone_from(&next_details);
+                            *details_truncated = next_truncated;
+                        }
                         *status = if message.get("isError").and_then(Value::as_bool) == Some(true) {
                             ItemStatus::Failed
                         } else {
@@ -1456,6 +1777,26 @@ fn extract_message_images(message: &Value) -> Vec<ImageAttachment> {
         })
         .collect()
 }
+fn custom_item_from_message(message: &Value) -> Option<ChatItem> {
+    if message.get("display").and_then(Value::as_bool) == Some(false) {
+        return None;
+    }
+    let label = string_field(message, "customType")
+        .or_else(|| string_field(message, "role"))
+        .unwrap_or_else(|| "extension".into());
+    let text = string_field(message, "summary").unwrap_or_else(|| extract_message_text(message));
+    let (details, details_truncated) = bounded_json(message.get("details"));
+    if text.trim().is_empty() && details.is_none() {
+        return None;
+    }
+    Some(ChatItem::Custom {
+        id: string_field(message, "id").unwrap_or_else(|| new_id("custom")),
+        label,
+        text,
+        details,
+        details_truncated,
+    })
+}
 fn summarize_tool(name: &str, arguments: Option<&Value>) -> String {
     let arguments = arguments.unwrap_or(&Value::Null);
     let keys: &[&str] = match name {
@@ -1493,6 +1834,59 @@ fn extract_result_text(result: &Value) -> String {
         compact_json(result)
     };
     truncate_chars(text, MAX_TOOL_OUTPUT_CHARS)
+}
+fn bounded_json(value: Option<&Value>) -> (Option<Value>, bool) {
+    let Some(value) = value else {
+        return (None, false);
+    };
+    let mut truncated = false;
+    (Some(bound_json_value(value, 0, &mut truncated)), truncated)
+}
+fn bound_json_value(value: &Value, depth: usize, truncated: &mut bool) -> Value {
+    if depth >= MAX_STRUCTURED_DEPTH {
+        *truncated = true;
+        return Value::String("… nested data truncated …".into());
+    }
+    match value {
+        Value::String(text) => {
+            if text.chars().count() > MAX_STRUCTURED_STRING_CHARS {
+                *truncated = true;
+                Value::String(truncate_chars(text.clone(), MAX_STRUCTURED_STRING_CHARS))
+            } else {
+                value.clone()
+            }
+        }
+        Value::Array(items) => {
+            if items.len() > MAX_STRUCTURED_ITEMS {
+                *truncated = true;
+            }
+            Value::Array(
+                items
+                    .iter()
+                    .take(MAX_STRUCTURED_ITEMS)
+                    .map(|item| bound_json_value(item, depth + 1, truncated))
+                    .collect(),
+            )
+        }
+        Value::Object(object) => {
+            if object.len() > MAX_STRUCTURED_ITEMS {
+                *truncated = true;
+            }
+            Value::Object(
+                object
+                    .iter()
+                    .take(MAX_STRUCTURED_ITEMS)
+                    .map(|(key, item)| {
+                        (
+                            truncate_chars(key.clone(), 256),
+                            bound_json_value(item, depth + 1, truncated),
+                        )
+                    })
+                    .collect(),
+            )
+        }
+        Value::Null | Value::Bool(_) | Value::Number(_) => value.clone(),
+    }
 }
 fn compact_json(value: &Value) -> String {
     serde_json::to_string(value).unwrap_or_default()
@@ -1584,6 +1978,81 @@ mod tests {
         let output = extract_result_text(&Value::String("x".repeat(MAX_TOOL_OUTPUT_CHARS + 100)));
         assert!(output.chars().count() <= MAX_TOOL_OUTPUT_CHARS);
         assert!(output.ends_with('…'));
+    }
+    #[test]
+    fn frames_fragmented_utf8_and_discards_oversized_records() {
+        let mut framer = BoundedLfFramer::new(32);
+        assert!(framer.push(b"{\"text\":\"a\xE2").is_empty());
+        let records = framer.push(b"\x80\xA8b\"}\r\nok\n");
+        assert_eq!(records.len(), 2);
+        let FramedLine::Line(first) = &records[0] else {
+            panic!("expected a JSON record");
+        };
+        let first: Value = serde_json::from_slice(first).unwrap();
+        assert_eq!(first["text"], "a\u{2028}b");
+        let mut bounded = BoundedLfFramer::new(4);
+        assert_eq!(
+            bounded.push(b"12345\nok\n"),
+            vec![FramedLine::Oversized, FramedLine::Line(b"ok".to_vec())]
+        );
+    }
+    #[test]
+    fn only_agent_settled_marks_the_session_idle() {
+        let state = Arc::new(Mutex::new(RuntimeState {
+            snapshot: AgentSnapshot {
+                status: AgentStatus::Working,
+                status_message: "Working".into(),
+                pending_messages: 2,
+                ..AgentSnapshot::default()
+            },
+            session_file: None,
+            current_assistant: None,
+            accept_initial_history: false,
+            extension_requests: VecDeque::new(),
+        }));
+        let (events, mut receiver) = mpsc::unbounded_channel();
+        let (commands, _command_receiver) = mpsc::channel(1);
+        handle_pi_record(&json!({"type":"agent_end"}), &state, &events, &commands);
+        assert_eq!(lock(&state).snapshot.status, AgentStatus::Working);
+        assert_eq!(lock(&state).snapshot.pending_messages, 2);
+        receiver.try_recv().unwrap_err();
+
+        handle_pi_record(&json!({"type":"agent_settled"}), &state, &events, &commands);
+        assert_eq!(lock(&state).snapshot.status, AgentStatus::Ready);
+        assert_eq!(lock(&state).snapshot.pending_messages, 0);
+        assert!(matches!(
+            receiver.try_recv(),
+            Ok(ServerMessage::Status {
+                status: AgentStatus::Ready,
+                ..
+            })
+        ));
+    }
+    #[test]
+    fn queue_updates_preserve_steering_and_follow_up_counts() {
+        let state = Arc::new(Mutex::new(RuntimeState {
+            snapshot: AgentSnapshot {
+                status: AgentStatus::Working,
+                ..AgentSnapshot::default()
+            },
+            session_file: None,
+            current_assistant: None,
+            accept_initial_history: false,
+            extension_requests: VecDeque::new(),
+        }));
+        let (events, _receiver) = mpsc::unbounded_channel();
+        let (commands, _command_receiver) = mpsc::channel(1);
+        handle_pi_record(
+            &json!({
+                "type":"queue_update",
+                "steering":[{"message":"one"}],
+                "followUp":[{"message":"two"},{"message":"three"}]
+            }),
+            &state,
+            &events,
+            &commands,
+        );
+        assert_eq!(lock(&state).snapshot.pending_messages, 3);
     }
     #[test]
     fn completion_and_attention_notifications_replace_and_clear() {

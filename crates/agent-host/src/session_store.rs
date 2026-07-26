@@ -137,7 +137,7 @@ pub(crate) fn delete(workspace_root: &Path, session_id: &str, path: &Path) -> st
             "The Pi session id does not match its session file",
         ));
     }
-    fs::remove_file(path)
+    trash::delete(path).map_err(std::io::Error::other)
 }
 
 fn session_root(workspace_root: &Path) -> PathBuf {
