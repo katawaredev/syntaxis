@@ -3,7 +3,7 @@ services:
     build:
       context: .
       target: production
-    image: "${SYNTAXIS_IMAGE:-docker.io/arvigeus/syntaxis:latest}"
+    image: "${SYNTAXIS_IMAGE:-ghcr.io/katawaredev/syntaxis:latest}"
     container_name: syntaxis
     hostname: syntaxis
     user: "${PUID:-1000}:${PGID:-1000}"

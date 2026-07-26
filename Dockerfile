@@ -3,7 +3,6 @@
 ARG NODE_VERSION=24
 ARG BUN_VERSION=1.3.14
 ARG DIOXUS_VERSION=0.7.9
-ARG PI_VERSION=0.80.10
 
 FROM docker.io/oven/bun:${BUN_VERSION} AS bun
 
@@ -24,28 +23,24 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     bash \
     build-essential \
     ca-certificates \
+    clang \
     curl \
     git \
     gnupg \
     openssh-client \
     pkg-config \
     ripgrep \
+    rustup \
     tini
 
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-    | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable \
+RUN rustup set profile minimal \
+    && rustup default stable \
     && rustup target add wasm32-unknown-unknown \
     && cargo install --locked --version "${DIOXUS_VERSION}" dioxus-cli \
     && cargo install --locked just
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends clang
-
-ARG PI_VERSION
-
 RUN npm install --global --prefix /opt/syntaxis-pi \
-    "@earendil-works/pi-coding-agent@${PI_VERSION}" \
+    @earendil-works/pi-coding-agent \
     && npm cache clean --force \
     && for binary in cargo dx just rustc rustdoc rustfmt rustup; do \
     ln -s "/usr/local/cargo/bin/${binary}" "/usr/local/bin/${binary}"; \
@@ -84,13 +79,16 @@ WORKDIR /build
 
 RUN mkdir /build-output && chown dev:dev /build /build-output
 
-COPY --chown=dev:dev . .
+COPY --chown=dev:dev package.json bun.lock ./
 
 USER dev
 
 RUN --mount=type=cache,id=syntaxis-bun,target=/home/dev/.bun/install/cache,uid=1000,gid=1000 \
-    bun install --frozen-lockfile \
-    && bun run build:editor \
+    bun install --frozen-lockfile
+
+COPY --chown=dev:dev . .
+
+RUN bun run build:editor \
     && bun run build:terminal \
     && bun run generate:pi-settings \
     && touch assets/tailwind.css
@@ -103,8 +101,6 @@ RUN --mount=type=cache,id=syntaxis-cargo-registry,target=/home/dev/.cargo/regist
     && cp -a target/dx/syntaxis/release/web/. /build-output/
 
 FROM docker.io/library/node:${NODE_VERSION}-trixie-slim AS production
-
-ARG PI_VERSION
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -120,7 +116,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     ripgrep \
     tini \
     && npm install --global --prefix /opt/syntaxis-pi \
-    "@earendil-works/pi-coding-agent@${PI_VERSION}" \
+    @earendil-works/pi-coding-agent \
     && npm cache clean --force
 
 RUN usermod --login dev --home /home/dev --move-home node \
@@ -143,6 +139,9 @@ USER dev
 WORKDIR /Projects
 
 EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl --fail --silent --show-error "http://127.0.0.1:${PORT:-8080}/" >/dev/null || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/docker-entrypoint"]
 CMD ["/app/server"]

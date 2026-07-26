@@ -9,6 +9,8 @@
 #   just ci
 #   just update
 #   just lighthouse
+#   just docker-dev
+#   just docker-prod
 #   just dx doctor
 #
 # Override defaults:
@@ -26,6 +28,7 @@ set dotenv-load
 default_platform := env("DX_PLATFORM", "web")
 default_host := env("DX_HOST", "127.0.0.1")
 default_port := env("DX_PORT", "8080")
+docker_repository := env("SYNTAXIS_DOCKER_REPOSITORY", "ghcr.io/katawaredev/syntaxis")
 
 # -----------------------------------------------------------------------------
 # Help
@@ -297,6 +300,136 @@ lighthouse:
 # Open the most recent locally collected Lighthouse report.
 lighthouse-open:
     bun run lighthouse:open
+
+# -----------------------------------------------------------------------------
+# Docker
+# -----------------------------------------------------------------------------
+
+# Print the root package version used for Docker image tags.
+[private]
+docker-version:
+    @cargo metadata --no-deps --format-version 1 \
+        | python3 -c 'import json, sys; metadata = json.load(sys.stdin); manifest = metadata["workspace_root"] + "/Cargo.toml"; print(next(package["version"] for package in metadata["packages"] if package["manifest_path"] == manifest))'
+
+# Build a Docker target and tag production with the Cargo package version.
+docker-build target="production":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    target="{{ target }}"
+    if [[ "$target" != "development" && "$target" != "production" ]]; then
+        echo "Expected 'development' or 'production', got: $target" >&2
+        exit 2
+    fi
+
+    docker="${DOCKER:-docker}"
+    platform="${PLATFORM:-linux/amd64}"
+    version="$(just docker-version)"
+    tags=(-t "syntaxis:${target}")
+
+    if [[ "$target" == "production" ]]; then
+        tags+=(
+            -t "{{ docker_repository }}:${version}"
+            -t "{{ docker_repository }}:latest"
+        )
+    fi
+
+    "$docker" build \
+        --platform "$platform" \
+        --target "$target" \
+        --file Dockerfile \
+        "${tags[@]}" \
+        .
+
+# Build and start the hot-reloading development container.
+docker-dev port=default_port:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    docker="${DOCKER:-docker}"
+    export SYNTAXIS_DEV_PORT="{{ port }}"
+
+    if "$docker" compose version >/dev/null 2>&1; then
+        compose=("$docker" compose)
+    elif command -v docker-compose >/dev/null 2>&1; then
+        compose=(docker-compose)
+    else
+        echo "Docker Compose is required." >&2
+        exit 1
+    fi
+
+    mkdir -p data/dev-home
+    "${compose[@]}" up --detach --build
+    echo "Development server: http://localhost:{{ port }}"
+    echo "Follow logs with: ${compose[*]} logs --follow syntaxis"
+
+# Stop and remove the development Compose containers.
+docker-dev-stop:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    docker="${DOCKER:-docker}"
+    if "$docker" compose version >/dev/null 2>&1; then
+        "$docker" compose down
+    elif command -v docker-compose >/dev/null 2>&1; then
+        docker-compose down
+    else
+        echo "Docker Compose is required." >&2
+        exit 1
+    fi
+
+# Build and run the production image locally.
+docker-prod port=default_port:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    docker="${DOCKER:-docker}"
+    container="syntaxis-prod-test"
+    version="$(just docker-version)"
+    image="{{ docker_repository }}:${version}"
+    host_home="${HOST_HOME:-${HOME}}"
+    host_projects="${HOST_PROJECTS:-${HOME}/Projects}"
+    data_dir="${DATA:-./data}/prod-home"
+
+    if "$docker" container inspect "$container" >/dev/null 2>&1; then
+        echo "Container '$container' already exists." >&2
+        echo "Stop it with: just docker-prod-stop" >&2
+        exit 1
+    fi
+
+    just docker-build production
+    mkdir -p "$data_dir"
+
+    "$docker" run --detach --rm \
+        --name "$container" \
+        --user "$(id -u):$(id -g)" \
+        --publish "127.0.0.1:{{ port }}:8080" \
+        --env HOME=/home/dev \
+        --env SHELL=/bin/bash \
+        --env SYNTAXIS_PROJECTS_ROOT=/Projects \
+        --env VERCEL_OIDC_TOKEN="${VERCEL_OIDC_TOKEN:-}" \
+        --volume "$data_dir:/home/dev" \
+        --volume "$host_home/.ssh:/home/dev/.ssh:ro" \
+        --volume "$host_home/.gnupg:/home/dev/.gnupg" \
+        --volume "$host_projects:/Projects" \
+        "$image"
+
+    echo "Production server: http://localhost:{{ port }}"
+    echo "Follow logs with: $docker logs --follow $container"
+
+# Stop the local production test container.
+docker-prod-stop:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    docker="${DOCKER:-docker}"
+    container="syntaxis-prod-test"
+
+    if "$docker" container inspect "$container" >/dev/null 2>&1; then
+        "$docker" stop --time 10 "$container"
+    else
+        echo "Container '$container' is not running."
+    fi
 
 # Run Dioxus checks.
 dx-check: build-editor

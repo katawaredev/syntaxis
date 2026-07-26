@@ -1,0 +1,108 @@
+name: Publish container
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - Cargo.toml
+  workflow_dispatch:
+
+concurrency:
+  group: publish-container
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/katawaredev/syntaxis
+
+jobs:
+  version:
+    name: Detect version change
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      changed: ${{ steps.version.outputs.changed }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Compare package versions
+        id: version
+        env:
+          BEFORE: ${{ github.event.before }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+
+          current="$(
+            python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])'
+          )"
+          changed=false
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            changed=true
+          elif [[ -n "$BEFORE" && ! "$BEFORE" =~ ^0+$ ]]; then
+            previous="$(
+              git show "${BEFORE}:Cargo.toml" \
+                | python3 -c 'import sys, tomllib; print(tomllib.loads(sys.stdin.read())["package"]["version"])'
+            )"
+            if [[ "$current" != "$previous" ]]; then
+              changed=true
+            fi
+          fi
+
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+          echo "version=$current" >> "$GITHUB_OUTPUT"
+
+  publish:
+    name: Publish ${{ needs.version.outputs.version }}
+    needs: version
+    if: needs.version.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          target: production
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ needs.version.outputs.version }}
+            ${{ env.IMAGE }}:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/katawaredev/syntaxis
+            org.opencontainers.image.version=${{ needs.version.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Attest image
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true

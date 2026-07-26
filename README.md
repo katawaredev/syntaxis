@@ -78,9 +78,16 @@ docker exec -it syntaxis pi
 ```
 
 For `arvigeus.one`, the service can use the published
-`${SYNTAXIS_IMAGE:-docker.io/arvigeus/syntaxis:latest}` image, keep the same `/Projects`, SSH, and
+`${SYNTAXIS_IMAGE:-ghcr.io/katawaredev/syntaxis:latest}` image, keep the same `/Projects`, SSH, and
 GnuPG mounts, and proxy Caddy to `syntaxis:8080`. Set `HOST_PROJECTS` to the server's projects
 directory; this replaces devbox's old `/workspace` convention.
+
+### Publishing
+
+The `Publish container` GitHub Actions workflow publishes
+`ghcr.io/katawaredev/syntaxis:<version>` and `ghcr.io/katawaredev/syntaxis:latest` after the root
+`package.version` in `Cargo.toml` changes on `master`. Other `Cargo.toml` edits do not publish an
+image. The workflow can also be run manually from the Actions tab for an initial publish or retry.
 
 # Development
 
