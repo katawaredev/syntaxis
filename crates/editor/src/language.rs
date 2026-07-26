@@ -36,7 +36,7 @@ pub fn language_slug_for_path(path: &str) -> &'static str {
         "dart" => "dart",
         "ini" | "properties" => "ini",
         _ if name == "nginx.conf" => "nginx",
-        _ => "rust",
+        _ => "plaintext",
     }
 }
 
@@ -49,6 +49,7 @@ pub fn language_label_for_path(path: &str) -> &'static str {
         "javascript" => "JavaScript",
         "json" => "JSON",
         "markdown" => "Markdown",
+        "plaintext" => "Plain Text",
         "powershell" => "PowerShell",
         "python" => "Python",
         "rust" => "Rust",
@@ -95,5 +96,6 @@ mod tests {
         assert_eq!(language_slug_for_path(".git/hooks/pre-commit"), "bash");
         assert_eq!(language_slug_for_path("src/view.tsx"), "tsx");
         assert_eq!(language_slug_for_path("config/app.yaml"), "yaml");
+        assert_eq!(language_slug_for_path("notes.unknown"), "plaintext");
     }
 }

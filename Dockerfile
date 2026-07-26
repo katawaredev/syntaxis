@@ -90,8 +90,8 @@ USER dev
 
 RUN --mount=type=cache,id=syntaxis-bun,target=/home/dev/.bun/install/cache,uid=1000,gid=1000 \
     bun install --frozen-lockfile \
+    && bun run build:editor \
     && bun run build:terminal \
-    && bun run generate:completions \
     && bun run generate:pi-settings \
     && touch assets/tailwind.css
 

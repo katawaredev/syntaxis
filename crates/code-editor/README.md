@@ -1,44 +1,39 @@
 # Syntaxis `dioxus-code-editor` fork
 
-This crate is the narrow, application-owned editor surface used by phase 5. It
-retains `dioxus-code`'s incremental Arborium/tree-sitter `Buffer` and pins the
-reviewed upstream revision in `Cargo.toml`.
+This crate is the narrow, application-owned editor surface used by Syntaxis.
+Editable documents and the Files route's read-only unified diff mode use a
+bundled CodeMirror 6 view. Git-page diff fragments retain `dioxus-code`'s
+Arborium/tree-sitter renderer so their patch-relative line-number offsets stay
+intact.
 
 ## Capability spike
 
-The upstream textarea component supplied controlled text editing and syntax
-highlighting, but not the imperative and selection APIs required by Syntaxis.
-This fork adds:
+The CodeMirror bridge preserves the Rust-facing API required by Syntaxis:
 
-- controlled values and edit events with incremental highlighting;
+- controlled external values and edit events while CodeMirror owns immediate
+  browser editing state;
 - cursor/selection reporting, caret-follow scrolling, focus, go-to-line, and
   select commands;
 - Tab/Shift-Tab indentation, enter indentation, paired delimiters, and pair
   deletion/skip behavior;
-- textarea-backed next/all-occurrence cursors and vertical rectangular cursors;
+- native multiple selections and vertical cursors;
 - line-number and word-wrap modes with the Syntaxis theme integration point;
+- viewport-only DOM rendering and incremental Lezer parsing for large files;
+- native unified diffs with collapsed unchanged regions and bounded diff work;
+- native language-aware and document-word completion;
+- filename-based language detection through CodeMirror's maintained language
+  catalog, with plain text for unknown files;
 - deterministic event-listener cleanup when the component is dropped.
 
-History is maintained beside the browser textarea so editor commands such as
-search replacement join typing in the same undo/redo stack. Imperative commands
-are consumed once, preventing mutations from replaying when an editor remounts.
-Search, selection
-matching, and completion UI are application-owned because they need workspace
-state. Completion candidates combine cached, word-like terminals from the same
-enabled Arborium grammar with identifiers near the cursor, so language updates
-do not require hand-maintained keyword tables. Suggestions open directly from
-the input/selection bridge, including software-keyboard input, while
-`Ctrl`/`Cmd`+`Space` remains available. Semantic, project-aware completion
-remains an LSP concern. A focused test exercises an incremental edit in a roughly
-500 KiB highlighted Rust buffer; the product separately refuses text files over
-4 MiB and renders a clear large-file state.
+CodeMirror owns history, input methods, selection painting, and incremental
+syntax state. Imperative commands are consumed once, preventing mutations from
+replaying when an editor remounts. Per-file search and completion remain inside
+CodeMirror; workspace search remains application-owned. The product separately
+refuses text files over 4 MiB and renders a clear large-file state.
 
-Validated targets are Linux native Cargo compilation and a complete Dioxus web
-client/server build. `arborium-tree-sitter` references a C `stderr` symbol that
-`wasm32-unknown-unknown` does not export, so the root build supplies a minimal
-WASM-only compatibility symbol. This is only reachable on tree-sitter's
-terminal allocation-failure diagnostic path.
+Run `bun run build:editor` after changing
+`assets/code-editor/bridge-source.js`, `package.json`, or `bun.lock`. Standard
+`just` build, serve, QA, and pre-commit recipes build the cached bundle
+automatically.
 
-The browser textarea cannot paint every non-primary selection. Multiple-cursor
-edits and counts work, while richer selection decoration is the main reason to
-revisit a contenteditable or canvas-backed editor upstream later.
+Validated targets are Linux native Cargo compilation and the Dioxus web client.

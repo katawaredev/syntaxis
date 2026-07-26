@@ -4,13 +4,13 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use dioxus::prelude::*;
 use dioxus_code::Language;
 use dioxus_code_editor::{
-    CodeEditor, EditorCommand, EditorCommandKind, EditorRange, EditorSelection,
+    CodeEditor, EditorCommand, EditorCommandKind, EditorRange, EditorSearchQuery,
+    EditorSearchStatus, EditorSelection,
 };
 use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
 use syntaxis_editor::{
-    apply_editor_config, complete_any_word, complete_with_words, generated_completion_words,
-    language_label_for_path, language_slug_for_path, resolve_editor_config, BufferStatus,
-    EditorBuffer, EditorConfigSource, ExplorerTree, ExternalChange, IndentStyle,
+    apply_editor_config, language_label_for_path, language_slug_for_path, resolve_editor_config,
+    BufferStatus, EditorBuffer, EditorConfigSource, ExplorerTree, ExternalChange, IndentStyle,
 };
 use syntaxis_git::{ChangeKind as GitChangeKind, DiffKind, RepositoryStatus, UnifiedDiff};
 use syntaxis_ui::prelude::{
@@ -45,10 +45,9 @@ use documents::{
     request_close, request_close_many, restore_documents, save_all, save_and_close, save_path,
 };
 use editor_ui::{
-    apply_completion, copy_editor_reference, find_matches, format_editor_reference,
-    handle_editor_shortcut, issue_command, language_for_path, render_tab,
-    replace_all_search_matches, replace_search_match, should_open_completions,
-    text_document_contents, CompletionMenu, EditorMenuItem, MobileTabs, SearchOptions, SearchPanel,
+    copy_editor_reference, find_matches, format_editor_reference, handle_editor_shortcut,
+    issue_command, language_for_path, render_tab, replace_all_search_matches, replace_search_match,
+    text_document_contents, EditorMenuItem, MobileTabs, SearchOptions, SearchPanel,
 };
 use explorer::{expand_directory, Explorer, ExplorerView};
 use git_actions::{
@@ -57,8 +56,8 @@ use git_actions::{
 };
 use location::location_command;
 use preview::{
-    file_glyph, file_label, image_mime, is_csv, is_markdown, is_svg, CsvPreview, DiffEditor,
-    EditorStatus, EmptyEditor, ImagePreview, MarkdownPreview, SafeSvgPreview, UnsupportedPreview,
+    file_glyph, file_label, image_mime, is_csv, is_markdown, is_svg, CsvPreview, EditorStatus,
+    EmptyEditor, ImagePreview, MarkdownPreview, SafeSvgPreview, UnsupportedPreview,
 };
 use search::WorkspaceSearchResult;
 
@@ -310,6 +309,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
     let search_query = use_signal(String::new);
     let search_options = use_signal(SearchOptions::default);
     let mut search_match = use_signal(|| 0_usize);
+    let mut editor_search_status = use_signal(EditorSearchStatus::default);
     let replace_query = use_signal(String::new);
     let replace_open = use_signal(|| false);
     let mut go_to_line = use_signal(|| false);
@@ -317,9 +317,6 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
     let editor_command = use_signal(|| None::<EditorCommand>);
     let command_revision = use_signal(|| 0_u64);
     let mut autocomplete_enabled = use_signal(|| false);
-    let mut autocomplete = use_signal(|| false);
-    let mut completion_after_input = use_signal(|| false);
-    let mut suppress_next_completion = use_signal(|| false);
     let mut diff = use_signal(|| None::<UnifiedDiff>);
     let pending = use_signal(|| false);
     let mut file_dialog = use_signal(|| None::<FileActionDialog>);
@@ -646,28 +643,8 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
             )),
             _ => None,
         });
-    let (current_matches, search_error) = active_document.as_ref().map_or_else(
-        || (Vec::new(), None),
-        |document| match document {
-            OpenDocument::Text(buffer) => {
-                match find_matches(&buffer.contents, &search_query(), search_options()) {
-                    Ok(matches) => (matches, None),
-                    Err(error) => (Vec::new(), Some(error)),
-                }
-            }
-            _ => (Vec::new(), None),
-        },
-    );
-    let editor_search_matches = current_matches
-        .iter()
-        .map(|&(start, end)| EditorRange { start, end })
-        .collect::<Vec<_>>();
-    let replace_current_matches = current_matches.clone();
-    let active_search_match = if editor_search_matches.is_empty() {
-        None
-    } else {
-        Some(search_match().min(editor_search_matches.len() - 1))
-    };
+    let search_status = editor_search_status();
+    let search_error = (!search_status.valid).then(|| "Invalid regular expression".to_owned());
     let workspace_editor_matches = active_path()
         .and_then(|path| {
             explorer_highlights()
@@ -951,13 +928,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                     label: "Autocomplete",
                                     suffix: "Mod Space",
                                     checked: autocomplete_enabled(),
-                                    onclick: move |()| {
-                                        autocomplete_enabled.toggle();
-                                        if !autocomplete_enabled() {
-                                            autocomplete.set(false);
-                                            completion_after_input.set(false);
-                                        }
-                                    },
+                                    onclick: move |()| autocomplete_enabled.toggle(),
                                 }
                                 EditorMenuItem {
                                     index: 5,
@@ -1068,47 +1039,45 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                         options: search_options,
                         replacement: replace_query,
                         replace_open,
-                        count: current_matches.len(),
+                        count: search_status.count,
                         error: search_error,
                         on_next: move |direction| {
-                            if current_matches.is_empty() {
+                            if search_status.count == 0 {
                                 return;
                             }
-                            let current = search_match().min(current_matches.len() - 1);
-                            let next = if direction > 0 {
-                                (current + 1) % current_matches.len()
-                            } else {
-                                (current + current_matches.len() - 1) % current_matches.len()
-                            };
-                            search_match.set(next);
-                            let (start, end) = current_matches[next];
                             issue_command(
                                 command_revision,
                                 editor_command,
-                                EditorCommandKind::Select {
-                                    start,
-                                    end,
+                                if direction > 0 {
+                                    EditorCommandKind::SearchNext
+                                } else {
+                                    EditorCommandKind::SearchPrevious
                                 },
                             );
                         },
                         on_replace: move |()| {
-                            if replace_current_matches.is_empty() {
-                                return;
-                            }
                             let Some(path) = active_path() else { return };
                             let Some(source) = text_document_contents(&path, documents) else {
                                 return;
                             };
-                            let current = search_match().min(replace_current_matches.len() - 1);
+                            let Ok(matches) =
+                                find_matches(&source, &search_query(), search_options())
+                            else {
+                                return;
+                            };
+                            if matches.is_empty() {
+                                return;
+                            }
+                            let current = search_match().min(matches.len() - 1);
                             match replace_search_match(
                                 &source,
                                 &search_query(),
                                 &replace_query(),
                                 search_options(),
-                                replace_current_matches[current],
+                                matches[current],
                             ) {
                                 Ok(contents) => {
-                                    let (start, end) = replace_current_matches[current];
+                                    let (start, end) = matches[current];
                                     let inserted = contents.len() - (source.len() - (end - start));
                                     let cursor = start + inserted;
                                     issue_command(
@@ -1176,11 +1145,6 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                         },
                         Some(
                             OpenDocument::Text(buffer),
-                        ) if diff().is_some_and(|diff| diff.original.is_none()) => rsx! {
-                            DiffEditor { diff: diff().unwrap(), current: buffer.contents }
-                        },
-                        Some(
-                            OpenDocument::Text(buffer),
                         ) if diff().is_none() && is_markdown(&buffer.path) && markdown_preview() => {
                             rsx! {
                                 MarkdownPreview { source: buffer.contents }
@@ -1206,11 +1170,12 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                             let path = buffer.path.clone();
                             let reload_path = path.clone();
                             let input_path = path.clone();
-                            let selection_path = path.clone();
-                            let shortcut_path = path.clone();
-                            let completion_path = path.clone();
-                            let diff_original = diff().and_then(|diff| diff.original);
-                            let diff_mode = diff_original.is_some();
+                            let active_diff = diff();
+                            let diff_mode = active_diff.is_some();
+                            let diff_original = match active_diff {
+                                Some(diff) => Some(diff.original.unwrap_or_default()),
+                                None => None,
+                            };
                             rsx! {
                                 div { class: "relative size-full min-h-0",
                                     if buffer.status == BufferStatus::Conflict {
@@ -1233,82 +1198,47 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                         class: "size-full min-h-full rounded-none",
                                         value: buffer.contents.clone(),
                                         language,
+                                        language_name: language_slug_for_path(&buffer.path),
+                                        filename: buffer.path.clone(),
                                         line_numbers: line_numbers(),
                                         word_wrap: word_wrap(),
                                         tab_width: config.tab_width,
                                         indent_width: config.indent_size,
                                         indent_with_tabs: config.indent_style == IndentStyle::Tabs,
+                                        autocomplete: autocomplete_enabled(),
                                         command: Some(editor_command),
-                                        search_matches: if search_panel() { editor_search_matches.clone() } else { workspace_editor_matches.clone() },
-                                        active_search_match: if search_panel() { active_search_match } else { (!workspace_editor_matches.is_empty()).then_some(0) },
+                                        search_matches: if search_panel() { Vec::new() } else { workspace_editor_matches.clone() },
+                                        active_search_match: if search_panel() { None } else { (!workspace_editor_matches.is_empty()).then_some(0) },
+                                        search_query: search_panel()
+                                            .then(|| {
+                                                let options = search_options();
+                                                EditorSearchQuery {
+                                                    query: search_query(),
+                                                    case_sensitive: options.case_sensitive,
+                                                    whole_word: options.whole_word,
+                                                    regex: options.regex,
+                                                }
+                                            }),
                                         diff_original,
+                                        onsearch: move |status: EditorSearchStatus| {
+                                            if let Some(current) = status.current {
+                                                search_match.set(current);
+                                            }
+                                            editor_search_status.set(status);
+                                        },
                                         onselection: move |selection: EditorSelection| {
-                                            let previous = editor_selection();
-                                            editor_selection.set(selection.clone());
-                                            if completion_after_input() {
-                                                completion_after_input.set(false);
-                                                let should_open = autocomplete_enabled()
-                                                    && documents
-                                                        .peek()
-                                                        .iter()
-                                                        .find_map(|document| match document {
-                                                            OpenDocument::Text(buffer)
-                                                                if buffer.path == selection_path =>
-                                                            {
-                                                                Some(should_open_completions(buffer, selection.start))
-                                                            }
-                                                            _ => None,
-                                                        })
-                                                        .unwrap_or(false);
-                                                autocomplete.set(should_open);
-                                            } else if autocomplete()
-                                                && (previous.start != selection.start || previous.end != selection.end)
-                                            {
-                                                autocomplete.set(false);
-                                            }
+                                            editor_selection.set(selection);
                                         },
-                                        oninput: move |contents| {
-                                            edit_document(&input_path, contents, documents);
-                                            if suppress_next_completion() {
-                                                suppress_next_completion.set(false);
-                                                completion_after_input.set(false);
-                                            } else if !autocomplete_enabled() {
-                                                completion_after_input.set(false);
-                                                autocomplete.set(false);
-                                            } else {
-                                                completion_after_input.set(true);
-                                            }
-                                        },
+                                        oninput: move |contents| edit_document(&input_path, contents, documents),
                                         onkeydown: move |event| handle_editor_shortcut(
                                             &event,
                                             workspace(),
-                                            shortcut_path.clone(),
+                                            path.clone(),
                                             documents,
                                             toast,
                                             search_panel,
                                             go_to_line,
-                                            autocomplete_enabled(),
-                                            autocomplete,
                                         ),
-                                    }
-                                    if autocomplete() {
-                                        CompletionMenu {
-                                            buffer: buffer.clone(),
-                                            selection: editor_selection(),
-                                            on_select: move |completion: String| {
-                                                suppress_next_completion.set(true);
-                                                apply_completion(
-                                                    &completion_path,
-                                                    &completion,
-                                                    &editor_selection(),
-                                                    documents,
-                                                    command_revision,
-                                                    editor_command,
-                                                );
-                                                autocomplete.set(false);
-                                            },
-                                            on_close: move |()| autocomplete.set(false),
-                                        }
                                     }
                                 }
                             }

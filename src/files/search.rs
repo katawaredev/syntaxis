@@ -1,13 +1,23 @@
 use std::collections::BTreeSet;
 
+use dioxus::prelude::*;
 use dioxus_code_editor::EditorRange;
+#[cfg(any(feature = "desktop", feature = "server"))]
 use futures_util::{stream, StreamExt};
+use serde::{Deserialize, Serialize};
 
-use super::{
-    workspace_client, EntryKind, FileEntry, RelativePath, WorkspaceRecord, MAX_TEXT_BYTES,
-};
+#[cfg(any(feature = "desktop", feature = "server"))]
+use super::{workspace_client, EntryKind, RelativePath, MAX_TEXT_BYTES};
+use super::{FileEntry, WorkspaceRecord};
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg(any(feature = "desktop", feature = "server"))]
+const MAX_RESULT_FILES: usize = 500;
+#[cfg(any(test, feature = "desktop", feature = "server"))]
+const MAX_OCCURRENCES_PER_FILE: usize = 5;
+#[cfg(any(test, feature = "desktop", feature = "server"))]
+const MAX_HIGHLIGHT_RANGES_PER_FILE: usize = 100;
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub(super) enum SearchScope {
     FileNames,
     Contents,
@@ -24,16 +34,18 @@ impl SearchScope {
         }
     }
 
+    #[cfg(any(feature = "desktop", feature = "server"))]
     fn searches_names(self) -> bool {
         self != Self::Contents
     }
 
+    #[cfg(any(feature = "desktop", feature = "server"))]
     fn searches_contents(self) -> bool {
         self != Self::FileNames
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub(super) struct WorkspaceSearchOptions {
     pub(super) fuzzy: bool,
     pub(super) case_sensitive: bool,
@@ -50,7 +62,7 @@ impl Default for WorkspaceSearchOptions {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub(super) struct WorkspaceSearchResult {
     pub(super) entry: FileEntry,
     pub(super) matches: Vec<EditorRange>,
@@ -60,11 +72,17 @@ pub(super) struct WorkspaceSearchResult {
     score: usize,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub(super) struct SearchOccurrence {
     pub(super) line: usize,
     pub(super) preview: String,
     pub(super) target: EditorRange,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub(super) struct WorkspaceSearchResults {
+    pub(super) items: Vec<WorkspaceSearchResult>,
+    pub(super) truncated: bool,
 }
 
 pub(super) async fn search_workspace_files(
@@ -73,7 +91,43 @@ pub(super) async fn search_workspace_files(
     options: WorkspaceSearchOptions,
     ignored_paths: BTreeSet<String>,
     show_ignored: bool,
-) -> Result<Vec<WorkspaceSearchResult>, String> {
+) -> Result<WorkspaceSearchResults, String> {
+    #[cfg(not(feature = "desktop"))]
+    {
+        search_workspace_remote(workspace.id.0, query, options, ignored_paths, show_ignored)
+            .await
+            .map_err(server_error_message)
+    }
+    #[cfg(feature = "desktop")]
+    search_workspace_files_local(workspace, query, options, ignored_paths, show_ignored).await
+}
+
+#[post("/api/workspace-files/search")]
+async fn search_workspace_remote(
+    workspace_id: String,
+    query: String,
+    options: WorkspaceSearchOptions,
+    ignored_paths: BTreeSet<String>,
+    show_ignored: bool,
+) -> Result<WorkspaceSearchResults, ServerFnError> {
+    let workspace = crate::workspace::api::get_workspace(workspace_id).await?;
+    search_workspace_files_local(workspace, query, options, ignored_paths, show_ignored)
+        .await
+        .map_err(|message| ServerFnError::ServerError {
+            message,
+            code: 500,
+            details: None,
+        })
+}
+
+#[cfg(any(feature = "desktop", feature = "server"))]
+async fn search_workspace_files_local(
+    workspace: WorkspaceRecord,
+    query: String,
+    options: WorkspaceSearchOptions,
+    ignored_paths: BTreeSet<String>,
+    show_ignored: bool,
+) -> Result<WorkspaceSearchResults, String> {
     let mut directories = vec![RelativePath::root()];
     let mut files = Vec::new();
     while let Some(directory) = directories.pop() {
@@ -107,7 +161,8 @@ pub(super) async fn search_workspace_files(
                         workspace_client::read_text(workspace, entry.path.clone(), MAX_TEXT_BYTES)
                             .await
                     {
-                        content_result = content_matches(&file.content, &query, options);
+                        content_result =
+                            content_matches_async(file.content, query.clone(), options).await;
                     }
                 }
                 if name_score.is_none() && content_result.ranges.is_empty() {
@@ -138,9 +193,40 @@ pub(super) async fn search_workspace_files(
             .cmp(&right.score)
             .then_with(|| left.entry.path.as_str().cmp(right.entry.path.as_str()))
     });
-    Ok(results)
+    let truncated = results.len() > MAX_RESULT_FILES;
+    results.truncate(MAX_RESULT_FILES);
+    Ok(WorkspaceSearchResults {
+        items: results,
+        truncated,
+    })
 }
 
+fn server_error_message(error: ServerFnError) -> String {
+    match error {
+        ServerFnError::ServerError { message, .. } => message,
+        other => other.to_string(),
+    }
+}
+
+#[cfg(any(feature = "desktop", feature = "server"))]
+async fn content_matches_async(
+    source: String,
+    query: String,
+    options: WorkspaceSearchOptions,
+) -> ContentSearchResult {
+    #[cfg(any(feature = "desktop", feature = "server"))]
+    {
+        tokio::task::spawn_blocking(move || content_matches(&source, &query, options))
+            .await
+            .unwrap_or_default()
+    }
+    #[cfg(not(any(feature = "desktop", feature = "server")))]
+    {
+        content_matches(&source, &query, options)
+    }
+}
+
+#[cfg(any(feature = "desktop", feature = "server"))]
 fn is_ignored(path: &str, ignored_paths: &BTreeSet<String>) -> bool {
     ignored_paths.iter().any(|ignored| {
         path == ignored
@@ -150,6 +236,7 @@ fn is_ignored(path: &str, ignored_paths: &BTreeSet<String>) -> bool {
     })
 }
 
+#[cfg(any(feature = "desktop", feature = "server"))]
 fn match_score(candidate: &str, query: &str, options: WorkspaceSearchOptions) -> Option<usize> {
     if options.fuzzy {
         let ranges = fuzzy_ranges(candidate, query, options.case_sensitive)?;
@@ -161,6 +248,7 @@ fn match_score(candidate: &str, query: &str, options: WorkspaceSearchOptions) ->
     }
 }
 
+#[cfg(any(test, feature = "desktop", feature = "server"))]
 #[derive(Default)]
 struct ContentSearchResult {
     ranges: Vec<EditorRange>,
@@ -168,6 +256,7 @@ struct ContentSearchResult {
     match_count: usize,
 }
 
+#[cfg(any(test, feature = "desktop", feature = "server"))]
 fn content_matches(
     source: &str,
     query: &str,
@@ -176,19 +265,48 @@ fn content_matches(
     if options.fuzzy {
         fuzzy_content_matches(source, query, options.case_sensitive)
     } else {
-        let ranges = literal_ranges(source, query, options.case_sensitive);
-        let occurrences = ranges
-            .iter()
-            .map(|range| search_occurrence(source, *range))
-            .collect::<Vec<_>>();
-        ContentSearchResult {
-            match_count: ranges.len(),
-            ranges,
-            occurrences,
-        }
+        literal_content_matches(source, query, options.case_sensitive)
     }
 }
 
+#[cfg(any(test, feature = "desktop", feature = "server"))]
+fn literal_content_matches(source: &str, query: &str, case_sensitive: bool) -> ContentSearchResult {
+    if query.is_empty() {
+        return ContentSearchResult::default();
+    }
+    let Ok(expression) = regex::RegexBuilder::new(&regex::escape(query))
+        .case_insensitive(!case_sensitive)
+        .build()
+    else {
+        return ContentSearchResult::default();
+    };
+    let mut result = ContentSearchResult::default();
+    let mut offset = 0;
+    for (line_index, raw_line) in source.split_inclusive('\n').enumerate() {
+        let line = raw_line.trim_end_matches(['\r', '\n']);
+        for matched in expression.find_iter(line) {
+            result.match_count += 1;
+            let target = EditorRange {
+                start: offset + matched.start(),
+                end: offset + matched.end(),
+            };
+            if result.ranges.len() < MAX_HIGHLIGHT_RANGES_PER_FILE {
+                result.ranges.push(target);
+            }
+            if result.occurrences.len() < MAX_OCCURRENCES_PER_FILE {
+                result.occurrences.push(SearchOccurrence {
+                    line: line_index + 1,
+                    preview: line.trim().to_owned(),
+                    target,
+                });
+            }
+        }
+        offset += raw_line.len();
+    }
+    result
+}
+
+#[cfg(any(test, feature = "desktop", feature = "server"))]
 fn fuzzy_content_matches(source: &str, query: &str, case_sensitive: bool) -> ContentSearchResult {
     let mut result = ContentSearchResult::default();
     let mut offset = 0;
@@ -205,39 +323,27 @@ fn fuzzy_content_matches(source: &str, query: &str, case_sensitive: bool) -> Con
                     end: offset + range.end,
                 })
                 .collect::<Vec<_>>();
-            result.occurrences.push(SearchOccurrence {
-                line: line_index + 1,
-                preview: line.trim().to_owned(),
-                target: EditorRange {
-                    start: absolute_ranges.first().unwrap().start,
-                    end: absolute_ranges.last().unwrap().end,
-                },
-            });
-            result.ranges.extend(absolute_ranges);
+            if result.occurrences.len() < MAX_OCCURRENCES_PER_FILE {
+                result.occurrences.push(SearchOccurrence {
+                    line: line_index + 1,
+                    preview: line.trim().to_owned(),
+                    target: EditorRange {
+                        start: absolute_ranges.first().unwrap().start,
+                        end: absolute_ranges.last().unwrap().end,
+                    },
+                });
+            }
+            let remaining = MAX_HIGHLIGHT_RANGES_PER_FILE.saturating_sub(result.ranges.len());
+            result
+                .ranges
+                .extend(absolute_ranges.into_iter().take(remaining));
         }
         offset += raw_line.len();
     }
     result
 }
 
-fn search_occurrence(source: &str, target: EditorRange) -> SearchOccurrence {
-    let line_start = source[..target.start]
-        .rfind('\n')
-        .map_or(0, |index| index + 1);
-    let line_end = source[target.end..]
-        .find('\n')
-        .map_or(source.len(), |index| target.end + index);
-    SearchOccurrence {
-        line: source[..line_start]
-            .bytes()
-            .filter(|byte| *byte == b'\n')
-            .count()
-            + 1,
-        preview: source[line_start..line_end].trim().to_owned(),
-        target,
-    }
-}
-
+#[cfg(any(test, feature = "desktop", feature = "server"))]
 fn literal_ranges(source: &str, query: &str, case_sensitive: bool) -> Vec<EditorRange> {
     if query.is_empty() {
         return Vec::new();
@@ -257,6 +363,7 @@ fn literal_ranges(source: &str, query: &str, case_sensitive: bool) -> Vec<Editor
         .unwrap_or_default()
 }
 
+#[cfg(any(test, feature = "desktop", feature = "server"))]
 fn fuzzy_ranges(source: &str, query: &str, case_sensitive: bool) -> Option<Vec<EditorRange>> {
     let source_chars = source.char_indices().collect::<Vec<_>>();
     let query_chars = query.chars().collect::<Vec<_>>();
@@ -300,6 +407,7 @@ fn fuzzy_ranges(source: &str, query: &str, case_sensitive: bool) -> Option<Vec<E
     best
 }
 
+#[cfg(any(test, feature = "desktop", feature = "server"))]
 fn chars_match(candidate: char, wanted: char, case_sensitive: bool) -> bool {
     if case_sensitive {
         candidate == wanted
@@ -308,6 +416,7 @@ fn chars_match(candidate: char, wanted: char, case_sensitive: bool) -> bool {
     }
 }
 
+#[cfg(any(test, feature = "desktop", feature = "server"))]
 fn is_compact_content_match(source: &str, ranges: &[EditorRange]) -> bool {
     let Some((first, last)) = ranges.first().zip(ranges.last()) else {
         return false;
@@ -362,6 +471,22 @@ mod tests {
         );
         assert_eq!(result.match_count, 0);
         assert!(result.ranges.is_empty());
+    }
+
+    #[test]
+    fn content_results_keep_totals_while_bounding_render_payloads() {
+        let source = "match\n".repeat(1_200);
+        let result = content_matches(
+            &source,
+            "match",
+            WorkspaceSearchOptions {
+                fuzzy: false,
+                ..WorkspaceSearchOptions::default()
+            },
+        );
+        assert_eq!(result.match_count, 1_200);
+        assert_eq!(result.occurrences.len(), MAX_OCCURRENCES_PER_FILE);
+        assert_eq!(result.ranges.len(), MAX_HIGHLIGHT_RANGES_PER_FILE);
     }
 
     #[test]

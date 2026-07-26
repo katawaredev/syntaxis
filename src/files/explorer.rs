@@ -19,12 +19,13 @@ use super::{
 };
 use std::collections::{BTreeMap, BTreeSet};
 
-use dioxus::prelude::{use_resource, use_signal};
+use dioxus::prelude::{use_resource, use_signal, UseResourceState};
 use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
 use syntaxis_ui::prelude::{Icon, MenuContent, MenuTrigger};
 
 use super::search::{
     search_workspace_files, SearchScope, WorkspaceSearchOptions, WorkspaceSearchResult,
+    WorkspaceSearchResults,
 };
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -54,6 +55,9 @@ pub(super) fn Explorer(
 ) -> Element {
     let mut search_options = use_signal(WorkspaceSearchOptions::default);
     let mut search_menu = use_signal(|| false);
+    let mut search_request = use_signal(|| None::<(u64, String)>);
+    let mut search_revision = use_signal(|| 0_u64);
+    let mut visible_search_files = use_signal(|| 100_usize);
     let changes_by_path = git_status.map_or_else(BTreeMap::new, |status| {
         status
             .changes
@@ -73,22 +77,29 @@ pub(super) fn Explorer(
         show_ignored,
         filter_changes,
     );
-    let search_results = use_resource(move || {
-        let query = search();
+    let mut search_results = use_resource(move || {
+        let request = search_request();
         let options = search_options();
         let workspace = workspace.clone();
         let ignored_paths = ignored_paths.clone();
         async move {
-            if query.trim().is_empty() || view() != ExplorerView::Search {
-                return Ok(Vec::new());
+            let Some((_, query)) = request else {
+                return Ok(WorkspaceSearchResults::default());
+            };
+            if view() != ExplorerView::Search {
+                return Ok(WorkspaceSearchResults::default());
             }
-            dioxus_sdk_time::sleep(std::time::Duration::from_millis(180)).await;
             let Some(workspace) = workspace else {
-                return Ok(Vec::new());
+                return Ok(WorkspaceSearchResults::default());
             };
             search_workspace_files(workspace, query, options, ignored_paths, show_ignored).await
         }
     });
+    let active_search_query = search_request().map(|(_, query)| query);
+    let search_pending = active_view == ExplorerView::Search
+        && active_search_query.is_some()
+        && search_results.state() == UseResourceState::Pending;
+    let search_query_changed = active_search_query.as_deref() != Some(search_query.trim());
     rsx! {
         div { class: "flex h-full min-h-0 flex-col",
             div { class: "grid h-12 min-h-12 grid-cols-2 items-center gap-1 border-b border-border p-1.25",
@@ -161,14 +172,44 @@ pub(super) fn Explorer(
             }
             if active_view == ExplorerView::Search {
                 div { class: "flex items-center gap-1 border-b border-border p-1.75",
-                    div { class: "min-w-0 flex-1",
+                    form {
+                        class: "relative min-w-0 flex-1",
+                        "aria-busy": search_pending,
+                        onsubmit: move |event: FormEvent| {
+                            event.prevent_default();
+                            if search_pending {
+                                search_results.cancel();
+                                search_results.clear();
+                                search_request.set(None);
+                            } else {
+                                let query = search.peek().trim().to_owned();
+                                if !query.is_empty() {
+                                    visible_search_files.set(100);
+                                    *search_revision.write() += 1;
+                                    search_request.set(Some((search_revision(), query)));
+                                }
+                            }
+                        },
                         TextInput {
                             size: ControlSize::Small,
                             input_type: TextInputType::Search,
+                            class: "pr-8",
                             value: search(),
                             placeholder: "Search workspace…",
                             aria_label: "Search workspace",
                             oninput: move |event: FormEvent| search.set(event.value()),
+                        }
+                        button {
+                            class: "absolute top-1/2 right-1 grid size-6 -translate-y-1/2 place-items-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+                            r#type: "submit",
+                            disabled: !search_pending && search_query.trim().is_empty(),
+                            aria_label: if search_pending { "Cancel workspace search" } else { "Search workspace" },
+                            title: if search_pending { "Cancel search" } else { "Search workspace" },
+                            if search_pending {
+                                Icon { icon: AppIcon::Close, size: 13 }
+                            } else {
+                                Icon { icon: AppIcon::Search, size: 13 }
+                            }
                         }
                     }
                     DropdownMenu {
@@ -228,9 +269,23 @@ pub(super) fn Explorer(
                 role: "tree",
                 "aria-label": "Workspace files",
                 if active_view == ExplorerView::Search {
-                    if search_query.trim().is_empty() {
+                    if search_pending {
+                        div {
+                            class: "flex items-center gap-2 p-3 text-xs text-muted-foreground",
+                            role: "status",
+                            span {
+                                class: "size-3.5 shrink-0 animate-spin rounded-full border-2 border-current/30 border-t-primary",
+                                aria_hidden: "true",
+                            }
+                            "Searching…"
+                        }
+                    } else if search_query.trim().is_empty() {
                         div { class: "p-3 text-xs text-muted-foreground",
-                            "Type to search file names and contents."
+                            "Type a query, then press Enter or tap Search."
+                        }
+                    } else if search_query_changed {
+                        div { class: "p-3 text-xs text-muted-foreground",
+                            "Press Enter or tap Search to begin."
                         }
                     } else {
                         match search_results() {
@@ -240,33 +295,56 @@ pub(super) fn Explorer(
                             Some(Err(message)) => rsx! {
                                 div { class: "p-3 text-xs text-destructive", "Search failed: {message}" }
                             },
-                            Some(Ok(results)) if results.is_empty() => rsx! {
+                            Some(Ok(results)) if results.items.is_empty() => rsx! {
                                 div { class: "p-3 text-xs text-muted-foreground", "No files match." }
                             },
-                            Some(Ok(results)) => rsx! {
-                                for node in search_result_nodes(results) {
-                                    match node {
-                                        SearchResultNode::Directory { path, name, depth } => rsx! {
-                                            div {
-                                                key: "search-directory-{path}",
-                                                class: "flex h-7.25 items-center gap-1.5 rounded-sm pr-1.5 text-xs text-foreground/90",
-                                                style: "padding-left: {6 + depth * 14}px",
-                                                span { class: "w-2.25 shrink-0 text-[9px] text-muted-foreground", "▾" }
-                                                FileIcon {
-                                                    path,
-                                                    directory: true,
-                                                    expanded: true,
-                                                    size: 15,
+                            Some(Ok(results)) => {
+                                let total = results.items.len();
+                                let shown = visible_search_files().min(total);
+                                let nodes = search_result_nodes(
+                                    results.items.into_iter().take(shown).collect(),
+                                );
+                                rsx! {
+                                    for node in nodes {
+                                        match node {
+                                            SearchResultNode::Directory { path, name, depth } => rsx! {
+                                                div {
+                                                    key: "search-directory-{path}",
+                                                    class: "flex h-7.25 items-center gap-1.5 rounded-sm pr-1.5 text-xs text-foreground/90",
+                                                    style: "padding-left: {6 + depth * 14}px",
+                                                    span { class: "w-2.25 shrink-0 text-[9px] text-muted-foreground", "▾" }
+                                                    FileIcon {
+                                                        path,
+                                                        directory: true,
+                                                        expanded: true,
+                                                        size: 15,
+                                                    }
+                                                    span { class: "truncate", "{name}" }
                                                 }
-                                                span { class: "truncate", "{name}" }
+                                            },
+                                            SearchResultNode::File { result, depth } => {
+                                                render_search_result(&result, depth, selected_entry, on_search_open)
                                             }
-                                        },
-                                        SearchResultNode::File { result, depth } => {
-                                            render_search_result(&result, depth, selected_entry, on_search_open)
+                                        }
+                                    }
+                                    if shown < total {
+                                        button {
+                                            class: "my-1 flex h-8 w-full items-center justify-center rounded-md text-xs text-primary hover:bg-accent",
+                                            r#type: "button",
+                                            onclick: move |_| {
+                                                visible_search_files
+                                                    .with_mut(|limit| *limit += 100);
+                                            },
+                                            "Show 100 more ({shown} of {total} files)"
+                                        }
+                                    }
+                                    if results.truncated {
+                                        div { class: "p-2 text-center text-[10px] text-muted-foreground",
+                                            "Results limited to the first {total} matching files. Refine the query to see others."
                                         }
                                     }
                                 }
-                            },
+                            }
                         }
                     }
                 } else if nodes.is_empty() {

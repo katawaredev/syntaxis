@@ -110,16 +110,16 @@ install-js:
 build-terminal: install-js
     bun run build:terminal
 
-# Generate Rust completion dictionaries when their generator or packages changed.
-build-completions: install-js
-    bun run generate:completions
+# Build the CodeMirror editor bundle when its sources or pinned packages changed.
+build-editor: install-js
+    bun run build:editor
 
 # Generate Pi settings metadata from the pinned coding-agent package.
 build-pi-settings: install-js
     bun run generate:pi-settings
 
 # Build all npm-backed application assets. Each generator has its own cache key.
-build-assets: build-terminal build-completions build-pi-settings
+build-assets: build-editor build-terminal build-pi-settings
 
 # -----------------------------------------------------------------------------
 # Environment inspection
@@ -299,7 +299,7 @@ lighthouse-open:
     bun run lighthouse:open
 
 # Run Dioxus checks.
-dx-check:
+dx-check: build-editor
     dx check
 
 # Format Rust and RSX source.
@@ -349,7 +349,7 @@ dx *args:
 # -----------------------------------------------------------------------------
 
 # Run the project's strict Clippy configuration with warnings treated as errors.
-clippy platform=default_platform:
+clippy platform=default_platform: build-editor
     cargo clippy \
         --workspace \
         --all-targets \
@@ -361,7 +361,7 @@ clippy platform=default_platform:
 lint platform=default_platform: (clippy platform)
 
 # Run tests using cargo-nextest.
-test filter="":
+test filter="": build-editor
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -379,11 +379,11 @@ test filter="":
     cargo "${args[@]}"
 
 # Run standard Cargo tests, including doctests.
-test-cargo:
+test-cargo: build-editor
     cargo test --workspace
 
 # Run doctests, which cargo-nextest does not replace.
-test-doc:
+test-doc: build-editor
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -452,12 +452,12 @@ ci platform=default_platform: format-check dx-check (lint platform) test test-do
     @echo "All quality gates passed."
 
 # Auto-fix code-quality issues, then run code validation and doctests.
-qa platform=default_platform: (fix platform) test-doc
+qa platform=default_platform: build-editor (fix platform) test-doc
     @echo
     @echo "All code quality gates passed."
 
 # Verify formatting and linting without modifying files (for git pre-commit).
-pre-commit platform=default_platform:
+pre-commit platform=default_platform: build-editor
     cargo fmt --all -- --check
     dx fmt --check
     cargo clippy \
@@ -469,7 +469,7 @@ pre-commit platform=default_platform:
     dx check
 
 # Apply formatting, then perform the fast validation workflow.
-fix platform=default_platform:
+fix platform=default_platform: build-editor
     cargo fmt --all
     dx fmt
     cargo clippy \

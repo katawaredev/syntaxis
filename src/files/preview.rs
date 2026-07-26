@@ -6,7 +6,6 @@ use super::*;
 use pulldown_cmark::{html, CowStr, Event, Options, Parser, Tag};
 
 const MARKDOWN_PREVIEW_CSS: Asset = asset!("/assets/files/markdown-preview.css");
-const DIFF_TITLEBAR_CLASS: &str = "sticky top-0 z-10 flex min-h-14 min-w-165 items-center justify-between gap-3 border-b border-border bg-background/95 p-3 font-sans backdrop-blur-sm max-md:min-h-13 max-md:px-2.5 max-md:py-2";
 const CHECKERBOARD_STYLE: &str = "background-image: linear-gradient(45deg,#aaa 25%,transparent 25%),linear-gradient(-45deg,#aaa 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#aaa 75%),linear-gradient(-45deg,transparent 75%,#aaa 75%); background-size: 20px 20px; background-position: 0 0,0 10px,10px -10px,-10px 0";
 const MAX_CSV_PREVIEW_ROWS: usize = 500;
 const MAX_CSV_PREVIEW_COLUMNS: usize = 100;
@@ -77,30 +76,6 @@ pub(super) fn EmptyEditor(loading: Option<String>) -> Element {
                     "Reading the remote workspace."
                 } else {
                     "Choose a file from the explorer to open it."
-                }
-            }
-        }
-    }
-}
-
-#[component]
-pub(super) fn DiffEditor(diff: UnifiedDiff, current: String) -> Element {
-    rsx! {
-        div { class: "grid min-h-full grid-cols-2 max-lg:grid-cols-1",
-            section { class: "min-w-0 border-r border-border max-lg:border-r-0 max-lg:border-b",
-                header { class: DIFF_TITLEBAR_CLASS, "Git working tree diff" }
-                pre { class: "overflow-auto p-4 text-[11px] leading-5 whitespace-pre",
-                    for line in diff.patch.lines() {
-                        div { class: if line.starts_with('+') && !line.starts_with("+++") { "text-success bg-success/8" } else if line.starts_with('-') && !line.starts_with("---") { "text-destructive bg-destructive/8" } else { "text-muted-foreground" },
-                            "{line}"
-                        }
-                    }
-                }
-            }
-            section { class: "min-w-0",
-                header { class: DIFF_TITLEBAR_CLASS, "Current buffer" }
-                pre { class: "overflow-auto p-4 text-[11px] leading-5 whitespace-pre",
-                    "{current}"
                 }
             }
         }

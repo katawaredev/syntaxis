@@ -1,18 +1,29 @@
 //! Syntaxis-maintained fork of `dioxus-code-editor`.
 //!
-//! The upstream controlled textarea/highlighter is retained while this fork adds
-//! imperative commands, selection reporting, wrapping, indentation, paired
-//! delimiters, and textarea-backed multiple-selection editing.
+//! Editable documents and editor diff mode are backed by a bundled `CodeMirror` 6
+//! view with imperative commands and typed Dioxus events. Arborium/tree-sitter
+//! remains available for the Git page's read-only unified diff renderer.
 
-use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::BTreeSet,
+    rc::Rc,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 use dioxus::prelude::*;
-use dioxus_code::advanced::{Buffer, CodeThemeStyles, HighlightSegment, SourceEdit, TokenSpan};
+use dioxus_code::advanced::{Buffer, CodeThemeStyles, TokenSpan};
 use dioxus_code::{CodeTheme, Language, Theme};
 use serde::{Deserialize, Serialize};
 use similar::{ChangeTag, TextDiff};
 
 pub const CODE_EDITOR_CSS: Asset = asset!("/assets/dioxus-code-editor.css");
+#[expect(
+    clippy::large_include_file,
+    reason = "the generated CodeMirror bundle must execute inside Dioxus' eval channel"
+)]
+const EDITOR_BRIDGE: &str = include_str!("../assets/editor.bundle.js");
+static EDITOR_ID_NEXT: AtomicU64 = AtomicU64::new(0);
 
 /// The syntax theme shared by editable and diff surfaces.
 pub fn shared_code_theme() -> CodeTheme {
@@ -44,6 +55,31 @@ pub struct EditorSelection {
     pub ranges: Vec<EditorRange>,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct EditorSearchQuery {
+    pub query: String,
+    pub case_sensitive: bool,
+    pub whole_word: bool,
+    pub regex: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+pub struct EditorSearchStatus {
+    pub count: usize,
+    pub current: Option<usize>,
+    pub valid: bool,
+}
+
+impl Default for EditorSearchStatus {
+    fn default() -> Self {
+        Self {
+            count: 0,
+            current: None,
+            valid: true,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum EditorCommandKind {
@@ -61,6 +97,8 @@ pub enum EditorCommandKind {
         start: usize,
         end: usize,
     },
+    SearchNext,
+    SearchPrevious,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -80,6 +118,10 @@ pub struct CodeEditorProps {
     pub value: String,
     #[props(default = Language::Rust)]
     pub language: Language,
+    #[props(into, default)]
+    pub language_name: String,
+    #[props(into, default)]
+    pub filename: String,
     #[props(default = shared_code_theme(), into)]
     pub theme: CodeTheme,
     #[props(default = true)]
@@ -96,6 +138,8 @@ pub struct CodeEditorProps {
     pub read_only: bool,
     #[props(default = false)]
     pub spellcheck: bool,
+    #[props(default = false)]
+    pub autocomplete: bool,
     #[props(into, default = "Code editor")]
     pub aria_label: String,
     #[props(into, default)]
@@ -112,6 +156,8 @@ pub struct CodeEditorProps {
     pub search_matches: Vec<EditorRange>,
     #[props(default)]
     pub active_search_match: Option<usize>,
+    #[props(default)]
+    pub search_query: Option<EditorSearchQuery>,
     /// Original contents used to render an inline unified diff. Diff mode is read-only.
     #[props(default)]
     pub diff_original: Option<String>,
@@ -119,89 +165,198 @@ pub struct CodeEditorProps {
     pub oninput: EventHandler<String>,
     #[props(default = EventHandler::new(|_: EditorSelection| {}))]
     pub onselection: EventHandler<EditorSelection>,
+    #[props(default = EventHandler::new(|_: EditorSearchStatus| {}))]
+    pub onsearch: EventHandler<EditorSearchStatus>,
     #[props(default = EventHandler::new(|_: KeyboardEvent| {}))]
     pub onkeydown: EventHandler<KeyboardEvent>,
 }
 
-struct EditorBuffer {
-    buffer: Option<Buffer>,
-    language: Language,
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "independent editor compartments have independent boolean settings"
+)]
+struct EditorConfiguration {
+    id: String,
     value: String,
+    language: String,
+    filename: String,
+    line_numbers: bool,
+    word_wrap: bool,
+    tab_width: usize,
+    indent_width: usize,
+    indent_with_tabs: bool,
+    read_only: bool,
+    spellcheck: bool,
+    autocomplete: bool,
+    diff_original: Option<String>,
+    aria_label: String,
+    placeholder: String,
+    search_matches: Vec<EditorRange>,
+    active_search_match: Option<usize>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum EditorBridgeCommand {
+    Configure {
+        config: EditorConfiguration,
+    },
+    ConfigureSearch {
+        query: Option<EditorSearchQuery>,
+    },
+    Focus,
+    GoToLine {
+        line: usize,
+    },
+    Select {
+        start: usize,
+        end: usize,
+    },
+    Replace {
+        value: String,
+        start: usize,
+        end: usize,
+    },
+    SearchNext,
+    SearchPrevious,
+    Destroy,
+}
+
+impl From<EditorCommandKind> for EditorBridgeCommand {
+    fn from(command: EditorCommandKind) -> Self {
+        match command {
+            EditorCommandKind::Focus => Self::Focus,
+            EditorCommandKind::GoToLine { line } => Self::GoToLine { line },
+            EditorCommandKind::Select { start, end } => Self::Select { start, end },
+            EditorCommandKind::Replace { value, start, end } => Self::Replace { value, start, end },
+            EditorCommandKind::SearchNext => Self::SearchNext,
+            EditorCommandKind::SearchPrevious => Self::SearchPrevious,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum EditorBridgeEvent {
+    Input {
+        value: String,
+    },
+    Selection {
+        start: usize,
+        end: usize,
+        line: usize,
+        column: usize,
+        selection_count: usize,
+        ranges: Vec<EditorRange>,
+    },
+    Search {
+        count: usize,
+        current: Option<usize>,
+        valid: bool,
+    },
 }
 
 #[component]
 pub fn CodeEditor(props: CodeEditorProps) -> Element {
+    rsx! {
+        InteractiveCodeEditor { editor_props: props }
+    }
+}
+
+#[component]
+fn InteractiveCodeEditor(editor_props: CodeEditorProps) -> Element {
+    let props = editor_props;
+    let generated_id = use_hook(|| {
+        format!(
+            "dxc-editor-{}",
+            EDITOR_ID_NEXT.fetch_add(1, Ordering::Relaxed)
+        )
+    });
     let editor_id = if props.id.is_empty() {
-        format!("dxc-editor-{}", use_hook(|| 1_u64))
+        generated_id
     } else {
         props.id.clone()
     };
-    let state = use_hook({
-        let value = props.value.clone();
-        let language = props.language;
-        move || {
-            Rc::new(RefCell::new(EditorBuffer {
-                buffer: Buffer::new(language, value.clone()).ok(),
-                language,
-                value,
-            }))
-        }
-    });
-    {
-        let mut state = state.borrow_mut();
-        if state.language != props.language {
-            state.buffer = Buffer::new(props.language, props.value.clone()).ok();
-            state.language = props.language;
-            state.value.clone_from(&props.value);
-        } else if state.value != props.value {
-            let edit = source_edit_from_diff(&state.value, &props.value);
-            let updated = state.buffer.as_mut().is_some_and(|buffer| {
-                edit.is_some_and(|edit| buffer.edit(edit, props.value.clone()).is_ok())
-            });
-            if !updated {
-                state.buffer = Buffer::new(props.language, props.value.clone()).ok();
-            }
-            state.value.clone_from(&props.value);
-        }
-    }
+    let configuration = EditorConfiguration {
+        id: editor_id.clone(),
+        value: props.value.clone(),
+        language: if props.language_name.is_empty() {
+            props.language.slug().to_owned()
+        } else {
+            props.language_name.clone()
+        },
+        filename: props.filename.clone(),
+        line_numbers: props.line_numbers,
+        word_wrap: props.word_wrap,
+        tab_width: props.tab_width,
+        indent_width: props.indent_width,
+        indent_with_tabs: props.indent_with_tabs,
+        read_only: props.read_only,
+        spellcheck: props.spellcheck,
+        autocomplete: props.autocomplete,
+        diff_original: props.diff_original.clone(),
+        aria_label: props.aria_label.clone(),
+        placeholder: props.placeholder.clone(),
+        search_matches: props.search_matches.clone(),
+        active_search_match: props.active_search_match,
+    };
+    let search_configuration = props.search_query.clone();
     let mut event_bridge = use_signal(|| None::<dioxus::document::Eval>);
-    let mut multi_selections = use_signal(Vec::<EditorRange>::new);
-    let diff_mode = props.diff_original.is_some();
+    let last_configuration = use_hook(|| Rc::new(RefCell::new(None::<EditorConfiguration>)));
+    let last_search_configuration =
+        use_hook(|| Rc::new(RefCell::new(None::<Option<EditorSearchQuery>>)));
 
     use_effect({
-        let editor_id = editor_id.clone();
-        let indent = if props.indent_with_tabs {
-            "\t".to_owned()
-        } else {
-            " ".repeat(props.indent_width.max(1))
-        };
+        let configuration = configuration.clone();
+        let last_configuration = Rc::clone(&last_configuration);
         move || {
-            if diff_mode {
-                return;
-            }
             let mut events = document::eval(EDITOR_BRIDGE);
-            drop(events.send((editor_id.clone(), indent.clone())));
+            drop(events.send(configuration.clone()));
+            *last_configuration.borrow_mut() = Some(configuration.clone());
             event_bridge.set(Some(events));
             spawn(async move {
-                while let Ok(selection) = events.recv::<EditorSelection>().await {
-                    multi_selections.set(selection.ranges.clone());
-                    props.onselection.call(selection);
+                while let Ok(event) = events.recv::<EditorBridgeEvent>().await {
+                    match event {
+                        EditorBridgeEvent::Input { value } => props.oninput.call(value),
+                        EditorBridgeEvent::Selection {
+                            start,
+                            end,
+                            line,
+                            column,
+                            selection_count,
+                            ranges,
+                        } => props.onselection.call(EditorSelection {
+                            start,
+                            end,
+                            line,
+                            column,
+                            selection_count,
+                            ranges,
+                        }),
+                        EditorBridgeEvent::Search {
+                            count,
+                            current,
+                            valid,
+                        } => props.onsearch.call(EditorSearchStatus {
+                            count,
+                            current,
+                            valid,
+                        }),
+                    }
                 }
             });
         }
     });
     use_drop(move || {
         if let Some(events) = event_bridge() {
-            drop(events.send(true));
+            drop(events.send(EditorBridgeCommand::Destroy));
         }
         if let Some(mut command) = props.command {
             command.set(None);
         }
     });
     use_effect(move || {
-        if diff_mode {
-            return;
-        }
         let Some(mut command_signal) = props.command else {
             return;
         };
@@ -211,111 +366,54 @@ pub fn CodeEditor(props: CodeEditorProps) -> Element {
         let Some(events) = event_bridge() else {
             return;
         };
-        if events.send(command).is_ok() {
+        if events.send(EditorBridgeCommand::from(command.kind)).is_ok() {
             command_signal.set(None);
         }
     });
 
+    if last_configuration.borrow().as_ref() != Some(&configuration) {
+        if let Some(events) = event_bridge() {
+            if events
+                .send(EditorBridgeCommand::Configure {
+                    config: configuration.clone(),
+                })
+                .is_ok()
+            {
+                *last_configuration.borrow_mut() = Some(configuration);
+            }
+        }
+    }
+    if last_search_configuration.borrow().as_ref() != Some(&search_configuration) {
+        if let Some(events) = event_bridge() {
+            if events
+                .send(EditorBridgeCommand::ConfigureSearch {
+                    query: search_configuration.clone(),
+                })
+                .is_ok()
+            {
+                *last_search_configuration.borrow_mut() = Some(search_configuration);
+            }
+        }
+    }
     let class = editor_class(
         props.theme,
         props.line_numbers,
         props.word_wrap,
         &props.class,
     );
-    let readonly = props.read_only.then_some("true");
-    // Render directly from the incremental buffer. `Buffer::highlighted()`
-    // creates a full source-and-span snapshot, which is unnecessary while the
-    // component already owns the buffer for this render.
-    let render_state = state.borrow();
-    let lines = render_state.buffer.as_ref().map_or_else(
-        || {
-            props
-                .value
-                .split('\n')
-                .map(|line| vec![HighlightSegment::new(line, None)])
-                .collect()
-        },
-        Buffer::lines,
-    );
-    let line_count = lines.len();
-    let search_lines = overlay_lines(&props.value, &props.search_matches);
-    let multi_selection_lines = overlay_lines(&props.value, &multi_selections());
-    if let Some(original) = props.diff_original.as_deref() {
-        return rsx! {
-            UnifiedDiffView {
-                original: original.to_owned(),
-                current: props.value.clone(),
-                language: props.language,
-                theme: props.theme,
-                line_numbers: props.line_numbers,
-                word_wrap: props.word_wrap,
-                tab_width: props.tab_width,
-                class: props.class.clone(),
-            }
-        };
-    }
+    let diff_class = if props.diff_original.is_some() {
+        "dxc-codemirror-diff"
+    } else {
+        Default::default()
+    };
     rsx! {
         CodeThemeStyles { theme: props.theme }
         document::Stylesheet { href: CODE_EDITOR_CSS }
         div {
-            class,
+            id: editor_id,
+            class: "{class} dxc-codemirror {diff_class}",
             style: "--dxc-editor-tab-width: {props.tab_width.max(1)}",
-            if props.line_numbers {
-                div { class: "dxc-editor-gutter", aria_hidden: "true",
-                    for index in 0..line_count {
-                        div { class: "dxc-editor-gutter-line", "{index + 1}" }
-                    }
-                }
-            }
-            div { class: "dxc-editor-viewport",
-                div { class: "dxc-editor-highlight", aria_hidden: "true",
-                    for line in lines {
-                        div { class: "dxc-editor-line",
-                            for segment in line {
-                                if let Some(tag) = segment.tag() {
-                                    TokenSpan { text: segment.text(), tag }
-                                } else {
-                                    span { "{segment.text()}" }
-                                }
-                            }
-                        }
-                    }
-                }
-                if !props.search_matches.is_empty() {
-                    RangeOverlay {
-                        class: "dxc-editor-search-highlights",
-                        lines: search_lines,
-                        range_class: "dxc-editor-search-match",
-                        active_range: props.active_search_match,
-                    }
-                }
-                if multi_selections.read().len() > 1 {
-                    RangeOverlay {
-                        class: "dxc-editor-multi-selections",
-                        lines: multi_selection_lines,
-                        range_class: "dxc-editor-multi-selection",
-                        active_range: multi_selections.read().len().checked_sub(1),
-                    }
-                }
-                textarea {
-                    id: editor_id,
-                    class: "dxc-editor-input",
-                    value: props.value,
-                    readonly: props.read_only,
-                    spellcheck: props.spellcheck,
-                    autocomplete: "off",
-                    autocapitalize: "off",
-                    autocorrect: "off",
-                    role: "textbox",
-                    "aria-label": props.aria_label,
-                    "aria-multiline": "true",
-                    "aria-readonly": readonly,
-                    placeholder: props.placeholder,
-                    wrap: if props.word_wrap { "soft" } else { "off" },
-                    onkeydown: move |event| props.onkeydown.call(event),
-                    oninput: move |event| props.oninput.call(event.value()),
-                }
-            }
+            onkeydown: move |event| props.onkeydown.call(event),
         }
     }
 }
@@ -617,130 +715,6 @@ fn collapse_unchanged_lines(lines: &[DiffLine]) -> Vec<DiffRow> {
     rows
 }
 
-#[derive(Clone, Debug, PartialEq)]
-struct OverlaySegment {
-    text: String,
-    range_index: Option<usize>,
-    is_caret: bool,
-}
-
-fn overlay_lines(source: &str, ranges: &[EditorRange]) -> Vec<Vec<OverlaySegment>> {
-    let mut ranges = ranges
-        .iter()
-        .copied()
-        .enumerate()
-        .filter(|(_, range)| {
-            range.start <= range.end
-                && range.end <= source.len()
-                && source.is_char_boundary(range.start)
-                && source.is_char_boundary(range.end)
-        })
-        .collect::<Vec<_>>();
-    ranges.sort_by_key(|(_, range)| range.start);
-
-    let mut line_start = 0;
-    source
-        .split('\n')
-        .map(|line| {
-            let line_end = line_start + line.len();
-            let mut cursor = 0;
-            let mut segments = Vec::new();
-            for (index, range) in ranges.iter().copied() {
-                if range.start == range.end {
-                    if range.start < line_start || range.start > line_end {
-                        continue;
-                    }
-                    let caret = range.start - line_start;
-                    if cursor < caret {
-                        segments.push(OverlaySegment {
-                            text: line
-                                .get(cursor..caret)
-                                .expect("validated source offsets stay on UTF-8 boundaries")
-                                .to_owned(),
-                            range_index: None,
-                            is_caret: false,
-                        });
-                    }
-                    segments.push(OverlaySegment {
-                        text: String::new(),
-                        range_index: Some(index),
-                        is_caret: true,
-                    });
-                    cursor = cursor.max(caret);
-                    continue;
-                }
-                if range.end <= line_start || range.start >= line_end {
-                    continue;
-                }
-                let start = range.start.saturating_sub(line_start).max(cursor);
-                let end = range.end.saturating_sub(line_start).min(line.len());
-                if start >= end {
-                    continue;
-                }
-                if cursor < start {
-                    segments.push(OverlaySegment {
-                        text: line
-                            .get(cursor..start)
-                            .expect("validated source offsets stay on UTF-8 boundaries")
-                            .to_owned(),
-                        range_index: None,
-                        is_caret: false,
-                    });
-                }
-                segments.push(OverlaySegment {
-                    text: line
-                        .get(start..end)
-                        .expect("validated source offsets stay on UTF-8 boundaries")
-                        .to_owned(),
-                    range_index: Some(index),
-                    is_caret: false,
-                });
-                cursor = end;
-            }
-            if cursor < line.len() {
-                segments.push(OverlaySegment {
-                    text: line
-                        .get(cursor..)
-                        .expect("validated source offsets stay on UTF-8 boundaries")
-                        .to_owned(),
-                    range_index: None,
-                    is_caret: false,
-                });
-            }
-            line_start = line_end + 1;
-            segments
-        })
-        .collect()
-}
-
-#[component]
-fn RangeOverlay(
-    class: String,
-    lines: Vec<Vec<OverlaySegment>>,
-    range_class: String,
-    active_range: Option<usize>,
-) -> Element {
-    rsx! {
-        div { class: "dxc-editor-range-overlay {class}", aria_hidden: "true",
-            for line in lines {
-                div { class: "dxc-editor-line",
-                    for segment in line {
-                        if let Some(index) = segment.range_index {
-                            mark {
-                                class: if active_range == Some(index) { "{range_class} dxc-editor-range-active" } else { "{range_class}" },
-                                "data-caret": segment.is_caret.then_some("true"),
-                                "{segment.text}"
-                            }
-                        } else {
-                            span { "{segment.text}" }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 fn editor_class(theme: CodeTheme, line_numbers: bool, word_wrap: bool, extra: &str) -> String {
     let mut class = format!("dxc-editor {}", theme.classes());
     if !line_numbers {
@@ -756,56 +730,11 @@ fn editor_class(theme: CodeTheme, line_numbers: bool, word_wrap: bool, extra: &s
     class
 }
 
-fn source_edit_from_diff(old: &str, new: &str) -> Option<SourceEdit> {
-    if old == new {
-        return None;
-    }
-    let mut start = old
-        .bytes()
-        .zip(new.bytes())
-        .take_while(|(left, right)| left == right)
-        .count();
-    while start > 0 && (!old.is_char_boundary(start) || !new.is_char_boundary(start)) {
-        start -= 1;
-    }
-    let mut old_end = old.len();
-    let mut new_end = new.len();
-    while old_end > start
-        && new_end > start
-        && old.as_bytes().get(old_end - 1) == new.as_bytes().get(new_end - 1)
-    {
-        old_end -= 1;
-        new_end -= 1;
-    }
-    while old_end < old.len() && !old.is_char_boundary(old_end) {
-        old_end += 1;
-    }
-    while new_end < new.len() && !new.is_char_boundary(new_end) {
-        new_end += 1;
-    }
-    Some(SourceEdit {
-        start_byte: start,
-        old_end_byte: old_end,
-        new_end_byte: new_end,
-    })
-}
-
-const EDITOR_BRIDGE: &str = include_str!("../assets/editor-bridge.js");
-
 #[cfg(test)]
 mod tests {
     use std::fmt::Write as _;
 
     use super::*;
-
-    #[test]
-    fn source_diff_stays_on_utf8_boundaries() {
-        let edit =
-            source_edit_from_diff("aéz", "aèz").expect("different strings should produce an edit");
-        assert_eq!(edit.start_byte, 1);
-        assert_eq!(edit.old_end_byte, 3);
-        assert_eq!(edit.new_end_byte, 3);
-    }
 
     #[test]
     fn replacement_command_has_a_stable_browser_contract() {
@@ -824,64 +753,6 @@ mod tests {
         assert_eq!(serialized["value"], "new value");
         assert_eq!(serialized["start"], 3);
         assert_eq!(serialized["end"], 6);
-    }
-
-    #[test]
-    fn overlay_lines_preserve_text_and_mark_every_range() {
-        let source = "root value\nroot";
-        let lines = overlay_lines(
-            source,
-            &[
-                EditorRange { start: 0, end: 4 },
-                EditorRange { start: 11, end: 15 },
-            ],
-        );
-
-        assert_eq!(lines.len(), 2);
-        assert_eq!(lines[0][0].range_index, Some(0));
-        assert_eq!(lines[0][0].text, "root");
-        assert_eq!(lines[1][0].range_index, Some(1));
-        assert_eq!(lines[1][0].text, "root");
-    }
-
-    #[test]
-    fn overlay_lines_accept_utf8_byte_ranges() {
-        let lines = overlay_lines("é root", &[EditorRange { start: 3, end: 7 }]);
-
-        assert_eq!(lines[0][1].text, "root");
-        assert_eq!(lines[0][1].range_index, Some(0));
-    }
-
-    #[test]
-    fn overlay_lines_preserve_collapsed_carets() {
-        let lines = overlay_lines(
-            "root\nvalue",
-            &[
-                EditorRange { start: 2, end: 2 },
-                EditorRange { start: 10, end: 10 },
-            ],
-        );
-
-        assert_eq!(lines[0][1].range_index, Some(0));
-        assert!(lines[0][1].is_caret);
-        assert_eq!(lines[1][1].range_index, Some(1));
-        assert!(lines[1][1].is_caret);
-    }
-
-    #[test]
-    fn incremental_edit_handles_a_bounded_large_buffer() {
-        let original = "fn value() -> usize { 42 }\n".repeat(18_000);
-        let updated = format!("{original}// edited\n");
-        let mut buffer =
-            Buffer::new(Language::Rust, original.clone()).expect("Rust buffer should initialize");
-        let edit = source_edit_from_diff(&original, &updated)
-            .expect("different buffers should produce an edit");
-
-        buffer
-            .edit(edit, updated)
-            .expect("bounded incremental edit should apply");
-
-        assert!(buffer.highlighted().lines().len() > 18_000);
     }
 
     #[test]

@@ -178,6 +178,111 @@
         color-mix(in oklch, var(--primary) 38%, transparent);
 }
 
+.dxc-editor.dxc-codemirror {
+    display: block;
+    height: 100%;
+    overflow: hidden;
+}
+.dxc-codemirror > .cm-editor {
+    min-width: 0;
+}
+.dxc-codemirror .dxc-cm-search-match {
+    border-radius: 2px;
+    background: color-mix(in oklch, var(--warning) 32%, transparent);
+    box-shadow: inset 0 0 0 1px
+        color-mix(in oklch, var(--warning) 58%, transparent);
+}
+.dxc-codemirror .dxc-cm-search-active {
+    background: color-mix(in oklch, var(--primary) 42%, transparent);
+    box-shadow: inset 0 0 0 1px
+        color-mix(in oklch, var(--primary) 72%, transparent);
+}
+.dxc-codemirror .cm-searchMatch {
+    border-radius: 2px;
+    background: color-mix(in oklch, var(--warning) 32%, transparent);
+    box-shadow: inset 0 0 0 1px
+        color-mix(in oklch, var(--warning) 58%, transparent);
+}
+.dxc-codemirror .cm-searchMatch-selected {
+    background: color-mix(in oklch, var(--primary) 42%, transparent);
+    box-shadow: inset 0 0 0 1px
+        color-mix(in oklch, var(--primary) 72%, transparent);
+}
+.dxc-codemirror .cm-tooltip-autocomplete {
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--popover);
+    color: var(--popover-foreground);
+    box-shadow: 0 12px 32px color-mix(in oklch, black 30%, transparent);
+}
+.dxc-codemirror .cm-tooltip-autocomplete > ul {
+    max-height: min(320px, 45dvh);
+    font-family: var(--dxc-editor-font-family);
+}
+.dxc-codemirror .cm-tooltip-autocomplete > ul > li {
+    min-height: 28px;
+    padding: 5px 8px;
+}
+.dxc-codemirror .cm-tooltip-autocomplete > ul > li[aria-selected] {
+    background: var(--accent);
+    color: var(--accent-foreground);
+}
+.dxc-codemirror .cm-completionLabel {
+    font-size: 12px;
+}
+.dxc-codemirror .cm-completionDetail {
+    color: var(--muted-foreground);
+    font-size: 10px;
+}
+.dxc-codemirror-diff .cm-changedLine,
+.dxc-codemirror-diff .cm-inlineChangedLine {
+    background: color-mix(
+        in lab,
+        var(--dxc-editor-background) 80%,
+        var(--dxc-editor-added)
+    );
+}
+.dxc-codemirror-diff .cm-deletedChunk {
+    padding-left: 6px;
+    background: color-mix(
+        in lab,
+        var(--dxc-editor-background) 80%,
+        var(--dxc-editor-deleted)
+    );
+}
+.dxc-codemirror-diff .cm-changedText {
+    background: linear-gradient(
+            color-mix(in srgb, var(--dxc-editor-added) 55%, transparent),
+            color-mix(in srgb, var(--dxc-editor-added) 55%, transparent)
+        )
+        bottom/100% 2px no-repeat;
+}
+.dxc-codemirror-diff .cm-deletedChunk .cm-deletedText {
+    background: linear-gradient(
+            color-mix(in srgb, var(--dxc-editor-deleted) 55%, transparent),
+            color-mix(in srgb, var(--dxc-editor-deleted) 55%, transparent)
+        )
+        bottom/100% 2px no-repeat;
+}
+.dxc-codemirror-diff .cm-changedLineGutter,
+.dxc-codemirror-diff .cm-inlineChangedLineGutter {
+    background: var(--dxc-editor-added);
+}
+.dxc-codemirror-diff .cm-deletedLineGutter {
+    background: var(--dxc-editor-deleted);
+}
+.dxc-codemirror-diff .cm-collapsedLines {
+    color: var(--dxc-editor-muted-foreground);
+    background: linear-gradient(
+        to bottom,
+        transparent,
+        color-mix(in oklch, var(--primary) 9%, var(--dxc-editor-background)) 30%,
+        color-mix(in oklch, var(--primary) 9%, var(--dxc-editor-background)) 70%,
+        transparent
+    );
+}
+
 .dxc-diff-editor.dxc-diff-editor {
     display: block;
     min-height: 100%;
