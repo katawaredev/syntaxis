@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "rust",
+  "bootstrap-sha": "643d6afeaaa5f161c3d4df86a84aec3eb5e0ad9e",
+  "include-component-in-tag": false,
+  "include-v-in-tag": true,
+  "plugins": [
+    "cargo-workspace"
+  ],
+  "packages": {
+    ".": {
+      "component": "syntaxis",
+      "package-name": "syntaxis",
+      "changelog-path": "CHANGELOG.md"
+    }
+  }
+}

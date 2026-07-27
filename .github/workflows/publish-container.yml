@@ -1,67 +1,37 @@
 name: Publish container
 
 on:
-  push:
-    branches:
-      - master
-    paths:
-      - Cargo.toml
+  workflow_call:
+    inputs:
+      version:
+        description: Semantic version to publish
+        required: true
+        type: string
+      ref:
+        description: Git commit or tag to publish
+        required: true
+        type: string
   workflow_dispatch:
+    inputs:
+      version:
+        description: Semantic version to republish
+        required: true
+        type: string
+      ref:
+        description: Git commit or tag to republish
+        required: true
+        type: string
 
 concurrency:
-  group: publish-container
+  group: publish-container-${{ inputs.version }}
   cancel-in-progress: false
 
 env:
   IMAGE: ghcr.io/katawaredev/syntaxis
 
 jobs:
-  version:
-    name: Detect version change
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    outputs:
-      changed: ${{ steps.version.outputs.changed }}
-      version: ${{ steps.version.outputs.version }}
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Compare package versions
-        id: version
-        env:
-          BEFORE: ${{ github.event.before }}
-          EVENT_NAME: ${{ github.event_name }}
-        run: |
-          set -euo pipefail
-
-          current="$(
-            python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])'
-          )"
-          changed=false
-
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            changed=true
-          elif [[ -n "$BEFORE" && ! "$BEFORE" =~ ^0+$ ]]; then
-            previous="$(
-              git show "${BEFORE}:Cargo.toml" \
-                | python3 -c 'import sys, tomllib; print(tomllib.loads(sys.stdin.read())["package"]["version"])'
-            )"
-            if [[ "$current" != "$previous" ]]; then
-              changed=true
-            fi
-          fi
-
-          echo "changed=$changed" >> "$GITHUB_OUTPUT"
-          echo "version=$current" >> "$GITHUB_OUTPUT"
-
   publish:
-    name: Publish ${{ needs.version.outputs.version }}
-    needs: version
-    if: needs.version.outputs.changed == 'true'
+    name: Publish ${{ inputs.version }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -72,6 +42,20 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Verify package version
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          actual="$(
+            python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])'
+          )"
+          if [[ "$actual" != "$EXPECTED_VERSION" ]]; then
+            echo "Cargo.toml version $actual does not match requested version $EXPECTED_VERSION" >&2
+            exit 1
+          fi
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -93,11 +77,12 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            ${{ env.IMAGE }}:${{ needs.version.outputs.version }}
+            ${{ env.IMAGE }}:${{ inputs.version }}
             ${{ env.IMAGE }}:latest
           labels: |
             org.opencontainers.image.source=https://github.com/katawaredev/syntaxis
-            org.opencontainers.image.version=${{ needs.version.outputs.version }}
+            org.opencontainers.image.version=${{ inputs.version }}
+            org.opencontainers.image.revision=${{ inputs.ref }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

@@ -131,10 +131,11 @@ directory; this replaces devbox's old `/workspace` convention.
 
 ### Publishing
 
-The `Publish container` GitHub Actions workflow publishes
-`ghcr.io/katawaredev/syntaxis:<version>` and `ghcr.io/katawaredev/syntaxis:latest` after the root
-`package.version` in `Cargo.toml` changes on `master`. Other `Cargo.toml` edits do not publish an
-image. The workflow can also be run manually from the Actions tab for an initial publish or retry.
+The `Release` GitHub Actions workflow uses Conventional Commits to maintain a release pull request.
+Merging that pull request updates `Cargo.toml`, `Cargo.lock`, and `CHANGELOG.md`, creates the matching
+`v<version>` GitHub release, and publishes `ghcr.io/katawaredev/syntaxis:<version>` and
+`ghcr.io/katawaredev/syntaxis:latest`. The reusable `Publish container` workflow can also be run
+manually with a version and matching Git ref to recover a failed publication.
 
 # Development
 
