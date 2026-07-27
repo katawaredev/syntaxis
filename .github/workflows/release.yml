@@ -27,22 +27,33 @@ jobs:
         uses: googleapis/release-please-action@v5
 
       - name: Read release pull request
-        if: steps.release.outputs.prs_created == 'true'
         id: release-pr
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_PR: ${{ steps.release.outputs.pr }}
         run: |
-          branch="$(jq --exit-status --raw-output '.headBranchName' <<< "$RELEASE_PR")"
+          if [[ -n "$RELEASE_PR" ]]; then
+            branch="$(jq --exit-status --raw-output '.headBranchName' <<< "$RELEASE_PR")"
+          else
+            branch="$(
+              gh pr list \
+                --base "$GITHUB_REF_NAME" \
+                --state open \
+                --label "autorelease: pending" \
+                --json headRefName \
+                --jq '.[0].headRefName // ""'
+            )"
+          fi
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
 
       - name: Check out release pull request
-        if: steps.release.outputs.prs_created == 'true'
+        if: steps.release-pr.outputs.branch != ''
         uses: actions/checkout@v6
         with:
           ref: ${{ steps.release-pr.outputs.branch }}
 
       - name: Synchronize Cargo lockfile
-        if: steps.release.outputs.prs_created == 'true'
+        if: steps.release-pr.outputs.branch != ''
         env:
           RELEASE_BRANCH: ${{ steps.release-pr.outputs.branch }}
         run: |
