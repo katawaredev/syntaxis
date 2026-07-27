@@ -217,19 +217,35 @@ update mode="compatible":
 # Dioxus development
 # -----------------------------------------------------------------------------
 
+# Generate an Argon2id PHC hash for SYNTAXIS_PASSWORD_HASH.
+auth-password:
+    cargo run --quiet --no-default-features --features server -- hash-password
+
 # Start the development server.
 serve platform=default_platform host=default_host port=default_port: build-assets
+    #!/usr/bin/env bash
+    set -euo pipefail
+    host="{{ host }}"
+    if [[ "$host" == "127.0.0.1" || "$host" == "localhost" || "$host" == "::1" ]]; then
+        export SYNTAXIS_AUTH_DISABLED=true
+    fi
     dx serve \
         --platform "{{ platform }}" \
-        --addr "{{ host }}" \
+        --addr "$host" \
         --port "{{ port }}" \
         --force-sequential true
 
 # Start the web development server.
 web host=default_host port=default_port: build-assets
+    #!/usr/bin/env bash
+    set -euo pipefail
+    host="{{ host }}"
+    if [[ "$host" == "127.0.0.1" || "$host" == "localhost" || "$host" == "::1" ]]; then
+        export SYNTAXIS_AUTH_DISABLED=true
+    fi
     dx serve \
         --platform web \
-        --addr "{{ host }}" \
+        --addr "$host" \
         --port "{{ port }}" \
         --force-sequential true
 

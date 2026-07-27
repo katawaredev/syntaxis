@@ -46,13 +46,45 @@ The repository provides separate development and production targets in one multi
 `Dockerfile`. Both variants expose the host's projects at `/Projects`, mount SSH configuration
 read-only, and mount GnuPG configuration read-write so Git operations behave like the local setup.
 
+### Authentication
+
+Syntaxis requires a single-user password on every fullstack server. Generate an Argon2id password
+hash (the password input is hidden), then place the printed PHC string in your shell or Compose
+`.env` file:
+
+```bash
+just auth-password
+SYNTAXIS_PASSWORD_HASH='$argon2id$v=19$...'
+```
+
+The web app exchanges that password for a random, 30-day, HTTP-only session cookie. Sessions are
+kept in memory and are intentionally invalidated whenever the server restarts. Production cookies
+are `Secure` and `SameSite=Strict`; local HTTP development sets `SYNTAXIS_INSECURE_COOKIE=true` in
+Compose.
+
+`just web` and `just serve` skip authentication automatically when they bind to a loopback address.
+This bypass is accepted only by debug builds. Authentication remains mandatory for release builds
+and for `just serve-local`, which exposes the development server to the network.
+
+Native clients can authenticate independently with an optional bearer token:
+
+```bash
+SYNTAXIS_API_TOKEN="$(openssl rand -base64 32)"
+curl -H "Authorization: Bearer $SYNTAXIS_API_TOKEN" https://code.example.com/api/runtime
+```
+
+Store the token in the platform keychain on desktop/mobile, never in source or ordinary app
+preferences. Changing `SYNTAXIS_API_TOKEN` revokes all native clients on the next server restart.
+The token is optional until a native client is used and must contain at least 32 characters when
+set.
+
 ### Development
 
 The default Compose file mounts the entire host `${HOME}/Projects` directory and starts the Dioxus
 development server from `/Projects/syntaxis`:
 
 ```bash
-docker compose up --build
+SYNTAXIS_PASSWORD_HASH='$argon2id$v=19$...' docker compose up --build
 ```
 
 Open <http://localhost:8080>. Changes made on the host are visible immediately in the container.

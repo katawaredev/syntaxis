@@ -7,8 +7,8 @@ use crate::{
 };
 use dioxus::prelude::*;
 const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");
-const FAVICON: Asset = asset!("/assets/favicon.ico");
-const GEIST_FONT: Asset = asset!("/assets/geist-latin-wght-normal.woff2");
+pub(crate) const FAVICON: Asset = asset!("/assets/favicon.ico");
+pub(crate) const GEIST_FONT: Asset = asset!("/assets/geist-latin-wght-normal.woff2");
 const UI_SCRIPT: Asset = asset!("/assets/ui.js");
 const AI_CHAT_SCRIPT: Asset = asset!("/assets/ai-chat.js");
 
@@ -58,5 +58,19 @@ pub fn App() -> Element {
         document::Script { src: UI_SCRIPT }
         document::Script { src: AI_CHAT_SCRIPT }
         Router::<Route> {}
+    }
+}
+
+#[component]
+pub(crate) fn LogoutButton() -> Element {
+    rsx! {
+        form { action: "/auth/logout", method: "post",
+            button {
+                r#type: "submit",
+                class: "inline-flex h-8.5 items-center justify-center rounded-lg px-2.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+                title: "Sign out",
+                "Sign out"
+            }
+        }
     }
 }

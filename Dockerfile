@@ -141,7 +141,7 @@ WORKDIR /Projects
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl --fail --silent --show-error "http://127.0.0.1:${PORT:-8080}/" >/dev/null || exit 1
+    CMD curl --fail --silent --show-error "http://127.0.0.1:${PORT:-8080}/health" >/dev/null || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/docker-entrypoint"]
 CMD ["/app/server"]

@@ -8,7 +8,7 @@ use syntaxis_workspace::{ExecutionLocation, RuntimeCapability, RuntimeState};
 
 use self::{dialogs::HomeDialogs, recent::RecentProjects};
 use super::client::{list_workspaces, runtime_state};
-use crate::ai::notifications::NotificationMenu;
+use crate::{ai::notifications::NotificationMenu, app::LogoutButton};
 
 #[derive(Clone, PartialEq, Eq)]
 pub(super) enum HomeDialog {
@@ -128,7 +128,10 @@ pub fn Home() -> Element {
                             "Pick up where you left off or open another project."
                         }
                     }
-                    NotificationMenu {}
+                    div { class: "flex items-center gap-1",
+                        NotificationMenu {}
+                        LogoutButton {}
+                    }
                 }
 
                 div { class: "mb-10.5 grid grid-cols-3 gap-3 max-md:mb-8 max-md:grid-cols-1",

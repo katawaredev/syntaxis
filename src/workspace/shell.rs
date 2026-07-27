@@ -1,7 +1,11 @@
 use dioxus::prelude::*;
 use syntaxis_ui::prelude::{AppIcon, EmptyState, Icon, StatusBadge, Tone};
 
-use crate::{app::Route, files::use_files_session, mock::WORKSPACES};
+use crate::{
+    app::{LogoutButton, Route},
+    files::use_files_session,
+    mock::WORKSPACES,
+};
 use syntaxis_workspace::{ExecutionLocation, RuntimeState};
 
 use super::client::{list_workspaces, runtime_state, touch_workspace};
@@ -159,6 +163,7 @@ pub fn WorkspaceShell() -> Element {
                 }
                 div { class: "ml-auto flex items-center gap-2 pr-2 text-[11px] text-muted-foreground",
                     NotificationMenu {}
+                    LogoutButton {}
                     span { class: if runtime_ready { "size-2 rounded-full bg-success shadow-[0_0_0.5rem_color-mix(in_oklch,var(--success),transparent_20%)]" } else { "size-2 rounded-full bg-warning" } }
                     span { class: "max-md:hidden", {runtime_message} }
                 }
