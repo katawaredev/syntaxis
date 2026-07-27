@@ -1,17 +1,27 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
-  "release-type": "rust",
+  "release-type": "simple",
   "bootstrap-sha": "643d6afeaaa5f161c3d4df86a84aec3eb5e0ad9e",
   "include-component-in-tag": false,
   "include-v-in-tag": true,
-  "plugins": [
-    "cargo-workspace"
-  ],
   "packages": {
     ".": {
       "component": "syntaxis",
       "package-name": "syntaxis",
-      "changelog-path": "CHANGELOG.md"
+      "changelog-path": "CHANGELOG.md",
+      "version-file": "VERSION",
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "Cargo.toml",
+          "jsonpath": "$.package.version"
+        },
+        {
+          "type": "toml",
+          "path": "Cargo.lock",
+          "jsonpath": "$.package[?(@.name==\"syntaxis\")].version"
+        }
+      ]
     }
   }
 }
