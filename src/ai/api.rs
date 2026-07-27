@@ -49,6 +49,63 @@ pub(crate) struct PiSettingsSnapshot {
     pub values: serde_json::Value,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum PiAuthType {
+    ApiKey,
+    Oauth,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub(crate) struct PiProviderAuthMethod {
+    pub auth_type: PiAuthType,
+    pub label: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub(crate) struct PiProviderAuth {
+    pub id: String,
+    pub name: String,
+    pub configured: bool,
+    pub can_logout: bool,
+    pub status: String,
+    pub methods: Vec<PiProviderAuthMethod>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub(crate) struct PiAuthPromptOption {
+    pub id: String,
+    pub label: String,
+    pub description: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub(crate) struct PiAuthPrompt {
+    pub id: u64,
+    pub kind: String,
+    pub message: String,
+    pub placeholder: String,
+    pub options: Vec<PiAuthPromptOption>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub(crate) struct PiAuthEvent {
+    pub kind: String,
+    pub message: String,
+    pub url: String,
+    pub user_code: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub(crate) struct PiAuthFlow {
+    pub id: String,
+    pub provider_id: String,
+    pub prompt: Option<PiAuthPrompt>,
+    pub events: Vec<PiAuthEvent>,
+    pub complete: bool,
+    pub error: Option<String>,
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum PiResourceScope {
@@ -200,6 +257,49 @@ pub(crate) async fn update_pi_setting(
 #[post("/api/pi/update")]
 pub(crate) async fn update_pi(workspace_id: String) -> Result<PiOperationResult, ServerFnError> {
     server::update_pi(WorkspaceId::new(workspace_id)).await
+}
+
+#[post("/api/pi/providers")]
+pub(crate) async fn pi_providers(
+    workspace_id: String,
+) -> Result<Vec<PiProviderAuth>, ServerFnError> {
+    server::pi_providers(WorkspaceId::new(workspace_id)).await
+}
+
+#[post("/api/pi/providers/login")]
+pub(crate) async fn start_pi_provider_login(
+    workspace_id: String,
+    provider_id: String,
+    auth_type: PiAuthType,
+) -> Result<PiAuthFlow, ServerFnError> {
+    server::start_pi_provider_login(WorkspaceId::new(workspace_id), provider_id, auth_type).await
+}
+
+#[post("/api/pi/providers/login/status")]
+pub(crate) async fn pi_provider_login_status(flow_id: String) -> Result<PiAuthFlow, ServerFnError> {
+    server::pi_provider_login_status(flow_id).await
+}
+
+#[post("/api/pi/providers/login/respond")]
+pub(crate) async fn respond_to_pi_provider_login(
+    flow_id: String,
+    prompt_id: u64,
+    value: String,
+) -> Result<(), ServerFnError> {
+    server::respond_to_pi_provider_login(flow_id, prompt_id, value).await
+}
+
+#[post("/api/pi/providers/login/cancel")]
+pub(crate) async fn cancel_pi_provider_login(flow_id: String) -> Result<(), ServerFnError> {
+    server::cancel_pi_provider_login(flow_id).await
+}
+
+#[post("/api/pi/providers/logout")]
+pub(crate) async fn logout_pi_provider(
+    workspace_id: String,
+    provider_id: String,
+) -> Result<(), ServerFnError> {
+    server::logout_pi_provider(WorkspaceId::new(workspace_id), provider_id).await
 }
 
 #[post("/api/pi/prompts")]

@@ -17,14 +17,20 @@ use super::AgentEncoding;
 
 mod management;
 pub(super) use management::{
-    browse_pi_skills, delete_pi_skill, delete_prompt_template, install_pi_skill, manage_pi_package,
-    pi_packages, pi_settings, pi_skills, prompt_templates, save_pi_skill, save_prompt_template,
-    search_pi_skills, skill_catalog_available, update_pi, update_pi_setting,
+    browse_pi_skills, cancel_pi_provider_login, delete_pi_skill, delete_prompt_template,
+    install_pi_skill, logout_pi_provider, manage_pi_package, pi_packages, pi_provider_login_status,
+    pi_providers, pi_settings, pi_skills, prompt_templates, respond_to_pi_provider_login,
+    save_pi_skill, save_prompt_template, search_pi_skills, skill_catalog_available,
+    start_pi_provider_login, update_pi, update_pi_setting,
 };
 
 const HANDSHAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 static AGENTS: OnceLock<HostAgentManager> = OnceLock::new();
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "the websocket dispatcher keeps the complete workspace-level AI protocol in one place"
+)]
 pub(super) async fn agent_socket(
     workspace_id: WorkspaceId,
     options: WebSocketOptions,
