@@ -26,6 +26,39 @@ jobs:
         id: release
         uses: googleapis/release-please-action@v5
 
+      - name: Read release pull request
+        if: steps.release.outputs.prs_created == 'true'
+        id: release-pr
+        env:
+          RELEASE_PR: ${{ steps.release.outputs.pr }}
+        run: |
+          branch="$(jq --exit-status --raw-output '.headBranchName' <<< "$RELEASE_PR")"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Check out release pull request
+        if: steps.release.outputs.prs_created == 'true'
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.release-pr.outputs.branch }}
+
+      - name: Synchronize Cargo lockfile
+        if: steps.release.outputs.prs_created == 'true'
+        env:
+          RELEASE_BRANCH: ${{ steps.release-pr.outputs.branch }}
+        run: |
+          cargo metadata --format-version 1 >/dev/null
+          cargo metadata --locked --format-version 1 >/dev/null
+
+          if git diff --quiet -- Cargo.lock; then
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock
+          git commit -m "chore(release): synchronize Cargo.lock"
+          git push origin "HEAD:$RELEASE_BRANCH"
+
   publish-container:
     name: Publish release container
     needs: release
