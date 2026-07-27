@@ -37,6 +37,7 @@ jobs:
           else
             branch="$(
               gh pr list \
+                --repo "$GITHUB_REPOSITORY" \
                 --base "$GITHUB_REF_NAME" \
                 --state open \
                 --label "autorelease: pending" \
