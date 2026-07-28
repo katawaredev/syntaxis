@@ -597,7 +597,7 @@ pub(super) fn language_for_path(path: &str) -> Language {
 #[cfg(test)]
 mod tests {
     use super::format_editor_reference;
-    use crate::files::EditorSelection;
+    use super::EditorSelection;
 
     #[test]
     fn file_reference_formats_cursor_and_single_line_selection() {

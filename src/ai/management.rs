@@ -7,13 +7,8 @@ use syntaxis_ui::prelude::{
 use super::{
     api::{self, PiAuthFlow, PiAuthPrompt, PiAuthType, PiSettingsSnapshot},
     generated_settings::{PiSettingDefinition, PiSettingKind, PI_SETTING_DEFINITIONS},
+    AiSettingsSection,
 };
-
-pub(super) const ACCOUNTS_SECTION: &str = "Provider accounts";
-pub(super) const EXTENSIONS_SECTION: &str = "Extensions";
-pub(super) const GENERAL_SECTION: &str = "General";
-pub(super) const PROMPT_TEMPLATES_SECTION: &str = "Prompt templates";
-pub(super) const SKILLS_SECTION: &str = "Skills";
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) enum AiPanel {
@@ -60,27 +55,26 @@ fn SidebarTab(label: &'static str, active: bool, onclick: EventHandler<()>) -> E
     }
 }
 
-pub(super) fn default_settings_section() -> String {
-    GENERAL_SECTION.to_owned()
-}
-
 #[component]
 pub(super) fn SettingsSidebar(
-    mut selected: Signal<String>,
-    on_selected: EventHandler<()>,
+    selected: AiSettingsSection,
+    on_selected: EventHandler<AiSettingsSection>,
 ) -> Element {
     rsx! {
         nav {
             class: "min-h-0 flex-1 overflow-y-auto p-2",
             aria_label: "Pi settings sections",
-            for section in setting_sections() {
+            for section in AiSettingsSection::ALL {
                 button {
-                    class: if selected() == section { "mb-1 w-full rounded-lg bg-primary/10 px-3 py-2 text-left text-[11px] font-medium text-primary" } else { "mb-1 w-full rounded-lg px-3 py-2 text-left text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground" },
+                    r#type: "button",
+                    class: if selected == section { "mb-1 w-full rounded-lg bg-primary/10 px-3 py-2 text-left text-[11px] font-medium text-primary" } else { "mb-1 w-full rounded-lg px-3 py-2 text-left text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground" },
+                    aria_current: if selected == section { "page" },
                     onclick: move |_| {
-                        selected.set(section.to_owned());
-                        on_selected.call(());
+                        if selected != section {
+                            on_selected.call(section);
+                        }
                     },
-                    "{section}"
+                    "{section.label()}"
                 }
             }
         }
@@ -92,7 +86,7 @@ pub(super) fn SettingsPanel(
     workspace_id: String,
     mut revision: Signal<u64>,
     mut toast: Signal<Option<(String, Tone)>>,
-    selected_section: ReadSignal<String>,
+    selected_section: ReadSignal<AiSettingsSection>,
     sidebar_open: bool,
     on_toggle_sidebar: EventHandler<()>,
     on_open_sidebar: EventHandler<()>,
@@ -112,7 +106,7 @@ pub(super) fn SettingsPanel(
                     on_open_sidebar,
                 }
                 div { class: "min-w-0 flex-1",
-                    strong { class: "block text-xs", "{selected_section()}" }
+                    strong { class: "block text-xs", "{selected_section().label()}" }
                     small { class: "text-[9px] text-muted-foreground", "Pi settings" }
                 }
             }
@@ -168,7 +162,7 @@ pub(super) fn ManagementSidebarButton(
 fn SettingsForm(
     workspace_id: String,
     snapshot: PiSettingsSnapshot,
-    selected_section: ReadSignal<String>,
+    selected_section: ReadSignal<AiSettingsSection>,
     revision: Signal<u64>,
     toast: Signal<Option<(String, Tone)>>,
 ) -> Element {
@@ -186,7 +180,7 @@ fn SettingsForm(
                     "{message}"
                 }
             }
-            if selected_section() == GENERAL_SECTION {
+            if selected_section() == AiSettingsSection::General {
                 div { class: "space-y-5",
                     PiUpdate {
                         workspace_id: workspace_id.clone(),
@@ -220,7 +214,7 @@ fn SettingsForm(
                     }
                 }
             }
-            if selected_section() == ACCOUNTS_SECTION {
+            if selected_section() == AiSettingsSection::ProviderAccounts {
                 ProviderAccounts { workspace_id: workspace_id.clone() }
             }
         }
@@ -676,16 +670,6 @@ fn setting_value(values: &Value, definition: PiSettingDefinition) -> String {
             .join(", "),
         _ => definition.default_value.into(),
     }
-}
-
-fn setting_sections() -> Vec<&'static str> {
-    vec![
-        GENERAL_SECTION,
-        ACCOUNTS_SECTION,
-        PROMPT_TEMPLATES_SECTION,
-        SKILLS_SECTION,
-        EXTENSIONS_SECTION,
-    ]
 }
 
 fn definition_sections() -> Vec<&'static str> {
