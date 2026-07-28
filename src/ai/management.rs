@@ -322,7 +322,7 @@ fn ProviderAccounts(workspace_id: String) -> Element {
         });
     });
     rsx! {
-        div { class: "space-y-4",
+        div { class: "@container space-y-4",
             div { class: "px-1",
                 h3 { class: "text-sm font-semibold", "Provider accounts" }
                 p { class: "mt-1 text-xs leading-relaxed text-muted-foreground",
@@ -346,17 +346,17 @@ fn ProviderAccounts(workspace_id: String) -> Element {
                         for provider in items {
                             div {
                                 key: "{provider.id}",
-                                class: "flex items-center gap-4 px-4 py-3 max-sm:items-start",
+                                class: "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-4 py-3 @max-[520px]:grid-cols-1 @max-[520px]:gap-2",
                                 div { class: "min-w-0 flex-1",
                                     strong { class: "block truncate text-xs font-medium", "{provider.name}" }
-                                    small { class: if provider.configured { "mt-0.5 block text-[10px] text-success" } else { "mt-0.5 block text-[10px] text-muted-foreground" },
+                                    small { class: if provider.configured { "mt-0.5 block break-words text-[10px] text-success" } else { "mt-0.5 block break-words text-[10px] text-muted-foreground" },
                                         if provider.configured {
                                             "Connected · "
                                         }
                                         "{provider.status}"
                                     }
                                 }
-                                div { class: "flex shrink-0 flex-wrap justify-end gap-1.5",
+                                div { class: "flex shrink-0 flex-wrap justify-end gap-1.5 @max-[520px]:w-full @max-[520px]:justify-start",
                                     for method in provider.methods.clone() {
                                         Button {
                                             label: match method.auth_type {

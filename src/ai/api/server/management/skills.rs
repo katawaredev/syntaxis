@@ -213,13 +213,20 @@ pub(crate) async fn browse_pi_skills(
     view: SkillCatalogView,
     offset: usize,
 ) -> Result<SkillSearchPage, ServerFnError> {
-    let token = env::var("VERCEL_OIDC_TOKEN")
-        .map_err(|_| client_error("Set VERCEL_OIDC_TOKEN to enable the skills.sh leaderboard"))?;
+    let token = configured_catalog_token(env::var("VERCEL_OIDC_TOKEN").ok())
+        .ok_or_else(|| client_error("The skills.sh leaderboard is not configured"))?;
     fetch_authenticated_skill_page(view, offset, &token).await
 }
 
 pub(crate) fn skill_catalog_available() -> bool {
-    env::var_os("VERCEL_OIDC_TOKEN").is_some()
+    configured_catalog_token(env::var("VERCEL_OIDC_TOKEN").ok()).is_some()
+}
+
+fn configured_catalog_token(token: Option<String>) -> Option<String> {
+    token.and_then(|token| {
+        let token = token.trim();
+        (!token.is_empty()).then(|| token.to_owned())
+    })
 }
 
 async fn fetch_authenticated_skill_page(
@@ -535,6 +542,17 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
+
+    #[test]
+    fn empty_catalog_tokens_do_not_enable_authenticated_browsing() {
+        assert_eq!(configured_catalog_token(None), None);
+        assert_eq!(configured_catalog_token(Some(String::new())), None);
+        assert_eq!(configured_catalog_token(Some("   ".into())), None);
+        assert_eq!(
+            configured_catalog_token(Some("  token  ".into())),
+            Some("token".into())
+        );
+    }
 
     #[test]
     fn downloaded_skills_record_their_source_for_future_updates() {

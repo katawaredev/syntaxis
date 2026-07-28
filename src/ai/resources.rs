@@ -372,34 +372,36 @@ fn SkillDiscoveryControls(
     let query_length = query().trim().len();
     let search_disabled = searching || query_length == 1 || (!catalog_enabled && query_length == 0);
     rsx! {
-        div { class: "grid grid-cols-[minmax(12rem,1fr)_10rem_auto] gap-2 max-sm:grid-cols-1",
+        div { class: if catalog_enabled { "grid grid-cols-[minmax(12rem,1fr)_10rem_auto] gap-2 max-sm:grid-cols-1" } else { "grid grid-cols-[minmax(12rem,1fr)_auto] gap-2 max-sm:grid-cols-1" },
             TextInput {
                 value: query(),
                 placeholder: "Search skills (for example: Rust)",
                 oninput: move |event: FormEvent| query.set(event.value()),
             }
-            select {
-                aria_label: "Skills catalog view",
-                class: "h-9 rounded-lg border border-input bg-background px-3 text-xs",
-                value: catalog_view_value(catalog_view()),
-                disabled: searching || !catalog_enabled,
-                onchange: move |event| {
-                    let next = match event.value().as_str() {
-                        "trending" => SkillCatalogView::Trending,
-                        "hot" => SkillCatalogView::Hot,
-                        _ => SkillCatalogView::AllTime,
-                    };
-                    query.set(String::new());
-                    submitted_query.set(String::new());
-                    results.set(Vec::new());
-                    offset.set(0);
-                    has_more.set(false);
-                    loading_more.set(false);
-                    catalog_view.set(next);
-                },
-                option { value: "all-time", "All time" }
-                option { value: "trending", "Trending" }
-                option { value: "hot", "Hot" }
+            if catalog_enabled {
+                select {
+                    aria_label: "Skills catalog view",
+                    class: "h-9 rounded-lg border border-input bg-background px-3 text-xs",
+                    value: catalog_view_value(catalog_view()),
+                    disabled: searching,
+                    onchange: move |event| {
+                        let next = match event.value().as_str() {
+                            "trending" => SkillCatalogView::Trending,
+                            "hot" => SkillCatalogView::Hot,
+                            _ => SkillCatalogView::AllTime,
+                        };
+                        query.set(String::new());
+                        submitted_query.set(String::new());
+                        results.set(Vec::new());
+                        offset.set(0);
+                        has_more.set(false);
+                        loading_more.set(false);
+                        catalog_view.set(next);
+                    },
+                    option { value: "all-time", "All time" }
+                    option { value: "trending", "Trending" }
+                    option { value: "hot", "Hot" }
+                }
             }
             Button {
                 label: if searching { "Searching…" } else { "Search" },
@@ -413,11 +415,6 @@ fn SkillDiscoveryControls(
                     submitted_query.set(query().trim().to_owned());
                     search_revision.with_mut(|value| *value += 1);
                 },
-            }
-        }
-        if !catalog_enabled {
-            p { class: "mt-2 text-[9px] text-muted-foreground",
-                "Set VERCEL_OIDC_TOKEN on the Syntaxis server to enable the All time, Trending, and Hot skills.sh leaderboards."
             }
         }
     }

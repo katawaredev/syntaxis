@@ -245,11 +245,16 @@ fn PackageConfirmation(
     let uninstalling = action == PiPackageAction::Uninstall;
     let action_label = if uninstalling { "Uninstall" } else { "Install" };
     let package_name = package.name.clone();
+    let working = pending().as_deref() == Some(package_name.as_str());
     rsx! {
         Modal {
             title: "{action_label} {package_name}?",
             description: if uninstalling { "This removes the user-scoped package from Pi." } else { "Pi packages can execute arbitrary code with the server user's full permissions." },
-            on_close: move |()| confirm.set(None),
+            on_close: move |()| {
+                if !working {
+                    confirm.set(None);
+                }
+            },
             DialogForm {
                 if !uninstalling {
                     DangerNote { message: "Review the package source before installing. Syntaxis does not sandbox Pi packages." }
@@ -258,13 +263,14 @@ fn PackageConfirmation(
                     Button {
                         label: "Cancel",
                         kind: ButtonKind::Ghost,
+                        disabled: working,
                         onclick: move |_| confirm.set(None),
                     }
                     Button {
-                        label: action_label,
+                        label: if working { "Working…" } else { action_label },
                         kind: if uninstalling { ButtonKind::Danger } else { ButtonKind::Primary },
+                        disabled: working,
                         onclick: move |_| {
-                            confirm.set(None);
                             pending.set(Some(package_name.clone()));
                             let workspace_id = workspace_id.clone();
                             let name = package_name.clone();
@@ -276,6 +282,7 @@ fn PackageConfirmation(
                                 pending.set(None);
                                 revision.with_mut(|revision| *revision += 1);
                                 reset_results(&mut offset, &mut loaded, &mut has_more);
+                                confirm.set(None);
                             });
                         },
                     }

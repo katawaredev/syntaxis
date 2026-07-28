@@ -157,14 +157,18 @@ pub(super) fn BranchWorktreeMenu(
                     branch_options.set(None);
                 }
             },
-            div { class: "relative",
+            div { class: "relative min-w-0 @max-[520px]:flex-1",
                 MenuButtonTrigger {
-                    class: "touch-target inline-flex h-7 max-w-52 items-center gap-1.5 rounded-md bg-transparent px-1.5 text-xs text-foreground hover:bg-accent disabled:opacity-50",
+                    class: "touch-target inline-flex h-7 min-w-0 max-w-52 items-center gap-1.5 rounded-md bg-transparent px-1.5 text-xs text-foreground hover:bg-accent disabled:opacity-50 @max-[520px]:w-full",
                     label: "Branches and worktrees",
-                    title: "Branches and worktrees",
+                    title: current_branch.clone(),
                     on_toggle: move |()| menu_open.toggle(),
                     Icon { icon: trigger_icon, size: 13 }
-                    span { class: "truncate", "{current_branch}" }
+                    span {
+                        class: "min-w-0 flex-1 truncate text-left",
+                        translate: "no",
+                        "{current_branch}"
+                    }
                 }
                 MenuContent { class: "left-0 w-76",
                     div { class: "px-2 pt-1 pb-1 text-[9px] font-medium uppercase tracking-wide text-muted-foreground",

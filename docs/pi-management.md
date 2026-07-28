@@ -109,7 +109,8 @@ The Skills section has two related workflows:
   appends the new slice, up to 100 results.
 - The All time, Trending, and Hot views use skills.sh's official paginated v1
   leaderboard API. That API requires `VERCEL_OIDC_TOKEN`; the view selector is
-  not enabled when the server does not have one. Syntaxis does not scrape the
+  hidden when the server does not have a non-empty token. Public search remains
+  available without one. Syntaxis does not scrape the
   skills.sh pages or provide an unofficial fallback.
 
 Each catalog card offers separate Project and Global install buttons.
