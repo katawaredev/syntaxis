@@ -6433,7 +6433,7 @@ dependencies = [
 
 [[package]]
 name = "syntaxis"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "argon2",
  "async-trait",
