@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use similar::{ChangeTag, TextDiff};
 
 pub const CODE_EDITOR_CSS: Asset = asset!("/assets/dioxus-code-editor.css");
+const LSP_MODULE: Asset = asset!("/assets/lsp.bundle.js");
 #[expect(
     clippy::large_include_file,
     reason = "the generated CodeMirror bundle must execute inside Dioxus' eval channel"
@@ -44,6 +45,15 @@ pub struct EditorRange {
     pub end: usize,
 }
 
+/// One `CodeMirror` document change, expressed in UTF-16 code-unit offsets
+/// against the document before the transaction.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct EditorEdit {
+    pub start: usize,
+    pub end: usize,
+    pub text: String,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct EditorSelection {
     pub start: usize,
@@ -68,6 +78,35 @@ pub struct EditorSearchStatus {
     pub count: usize,
     pub current: Option<usize>,
     pub valid: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct LanguageServiceConfig {
+    pub server_id: String,
+    pub server_name: String,
+    pub language_id: String,
+    pub session_key: String,
+    pub endpoint: String,
+    pub root_uri: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum LanguageServiceStatus {
+    Starting,
+    Ready,
+    Unavailable,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+pub struct LanguageServiceState {
+    #[serde(default)]
+    pub server_id: String,
+    #[serde(default)]
+    pub server_name: String,
+    pub status: LanguageServiceStatus,
+    #[serde(default)]
+    pub message: String,
 }
 
 impl Default for EditorSearchStatus {
@@ -140,6 +179,8 @@ pub struct CodeEditorProps {
     pub spellcheck: bool,
     #[props(default = false)]
     pub autocomplete: bool,
+    #[props(default)]
+    pub language_services: Vec<LanguageServiceConfig>,
     #[props(into, default = "Code editor")]
     pub aria_label: String,
     #[props(into, default)]
@@ -161,14 +202,16 @@ pub struct CodeEditorProps {
     /// Original contents used to render an inline unified diff. Diff mode is read-only.
     #[props(default)]
     pub diff_original: Option<String>,
-    #[props(default = EventHandler::new(|_: String| {}))]
-    pub oninput: EventHandler<String>,
+    #[props(default = EventHandler::new(|_: Vec<EditorEdit>| {}))]
+    pub oninput: EventHandler<Vec<EditorEdit>>,
     #[props(default = EventHandler::new(|_: EditorSelection| {}))]
     pub onselection: EventHandler<EditorSelection>,
     #[props(default = EventHandler::new(|_: EditorSearchStatus| {}))]
     pub onsearch: EventHandler<EditorSearchStatus>,
     #[props(default = EventHandler::new(|_: KeyboardEvent| {}))]
     pub onkeydown: EventHandler<KeyboardEvent>,
+    #[props(default = EventHandler::new(|_: LanguageServiceState| {}))]
+    pub on_language_service: EventHandler<LanguageServiceState>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -189,6 +232,8 @@ struct EditorConfiguration {
     read_only: bool,
     spellcheck: bool,
     autocomplete: bool,
+    language_services: Vec<LanguageServiceConfig>,
+    lsp_module: String,
     diff_original: Option<String>,
     aria_label: String,
     placeholder: String,
@@ -200,7 +245,7 @@ struct EditorConfiguration {
 #[serde(tag = "type", rename_all = "snake_case")]
 enum EditorBridgeCommand {
     Configure {
-        config: EditorConfiguration,
+        config: Box<EditorConfiguration>,
     },
     ConfigureSearch {
         query: Option<EditorSearchQuery>,
@@ -240,7 +285,7 @@ impl From<EditorCommandKind> for EditorBridgeCommand {
 #[serde(tag = "type", rename_all = "snake_case")]
 enum EditorBridgeEvent {
     Input {
-        value: String,
+        edits: Vec<EditorEdit>,
     },
     Selection {
         start: usize,
@@ -254,6 +299,13 @@ enum EditorBridgeEvent {
         count: usize,
         current: Option<usize>,
         valid: bool,
+    },
+    LanguageServiceStatus {
+        server_id: String,
+        server_name: String,
+        status: LanguageServiceStatus,
+        #[serde(default)]
+        message: String,
     },
 }
 
@@ -295,6 +347,8 @@ fn InteractiveCodeEditor(editor_props: CodeEditorProps) -> Element {
         read_only: props.read_only,
         spellcheck: props.spellcheck,
         autocomplete: props.autocomplete,
+        language_services: props.language_services.clone(),
+        lsp_module: LSP_MODULE.to_string(),
         diff_original: props.diff_original.clone(),
         aria_label: props.aria_label.clone(),
         placeholder: props.placeholder.clone(),
@@ -315,10 +369,16 @@ fn InteractiveCodeEditor(editor_props: CodeEditorProps) -> Element {
             drop(events.send(configuration.clone()));
             *last_configuration.borrow_mut() = Some(configuration.clone());
             event_bridge.set(Some(events));
+            let event_configuration = Rc::clone(&last_configuration);
             spawn(async move {
                 while let Ok(event) = events.recv::<EditorBridgeEvent>().await {
                     match event {
-                        EditorBridgeEvent::Input { value } => props.oninput.call(value),
+                        EditorBridgeEvent::Input { edits } => {
+                            if let Some(configuration) = event_configuration.borrow_mut().as_mut() {
+                                apply_editor_edits(&mut configuration.value, &edits);
+                            }
+                            props.oninput.call(edits);
+                        }
                         EditorBridgeEvent::Selection {
                             start,
                             end,
@@ -343,6 +403,19 @@ fn InteractiveCodeEditor(editor_props: CodeEditorProps) -> Element {
                             current,
                             valid,
                         }),
+                        EditorBridgeEvent::LanguageServiceStatus {
+                            server_id,
+                            server_name,
+                            status,
+                            message,
+                        } => {
+                            props.on_language_service.call(LanguageServiceState {
+                                server_id,
+                                server_name,
+                                status,
+                                message,
+                            });
+                        }
                     }
                 }
             });
@@ -375,7 +448,7 @@ fn InteractiveCodeEditor(editor_props: CodeEditorProps) -> Element {
         if let Some(events) = event_bridge() {
             if events
                 .send(EditorBridgeCommand::Configure {
-                    config: configuration.clone(),
+                    config: Box::new(configuration.clone()),
                 })
                 .is_ok()
             {
@@ -416,6 +489,44 @@ fn InteractiveCodeEditor(editor_props: CodeEditorProps) -> Element {
             onkeydown: move |event| props.onkeydown.call(event),
         }
     }
+}
+
+fn apply_editor_edits(value: &mut String, edits: &[EditorEdit]) -> bool {
+    let mut normalized = Vec::with_capacity(edits.len());
+    for edit in edits {
+        let Some(start) = utf16_offset_to_byte(value, edit.start) else {
+            return false;
+        };
+        let Some(end) = utf16_offset_to_byte(value, edit.end) else {
+            return false;
+        };
+        if start > end {
+            return false;
+        }
+        normalized.push((start, end, edit.text.as_str()));
+    }
+    normalized.sort_unstable_by(|left, right| right.0.cmp(&left.0).then(right.1.cmp(&left.1)));
+    if !normalized.windows(2).all(|pair| pair[0].0 >= pair[1].1) {
+        return false;
+    }
+    for (start, end, text) in normalized {
+        value.replace_range(start..end, text);
+    }
+    true
+}
+
+fn utf16_offset_to_byte(value: &str, target: usize) -> Option<usize> {
+    let mut utf16_offset = 0;
+    for (byte_offset, character) in value.char_indices() {
+        if utf16_offset == target {
+            return Some(byte_offset);
+        }
+        utf16_offset += character.len_utf16();
+        if utf16_offset > target {
+            return None;
+        }
+    }
+    (utf16_offset == target).then_some(value.len())
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -753,6 +864,27 @@ mod tests {
         assert_eq!(serialized["value"], "new value");
         assert_eq!(serialized["start"], 3);
         assert_eq!(serialized["end"], 6);
+    }
+
+    #[test]
+    fn bridge_edits_advance_the_cached_value_with_utf16_offsets() {
+        let mut value = "a😀bc".to_owned();
+        assert!(apply_editor_edits(
+            &mut value,
+            &[
+                EditorEdit {
+                    start: 1,
+                    end: 3,
+                    text: "🙂".into(),
+                },
+                EditorEdit {
+                    start: 4,
+                    end: 5,
+                    text: "d".into(),
+                },
+            ],
+        ));
+        assert_eq!(value, "a🙂bd");
     }
 
     #[test]

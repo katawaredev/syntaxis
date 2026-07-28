@@ -1,10 +1,14 @@
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 
 use dioxus::prelude::*;
+use syntaxis_editor::{
+    language_server_by_id, language_servers_for_language, language_slug_for_path,
+    profile_language_id, LanguageServerDefinition,
+};
 use syntaxis_ui::prelude::{
     Button, ButtonKind, DialogActions, Field, Modal, TextArea, TextAreaResize,
 };
-use syntaxis_workspace::{EntryKind, FileEntry, RelativePath, WorkspaceRecord};
+use syntaxis_workspace::{EntryKind, FileEntry, RelativePath, WorkspaceProfile, WorkspaceRecord};
 
 use crate::{
     terminal::ProjectInitializerTerminal,
@@ -209,7 +213,10 @@ async fn detect_bootstrap_plan(workspace: WorkspaceRecord) -> Result<BootstrapPl
         return Ok(BootstrapPlan::Configured);
     }
 
-    Ok(BootstrapPlan::Inferred(infer_tools(&root)))
+    Ok(BootstrapPlan::Inferred(infer_tools(
+        &root,
+        &workspace.profile,
+    )))
 }
 
 fn has_root_mise_config(entries: &[FileEntry]) -> bool {
@@ -291,12 +298,12 @@ fn entry_names(entries: &[FileEntry]) -> HashSet<&str> {
     entries.iter().map(|entry| entry.name.as_str()).collect()
 }
 
-fn infer_tools(entries: &[FileEntry]) -> Vec<&'static str> {
+fn infer_tools(entries: &[FileEntry], profile: &WorkspaceProfile) -> Vec<&'static str> {
     let files = entries
         .iter()
         .filter(|entry| entry.kind == EntryKind::File)
         .map(|entry| entry.name.as_str())
-        .collect::<HashSet<_>>();
+        .collect::<BTreeSet<_>>();
     let has = |names: &[&str]| names.iter().any(|name| files.contains(name));
     let has_extension = |extension: &str| files.iter().any(|name| name.ends_with(extension));
     let mut tools = Vec::new();
@@ -350,7 +357,49 @@ fn infer_tools(entries: &[FileEntry]) -> Vec<&'static str> {
         tools.push("just@latest");
     }
 
+    let mut language_ids = profile
+        .languages
+        .iter()
+        .filter_map(|language| profile_language_id(&language.name))
+        .collect::<Vec<_>>();
+    language_ids.extend(
+        files
+            .iter()
+            .map(|name| language_slug_for_path(name))
+            .filter(|language| *language != "plaintext"),
+    );
+    language_ids.sort_unstable();
+    language_ids.dedup();
+    for language_id in language_ids {
+        for server in language_servers_for_language(language_id, &profile.technologies) {
+            push_server_tools(&mut tools, server);
+        }
+    }
+    for server_id in profile
+        .technologies
+        .iter()
+        .filter_map(|technology| match technology {
+            syntaxis_workspace::WorkspaceTechnology::Astro => Some("astro"),
+            syntaxis_workspace::WorkspaceTechnology::Svelte => Some("svelte"),
+            syntaxis_workspace::WorkspaceTechnology::Tailwind => Some("tailwindcss"),
+            syntaxis_workspace::WorkspaceTechnology::Vue => Some("vue"),
+            _ => None,
+        })
+    {
+        if let Some(server) = language_server_by_id(server_id) {
+            push_server_tools(&mut tools, server);
+        }
+    }
+
     tools
+}
+
+fn push_server_tools(tools: &mut Vec<&'static str>, server: &'static LanguageServerDefinition) {
+    for tool in server.mise_tools {
+        if !tools.contains(tool) {
+            tools.push(tool);
+        }
+    }
 }
 
 fn inferred_mise_command(tools: &[&str]) -> String {
@@ -386,7 +435,10 @@ mod tests {
         infer_tools, inferred_bootstrap_command, inferred_mise_command,
         CONFIGURED_BOOTSTRAP_COMMAND,
     };
-    use syntaxis_workspace::{EntryKind, FileEntry, RelativePath};
+    use syntaxis_workspace::{
+        EntryKind, FileEntry, RelativePath, WorkspaceLanguage, WorkspaceProfile,
+        WorkspaceTechnology,
+    };
 
     fn files(names: &[&str]) -> Vec<FileEntry> {
         names
@@ -409,28 +461,96 @@ mod tests {
 
     #[test]
     fn manifests_are_inferred_into_a_local_mise_command() {
-        let tools = infer_tools(&files(&[
-            "Cargo.toml",
-            "package.json",
-            "pnpm-lock.yaml",
-            "pyproject.toml",
-            "uv.lock",
-        ]));
+        let profile = WorkspaceProfile {
+            technologies: Vec::new(),
+            languages: vec![
+                WorkspaceLanguage {
+                    name: "Rust".into(),
+                    bytes: 100,
+                },
+                WorkspaceLanguage {
+                    name: "TypeScript".into(),
+                    bytes: 80,
+                },
+                WorkspaceLanguage {
+                    name: "Python".into(),
+                    bytes: 60,
+                },
+            ],
+        };
+        let tools = infer_tools(
+            &files(&[
+                "Cargo.toml",
+                "package.json",
+                "pnpm-lock.yaml",
+                "pyproject.toml",
+                "uv.lock",
+            ]),
+            &profile,
+        );
 
-        assert_eq!(
-            tools,
-            [
-                "rust@stable",
-                "node@lts",
-                "pnpm@latest",
-                "python@latest",
-                "uv@latest"
-            ]
-        );
-        assert_eq!(
-            inferred_mise_command(&tools),
-            "mise use --yes --env local rust@stable node@lts pnpm@latest python@latest uv@latest"
-        );
+        for expected in [
+            "rust@stable",
+            "node@lts",
+            "pnpm@latest",
+            "python@latest",
+            "uv@latest",
+            "rust-analyzer@latest",
+            "npm:typescript@latest",
+            "npm:pyright@latest",
+            "taplo@latest",
+            "npm:vscode-langservers-extracted@latest",
+        ] {
+            assert!(
+                tools.contains(&expected),
+                "missing inferred tool {expected}"
+            );
+        }
+        assert!(inferred_mise_command(&tools).starts_with("mise use --yes --env local "));
+    }
+
+    #[test]
+    fn deno_projects_use_the_builtin_server_instead_of_typescript_lsp() {
+        let profile = WorkspaceProfile {
+            technologies: vec![WorkspaceTechnology::Deno],
+            languages: vec![WorkspaceLanguage {
+                name: "TypeScript".into(),
+                bytes: 100,
+            }],
+        };
+        let tools = infer_tools(&files(&["deno.json"]), &profile);
+
+        assert!(tools.contains(&"deno@latest"));
+        assert!(!tools.contains(&"npm:typescript@latest"));
+    }
+
+    #[test]
+    fn web_frameworks_install_their_language_servers() {
+        let profile = WorkspaceProfile {
+            technologies: vec![
+                WorkspaceTechnology::Vue,
+                WorkspaceTechnology::Svelte,
+                WorkspaceTechnology::Astro,
+                WorkspaceTechnology::Tailwind,
+            ],
+            languages: vec![WorkspaceLanguage {
+                name: "TypeScript".into(),
+                bytes: 100,
+            }],
+        };
+        let tools = infer_tools(&files(&["package.json"]), &profile);
+
+        for expected in [
+            "npm:@vue/language-server@latest",
+            "npm:svelte-language-server@latest",
+            "npm:@astrojs/language-server@latest",
+            "npm:@tailwindcss/language-server@latest",
+        ] {
+            assert!(
+                tools.contains(&expected),
+                "missing inferred tool {expected}"
+            );
+        }
     }
 
     #[test]

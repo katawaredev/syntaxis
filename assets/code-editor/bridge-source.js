@@ -79,6 +79,7 @@ import { tags } from "@lezer/highlight";
     encoder.encode(value.slice(0, offset)).length;
 
   const languageCompartment = new Compartment();
+  const languageServiceCompartment = new Compartment();
   const autocompleteCompartment = new Compartment();
   const diffCompartment = new Compartment();
   const lineNumbersCompartment = new Compartment();
@@ -243,6 +244,85 @@ import { tags } from "@lezer/highlight";
   let suppressInput = false;
   let currentConfig = initial;
   let view;
+  let languageServiceRevision = 0;
+  let languageServiceHandles = [];
+  const releaseLanguageService = () => {
+    languageServiceRevision += 1;
+    for (const handle of languageServiceHandles) handle.release();
+    languageServiceHandles = [];
+  };
+  const configureLanguageService = async config => {
+    const revision = ++languageServiceRevision;
+    for (const handle of languageServiceHandles) handle.release();
+    languageServiceHandles = [];
+    view.dispatch({ effects: languageServiceCompartment.reconfigure([]) });
+    if (!config.language_services.length || isDiff(config)) return;
+    try {
+      const module = await import(config.lsp_module);
+      const handles = (
+        await Promise.all(
+          config.language_services.map(async service => {
+            dioxus.send({
+              type: "language_service_status",
+              server_id: service.server_id,
+              server_name: service.server_name,
+              status: "starting",
+              message: "",
+            });
+            try {
+              return await module.connectLanguageService({
+                sessionKey: service.session_key,
+                endpoint: service.endpoint,
+                rootUri: service.root_uri,
+                filename: config.filename,
+                languageId: service.language_id,
+                onStatus(status, message = "") {
+                  dioxus.send({
+                    type: "language_service_status",
+                    server_id: service.server_id,
+                    server_name: service.server_name,
+                    status,
+                    message,
+                  });
+                },
+              });
+            } catch (error) {
+              dioxus.send({
+                type: "language_service_status",
+                server_id: service.server_id,
+                server_name: service.server_name,
+                status: "unavailable",
+                message: error instanceof Error ? error.message : String(error),
+              });
+              return null;
+            }
+          }),
+        )
+      ).filter(Boolean);
+      if (revision !== languageServiceRevision) {
+        for (const handle of handles) handle.release();
+        return;
+      }
+      languageServiceHandles = handles;
+      view.dispatch({
+        effects: languageServiceCompartment.reconfigure(
+          handles.map(handle => handle.extension),
+        ),
+      });
+    } catch (error) {
+      if (revision === languageServiceRevision) {
+        for (const service of config.language_services) {
+          dioxus.send({
+            type: "language_service_status",
+            server_id: service.server_id,
+            server_name: service.server_name,
+            status: "unavailable",
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    }
+  };
   const hiddenSearchPanel = () => {
     const dom = document.createElement("div");
     dom.hidden = true;
@@ -338,6 +418,7 @@ import { tags } from "@lezer/highlight";
           ...historyKeymap,
         ]),
         languageCompartment.of([]),
+        languageServiceCompartment.of([]),
         autocompleteCompartment.of(
           initial.autocomplete && !isDiff(initial) ? autocompletion() : [],
         ),
@@ -353,7 +434,11 @@ import { tags } from "@lezer/highlight";
         placeholderCompartment.of(initial.placeholder ? placeholder(initial.placeholder) : []),
         EditorView.updateListener.of(update => {
           if (update.docChanged && !suppressInput) {
-            dioxus.send({ type: "input", value: update.state.doc.toString() });
+            const edits = [];
+            update.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+              edits.push({ start: fromA, end: toA, text: inserted.toString() });
+            });
+            dioxus.send({ type: "input", edits });
           }
           if (update.docChanged || update.selectionSet) emitSelection(update.state);
           if (update.docChanged) {
@@ -369,6 +454,10 @@ import { tags } from "@lezer/highlight";
   const configure = config => {
     const languageChanged =
       config.language !== currentConfig.language || config.filename !== currentConfig.filename;
+    const languageServiceChanged =
+      JSON.stringify(config.language_services) !==
+        JSON.stringify(currentConfig.language_services) ||
+      languageChanged;
     const diffChanged =
       config.diff_original !== currentConfig.diff_original ||
       config.line_numbers !== currentConfig.line_numbers;
@@ -404,6 +493,7 @@ import { tags } from "@lezer/highlight";
     suppressInput = false;
     currentConfig = config;
     if (languageChanged) void loadLanguage(config);
+    if (languageServiceChanged) void configureLanguageService(config);
   };
 
   const configureSearch = query => {
@@ -420,6 +510,7 @@ import { tags } from "@lezer/highlight";
   configure(initial);
   configureSearch(null);
   void loadLanguage(initial);
+  void configureLanguageService(initial);
   emitSelection(view.state);
 
   while (true) {
@@ -475,5 +566,6 @@ import { tags } from "@lezer/highlight";
     }
   }
 
+  releaseLanguageService();
   view.destroy();
 })();

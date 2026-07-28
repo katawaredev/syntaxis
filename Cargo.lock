@@ -6437,6 +6437,7 @@ version = "0.2.0"
 dependencies = [
  "argon2",
  "async-trait",
+ "axum",
  "base64",
  "bytes",
  "cc",
@@ -6462,6 +6463,7 @@ dependencies = [
  "syntaxis-editor",
  "syntaxis-git",
  "syntaxis-git-host",
+ "syntaxis-lsp-host",
  "syntaxis-notifications",
  "syntaxis-notifications-host",
  "syntaxis-terminal",
@@ -6530,6 +6532,15 @@ dependencies = [
  "tokio-util",
  "uuid",
  "zeroize",
+]
+
+[[package]]
+name = "syntaxis-lsp-host"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]

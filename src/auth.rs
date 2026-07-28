@@ -71,6 +71,7 @@ pub(crate) fn serve() -> ! {
             let logout_state = state.clone();
             let router = Router::new()
                 .route("/health", get(health))
+                .route("/api/lsp-socket", get(crate::lsp::server::socket))
                 .route(
                     "/login",
                     get(move || login_page(login_page_state.clone()))
@@ -272,6 +273,12 @@ async fn require_authentication(
 
     let path = request.uri().path();
     if matches!(path, "/health" | "/login") || path.starts_with("/assets/") {
+        return next.run(request).await;
+    }
+    if path == "/api/lsp-socket" && request.headers().get("upgrade").is_some() {
+        if !origin_is_allowed(&request) {
+            return (StatusCode::FORBIDDEN, "Cross-origin request rejected").into_response();
+        }
         return next.run(request).await;
     }
 

@@ -4,6 +4,35 @@ Syntaxis is a mobile-first development workspace built with Dioxus. Its workspac
 a code editor, terminal sessions, Git tools, and a focused chat interface for the
 [Pi coding agent](https://pi.dev/).
 
+## Code intelligence
+
+The editor supports Mise-managed language servers for Rust, JavaScript and
+TypeScript (using the latest TypeScript native LSP, or Deno's built-in LSP for
+Deno projects), Python, Go, HTML, CSS/SCSS, JSON, YAML, TOML, shell scripts,
+Terraform, PHP, Ruby, Vue, Svelte, and Astro. Tailwind projects additionally
+use the Tailwind CSS language server alongside the file's primary server. Open
+a supported file and enable **Code Intelligence** from the editor menu to
+receive diagnostics and semantic completions.
+
+When a project has no Mise configuration, **Bootstrap** infers both its
+toolchain and suitable language servers, installs them, and records them in the
+checkout-local `mise.local.toml`. Existing Mise configurations remain
+authoritative: Bootstrap trusts and installs their declared tools without
+modifying the configuration. Add any desired language-server tool to that
+configuration when it is not already declared.
+
+Mise-provided language servers are resolved with `mise which`, and all servers
+are launched with `mise exec` inside the workspace. For Node-based servers,
+Syntaxis first uses a compatible
+executable already installed in the project root's `node_modules/.bin`, while
+still applying the Mise runtime environment. Yarn Plug'n'Play and nested
+package-local installations currently fall back to the Mise tool. Syntaxis
+never accepts an executable or arguments from the browser. Connections and
+messages are bounded, and the additional browser module is loaded only while
+Code Intelligence is enabled. Syntaxis starts no more than one primary server
+and one project-specific supplementary server for the active document;
+Tailwind is not started for projects where it was not detected.
+
 ## Pi coding agent
 
 The AI workspace uses Pi directly through its native RPC mode. Install and authenticate Pi on the

@@ -47,6 +47,21 @@ impl EditorBuffer {
 
     pub fn edit(&mut self, contents: String) {
         self.contents = contents;
+        self.update_status();
+    }
+
+    pub fn apply_edits(&mut self, edits: &[(usize, usize, String)]) -> bool {
+        let Some(edits) = normalize_edits(&self.contents, edits) else {
+            return false;
+        };
+        for (start, end, text) in edits {
+            self.contents.replace_range(start..end, text);
+        }
+        self.update_status();
+        true
+    }
+
+    fn update_status(&mut self) {
         self.status = if self.contents == self.saved_contents {
             BufferStatus::Clean
         } else {
@@ -115,6 +130,39 @@ impl EditorBuffer {
     pub fn is_dirty(&self) -> bool {
         self.status != BufferStatus::Clean
     }
+}
+
+fn normalize_edits<'a>(
+    contents: &str,
+    edits: &'a [(usize, usize, String)],
+) -> Option<Vec<(usize, usize, &'a str)>> {
+    let mut normalized = edits
+        .iter()
+        .map(|(edit_start, edit_end, text)| {
+            let start = utf16_offset_to_byte(contents, *edit_start)?;
+            let end = utf16_offset_to_byte(contents, *edit_end)?;
+            (start <= end).then_some((start, end, text.as_str()))
+        })
+        .collect::<Option<Vec<_>>>()?;
+    normalized.sort_unstable_by(|left, right| right.0.cmp(&left.0).then(right.1.cmp(&left.1)));
+    normalized
+        .windows(2)
+        .all(|pair| pair[0].0 >= pair[1].1)
+        .then_some(normalized)
+}
+
+fn utf16_offset_to_byte(value: &str, target: usize) -> Option<usize> {
+    let mut utf16_offset = 0;
+    for (byte_offset, character) in value.char_indices() {
+        if utf16_offset == target {
+            return Some(byte_offset);
+        }
+        utf16_offset += character.len_utf16();
+        if utf16_offset > target {
+            return None;
+        }
+    }
+    (utf16_offset == target).then_some(value.len())
 }
 
 #[cfg(test)]
@@ -192,5 +240,30 @@ mod tests {
         assert_eq!(buffer.contents, "newer local edit");
         assert_eq!(buffer.saved_contents, "saved snapshot");
         assert_eq!(buffer.status, BufferStatus::Dirty);
+    }
+
+    #[test]
+    fn editor_transactions_apply_utf16_offsets_and_multiple_changes() {
+        let mut buffer = EditorBuffer::open(
+            "file.txt",
+            "a😀bc".into(),
+            version(7, 1),
+            EditorConfig::default(),
+        );
+        assert!(buffer.apply_edits(&[(1, 3, "🙂".into()), (4, 5, "d".into()),]));
+        assert_eq!(buffer.contents, "a🙂bd");
+        assert_eq!(buffer.status, BufferStatus::Dirty);
+    }
+
+    #[test]
+    fn editor_transactions_reject_offsets_inside_surrogate_pairs() {
+        let mut buffer = EditorBuffer::open(
+            "file.txt",
+            "😀".into(),
+            version(4, 1),
+            EditorConfig::default(),
+        );
+        assert!(!buffer.apply_edits(&[(1, 2, String::new())]));
+        assert_eq!(buffer.contents, "😀");
     }
 }

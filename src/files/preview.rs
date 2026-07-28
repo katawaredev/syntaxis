@@ -15,6 +15,7 @@ pub(super) fn EditorStatus(
     path: Option<String>,
     buffer: Option<ActiveBufferMeta>,
     selection: Signal<EditorSelection>,
+    language_services: Vec<LanguageServiceState>,
 ) -> Element {
     let selection = selection();
     let state = buffer.as_ref().map_or_else(
@@ -54,6 +55,39 @@ pub(super) fn EditorStatus(
                     }
                     span { "UTF-8" }
                     span { "{language}" }
+                }
+                for service in language_services {
+                    {
+                        let language_service_title = if service.message.is_empty() {
+                            service.server_name.clone()
+                        } else {
+                            service.message.clone()
+                        };
+                        let service_class = match service.status {
+                            dioxus_code_editor::LanguageServiceStatus::Starting => {
+                                "whitespace-nowrap text-warning"
+                            }
+                            dioxus_code_editor::LanguageServiceStatus::Ready => {
+                                "whitespace-nowrap text-success"
+                            }
+                            dioxus_code_editor::LanguageServiceStatus::Unavailable => {
+                                "whitespace-nowrap text-destructive"
+                            }
+                        };
+                        rsx! {
+                            span { title: language_service_title, class: service_class,
+                                match service.status {
+                                    dioxus_code_editor::LanguageServiceStatus::Starting => {
+                                        format!("{} starting", service.server_name)
+                                    }
+                                    dioxus_code_editor::LanguageServiceStatus::Ready => service.server_name,
+                                    dioxus_code_editor::LanguageServiceStatus::Unavailable => {
+                                        format!("{} unavailable", service.server_name)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

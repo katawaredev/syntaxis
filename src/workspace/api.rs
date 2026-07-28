@@ -93,21 +93,23 @@ pub async fn clear_mise_tools() -> Result<(), ServerFnError> {
 }
 #[get("/api/runtime")]
 pub async fn runtime_state() -> Result<RuntimeState, ServerFnError> {
+    let mut available = vec![
+        RuntimeCapability::Filesystem,
+        RuntimeCapability::FileEvents,
+        RuntimeCapability::Terminal,
+        RuntimeCapability::Git,
+        RuntimeCapability::Worktrees,
+        RuntimeCapability::Agent,
+    ];
+    if syntaxis_lsp_host::mise_available() {
+        available.push(RuntimeCapability::LanguageServices);
+    }
     Ok(RuntimeState::Ready {
         identity: RuntimeIdentity {
             location: ExecutionLocation::Remote,
             label: "Self-hosted runtime".into(),
         },
-        capabilities: RuntimeCapabilities {
-            available: vec![
-                RuntimeCapability::Filesystem,
-                RuntimeCapability::FileEvents,
-                RuntimeCapability::Terminal,
-                RuntimeCapability::Git,
-                RuntimeCapability::Worktrees,
-                RuntimeCapability::Agent,
-            ],
-        },
+        capabilities: RuntimeCapabilities { available },
     })
 }
 #[get("/api/workspace-roots")]

@@ -13,6 +13,7 @@ members = [
     "crates/code-editor",
     "crates/git",
     "crates/git-host",
+    "crates/lsp-host",
     "crates/notifications",
     "crates/notifications-host",
     "crates/terminal",
@@ -27,6 +28,7 @@ resolver = "2"
 
 [dependencies]
 async-trait = "0.1.91"
+axum = { version = "0.8.9", features = ["macros", "ws"], optional = true }
 base64 = "0.22.1"
 bytes = "1.12.1"
 csv = "1.4.0"
@@ -80,6 +82,7 @@ syntaxis-ui = { path = "crates/ui" }
 syntaxis-editor = { path = "crates/editor" }
 syntaxis-git = { path = "crates/git" }
 syntaxis-git-host = { path = "crates/git-host", optional = true }
+syntaxis-lsp-host = { path = "crates/lsp-host", optional = true }
 syntaxis-notifications = { path = "crates/notifications" }
 syntaxis-notifications-host = { path = "crates/notifications-host", optional = true }
 syntaxis-terminal = { path = "crates/terminal" }
@@ -114,11 +117,13 @@ desktop = ["dioxus/desktop", "dep:syntaxis-workspace-host", "dep:tokio"]
 mobile = ["dioxus/mobile"]
 server = [
     "dioxus/server",
+    "dep:axum",
     "dep:argon2",
     "dep:rand_core",
     "dep:toml",
     "dep:syntaxis-agent-host",
     "dep:syntaxis-git-host",
+    "dep:syntaxis-lsp-host",
     "dep:syntaxis-notifications-host",
     "dep:syntaxis-terminal-host",
     "dep:syntaxis-workspace-host",

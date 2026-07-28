@@ -261,9 +261,9 @@ pub(super) fn reconcile_workspace_change(
     });
 }
 
-pub(super) fn edit_document(
+pub(super) fn apply_document_edits(
     path: &str,
-    contents: String,
+    edits: &[dioxus_code_editor::EditorEdit],
     mut documents: Signal<Vec<OpenDocument>>,
 ) {
     if let Some(OpenDocument::Text(buffer)) = documents
@@ -271,7 +271,11 @@ pub(super) fn edit_document(
         .iter_mut()
         .find(|document| document.path() == path)
     {
-        buffer.edit(contents);
+        let edits = edits
+            .iter()
+            .map(|edit| (edit.start, edit.end, edit.text.clone()))
+            .collect::<Vec<_>>();
+        buffer.apply_edits(&edits);
     }
 }
 

@@ -4,13 +4,14 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use dioxus::prelude::*;
 use dioxus_code::Language;
 use dioxus_code_editor::{
-    CodeEditor, EditorCommand, EditorCommandKind, EditorRange, EditorSearchQuery,
-    EditorSearchStatus, EditorSelection,
+    CodeEditor, EditorCommand, EditorCommandKind, EditorEdit, EditorRange, EditorSearchQuery,
+    EditorSearchStatus, EditorSelection, LanguageServiceConfig, LanguageServiceState,
 };
 use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
 use syntaxis_editor::{
-    apply_editor_config, language_label_for_path, language_slug_for_path, resolve_editor_config,
-    BufferStatus, EditorBuffer, EditorConfigSource, ExplorerTree, ExternalChange, IndentStyle,
+    apply_editor_config, language_label_for_path, language_servers_for_language,
+    language_slug_for_path, lsp_language_id_for_path, resolve_editor_config, BufferStatus,
+    EditorBuffer, EditorConfigSource, ExplorerTree, ExternalChange, IndentStyle,
 };
 use syntaxis_git::{ChangeKind as GitChangeKind, DiffKind, RepositoryStatus, UnifiedDiff};
 use syntaxis_ui::prelude::{
@@ -41,8 +42,9 @@ pub use location::FilesQuery;
 
 use dialogs::{DirtyClosePrompt, FileMutationDialog, GitDiscardPrompt, GoToLineDialog};
 use documents::{
-    close_documents, edit_document, open_document, reconcile_workspace_change, reload_document,
-    request_close, request_close_many, restore_documents, save_all, save_and_close, save_path,
+    apply_document_edits, close_documents, open_document, reconcile_workspace_change,
+    reload_document, request_close, request_close_many, restore_documents, save_all,
+    save_and_close, save_path,
 };
 use editor_ui::{
     copy_editor_reference, find_matches, format_editor_reference, handle_editor_shortcut,
@@ -317,6 +319,9 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
     let editor_command = use_signal(|| None::<EditorCommand>);
     let command_revision = use_signal(|| 0_u64);
     let mut autocomplete_enabled = use_signal(|| false);
+    let mut language_service_connections = use_signal(Vec::<LanguageServiceConfig>::new);
+    let mut language_service_request = use_signal(|| None::<String>);
+    let mut language_service_states = use_signal(Vec::<LanguageServiceState>::new);
     let mut diff = use_signal(|| None::<UnifiedDiff>);
     let pending = use_signal(|| false);
     let mut file_dialog = use_signal(|| None::<FileActionDialog>);
@@ -331,6 +336,95 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
     let has_initial_location = query.path.is_some();
 
     use_effect(move || session.activate(activate_workspace_id.clone()));
+
+    use_effect(move || {
+        if !autocomplete_enabled() {
+            language_service_connections.set(Vec::new());
+            language_service_request.set(None);
+            language_service_states.set(Vec::new());
+            return;
+        }
+        let Some(workspace) = workspace() else {
+            return;
+        };
+        let Some(path) = active_path() else {
+            return;
+        };
+        let language_id = language_slug_for_path(&path);
+        let servers = language_servers_for_language(language_id, &workspace.profile.technologies);
+        if servers.is_empty() {
+            language_service_connections.set(Vec::new());
+            language_service_request.set(None);
+            language_service_states.set(Vec::new());
+            return;
+        }
+        let workspace_id = workspace.id.0;
+        let server_key = servers
+            .iter()
+            .map(|server| server.id)
+            .collect::<Vec<_>>()
+            .join(",");
+        let document_language_id = lsp_language_id_for_path(&path);
+        let request_key = format!("{workspace_id}:{document_language_id}:{server_key}");
+        if language_service_request().as_deref() == Some(&request_key) {
+            return;
+        }
+        language_service_connections.set(Vec::new());
+        language_service_request.set(Some(request_key.clone()));
+        language_service_states.set(
+            servers
+                .iter()
+                .map(|server| LanguageServiceState {
+                    server_id: server.id.into(),
+                    server_name: server.label.into(),
+                    status: dioxus_code_editor::LanguageServiceStatus::Starting,
+                    message: String::new(),
+                })
+                .collect(),
+        );
+        let language_id = document_language_id.to_owned();
+        let requested_servers = servers
+            .iter()
+            .map(|server| (server.id.to_owned(), server.label.to_owned()))
+            .collect::<Vec<_>>();
+        spawn(async move {
+            for (server_id, server_name) in requested_servers {
+                match crate::lsp::open_language_service(workspace_id.clone(), server_id.clone())
+                    .await
+                {
+                    Ok(connection) => {
+                        if language_service_request().as_deref() != Some(&request_key) {
+                            return;
+                        }
+                        language_service_connections
+                            .write()
+                            .push(LanguageServiceConfig {
+                                server_id: connection.server_id,
+                                server_name: connection.server_name,
+                                language_id: language_id.clone(),
+                                session_key: connection.session_key,
+                                endpoint: connection.endpoint,
+                                root_uri: connection.root_uri,
+                            });
+                    }
+                    Err(error) => {
+                        if language_service_request().as_deref() != Some(&request_key) {
+                            return;
+                        }
+                        if let Some(state) = language_service_states
+                            .write()
+                            .iter_mut()
+                            .find(|state| state.server_id == server_id)
+                        {
+                            state.server_name = server_name;
+                            state.status = dioxus_code_editor::LanguageServiceStatus::Unavailable;
+                            state.message = error.to_string();
+                        }
+                    }
+                }
+            }
+        });
+    });
 
     use_effect(move || {
         let Some((path, target)) = pending_search_navigation() else {
@@ -643,6 +737,21 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
             )),
             _ => None,
         });
+    let active_language_services = active_buffer.as_ref().map_or_else(Vec::new, |buffer| {
+        let language_id = language_slug_for_path(&buffer.path);
+        let Some(workspace) = workspace() else {
+            return Vec::new();
+        };
+        let server_ids =
+            language_servers_for_language(language_id, &workspace.profile.technologies)
+                .iter()
+                .map(|server| server.id)
+                .collect::<Vec<_>>();
+        language_service_states()
+            .into_iter()
+            .filter(|state| server_ids.contains(&state.server_id.as_str()))
+            .collect()
+    });
     let search_status = editor_search_status();
     let search_error = (!search_status.valid).then(|| "Invalid regular expression".to_owned());
     let workspace_editor_matches = active_path()
@@ -925,7 +1034,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                 EditorMenuItem {
                                     index: 4,
                                     icon: AppIcon::Code,
-                                    label: "Autocomplete",
+                                    label: "Code Intelligence",
                                     suffix: "Mod Space",
                                     checked: autocomplete_enabled(),
                                     onclick: move |()| autocomplete_enabled.toggle(),
@@ -1166,6 +1275,25 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                         }
                         Some(OpenDocument::Text(buffer)) => {
                             let language = language_for_path(&buffer.path);
+                            let language_slug = language_slug_for_path(&buffer.path);
+                            let configured_language_services = if let Some(workspace) = workspace() {
+                                let servers = language_servers_for_language(
+                                    language_slug,
+                                    &workspace.profile.technologies,
+                                );
+                                let connections = language_service_connections();
+                                servers
+                                    .iter()
+                                    .filter_map(|server| {
+                                        connections
+                                            .iter()
+                                            .find(|connection| connection.server_id == server.id)
+                                            .cloned()
+                                    })
+                                    .collect()
+                            } else {
+                                Vec::new()
+                            };
                             let config = buffer.config.clone();
                             let path = buffer.path.clone();
                             let reload_path = path.clone();
@@ -1198,7 +1326,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                         class: "size-full min-h-full rounded-none",
                                         value: buffer.contents.clone(),
                                         language,
-                                        language_name: language_slug_for_path(&buffer.path),
+                                        language_name: language_slug,
                                         filename: buffer.path.clone(),
                                         line_numbers: line_numbers(),
                                         word_wrap: word_wrap(),
@@ -1206,6 +1334,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                         indent_width: config.indent_size,
                                         indent_with_tabs: config.indent_style == IndentStyle::Tabs,
                                         autocomplete: autocomplete_enabled(),
+                                        language_services: configured_language_services,
                                         command: Some(editor_command),
                                         search_matches: if search_panel() { Vec::new() } else { workspace_editor_matches.clone() },
                                         active_search_match: if search_panel() { None } else { (!workspace_editor_matches.is_empty()).then_some(0) },
@@ -1229,7 +1358,20 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                         onselection: move |selection: EditorSelection| {
                                             editor_selection.set(selection);
                                         },
-                                        oninput: move |contents| edit_document(&input_path, contents, documents),
+                                        oninput: move |edits: Vec<EditorEdit>| {
+                                            apply_document_edits(&input_path, &edits, documents);
+                                        },
+                                        on_language_service: move |state: LanguageServiceState| {
+                                            let mut states = language_service_states.write();
+                                            if let Some(current) = states
+                                                .iter_mut()
+                                                .find(|current| current.server_id == state.server_id)
+                                            {
+                                                *current = state;
+                                            } else {
+                                                states.push(state);
+                                            }
+                                        },
                                         onkeydown: move |event| handle_editor_shortcut(
                                             &event,
                                             workspace(),
@@ -1268,6 +1410,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                     path: active_path(),
                     buffer: active_buffer,
                     selection: editor_selection,
+                    language_services: active_language_services,
                 }
             }
         }

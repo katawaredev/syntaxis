@@ -22,6 +22,7 @@ pub enum RuntimeCapability {
     Git,
     Worktrees,
     Agent,
+    LanguageServices,
     UnrestrictedWorkspaceRoots,
 }
 

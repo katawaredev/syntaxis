@@ -8,6 +8,8 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const source = resolve(root, "assets/code-editor/bridge-source.js");
 const destination = resolve(root, "crates/code-editor/assets/editor.bundle.js");
+const lspSource = resolve(root, "assets/code-editor/lsp-source.js");
+const lspDestination = resolve(root, "crates/code-editor/assets/lsp.bundle.js");
 const stamp = resolve(root, "crates/code-editor/assets/editor.bundle.stamp");
 const manifest = resolve(root, "package.json");
 const lockfile = resolve(root, "bun.lock");
@@ -16,12 +18,14 @@ const cacheKey = createHash("sha256")
   .update("syntaxis-code-editor-v1\0")
   .update(readFileSync(script))
   .update(readFileSync(source))
+  .update(readFileSync(lspSource))
   .update(readFileSync(manifest))
   .update(readFileSync(lockfile))
   .digest("hex");
 
 if (
   existsSync(destination) &&
+  existsSync(lspDestination) &&
   existsSync(stamp) &&
   readFileSync(stamp, "utf8").trim() === cacheKey
 ) {
@@ -43,6 +47,20 @@ const result = await esbuild.build({
 });
 
 if (result.errors.length > 0) process.exit(1);
+
+const lspResult = await esbuild.build({
+  entryPoints: [lspSource],
+  bundle: true,
+  format: "esm",
+  outfile: lspDestination,
+  platform: "browser",
+  target: "es2020",
+  minify: true,
+  sourcemap: false,
+  logLevel: "info",
+});
+
+if (lspResult.errors.length > 0) process.exit(1);
 
 writeFileSync(stamp, `${cacheKey}\n`);
 console.log(`Built CodeMirror editor bundle (${cacheKey.slice(0, 12)})`);

@@ -21,15 +21,20 @@ The CodeMirror bridge preserves the Rust-facing API required by Syntaxis:
 - viewport-only DOM rendering and incremental Lezer parsing for large files;
 - native unified diffs with collapsed unchanged regions and bounded diff work;
 - native language-aware and document-word completion;
+- optional, lazy-loaded LSP completion and diagnostics through CodeMirror's
+  official language-client package, including bounded supplementary clients
+  such as Tailwind alongside a primary language server;
 - filename-based language detection through CodeMirror's maintained language
   catalog, with plain text for unknown files;
 - deterministic event-listener cleanup when the component is dropped.
 
-CodeMirror owns history, input methods, selection painting, and incremental
-syntax state. Imperative commands are consumed once, preventing mutations from
-replaying when an editor remounts. Per-file search and completion remain inside
-CodeMirror; workspace search remains application-owned. The product separately
-refuses text files over 4 MiB and renders a clear large-file state.
+CodeMirror owns history, input methods, selection painting, incremental syntax
+state, and LSP document synchronization. Edit transactions cross the Rust
+bridge as UTF-16-relative deltas instead of full document snapshots.
+Imperative commands are consumed once, preventing mutations from replaying when
+an editor remounts. Per-file search and completion remain inside CodeMirror;
+workspace search remains application-owned. The product separately refuses
+text files over 4 MiB and renders a clear large-file state.
 
 Run `bun run build:editor` after changing
 `assets/code-editor/bridge-source.js`, `package.json`, or `bun.lock`. Standard

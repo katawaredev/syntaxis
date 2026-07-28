@@ -4,6 +4,7 @@ mod app;
 mod auth;
 mod files;
 mod git;
+mod lsp;
 mod mock;
 mod terminal;
 mod workspace;
