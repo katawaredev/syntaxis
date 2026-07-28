@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.0](https://github.com/katawaredev/syntaxis/compare/v0.2.0...v0.3.0) (2026-07-28)
+
+
+### Features
+
+* **editor:** LSP support ([d46aa69](https://github.com/katawaredev/syntaxis/commit/d46aa694b9bcb8ba4a17c024c833f3dfd7a8bae7))
+
+
+### Bug Fixes
+
+* **ci:** resolve release PR without checkout ([2616c39](https://github.com/katawaredev/syntaxis/commit/2616c398e8ad518ccc0daac3002bce2703454acf))
+* **release:** synchronize Cargo.lock ([772b1dc](https://github.com/katawaredev/syntaxis/commit/772b1dc2d1b6ef293f30c1572ad72a2255b96402))
+
 ## [0.2.0](https://github.com/katawaredev/syntaxis/compare/v0.1.0...v0.2.0) (2026-07-27)
 
 
