@@ -421,6 +421,14 @@
         padding-inline: 9px;
     }
 }
+
+@media (pointer: coarse) and (max-width: 390px) {
+    .dxc-editor.dxc-editor {
+        --dxc-editor-font-size: 12px;
+        --dxc-editor-line-height: 18px;
+    }
+}
+
 .dxc-diff-fold-meta {
     display: block;
     padding-right: 13px;
