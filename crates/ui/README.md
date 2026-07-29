@@ -10,6 +10,8 @@ their domain state and actions local.
 Components are organized by responsibility:
 
 - buttons, icons, badges, menus, dialogs, drawers, toasts, and empty states;
+- Lucide-backed application actions and application-owned brand marks are
+  centralized under `src/icons`;
 - text inputs, text areas, native selects, and a Dioxus-primitive checkbox;
 - a shared small, medium, and large control-size scale for buttons, triggers, and
   form controls;

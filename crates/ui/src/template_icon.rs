@@ -2,11 +2,14 @@ use dioxus::prelude::*;
 use dioxus_devicons::devicons::{color, monochrome};
 use dioxus_icons::lucide::{Atom, FileCode};
 
+use crate::icons::{BrandIcon, BrandMark};
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProjectTemplateIcon {
     Empty,
     Rust,
     Dioxus,
+    Shadcn,
     Dotnet,
     Vite,
     VitePlus,
@@ -42,6 +45,9 @@ pub fn TemplateIcon(icon: ProjectTemplateIcon, #[props(default = 24)] size: u32)
         },
         ProjectTemplateIcon::Dioxus => rsx! {
             Atom { size, stroke_width: 1.7 }
+        },
+        ProjectTemplateIcon::Shadcn => rsx! {
+            BrandMark { icon: BrandIcon::Shadcn, size }
         },
         ProjectTemplateIcon::Dotnet => rsx! {
             color::Dotnet { size }

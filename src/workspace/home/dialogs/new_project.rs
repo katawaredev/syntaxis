@@ -28,6 +28,7 @@ enum ProjectTemplate {
     Blazor,
     Vite,
     VitePlus,
+    Shadcn,
     React,
     Vue,
     SvelteKit,
@@ -82,7 +83,7 @@ const CATEGORIES: [TemplateCategory; 4] = [
     TemplateCategory::Native,
 ];
 
-const TEMPLATES: [TemplateDefinition; 28] = [
+const TEMPLATES: [TemplateDefinition; 29] = [
     TemplateDefinition {
         template: ProjectTemplate::Empty,
         label: "Empty",
@@ -191,6 +192,16 @@ const TEMPLATES: [TemplateDefinition; 28] = [
         category: TemplateCategory::Web,
         command: Some(
             "if ! command -v vp >/dev/null 2>&1; then curl -fsSL https://vite.plus | bash; fi; export PATH=\"${VP_HOME:-$HOME/.vite-plus}/bin:$PATH\"; vp create --directory .",
+        ),
+    },
+    TemplateDefinition {
+        template: ProjectTemplate::Shadcn,
+        label: "shadcn/ui",
+        description: "Interactive UI starter",
+        icon: ProjectTemplateIcon::Shadcn,
+        category: TemplateCategory::Web,
+        command: Some(
+            "mise x node@lts -- sh -lc 'project_name=$(basename \"$PWD\"); npx --yes shadcn@latest init --name \"$project_name\" && cp -a -- \"$project_name\"/. . && rm -rf -- \"$project_name\"' && mise use -y node@lts",
         ),
     },
     TemplateDefinition {
@@ -665,7 +676,7 @@ mod tests {
 
     #[test]
     fn starter_catalog_is_unique_and_includes_interactive_generators() {
-        assert_eq!(TEMPLATES.len(), 28);
+        assert_eq!(TEMPLATES.len(), 29);
         assert_eq!(
             TEMPLATES
                 .iter()
@@ -681,6 +692,9 @@ mod tests {
         let tanstack = template_definition(ProjectTemplate::TanstackStart)
             .command
             .expect("TanStack Start should have an initializer");
+        let shadcn = template_definition(ProjectTemplate::Shadcn)
+            .command
+            .expect("shadcn/ui should have an initializer");
         let expo = template_definition(ProjectTemplate::Expo)
             .command
             .expect("React Native should have an initializer");
@@ -696,6 +710,9 @@ mod tests {
 
         assert!(vite_plus.contains("vp create --directory ."));
         assert!(tanstack.contains("@tanstack/cli@latest create ."));
+        assert!(shadcn.contains("shadcn@latest init"));
+        assert!(shadcn.contains("--name \"$project_name\""));
+        assert!(shadcn.contains("cp -a -- \"$project_name\"/. ."));
         assert!(expo.contains("create-expo-app@latest ."));
         assert!(!dioxus.contains("dx new . --yes"));
         assert!(asp_net.contains("dotnet new webapi --output ."));

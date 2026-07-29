@@ -4,7 +4,9 @@ use dioxus::prelude::*;
 use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
 use dioxus_primitives::popover::{PopoverContent, PopoverRoot, PopoverTrigger};
 use syntaxis_agent::{AgentSnapshot, ModelSummary, SessionStats, ThinkingLevel};
-use syntaxis_ui::prelude::{AppIcon, Icon, IconButton, MenuContent, MenuTrigger};
+use syntaxis_ui::prelude::{
+    AppIcon, BrandIcon, BrandMark, Icon, IconButton, MenuContent, MenuTrigger,
+};
 
 mod composer;
 mod extension_dialog;
@@ -296,16 +298,7 @@ fn ProviderMark(provider: String, size: u32) -> Element {
     let normalized = provider.to_ascii_lowercase();
     if normalized.contains("openai") || normalized.contains("codex") {
         rsx! {
-            svg {
-                width: size,
-                height: size,
-                view_box: "0 0 256 260",
-                "aria-hidden": "true",
-                fill: "currentColor",
-                path {
-                    d: "M239.184 106.203a64.716 64.716 0 0 0-5.576-53.103C219.452 28.459 191 15.784 163.213 21.74A65.586 65.586 0 0 0 52.096 45.22a64.716 64.716 0 0 0-43.23 31.36c-14.31 24.602-11.061 55.634 8.033 76.74a64.665 64.665 0 0 0 5.525 53.102c14.174 24.65 42.644 37.324 70.446 31.36a64.72 64.72 0 0 0 48.754 21.744c28.481.025 53.714-18.361 62.414-45.481a64.767 64.767 0 0 0 43.229-31.36c14.137-24.558 10.875-55.423-8.083-76.483Zm-97.56 136.338a48.397 48.397 0 0 1-31.105-11.255l53.205-30.695a8.595 8.595 0 0 0 4.247-7.367v-72.85l21.845 12.636v60.93c-.056 26.818-21.783 48.545-48.601 48.601Zm-104.466-44.61a48.345 48.345 0 0 1-5.781-32.589l53.256 30.747a8.339 8.339 0 0 0 8.441 0l63.181-36.425v25.221l-52.693 30.849c-23.257 13.398-52.97 5.431-66.404-17.803ZM23.549 85.38a48.499 48.499 0 0 1 25.58-21.333v61.39a8.288 8.288 0 0 0 4.195 7.316l62.874 36.272-21.845 12.636-53-30.131c-23.211-13.454-31.171-43.144-17.804-66.405Zm179.466 41.695-63.08-36.63 21.795-12.585 53.001 30.184a48.6 48.6 0 0 1-7.316 87.635v-61.391a8.544 8.544 0 0 0-4.4-7.213Zm21.742-32.69-53.154-31.003a8.39 8.39 0 0 0-8.492 0L99.98 99.808V74.587l52.54-30.798a48.652 48.652 0 0 1 72.236 50.391ZM88.061 139.097l-21.845-12.585V65.685a48.652 48.652 0 0 1 79.757-37.346l-53.615 30.695a8.595 8.595 0 0 0-4.246 7.367l-.051 72.697Zm11.868-25.58 28.138-16.217 28.188 16.218v32.434l-28.086 16.218-28.188-16.218-.052-32.434Z",
-                }
-            }
+            BrandMark { icon: BrandIcon::OpenAi, size }
         }
     } else if normalized.contains("google") || normalized.contains("gemini") {
         rsx! {

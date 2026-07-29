@@ -8,8 +8,8 @@ mod field;
 mod file_icon;
 mod form;
 mod git_change;
-mod icon;
 mod icon_button;
+mod icons;
 mod input;
 mod menu;
 mod panel;
@@ -31,8 +31,8 @@ pub use field::Field;
 pub use file_icon::FileIcon;
 pub use form::{DangerNote, DialogActions, DialogForm};
 pub use git_change::GitChangeBadge;
-pub use icon::{AppIcon, Icon};
 pub use icon_button::IconButton;
+pub use icons::{AppIcon, BrandIcon, BrandMark, Icon};
 pub use input::{TextInput, TextInputType};
 pub use menu::{MenuButtonTrigger, MenuContent, MenuTrigger};
 pub use panel::{
@@ -48,11 +48,11 @@ pub use toast::Toast;
 
 pub mod prelude {
     pub use crate::{
-        AppIcon, Button, ButtonKind, Checkbox, ControlSize, DangerNote, DialogActions, DialogForm,
-        Drawer, EmptyState, Field, FileIcon, GitChangeBadge, Icon, IconButton, MenuButtonTrigger,
-        MenuContent, MenuTrigger, Modal, PanelHeader, PanelHeaderKind, PanelTab, PanelTabIndicator,
-        PanelTabList, PanelTabWidth, ProjectLanguageBadge, ProjectTechnologyBadge,
-        ProjectTemplateIcon, Select, SlideToConfirm, StatusBadge, TemplateIcon, TextArea,
-        TextAreaResize, TextInput, TextInputType, Toast, Tone,
+        AppIcon, BrandIcon, BrandMark, Button, ButtonKind, Checkbox, ControlSize, DangerNote,
+        DialogActions, DialogForm, Drawer, EmptyState, Field, FileIcon, GitChangeBadge, Icon,
+        IconButton, MenuButtonTrigger, MenuContent, MenuTrigger, Modal, PanelHeader,
+        PanelHeaderKind, PanelTab, PanelTabIndicator, PanelTabList, PanelTabWidth,
+        ProjectLanguageBadge, ProjectTechnologyBadge, ProjectTemplateIcon, Select, SlideToConfirm,
+        StatusBadge, TemplateIcon, TextArea, TextAreaResize, TextInput, TextInputType, Toast, Tone,
     };
 }

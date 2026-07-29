@@ -1,3 +1,5 @@
+//! Application actions backed by Lucide icons.
+
 use dioxus::prelude::*;
 use dioxus_icons::lucide::{
     ArrowDown, ArrowUp, Bell, Bot, BrainCog, BrushCleaning, CaseSensitive, ChartNoAxesColumn,
