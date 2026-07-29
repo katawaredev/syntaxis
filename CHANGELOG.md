@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.1](https://github.com/katawaredev/syntaxis/compare/v0.3.0...v0.3.1) (2026-07-28)
+
+
+### Bug Fixes
+
+* **ai:** split routes ([3b4f6d2](https://github.com/katawaredev/syntaxis/commit/3b4f6d240778de5004f0283188c729cc42cad743))
+* **ui:** responsive fixes ([6bb68ad](https://github.com/katawaredev/syntaxis/commit/6bb68ad1c87142379364071c2afdc82b2ce8e588))
+
 ## [0.3.0](https://github.com/katawaredev/syntaxis/compare/v0.2.0...v0.3.0) (2026-07-28)
 
 
