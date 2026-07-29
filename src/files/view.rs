@@ -167,6 +167,19 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
     let close_request = use_signal(|| None::<CloseRequest>);
     let mut git_revert_request = use_signal(|| None::<GitRevertRequest>);
     let mut toast = use_signal(|| None::<ToastState>);
+    let drawer_blocked = file_dialog().is_some()
+        || close_request().is_some()
+        || git_revert_request().is_some()
+        || go_to_line();
+    use_effect(move || {
+        if file_dialog().is_some()
+            || close_request().is_some()
+            || git_revert_request().is_some()
+            || go_to_line()
+        {
+            drawer.set(false);
+        }
+    });
     let mut processed_event_revision = session.processed_event_revision;
     let mut requested_location = use_signal(|| None::<FilesQuery>);
     let mut pending_location = use_signal(|| None::<FilesQuery>);
@@ -683,7 +696,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                     }
                 }
             }
-            if drawer() {
+            if drawer() && !drawer_blocked {
                 Drawer {
                     title: "Explorer",
                     label: "Workspace file explorer",
@@ -747,6 +760,8 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                         },
                         on_expand: move |entry| expand_directory(entry, workspace(), tree, editor_configs, toast),
                         on_action: move |action| {
+                            // Avoid overlapping focus traps when the mutation modal opens.
+                            drawer.set(false);
                             file_dialog
                                 .set(
                                     Some(FileActionDialog {

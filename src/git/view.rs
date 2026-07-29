@@ -118,6 +118,12 @@ fn WorkspaceGit(slug: String) -> Element {
     let mut comparison = use_signal(|| None::<BranchComparison>);
     let mut compare_target = use_signal(|| None::<String>);
 
+    let drawer_blocked = dialog() != GitDialog::None;
+    use_effect(move || {
+        if dialog() != GitDialog::None {
+            drawer.set(false);
+        }
+    });
     use_effect(move || {
         let _ = selected();
         expanded_diff.set(false);
@@ -741,7 +747,7 @@ fn WorkspaceGit(slug: String) -> Element {
                         }
                     }
                 }
-                if drawer() {
+                if drawer() && !drawer_blocked {
                     Drawer {
                         title: "Repository changes",
                         label: "Git repository sidebar",

@@ -125,6 +125,17 @@ fn RemoteAgent(
     let mut delete_target = use_signal(|| None::<AgentSessionSummary>);
     let mut session_toast = use_signal(|| None::<(String, Tone)>);
     let worktree_flow = use_worktree_flow(active_workspace, session_toast);
+    let drawer_blocked = worktree_flow.is_dialog_open()
+        || delete_target().is_some()
+        || extension_request().is_some();
+    use_effect(move || {
+        if worktree_flow.is_dialog_open()
+            || delete_target().is_some()
+            || extension_request().is_some()
+        {
+            drawer.set(false);
+        }
+    });
     use_effect({
         let workspace_id = workspace_id.clone();
         move || {
@@ -238,7 +249,7 @@ fn RemoteAgent(
                     }
                 }
             }
-            if drawer() {
+            if drawer() && !drawer_blocked {
                 Drawer {
                     title: "Pi",
                     label: "AI sidebar",
@@ -263,6 +274,7 @@ fn RemoteAgent(
                                         runtime.create_session();
                                     },
                                     on_delete: move |session_id: String| {
+                                        drawer.set(false);
                                         delete_target
                                             .set(sessions().into_iter().find(|session| session.id == session_id));
                                     },

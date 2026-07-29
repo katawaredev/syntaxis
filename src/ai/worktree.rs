@@ -20,6 +20,10 @@ impl WorktreeFlow {
         self.open.set(true);
     }
 
+    pub(super) fn is_dialog_open(self) -> bool {
+        (self.open)()
+    }
+
     pub(super) fn new_disabled_reason(
         self,
         active_workspace: crate::workspace::ActiveWorkspace,
