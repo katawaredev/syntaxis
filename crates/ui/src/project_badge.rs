@@ -156,7 +156,7 @@ fn technology_icon(technology: WorkspaceTechnology, size: u32) -> Element {
             color::SvelteIcon { size }
         },
         WorkspaceTechnology::Tailwind => rsx! {
-            color::TailwindIcon { size }
+            BrandMark { icon: BrandIcon::Tailwind, size }
         },
         WorkspaceTechnology::Terraform => rsx! {
             color::TerraformIcon { size }

@@ -161,7 +161,6 @@ fn detect_technologies(root: &Path) -> Vec<Technology> {
         ("@angular/core", Technology::Angular),
         ("astro", Technology::Astro),
         ("vite", Technology::Vite),
-        ("tailwindcss", Technology::Tailwind),
         ("@biomejs/biome", Technology::Biome),
         ("eslint", Technology::Eslint),
         ("prettier", Technology::Prettier),
@@ -220,9 +219,16 @@ fn detect_technologies(root: &Path) -> Vec<Technology> {
         &[
             "tailwind.config.js",
             "tailwind.config.cjs",
+            "tailwind.config.mjs",
             "tailwind.config.ts",
+            "tailwind.config.cts",
+            "tailwind.config.mts",
         ],
-    ) {
+    ) || dependencies
+        .iter()
+        .any(|name| name == "tailwindcss" || name.starts_with("@tailwindcss/"))
+        || is_tailwind_stylesheet(root, "tailwind.css")
+    {
         push_unique(&mut technologies, Technology::Tailwind);
     }
     if root.join("composer.json").exists() {
@@ -292,6 +298,16 @@ fn package_dependencies(package: &JsonValue) -> Vec<String> {
     .filter_map(|key| package.get(key).and_then(JsonValue::as_object))
     .flat_map(|dependencies| dependencies.keys().cloned())
     .collect()
+}
+
+fn is_tailwind_stylesheet(root: &Path, path: &str) -> bool {
+    read_text(&root.join(path)).is_some_and(|contents| {
+        contents.contains(r#"@import "tailwindcss""#)
+            || contents.contains("@import 'tailwindcss'")
+            || contents.contains("@tailwind base")
+            || contents.contains("@tailwind components")
+            || contents.contains("@tailwind utilities")
+    })
 }
 
 fn toml_has_key(value: &toml::Value, expected: &str) -> bool {
@@ -383,5 +399,45 @@ mod tests {
                 Technology::Vite,
             ]
         );
+    }
+
+    #[test]
+    fn detects_tailwind_v3_from_package_or_config() {
+        let package_root = tempfile::tempdir().unwrap();
+        fs::write(
+            package_root.path().join("package.json"),
+            r#"{"devDependencies":{"tailwindcss":"^3.4.17"}}"#,
+        )
+        .unwrap();
+
+        let config_root = tempfile::tempdir().unwrap();
+        fs::write(
+            config_root.path().join("tailwind.config.cjs"),
+            "module.exports = {};",
+        )
+        .unwrap();
+
+        assert!(detect_technologies(package_root.path()).contains(&Technology::Tailwind));
+        assert!(detect_technologies(config_root.path()).contains(&Technology::Tailwind));
+    }
+
+    #[test]
+    fn detects_tailwind_v4_from_package_or_css_import() {
+        let package_root = tempfile::tempdir().unwrap();
+        fs::write(
+            package_root.path().join("package.json"),
+            r#"{"devDependencies":{"@tailwindcss/vite":"^4.1.11"}}"#,
+        )
+        .unwrap();
+
+        let css_root = tempfile::tempdir().unwrap();
+        fs::write(
+            css_root.path().join("tailwind.css"),
+            "@import \"tailwindcss\";\n",
+        )
+        .unwrap();
+
+        assert!(detect_technologies(package_root.path()).contains(&Technology::Tailwind));
+        assert!(detect_technologies(css_root.path()).contains(&Technology::Tailwind));
     }
 }

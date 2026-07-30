@@ -5,6 +5,8 @@ use dioxus_icons::lucide::{
     FileTerminal, FileText, FileVideoCamera, Folder, FolderOpen,
 };
 
+use crate::icons::{BrandIcon, BrandMark};
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum FileIconGlyph {
     Folder,
@@ -341,7 +343,7 @@ fn render_glyph(glyph: FileIconGlyph, size: u32) -> Element {
             color::Swift { size }
         },
         FileIconGlyph::Tailwind => rsx! {
-            color::TailwindIcon { size }
+            BrandMark { icon: BrandIcon::Tailwind, size }
         },
         FileIconGlyph::Terraform => rsx! {
             color::TerraformIcon { size }
