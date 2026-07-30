@@ -5,6 +5,8 @@
 /node_modules
 /.lighthouseci
 /lighthouse-reports
+/mise.local.toml
+/mise.local.lock
 .DS_Store
 
 # Generated terminal bundle (build with: bun run build:terminal)

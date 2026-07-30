@@ -248,6 +248,25 @@ manually with a version and matching Git ref to recover a failed publication.
 
 # Development
 
+Install and activate [Mise](https://mise.jdx.dev/), then bootstrap the pinned
+project toolchain and dependencies:
+
+```bash
+mise trust
+mise install
+mise run setup
+```
+
+The committed `mise.toml` installs the Rust components and WebAssembly target,
+Node, Bun, Dioxus CLI, Just, the Cargo quality tools, Lefthook, and the language
+servers used by this repository. It matches `rust-toolchain.toml` and the
+tool-version arguments in `Dockerfile`; keep those declarations aligned when
+upgrading Rust, Node, Bun, or Dioxus. Checkout-specific overrides belong in
+ignored `mise.local.toml`.
+
+Common commands remain available through the Justfile. Mise also exposes the
+main entry points as `mise run serve`, `mise run qa`, and `mise run qa:server`.
+
 Your new bare-bones project includes minimal organization with a single `main.rs` file and a few assets.
 
 ```
