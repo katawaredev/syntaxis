@@ -60,14 +60,38 @@ details. Displayable extension custom messages are retained in the timeline, whi
 extension dialogs are shown in arrival order. Commands requiring Pi's terminal-only interactive UI
 are labeled and rejected with an explanation instead of being submitted as model prompts.
 
-Deleting a chat stops its process and moves the Pi JSONL session to the server operating system's
-trash rather than permanently unlinking it.
+Deleting a chat stops its process and permanently deletes the Pi JSONL session. There is no
+application trash or recovery step.
 
 If `pi` is not on the server's `PATH`, set `SYNTAXIS_PI_COMMAND` to the executable path. Syntaxis does
 not embed a model provider, store API keys, or route the AI section through ACP or another agent SDK.
 The optional All time, Trending, and Hot skills.sh leaderboards require a
 `VERCEL_OIDC_TOKEN`; Syntaxis leaves those controls disabled when the token is
 not present.
+
+## Storage cleanup
+
+**Cleanup files** permanently removes only the selected Git-ignored entries in one project. It uses
+Git's ignored-file cleanup rules and excludes common local configuration such as `.env`, `.envrc`,
+`.direnv`, and `*.local` files. It does not clean Git history or anything outside that project.
+
+Removing a workspace closes its terminals and Pi processes, revokes its preview, and removes its
+Syntaxis-owned session, notes, preview-target, and terminal-command metadata. Choosing to delete the
+project files also permanently removes the project directory. Pi chat history remains available
+when a project is merely unregistered; deleting an individual chat permanently deletes that
+session.
+
+**Prune unused tools** asks Mise to remove inactive installed tool versions. **Remove all tools**
+uninstalls every Mise-managed tool and clears the Mise download cache.
+
+**Clear runtime caches** is the aggressive space-recovery action for the complete runtime. It
+permanently removes the runtime user's `~/.cache` tree plus npm downloads and logs, Bun's install
+cache, Cargo registry and Git dependency caches, Rustup and Mise download leftovers, Gradle caches
+and distributions, NuGet packages, and Go build and module caches. This also clears the development
+Cargo named-volume contents because those volumes are mounted below the runtime user's Cargo home.
+Installed tools, project files, lockfiles, credentials, and Pi sessions are preserved. Stop active
+package installs and builds first; subsequent work may need to download and extract every
+dependency again.
 
 ## Docker
 

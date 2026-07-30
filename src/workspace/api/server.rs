@@ -69,12 +69,20 @@ pub(super) async fn remove_workspace(
     id: &WorkspaceId,
     delete_files: bool,
 ) -> Result<(), ServerFnError> {
+    registry()?.get(id).await.map_err(server_error)?;
+    retire_workspace_runtime(id)?;
     if delete_files {
         registry()?
             .delete_project_files(id, true)
             .map_err(server_error)?;
     }
     registry()?.remove(id).await.map_err(server_error)
+}
+
+pub(crate) fn retire_workspace_runtime(id: &WorkspaceId) -> Result<(), ServerFnError> {
+    crate::terminal::api::server::retire_workspace(id)?;
+    crate::ai::api::server::close_workspace(id);
+    crate::preview::server::retire_workspace(id)
 }
 
 pub(super) async fn touch_workspace(id: &WorkspaceId) -> Result<(), ServerFnError> {
@@ -139,6 +147,13 @@ pub(super) async fn clear_mise_tools() -> Result<(), ServerFnError> {
     run_mise(&["cache", "clear"]).await
 }
 
+pub(super) async fn clear_runtime_caches() -> Result<usize, ServerFnError> {
+    tokio::task::spawn_blocking(crate::workspace::runtime_cache::purge)
+        .await
+        .map_err(|_| runtime_cache_error("The runtime cache cleanup task failed"))?
+        .map_err(runtime_cache_error)
+}
+
 async fn run_mise(arguments: &[&str]) -> Result<(), ServerFnError> {
     let output = tokio::process::Command::new("mise")
         .args(arguments)
@@ -155,6 +170,14 @@ async fn run_mise(arguments: &[&str]) -> Result<(), ServerFnError> {
 }
 
 fn mise_command_error(message: &str) -> ServerFnError {
+    ServerFnError::ServerError {
+        message: message.into(),
+        code: 500,
+        details: None,
+    }
+}
+
+fn runtime_cache_error(message: impl Into<String>) -> ServerFnError {
     ServerFnError::ServerError {
         message: message.into(),
         code: 500,

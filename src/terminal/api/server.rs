@@ -251,6 +251,11 @@ pub(crate) fn close_workspace(workspace_id: &WorkspaceId) {
     let _ = terminals().close_all(workspace_id);
 }
 
+pub(crate) fn retire_workspace(workspace_id: &WorkspaceId) -> Result<(), ServerFnError> {
+    close_workspace(workspace_id);
+    commands::remove_workspace(workspace_id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -26,6 +26,7 @@ enum ProjectAction {
 enum MiseAction {
     Update,
     Prune,
+    ClearCaches,
     Clear,
 }
 #[component]
@@ -37,6 +38,7 @@ pub(super) fn RecentProjects(
     on_update_tools: EventHandler<usize>,
     on_notes: EventHandler<usize>,
     on_cleanup: EventHandler<usize>,
+    on_clear_runtime_caches: EventHandler<()>,
     on_clear_mise_tools: EventHandler<()>,
     on_delete: EventHandler<usize>,
     on_notice: EventHandler<String>,
@@ -58,7 +60,7 @@ pub(super) fn RecentProjects(
                     open: menu_open(),
                     on_open_change: move |open: bool| menu_open.set(open),
                     MenuTrigger {
-                        label: "Manage mise tools".to_owned(),
+                        label: "Manage runtime storage".to_owned(),
                         icon: AppIcon::MoreVertical,
                         open: menu_open(),
                         on_toggle: move |()| menu_open.toggle(),
@@ -117,8 +119,19 @@ pub(super) fn RecentProjects(
                             }
                         }
                         DropdownMenuItem::<MiseAction> {
-                            value: MiseAction::Clear,
+                            value: MiseAction::ClearCaches,
                             index: 2_usize,
+                            class: "!text-destructive",
+                            disabled: updating() || pruning(),
+                            on_select: move |_: MiseAction| on_clear_runtime_caches.call(()),
+                            span { class: "flex items-center gap-2",
+                                Icon { icon: AppIcon::Delete, size: 14 }
+                                "Clear runtime caches"
+                            }
+                        }
+                        DropdownMenuItem::<MiseAction> {
+                            value: MiseAction::Clear,
+                            index: 3_usize,
                             class: "!text-destructive",
                             disabled: updating() || pruning(),
                             on_select: move |_: MiseAction| on_clear_mise_tools.call(()),

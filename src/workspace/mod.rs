@@ -4,6 +4,8 @@ mod events;
 mod home;
 mod project_icon;
 mod remote;
+#[cfg(any(feature = "server", feature = "desktop"))]
+mod runtime_cache;
 mod shell;
 mod worktrees;
 pub use events::WorkspaceEventState;

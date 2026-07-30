@@ -204,7 +204,7 @@ impl HostAgentWorkspace {
         self.emit_sessions();
         Ok(snapshot)
     }
-    /// Stop and move one Pi session owned by this workspace to the system trash.
+    /// Stop and permanently delete one Pi session owned by this workspace.
     ///
     /// # Errors
     ///

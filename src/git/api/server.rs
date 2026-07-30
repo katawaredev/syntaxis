@@ -60,12 +60,9 @@ pub(super) async fn remove_worktree(
         .remove_worktree(&workspace, worktree_workspace_id, force)
         .await
         .map_err(server_error)?;
-    crate::terminal::api::server::close_workspace(&syntaxis_workspace::WorkspaceId::new(
-        worktree_workspace_id,
-    ));
-    crate::ai::api::server::close_workspace(&syntaxis_workspace::WorkspaceId::new(
-        worktree_workspace_id,
-    ));
+    crate::workspace::api::server::retire_workspace_runtime(
+        &syntaxis_workspace::WorkspaceId::new(worktree_workspace_id),
+    )?;
     Ok(())
 }
 

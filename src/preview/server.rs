@@ -88,6 +88,27 @@ impl ConfigStore {
             .and_then(|()| fs::rename(&temporary, &self.path))
             .map_err(|error| format!("Could not save the preview target: {error}"))
     }
+
+    fn remove_workspace(&mut self, workspace_id: &str) -> Result<(), String> {
+        let Some(previous) = self.file.workspaces.remove(workspace_id) else {
+            return Ok(());
+        };
+        if let Err(error) = self.save() {
+            self.file
+                .workspaces
+                .insert(workspace_id.to_owned(), previous);
+            return Err(error);
+        }
+        Ok(())
+    }
+}
+
+pub(crate) fn retire_workspace(workspace_id: &WorkspaceId) -> Result<(), ServerFnError> {
+    configs()?
+        .remove_workspace(&workspace_id.0)
+        .map_err(internal)?;
+    leases()?.retain(|_, lease| lease.workspace_id != *workspace_id);
+    Ok(())
 }
 
 pub(super) async fn preview_config(workspace_id: String) -> Result<PreviewConfig, ServerFnError> {
@@ -1296,6 +1317,26 @@ mod tests {
             parent_origin: "https://syntaxis.example.test".into(),
             secure: true,
         }
+    }
+
+    #[test]
+    fn removing_workspace_purges_its_saved_preview_target() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("preview-targets.json");
+        let mut store = ConfigStore::open(path.clone()).unwrap();
+        store.file.workspaces.insert(
+            "workspace".into(),
+            PreviewConfig {
+                target: Some(PreviewTarget::Loopback { port: 3000 }),
+                port: None,
+            },
+        );
+        store.save().unwrap();
+
+        store.remove_workspace("workspace").unwrap();
+
+        let reopened = ConfigStore::open(path).unwrap();
+        assert!(!reopened.file.workspaces.contains_key("workspace"));
     }
 
     #[test]

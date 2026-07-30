@@ -13,6 +13,7 @@ pub(crate) async fn pi_skills(workspace_id: WorkspaceId) -> Result<Vec<PiSkill>,
     let mut skills = Vec::new();
     for scope in [PiResourceScope::Global, PiResourceScope::Project] {
         let directory = skill_directory(root, scope);
+        cleanup_stale_skill_artifacts(&directory)?;
         let Ok(entries) = fs::read_dir(directory) else {
             continue;
         };
@@ -223,10 +224,9 @@ pub(crate) fn skill_catalog_available() -> bool {
 }
 
 fn configured_catalog_token(token: Option<String>) -> Option<String> {
-    token.and_then(|token| {
-        let token = token.trim();
-        (!token.is_empty()).then(|| token.to_owned())
-    })
+    let token = token?;
+    let token = token.trim();
+    (!token.is_empty()).then(|| token.to_owned())
 }
 
 async fn fetch_authenticated_skill_page(
@@ -295,6 +295,7 @@ pub(crate) async fn install_pi_skill(
     let (_, _, storage_name) = validate_skill_slug(&slug)?;
     let workspace = crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
     let root = skill_directory(Path::new(&workspace.root), scope);
+    cleanup_stale_skill_artifacts(&root)?;
     let destination = root.join(storage_name);
     reject_symlink(&destination)?;
     if destination.exists() {
@@ -417,6 +418,7 @@ fn write_downloaded_skill(
 }
 
 fn tracked_skills(root: &Path) -> Result<Vec<(PathBuf, String)>, ServerFnError> {
+    cleanup_stale_skill_artifacts(root)?;
     let Ok(entries) = fs::read_dir(root) else {
         return Ok(Vec::new());
     };
@@ -444,6 +446,72 @@ fn tracked_skills(root: &Path) -> Result<Vec<(PathBuf, String)>, ServerFnError> 
     }
     tracked.sort_by(|left, right| left.0.cmp(&right.0));
     Ok(tracked)
+}
+
+fn cleanup_stale_skill_artifacts(root: &Path) -> Result<(), ServerFnError> {
+    let entries = match fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(server_error(format!(
+                "Could not inspect {} for stale skill updates: {error}",
+                root.display()
+            )))
+        }
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        let Some((destination_name, backup)) = skill_artifact(name) else {
+            continue;
+        };
+        let destination = root.join(destination_name);
+        if backup && !destination.exists() {
+            fs::rename(&path, &destination).map_err(|error| {
+                server_error(format!(
+                    "Could not restore interrupted skill update {}: {error}",
+                    destination.display()
+                ))
+            })?;
+        } else {
+            remove_skill_artifact(&path)?;
+        }
+    }
+    Ok(())
+}
+
+fn skill_artifact(name: &str) -> Option<(&str, bool)> {
+    let name = name.strip_prefix('.')?;
+    for (marker, backup) in [(".syntaxis-update-", false), (".syntaxis-backup-", true)] {
+        if let Some((destination, nonce)) = name.split_once(marker) {
+            if !destination.is_empty() && !nonce.is_empty() {
+                return Some((destination, backup));
+            }
+        }
+    }
+    None
+}
+
+fn remove_skill_artifact(path: &Path) -> Result<(), ServerFnError> {
+    let metadata = fs::symlink_metadata(path).map_err(|error| {
+        server_error(format!(
+            "Could not inspect stale skill update {}: {error}",
+            path.display()
+        ))
+    })?;
+    let result = if metadata.is_dir() && !metadata.file_type().is_symlink() {
+        fs::remove_dir_all(path)
+    } else {
+        fs::remove_file(path)
+    };
+    result.map_err(|error| {
+        server_error(format!(
+            "Could not permanently remove stale skill update {}: {error}",
+            path.display()
+        ))
+    })
 }
 
 fn replace_downloaded_skill(
@@ -598,5 +666,39 @@ mod tests {
         );
         assert!(!destination.join("removed.md").exists());
         assert_eq!(tracked_skills(root.path()).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn stale_skill_update_artifacts_are_permanently_removed() {
+        let root = tempdir().unwrap();
+        let destination = root.path().join("review");
+        let staging = root.path().join(".review.syntaxis-update-1");
+        let backup = root.path().join(".review.syntaxis-backup-1");
+        fs::create_dir(&destination).unwrap();
+        fs::create_dir(&staging).unwrap();
+        fs::create_dir(&backup).unwrap();
+
+        cleanup_stale_skill_artifacts(root.path()).unwrap();
+
+        assert!(destination.is_dir());
+        assert!(!staging.exists());
+        assert!(!backup.exists());
+    }
+
+    #[test]
+    fn interrupted_skill_update_restores_its_backup() {
+        let root = tempdir().unwrap();
+        let destination = root.path().join("review");
+        let backup = root.path().join(".review.syntaxis-backup-1");
+        fs::create_dir(&backup).unwrap();
+        fs::write(backup.join("SKILL.md"), "restored").unwrap();
+
+        cleanup_stale_skill_artifacts(root.path()).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(destination.join("SKILL.md")).unwrap(),
+            "restored"
+        );
+        assert!(!backup.exists());
     }
 }

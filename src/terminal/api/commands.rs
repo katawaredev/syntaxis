@@ -71,6 +71,19 @@ impl CommandStore {
             .and_then(|()| fs::rename(&temporary, &self.path))
             .map_err(|error| format!("Could not save terminal commands: {error}"))
     }
+
+    fn remove_workspace(&mut self, workspace_id: &str) -> Result<(), String> {
+        let Some(previous) = self.file.workspaces.remove(workspace_id) else {
+            return Ok(());
+        };
+        if let Err(error) = self.save() {
+            self.file
+                .workspaces
+                .insert(workspace_id.to_owned(), previous);
+            return Err(error);
+        }
+        Ok(())
+    }
 }
 
 pub(super) async fn list(workspace_id: WorkspaceId) -> Result<Vec<RunCommand>, ServerFnError> {
@@ -174,6 +187,12 @@ pub(super) async fn delete(
     let commands = catalog.commands.clone();
     store.save().map_err(internal_error)?;
     Ok(commands)
+}
+
+pub(super) fn remove_workspace(workspace_id: &WorkspaceId) -> Result<(), ServerFnError> {
+    store()?
+        .remove_workspace(&workspace_id.0)
+        .map_err(internal_error)
 }
 
 async fn workspace(workspace_id: &WorkspaceId) -> Result<WorkspaceRecord, ServerFnError> {
@@ -331,5 +350,22 @@ mod tests {
             reopened.file.workspaces["project"].commands[0].command,
             "serve"
         );
+    }
+
+    #[test]
+    fn removing_workspace_purges_its_command_catalog() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("terminal-commands.json");
+        let mut store = CommandStore::open(path.clone()).unwrap();
+        store
+            .file
+            .workspaces
+            .insert("project".into(), WorkspaceCommands::default());
+        store.save().unwrap();
+
+        store.remove_workspace("project").unwrap();
+
+        let reopened = CommandStore::open(path).unwrap();
+        assert!(!reopened.file.workspaces.contains_key("project"));
     }
 }
