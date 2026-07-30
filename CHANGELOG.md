@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.0](https://github.com/katawaredev/syntaxis/compare/v0.3.1...v0.4.0) (2026-07-30)
+
+
+### Features
+
+* **preview:** init ([fedb608](https://github.com/katawaredev/syntaxis/commit/fedb60847774f1038ea1b8dc8e2c6a07ad67f0b2))
+* **web:** add manifest ([aeff065](https://github.com/katawaredev/syntaxis/commit/aeff06591a9970bb0d2a6f607c1585cf65013b5f))
+* **workspace:** add shadcn template ([7cbbd58](https://github.com/katawaredev/syntaxis/commit/7cbbd58e19bd2ca136a452caab0434836ba15a1f))
+
+
+### Bug Fixes
+
+* **editor:** smaller font for phone displays ([695bacf](https://github.com/katawaredev/syntaxis/commit/695bacf4d2d90667dd547d60bc7f6798a37eb8da))
+* **ui:** drawers behavior ([e771241](https://github.com/katawaredev/syntaxis/commit/e7712417e35a899e49dc1256b6ce1cf2d59e39e1))
+* **workspace:** tailwindcss icon ([5ba168f](https://github.com/katawaredev/syntaxis/commit/5ba168fab25a9ff2d8cd1a5d9f3b42a2cada7f13))
+
 ## [0.3.1](https://github.com/katawaredev/syntaxis/compare/v0.3.0...v0.3.1) (2026-07-28)
 
 
