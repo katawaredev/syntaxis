@@ -16,10 +16,12 @@ services:
       SYNTAXIS_PASSWORD_HASH: "${SYNTAXIS_PASSWORD_HASH:?Set SYNTAXIS_PASSWORD_HASH; see README.md}"
       SYNTAXIS_API_TOKEN: "${SYNTAXIS_API_TOKEN:-}"
       SYNTAXIS_INSECURE_COOKIE: "true"
+      SYNTAXIS_PREVIEW_ORIGIN: "http://preview.localhost:${SYNTAXIS_DEV_PORT:-8080}"
       VERCEL_OIDC_TOKEN: "${VERCEL_OIDC_TOKEN:-}"
     ports:
       - "${SYNTAXIS_DEV_PORT:-8080}:8080"
-      - "${SYNTAXIS_PREVIEW_PORT:-5173}:5173"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - "${SYNTAXIS_DEV_HOME:-./data/dev-home}:/home/dev"
       - "${HOST_HOME:-${HOME}}/.ssh:/home/dev/.ssh:ro"

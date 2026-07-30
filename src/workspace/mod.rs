@@ -9,5 +9,5 @@ mod worktrees;
 pub use events::WorkspaceEventState;
 pub use home::Home;
 pub use project_icon::ProjectIcon;
-pub use shell::{Preview, WorkspaceShell};
+pub use shell::WorkspaceShell;
 pub(crate) use worktrees::ActiveWorkspace;

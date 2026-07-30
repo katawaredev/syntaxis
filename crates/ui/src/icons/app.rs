@@ -4,11 +4,11 @@ use dioxus::prelude::*;
 use dioxus_icons::lucide::{
     ArrowDown, ArrowUp, Bell, Bot, BrainCog, BrushCleaning, CaseSensitive, ChartNoAxesColumn,
     Check, ChevronDown, ChevronLeft, ChevronRight, Code, Command, Copy, Ellipsis, EllipsisVertical,
-    Eye, FileDiff, FileInput, FileMinus, FilePlus, FolderOpen, FolderPlus, GitBranch,
+    ExternalLink, Eye, FileDiff, FileInput, FileMinus, FilePlus, FolderOpen, FolderPlus, GitBranch,
     GitCommitHorizontal, GitFork, Hash, ListChevronsDownUp, ListChevronsUpDown, ListOrdered, Menu,
     Mic, PanelLeftOpen, Paperclip, Play, Plus, RefreshCw, Regex, Repeat1, Replace, ReplaceAll,
-    RotateCcw, Save, Search, Send, Sparkles, Square, SquarePen, SquareTerminal, Trash2, Type,
-    WholeWord, X,
+    RotateCcw, Save, Search, Send, Share2, Sparkles, Square, SquarePen, SquareTerminal, Trash2,
+    Type, WholeWord, X,
 };
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum AppIcon {
@@ -29,6 +29,7 @@ pub enum AppIcon {
     Commit,
     Collapse,
     Explorer,
+    ExternalLink,
     Eye,
     Fetch,
     FileDiff,
@@ -58,6 +59,7 @@ pub enum AppIcon {
     Save,
     Search,
     Send,
+    Share,
     Sparkles,
     Bot,
     Stop,
@@ -153,6 +155,11 @@ pub fn Icon(icon: AppIcon, #[props(default = 16)] size: u32) -> Element {
         AppIcon::Explorer => {
             rsx! {
                 PanelLeftOpen { size }
+            }
+        }
+        AppIcon::ExternalLink => {
+            rsx! {
+                ExternalLink { size }
             }
         }
         AppIcon::Eye => {
@@ -298,6 +305,11 @@ pub fn Icon(icon: AppIcon, #[props(default = 16)] size: u32) -> Element {
         AppIcon::Send => {
             rsx! {
                 Send { size }
+            }
+        }
+        AppIcon::Share => {
+            rsx! {
+                Share2 { size }
             }
         }
         AppIcon::Sparkles => {

@@ -1,5 +1,5 @@
 use dioxus::prelude::*;
-use syntaxis_ui::prelude::{AppIcon, EmptyState, Icon, StatusBadge, Tone};
+use syntaxis_ui::prelude::{AppIcon, Icon, StatusBadge, Tone};
 
 use crate::{
     app::{LogoutButton, Route},
@@ -196,12 +196,13 @@ pub fn WorkspaceShell() -> Element {
                     active: active == Module::Git,
                     to: Route::Git { slug: slug.clone() },
                 }
-                button {
-                    class: "flex w-26 flex-col items-center justify-center gap-1 border-t-2 border-transparent bg-transparent px-2.5 pt-2 pb-1.5 text-muted-foreground max-md:w-1/5 max-md:pb-2",
-                    disabled: true,
-                    title: "Preview unavailable",
-                    span { class: "h-5 text-base leading-5", "◫" }
-                    small { class: "text-[10px]", "Preview" }
+                NavItem {
+                    label: "Preview",
+                    icon: AppIcon::Eye,
+                    active: active == Module::Preview,
+                    to: Route::Preview {
+                        slug: slug.clone(),
+                    },
                 }
                 NavItem {
                     label: "AI",
@@ -228,18 +229,6 @@ fn NavItem(label: String, icon: AppIcon, active: bool, to: Route) -> Element {
                 Icon { icon, size: 18 }
             }
             small { class: "text-[10px]", {label} }
-        }
-    }
-}
-
-#[component]
-pub fn Preview(slug: String) -> Element {
-    let _ = slug;
-    rsx! {
-        EmptyState {
-            icon: "◫",
-            title: "Preview is unavailable",
-            description: "Application previews will arrive in a later phase.",
         }
     }
 }

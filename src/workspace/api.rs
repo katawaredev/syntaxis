@@ -100,6 +100,7 @@ pub async fn runtime_state() -> Result<RuntimeState, ServerFnError> {
         RuntimeCapability::Git,
         RuntimeCapability::Worktrees,
         RuntimeCapability::Agent,
+        RuntimeCapability::Preview,
     ];
     if syntaxis_lsp_host::mise_available() {
         available.push(RuntimeCapability::LanguageServices);

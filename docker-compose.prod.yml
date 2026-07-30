@@ -15,9 +15,12 @@ services:
       SYNTAXIS_PROJECTS_ROOT: /Projects
       SYNTAXIS_PASSWORD_HASH: "${SYNTAXIS_PASSWORD_HASH:?Set SYNTAXIS_PASSWORD_HASH; see README.md}"
       SYNTAXIS_API_TOKEN: "${SYNTAXIS_API_TOKEN:-}"
+      SYNTAXIS_PREVIEW_ORIGIN: "${SYNTAXIS_PREVIEW_ORIGIN:-}"
       VERCEL_OIDC_TOKEN: "${VERCEL_OIDC_TOKEN:-}"
     expose:
       - "8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - "${DATA:-./data}/syntaxis/home:/home/dev"
       - "${HOST_HOME:-${HOME}}/.ssh:/home/dev/.ssh:ro"

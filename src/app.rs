@@ -2,8 +2,9 @@ use crate::{
     ai::{Ai, AiQuery, AiSettings, AiSettingsSection},
     files::{Files, FilesQuery},
     git::Git,
+    preview::Preview,
     terminal::{Terminal, TerminalQuery},
-    workspace::{Home, Preview, WorkspaceShell},
+    workspace::{Home, WorkspaceShell},
 };
 use dioxus::prelude::*;
 const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");

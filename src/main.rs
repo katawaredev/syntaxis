@@ -6,6 +6,7 @@ mod files;
 mod git;
 mod lsp;
 mod mock;
+mod preview;
 mod terminal;
 mod workspace;
 

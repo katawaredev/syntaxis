@@ -107,6 +107,62 @@ preferences. Changing `SYNTAXIS_API_TOKEN` revokes all native clients on the nex
 The token is optional until a native client is used and must contain at least 32 characters when
 set.
 
+### Application previews
+
+The Preview module connects to an HTTP development server from the selected runtime. The default
+runtime-port target uses `127.0.0.1`; start the project in Terminal and bind it there. On Linux
+runtimes, Syntaxis finds listening HTTP processes whose working directory is inside the selected
+workspace and offers their ports as Preview suggestions; manual port entry remains available.
+
+Use the explicit HTTP(S) URL target for an existing remote app or a Docker service reachable from
+the Syntaxis runtime, such as `http://frontend:3000`. Only origins are accepted: credentials, paths,
+queries, fragments, and non-HTTP schemes are rejected. Syntaxis probes and proxies the target from
+the runtime, not from the browser. The selected target is saved per workspace.
+
+The supplied Compose files map `host.docker.internal` to the Docker host. Use
+`http://host.docker.internal:<published-port>` for a server published by another local container.
+Production services on the configured shared `DOCKER_NETWORK` can instead use their Compose service
+name directly.
+
+Syntaxis exposes either target through an authenticated HTTP and WebSocket gateway, so framework hot
+reload continues to work without publishing the development port. Preview automatically connects a
+reachable saved target, or the only detected workspace server when there is no saved target.
+
+The active preview is kept in runtime memory and restored when the operator returns to Preview or
+reloads Syntaxis. If the upstream server becomes unreachable during an HTTP request, Syntaxis
+removes the complete preview session; its private and shared URLs remain invalid even if a server
+later starts on the same port. Runtime restarts also clear active previews, while retaining saved
+targets for automatic reconnection.
+
+Local development opened through `http://localhost` or a loopback IP uses an automatically
+generated `p-<private-token>.localhost` hostname. A production installation must set a base preview
+origin:
+
+```bash
+SYNTAXIS_PREVIEW_ORIGIN=https://preview.example.com
+```
+
+Wildcard DNS and TLS for `*.preview.example.com` must route to the same Syntaxis listener. For
+example, once wildcard certificate provisioning has been configured, the Caddy route is:
+
+```caddyfile
+*.preview.example.com {
+	reverse_proxy syntaxis:8080
+}
+```
+
+The unguessable private hostname is the owner's bearer credential; no gateway cookie or query token
+is required. The main Syntaxis session cookie remains host-only and is not sent to the project
+development server. Explicit URL targets should still be treated as trusted operator configuration:
+an authenticated user who already has runtime Terminal access can use them to reach HTTP services
+visible to that runtime.
+
+Previews are private by default. **Share** creates one random bearer link that anyone can open
+without a Syntaxis account, using a separate `s-<share-token>` hostname. **Revoke** immediately
+invalidates that hostname without interrupting the private preview. Creating a new preview also
+invalidates the previous session and its share. Sharing beyond the local machine requires a
+publicly reachable `SYNTAXIS_PREVIEW_ORIGIN` with wildcard DNS and TLS as described above.
+
 ### Development
 
 The default Compose file mounts the entire host `${HOME}/Projects` directory and starts the Dioxus

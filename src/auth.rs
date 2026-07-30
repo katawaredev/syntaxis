@@ -66,6 +66,7 @@ pub(crate) fn serve() -> ! {
         async move {
             let auth_layer =
                 axum::middleware::from_fn_with_state(state.clone(), require_authentication);
+            let preview_layer = axum::middleware::from_fn(crate::preview::server::dispatch);
             let login_page_state = state.clone();
             let login_state = state.clone();
             let logout_state = state.clone();
@@ -83,7 +84,8 @@ pub(crate) fn serve() -> ! {
                     post(move |headers| logout(logout_state.clone(), headers)),
                 )
                 .merge(dioxus::server::router(crate::app::App))
-                .layer(auth_layer);
+                .layer(auth_layer)
+                .layer(preview_layer);
             Ok(router)
         }
     })
