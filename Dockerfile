@@ -6,6 +6,17 @@ ARG DIOXUS_VERSION=0.7.9
 
 FROM docker.io/oven/bun:${BUN_VERSION} AS bun
 
+# Mise is a runtime dependency of project bootstrap and tool management.
+FROM docker.io/library/debian:trixie-slim AS mise
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && curl --fail --silent --show-error --location https://mise.run \
+    --output /tmp/install-mise.sh \
+    && MISE_INSTALL_PATH=/usr/local/bin/mise sh /tmp/install-mise.sh \
+    && rm /tmp/install-mise.sh \
+    && rm -rf /var/lib/apt/lists/*
+
 FROM docker.io/library/node:${NODE_VERSION}-trixie AS development
 
 ARG DIOXUS_VERSION
@@ -16,6 +27,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 ENV PATH="${CARGO_HOME}/bin:${PATH}"
 
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
+COPY --from=mise /usr/local/bin/mise /usr/local/bin/mise
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
@@ -27,6 +39,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     curl \
     git \
     gnupg \
+    libicu76 \
     openssh-client \
     pkg-config \
     ripgrep \
@@ -112,6 +125,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     curl \
     git \
     gnupg \
+    libicu76 \
     openssh-client \
     ripgrep \
     tini \
@@ -125,6 +139,7 @@ RUN usermod --login dev --home /home/dev --move-home node \
     && chown dev:dev /app /Projects
 
 COPY --from=build --chown=dev:dev /build-output /app
+COPY --from=mise /usr/local/bin/mise /usr/local/bin/mise
 COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint
 
 ENV HOME=/home/dev \

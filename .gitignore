@@ -9,6 +9,10 @@
 /mise.local.lock
 .DS_Store
 
+# Process crash dumps
+/core
+/core.*
+
 # Generated terminal bundle (build with: bun run build:terminal)
 /assets/terminal/terminal.bundle.js
 /assets/terminal/terminal.bundle.stamp
