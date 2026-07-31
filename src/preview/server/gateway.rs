@@ -1,10 +1,4 @@
-use std::{
-    collections::{BTreeMap, HashMap, HashSet},
-    fs,
-    path::{Path, PathBuf},
-    sync::{Mutex, MutexGuard, OnceLock},
-    time::Duration,
-};
+use std::collections::{HashMap, HashSet};
 
 use dioxus::{
     fullstack::HeaderMap,
@@ -25,9 +19,6 @@ use dioxus::{
     },
 };
 use futures_util::{SinkExt, StreamExt};
-use rand_core::{OsRng, RngCore};
-use serde::{Deserialize, Serialize};
-use syntaxis_workspace::WorkspaceId;
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{client::IntoClientRequest, Message as TungsteniteMessage},
@@ -35,267 +26,14 @@ use tokio_tungstenite::{
 use url::Url;
 
 use super::{
-    PreviewCandidate, PreviewConfig, PreviewLease, PreviewSession, PreviewShare, PreviewTarget,
+    authority, origin, request_error,
+    state::{invalidate_lease, leases, Lease},
+    target::{http_client, target_label, TARGET_PROBE_TIMEOUT},
 };
 
-const CONNECT_TIMEOUT: Duration = Duration::from_millis(900);
-const TARGET_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REQUEST_BODY_BYTES: usize = 32 * 1024 * 1024;
-const MAX_DISCOVERED_LISTENERS: usize = 64;
-static LEASES: OnceLock<Mutex<HashMap<String, Lease>>> = OnceLock::new();
-static CONFIGS: OnceLock<Result<Mutex<ConfigStore>, String>> = OnceLock::new();
-static HTTP_CLIENT: OnceLock<Result<reqwest::Client, String>> = OnceLock::new();
 
-#[derive(Clone)]
-struct Lease {
-    workspace_id: WorkspaceId,
-    upstream: Url,
-    target_label: String,
-    share_token: Option<String>,
-    gateway_base: Url,
-    public_authority: String,
-    public_origin: String,
-    parent_origin: String,
-    secure: bool,
-}
-
-#[derive(Default, Deserialize, Serialize)]
-struct ConfigFile {
-    workspaces: HashMap<String, PreviewConfig>,
-}
-
-struct ConfigStore {
-    path: PathBuf,
-    file: ConfigFile,
-}
-
-impl ConfigStore {
-    fn open(path: PathBuf) -> Result<Self, String> {
-        let file = match fs::read(&path) {
-            Ok(bytes) => serde_json::from_slice(&bytes)
-                .map_err(|error| format!("Could not read saved preview targets: {error}"))?,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => ConfigFile::default(),
-            Err(error) => return Err(format!("Could not read saved preview targets: {error}")),
-        };
-        Ok(Self { path, file })
-    }
-
-    fn save(&self) -> Result<(), String> {
-        let bytes = serde_json::to_vec_pretty(&self.file)
-            .map_err(|error| format!("Could not encode preview targets: {error}"))?;
-        let temporary = self.path.with_extension("json.tmp");
-        fs::write(&temporary, bytes)
-            .and_then(|()| fs::rename(&temporary, &self.path))
-            .map_err(|error| format!("Could not save the preview target: {error}"))
-    }
-
-    fn remove_workspace(&mut self, workspace_id: &str) -> Result<(), String> {
-        let Some(previous) = self.file.workspaces.remove(workspace_id) else {
-            return Ok(());
-        };
-        if let Err(error) = self.save() {
-            self.file
-                .workspaces
-                .insert(workspace_id.to_owned(), previous);
-            return Err(error);
-        }
-        Ok(())
-    }
-}
-
-pub(crate) fn retire_workspace(workspace_id: &WorkspaceId) -> Result<(), ServerFnError> {
-    configs()?
-        .remove_workspace(&workspace_id.0)
-        .map_err(internal)?;
-    leases()?.retain(|_, lease| lease.workspace_id != *workspace_id);
-    Ok(())
-}
-
-pub(super) async fn preview_config(workspace_id: String) -> Result<PreviewConfig, ServerFnError> {
-    let workspace_id = WorkspaceId::new(workspace_id);
-    crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
-    let config = configs()?
-        .file
-        .workspaces
-        .get(&workspace_id.0)
-        .cloned()
-        .unwrap_or_default();
-    Ok(normalize_config(config))
-}
-
-fn normalize_config(mut config: PreviewConfig) -> PreviewConfig {
-    if config.target.is_none() {
-        config.target = config
-            .port
-            .take()
-            .map(|port| PreviewTarget::Loopback { port });
-    }
-    config
-}
-
-pub(super) async fn preview_candidates(
-    workspace_id: String,
-) -> Result<Vec<PreviewCandidate>, ServerFnError> {
-    let workspace_id = WorkspaceId::new(workspace_id);
-    let workspace = crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
-    let root = PathBuf::from(workspace.root);
-    let listeners = tokio::task::spawn_blocking(move || discover_workspace_listeners(&root))
-        .await
-        .map_err(|_| internal("Could not inspect workspace preview processes."))?
-        .map_err(internal)?;
-    let client = http_client()?;
-    let mut probes = futures_util::stream::FuturesUnordered::new();
-    for candidate in listeners.into_iter().take(MAX_DISCOVERED_LISTENERS) {
-        probes.push(async move {
-            let request = client.get(format!("http://127.0.0.1:{}/", candidate.port));
-            tokio::time::timeout(CONNECT_TIMEOUT, request.send())
-                .await
-                .ok()
-                .and_then(Result::ok)
-                .map(|_| candidate)
-        });
-    }
-    let mut candidates = Vec::new();
-    while let Some(candidate) = probes.next().await {
-        if let Some(candidate) = candidate {
-            candidates.push(candidate);
-        }
-    }
-    candidates.sort_by_key(|candidate| candidate.port);
-    Ok(candidates)
-}
-
-pub(super) async fn create_preview_lease(
-    workspace_id: String,
-    target: PreviewTarget,
-    headers: &HeaderMap,
-) -> Result<PreviewLease, ServerFnError> {
-    let workspace_id = WorkspaceId::new(workspace_id);
-    crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
-    let upstream = validate_target(&target)?;
-    probe_target(&upstream).await?;
-    let target_label = target_label(&upstream);
-    let saved_target = match target {
-        PreviewTarget::Loopback { port } => PreviewTarget::Loopback { port },
-        PreviewTarget::Url { .. } => PreviewTarget::Url {
-            url: upstream.as_str().to_owned(),
-        },
-    };
-
-    let parent_origin = request_origin(headers)?;
-    let gateway_base = preview_base_url(&parent_origin)?;
-    let lease_id = random_hex(16);
-    let public_url = gateway_url(&gateway_base, &format!("p-{lease_id}"))?;
-    let public_authority = authority(&public_url)?;
-    let public_origin = origin(&public_url)?;
-    let secure = public_url.scheme() == "https";
-    let lease = Lease {
-        workspace_id,
-        upstream,
-        target_label,
-        share_token: None,
-        gateway_base,
-        public_authority,
-        public_origin,
-        parent_origin,
-        secure,
-    };
-    {
-        let mut store = configs()?;
-        let workspace_id = lease.workspace_id.0.clone();
-        let previous = store.file.workspaces.insert(
-            workspace_id.clone(),
-            PreviewConfig {
-                target: Some(saved_target),
-                port: None,
-            },
-        );
-        if let Err(error) = store.save() {
-            if let Some(previous) = previous {
-                store.file.workspaces.insert(workspace_id, previous);
-            } else {
-                store.file.workspaces.remove(&workspace_id);
-            }
-            return Err(internal(error));
-        }
-    }
-    let mut leases = leases()?;
-    replace_workspace_lease(&mut leases, lease_id.clone(), lease);
-
-    Ok(PreviewLease {
-        id: lease_id,
-        url: public_url.into(),
-    })
-}
-
-pub(super) async fn create_preview_share(
-    workspace_id: String,
-    lease_id: String,
-) -> Result<PreviewShare, ServerFnError> {
-    let workspace_id = WorkspaceId::new(workspace_id);
-    crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
-    let mut leases = leases()?;
-    let lease = workspace_lease_mut(&mut leases, &workspace_id, &lease_id)?;
-    let token = random_hex(16);
-    let url = gateway_url(&lease.gateway_base, &format!("s-{token}"))?.into();
-    lease.share_token = Some(token);
-    Ok(PreviewShare { url })
-}
-
-pub(super) async fn resume_preview_session(
-    workspace_id: String,
-    headers: &HeaderMap,
-) -> Result<Option<PreviewSession>, ServerFnError> {
-    let workspace_id = WorkspaceId::new(workspace_id);
-    crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
-    let parent_origin = request_origin(headers)?;
-    let mut leases = leases()?;
-    let Some((lease_id, lease)) = leases
-        .iter_mut()
-        .find(|(_, lease)| lease.workspace_id == workspace_id)
-    else {
-        return Ok(None);
-    };
-    refresh_preview_session(lease_id, lease, parent_origin).map(Some)
-}
-
-pub(super) async fn revoke_preview_share(
-    workspace_id: String,
-    lease_id: String,
-) -> Result<(), ServerFnError> {
-    let workspace_id = WorkspaceId::new(workspace_id);
-    crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
-    let mut leases = leases()?;
-    workspace_lease_mut(&mut leases, &workspace_id, &lease_id)?.share_token = None;
-    Ok(())
-}
-
-fn refresh_preview_session(
-    lease_id: &str,
-    lease: &mut Lease,
-    parent_origin: String,
-) -> Result<PreviewSession, ServerFnError> {
-    lease.parent_origin = parent_origin;
-    let url = gateway_url(&lease.gateway_base, &format!("p-{lease_id}"))?.into();
-    Ok(PreviewSession {
-        lease: PreviewLease {
-            id: lease_id.to_owned(),
-            url,
-        },
-        share: active_preview_share(lease)?,
-    })
-}
-
-fn active_preview_share(lease: &Lease) -> Result<Option<PreviewShare>, ServerFnError> {
-    let Some(token) = lease.share_token.as_deref() else {
-        return Ok(None);
-    };
-    Ok(Some(PreviewShare {
-        url: gateway_url(&lease.gateway_base, &format!("s-{token}"))?.into(),
-    }))
-}
-
-fn gateway_url(base: &Url, label: &str) -> Result<Url, ServerFnError> {
+pub(super) fn gateway_url(base: &Url, label: &str) -> Result<Url, ServerFnError> {
     let mut url = base.clone();
     let base_host = url
         .host_str()
@@ -307,6 +45,33 @@ fn gateway_url(base: &Url, label: &str) -> Result<Url, ServerFnError> {
     url.set_query(None);
     url.set_fragment(None);
     Ok(url)
+}
+
+pub(super) fn preview_base_url(parent_origin: &str) -> Result<Url, ServerFnError> {
+    if let Ok(configured) = std::env::var("SYNTAXIS_PREVIEW_ORIGIN") {
+        if !configured.trim().is_empty() {
+            return validate_preview_origin(&configured);
+        }
+    }
+    local_preview_base_url(parent_origin, dioxus_backend_port())
+}
+
+pub(super) fn request_origin(headers: &HeaderMap) -> Result<String, ServerFnError> {
+    for name in ["origin", "referer"] {
+        let Some(value) = headers.get(name).and_then(|value| value.to_str().ok()) else {
+            continue;
+        };
+        let Ok(url) = Url::parse(value) else {
+            continue;
+        };
+        if matches!(url.scheme(), "http" | "https") {
+            return origin(&url);
+        }
+    }
+    Err(request_error(
+        "The browser did not provide a usable origin for the preview.",
+        400,
+    ))
 }
 
 pub(crate) async fn dispatch(request: Request, next: Next) -> Response {
@@ -735,15 +500,6 @@ fn harden_gateway_response(response: &mut Response, lease: &Lease) {
     }
 }
 
-fn preview_base_url(parent_origin: &str) -> Result<Url, ServerFnError> {
-    if let Ok(configured) = std::env::var("SYNTAXIS_PREVIEW_ORIGIN") {
-        if !configured.trim().is_empty() {
-            return validate_preview_origin(&configured);
-        }
-    }
-    local_preview_base_url(parent_origin, dioxus_backend_port())
-}
-
 fn dioxus_backend_port() -> Option<u16> {
     std::env::var("DIOXUS_CLI_ENABLED")
         .is_ok_and(|value| value == "true")
@@ -805,114 +561,6 @@ fn validate_preview_origin(value: &str) -> Result<Url, ServerFnError> {
     }
     url.set_path("/");
     Ok(url)
-}
-
-fn request_origin(headers: &HeaderMap) -> Result<String, ServerFnError> {
-    for name in ["origin", "referer"] {
-        let Some(value) = headers.get(name).and_then(|value| value.to_str().ok()) else {
-            continue;
-        };
-        let Ok(url) = Url::parse(value) else {
-            continue;
-        };
-        if matches!(url.scheme(), "http" | "https") {
-            return origin(&url);
-        }
-    }
-    Err(request_error(
-        "The browser did not provide a usable origin for the preview.",
-        400,
-    ))
-}
-
-fn validate_port(port: u16) -> Result<(), ServerFnError> {
-    if port == 0 {
-        return Err(request_error(
-            "Preview ports must be between 1 and 65535.",
-            400,
-        ));
-    }
-    if std::env::var("PORT")
-        .ok()
-        .and_then(|value| value.parse::<u16>().ok())
-        == Some(port)
-    {
-        return Err(request_error(
-            "The Syntaxis server port cannot be used as a preview target.",
-            400,
-        ));
-    }
-    Ok(())
-}
-
-fn validate_target(target: &PreviewTarget) -> Result<Url, ServerFnError> {
-    let mut url = match target {
-        PreviewTarget::Loopback { port } => {
-            validate_port(*port)?;
-            Url::parse(&format!("http://127.0.0.1:{port}/"))
-                .map_err(|_| internal("Could not construct the loopback preview target."))?
-        }
-        PreviewTarget::Url { url } => {
-            let parsed = Url::parse(url.trim())
-                .map_err(|_| request_error("Enter a valid HTTP or HTTPS target URL.", 400))?;
-            if !matches!(parsed.scheme(), "http" | "https")
-                || parsed.host_str().is_none()
-                || parsed.username() != ""
-                || parsed.password().is_some()
-                || parsed.query().is_some()
-                || parsed.fragment().is_some()
-                || parsed.path() != "/"
-            {
-                return Err(request_error(
-                    "The target must be an HTTP(S) origin without credentials, path, query, or fragment.",
-                    400,
-                ));
-            }
-            parsed
-        }
-    };
-    if target_is_loopback(&url)
-        && std::env::var("PORT")
-            .ok()
-            .and_then(|value| value.parse::<u16>().ok())
-            == url.port_or_known_default()
-    {
-        return Err(request_error(
-            "The Syntaxis server cannot be used as a preview target.",
-            400,
-        ));
-    }
-    url.set_path("/");
-    Ok(url)
-}
-
-fn target_is_loopback(url: &Url) -> bool {
-    match url.host() {
-        Some(url::Host::Domain(host)) => host.eq_ignore_ascii_case("localhost"),
-        Some(url::Host::Ipv4(address)) => address.is_loopback(),
-        Some(url::Host::Ipv6(address)) => address.is_loopback(),
-        None => false,
-    }
-}
-
-async fn probe_target(upstream: &Url) -> Result<(), ServerFnError> {
-    let response = tokio::time::timeout(
-        TARGET_PROBE_TIMEOUT,
-        http_client()?.get(upstream.clone()).send(),
-    )
-    .await
-    .map_err(|_| unavailable("The preview target did not respond in time."))?;
-    response.map_err(|_| {
-        unavailable(format!(
-            "Could not connect to {} from the Syntaxis runtime.",
-            target_label(upstream)
-        ))
-    })?;
-    Ok(())
-}
-
-fn target_label(upstream: &Url) -> String {
-    origin(upstream).unwrap_or_else(|_| "unknown target".to_owned())
 }
 
 fn preview_access(headers: &HeaderMap) -> Option<PreviewAccess> {
@@ -978,128 +626,6 @@ fn preview_origin_is_allowed(headers: &HeaderMap, lease: &Lease) -> bool {
         .is_none_or(|origin| origin.eq_ignore_ascii_case(&lease.public_origin))
 }
 
-fn discover_workspace_listeners(root: &Path) -> Result<Vec<PreviewCandidate>, String> {
-    let root = root
-        .canonicalize()
-        .map_err(|_| "The workspace directory is unavailable.".to_owned())?;
-    let mut sockets = HashMap::new();
-    for path in ["/proc/net/tcp", "/proc/net/tcp6"] {
-        let Ok(contents) = fs::read_to_string(path) else {
-            continue;
-        };
-        sockets.extend(parse_listening_sockets(&contents));
-    }
-    if sockets.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let syntaxis_port = std::env::var("PORT")
-        .ok()
-        .and_then(|value| value.parse::<u16>().ok());
-    let mut listeners = BTreeMap::<u16, String>::new();
-    let processes = fs::read_dir("/proc")
-        .map_err(|_| "Runtime process inspection is unavailable.".to_owned())?;
-    for process in processes.flatten() {
-        let Some(pid) = process
-            .file_name()
-            .to_str()
-            .and_then(|value| value.parse::<u32>().ok())
-        else {
-            continue;
-        };
-        let process_path = process.path();
-        let Ok(cwd) = fs::read_link(process_path.join("cwd")) else {
-            continue;
-        };
-        if !cwd.starts_with(&root) {
-            continue;
-        }
-        let name = process_name(&process_path, pid);
-        let Ok(files) = fs::read_dir(process_path.join("fd")) else {
-            continue;
-        };
-        for file in files.flatten() {
-            let Ok(target) = fs::read_link(file.path()) else {
-                continue;
-            };
-            let Some(inode) = socket_inode(&target) else {
-                continue;
-            };
-            let Some(port) = sockets.get(&inode).copied() else {
-                continue;
-            };
-            if syntaxis_port == Some(port) {
-                continue;
-            }
-            listeners.entry(port).or_insert_with(|| name.clone());
-        }
-    }
-    Ok(listeners
-        .into_iter()
-        .map(|(port, process)| PreviewCandidate { port, process })
-        .collect())
-}
-
-fn parse_listening_sockets(contents: &str) -> HashMap<u64, u16> {
-    let mut sockets = HashMap::new();
-    for line in contents.lines().skip(1) {
-        let fields = line.split_whitespace().collect::<Vec<_>>();
-        if fields.len() < 10 || fields[3] != "0A" {
-            continue;
-        }
-        let Some((address, port)) = fields[1].split_once(':') else {
-            continue;
-        };
-        if !is_loopback_or_unspecified(address) {
-            continue;
-        }
-        let Ok(port) = u16::from_str_radix(port, 16) else {
-            continue;
-        };
-        let Ok(inode) = fields[9].parse::<u64>() else {
-            continue;
-        };
-        if port != 0 && inode != 0 {
-            sockets.insert(inode, port);
-        }
-    }
-    sockets
-}
-
-fn is_loopback_or_unspecified(address: &str) -> bool {
-    match address.len() {
-        8 => address == "00000000" || address.ends_with("00007F"),
-        32 => {
-            address == "00000000000000000000000000000000"
-                || address == "00000000000000000000000001000000"
-        }
-        _ => false,
-    }
-}
-
-fn socket_inode(target: &Path) -> Option<u64> {
-    target
-        .to_str()?
-        .strip_prefix("socket:[")?
-        .strip_suffix(']')?
-        .parse()
-        .ok()
-}
-
-fn process_name(process_path: &Path, pid: u32) -> String {
-    fs::read_to_string(process_path.join("comm"))
-        .ok()
-        .map(|name| {
-            name.trim()
-                .chars()
-                .filter(|character| !character.is_control())
-                .take(48)
-                .collect::<String>()
-        })
-        .filter(|name| !name.is_empty())
-        .unwrap_or_else(|| format!("process {pid}"))
-}
-
 fn upstream_url(lease: &Lease, uri: &dioxus::server::axum::http::Uri, websocket: bool) -> Url {
     let mut upstream = lease.upstream.clone();
     if websocket {
@@ -1115,24 +641,6 @@ fn upstream_url(lease: &Lease, uri: &dioxus::server::axum::http::Uri, websocket:
     upstream.set_path(uri.path());
     upstream.set_query(uri.query());
     upstream
-}
-
-fn authority(url: &Url) -> Result<String, ServerFnError> {
-    let host = url
-        .host()
-        .ok_or_else(|| request_error("The preview origin has no hostname.", 500))?;
-    let host = match host {
-        url::Host::Domain(host) => host.to_owned(),
-        url::Host::Ipv4(address) => address.to_string(),
-        url::Host::Ipv6(address) => format!("[{address}]"),
-    };
-    Ok(url
-        .port()
-        .map_or(host.clone(), |port| format!("{host}:{port}")))
-}
-
-fn origin(url: &Url) -> Result<String, ServerFnError> {
-    Ok(format!("{}://{}", url.scheme(), authority(url)?))
 }
 
 fn is_hop_by_hop(name: &HeaderName) -> bool {
@@ -1168,78 +676,6 @@ fn is_forwarding_header(name: &HeaderName) -> bool {
             | "x-forwarded-proto"
             | "x-real-ip"
     )
-}
-
-fn configs() -> Result<MutexGuard<'static, ConfigStore>, ServerFnError> {
-    CONFIGS
-        .get_or_init(|| {
-            ConfigStore::open(
-                crate::workspace::api::server::data_directory().join("preview-targets.json"),
-            )
-            .map(Mutex::new)
-        })
-        .as_ref()
-        .map_err(|error| internal(error.clone()))?
-        .lock()
-        .map_err(|_| internal("The preview target store is unavailable."))
-}
-
-fn leases() -> Result<MutexGuard<'static, HashMap<String, Lease>>, ServerFnError> {
-    LEASES
-        .get_or_init(|| Mutex::new(HashMap::new()))
-        .lock()
-        .map_err(|_| internal("The preview session store is unavailable."))
-}
-
-fn workspace_lease_mut<'a>(
-    leases: &'a mut HashMap<String, Lease>,
-    workspace_id: &WorkspaceId,
-    lease_id: &str,
-) -> Result<&'a mut Lease, ServerFnError> {
-    leases
-        .get_mut(lease_id)
-        .filter(|lease| lease.workspace_id == *workspace_id)
-        .ok_or_else(|| request_error("The preview session is no longer active.", 404))
-}
-
-fn replace_workspace_lease(leases: &mut HashMap<String, Lease>, lease_id: String, lease: Lease) {
-    leases.retain(|_, existing| existing.workspace_id != lease.workspace_id);
-    leases.insert(lease_id, lease);
-}
-
-fn invalidate_lease(lease_id: &str) {
-    if let Ok(mut leases) = leases() {
-        remove_lease(&mut leases, lease_id);
-    }
-}
-
-fn remove_lease(leases: &mut HashMap<String, Lease>, lease_id: &str) -> bool {
-    leases.remove(lease_id).is_some()
-}
-
-fn http_client() -> Result<&'static reqwest::Client, ServerFnError> {
-    HTTP_CLIENT
-        .get_or_init(|| {
-            reqwest::Client::builder()
-                .connect_timeout(Duration::from_secs(3))
-                .redirect(reqwest::redirect::Policy::none())
-                .build()
-                .map_err(|error| format!("Could not create the preview HTTP client: {error}"))
-        })
-        .as_ref()
-        .map_err(|error| internal(error.clone()))
-}
-
-fn random_hex(length: usize) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut bytes = vec![0_u8; length];
-    OsRng.fill_bytes(&mut bytes);
-    let mut output = String::with_capacity(length * 2);
-    for byte in bytes {
-        output.push(char::from(HEX[usize::from(byte >> 4)]));
-        output.push(char::from(HEX[usize::from(byte & 0x0f)]));
-    }
-    output
 }
 
 fn constant_time_eq(left: &str, right: &str) -> bool {
@@ -1282,25 +718,10 @@ fn error_response(error: ServerFnError) -> Response {
         .into_response()
 }
 
-fn unavailable(message: impl Into<String>) -> ServerFnError {
-    request_error(message, 503)
-}
-
-fn internal(message: impl Into<String>) -> ServerFnError {
-    request_error(message, 500)
-}
-
-fn request_error(message: impl Into<String>, code: u16) -> ServerFnError {
-    ServerFnError::ServerError {
-        message: message.into(),
-        code,
-        details: None,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use syntaxis_workspace::WorkspaceId;
 
     const OWNER_ID: &str = "0123456789abcdef0123456789abcdef";
     const SHARE_ID: &str = "fedcba9876543210fedcba9876543210";
@@ -1317,26 +738,6 @@ mod tests {
             parent_origin: "https://syntaxis.example.test".into(),
             secure: true,
         }
-    }
-
-    #[test]
-    fn removing_workspace_purges_its_saved_preview_target() {
-        let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("preview-targets.json");
-        let mut store = ConfigStore::open(path.clone()).unwrap();
-        store.file.workspaces.insert(
-            "workspace".into(),
-            PreviewConfig {
-                target: Some(PreviewTarget::Loopback { port: 3000 }),
-                port: None,
-            },
-        );
-        store.save().unwrap();
-
-        store.remove_workspace("workspace").unwrap();
-
-        let reopened = ConfigStore::open(path).unwrap();
-        assert!(!reopened.file.workspaces.contains_key("workspace"));
     }
 
     #[test]
@@ -1428,124 +829,16 @@ mod tests {
             &leases,
             &PreviewAccess::Share {
                 token: SHARE_ID.into(),
-            },
+            }
         )
         .is_none());
         assert!(resolve_access(
             &leases,
             &PreviewAccess::Owner {
                 lease_id: OWNER_ID.into(),
-            },
+            }
         )
         .is_some());
-    }
-
-    #[test]
-    fn resume_reuses_owner_access_and_restores_the_share() {
-        let mut lease = test_lease("http://127.0.0.1:5173/");
-        lease.share_token = Some(SHARE_ID.into());
-
-        let session = refresh_preview_session(
-            OWNER_ID,
-            &mut lease,
-            "https://new-owner.example.test".into(),
-        )
-        .unwrap();
-
-        assert_eq!(lease.parent_origin, "https://new-owner.example.test");
-        assert_eq!(session.lease.id, OWNER_ID);
-        assert_eq!(
-            Url::parse(&session.lease.url).unwrap().host_str(),
-            Some("p-0123456789abcdef0123456789abcdef.preview.example.test")
-        );
-        assert_eq!(
-            session
-                .share
-                .as_ref()
-                .and_then(|share| Url::parse(&share.url).ok())
-                .and_then(|url| url.host_str().map(str::to_owned))
-                .as_deref(),
-            Some("s-fedcba9876543210fedcba9876543210.preview.example.test")
-        );
-    }
-
-    #[test]
-    fn reconnecting_replaces_only_that_workspaces_lease() {
-        let mut leases = HashMap::new();
-        let first = test_lease("http://127.0.0.1:3000/");
-        let mut other = test_lease("http://127.0.0.1:4000/");
-        other.workspace_id = WorkspaceId::new("other-workspace");
-        leases.insert("first".into(), first);
-        leases.insert("other".into(), other);
-
-        replace_workspace_lease(
-            &mut leases,
-            "replacement".into(),
-            test_lease("http://127.0.0.1:5000/"),
-        );
-
-        assert!(!leases.contains_key("first"));
-        assert!(leases.contains_key("replacement"));
-        assert!(leases.contains_key("other"));
-    }
-
-    #[test]
-    fn upstream_failure_removes_the_whole_preview_session() {
-        let mut leases = HashMap::new();
-        let mut active = test_lease("http://127.0.0.1:3000/");
-        active.share_token = Some("shared-access".into());
-        let mut other = test_lease("http://127.0.0.1:4000/");
-        other.workspace_id = WorkspaceId::new("other-workspace");
-        leases.insert("active".into(), active);
-        leases.insert("other".into(), other);
-
-        assert!(remove_lease(&mut leases, "active"));
-        assert!(!leases.contains_key("active"));
-        assert!(leases.contains_key("other"));
-        assert!(!remove_lease(&mut leases, "active"));
-    }
-
-    #[test]
-    fn legacy_saved_ports_become_loopback_targets() {
-        let legacy = serde_json::from_str::<PreviewConfig>(r#"{"port":5173}"#).unwrap();
-
-        assert_eq!(
-            normalize_config(legacy),
-            PreviewConfig {
-                target: Some(PreviewTarget::Loopback { port: 5_173 }),
-                port: None,
-            }
-        );
-    }
-
-    #[test]
-    fn explicit_targets_must_be_http_origins() {
-        assert_eq!(
-            validate_target(&PreviewTarget::Url {
-                url: "https://app.example.test".into(),
-            })
-            .unwrap()
-            .as_str(),
-            "https://app.example.test/"
-        );
-        assert_eq!(
-            validate_target(&PreviewTarget::Url {
-                url: "http://frontend:3000".into(),
-            })
-            .unwrap()
-            .as_str(),
-            "http://frontend:3000/"
-        );
-
-        for url in [
-            "ftp://app.example.test",
-            "https://user@app.example.test",
-            "https://app.example.test/base",
-            "https://app.example.test/?token=secret",
-            "https://app.example.test/#fragment",
-        ] {
-            validate_target(&PreviewTarget::Url { url: url.into() }).unwrap_err();
-        }
     }
 
     #[test]
@@ -1661,13 +954,13 @@ mod tests {
     fn gateway_replaces_upstream_frame_embedding_rules() {
         let lease = test_lease("https://app.example.test/");
         let mut source = HeaderMap::new();
+        source.insert("x-frame-options", HeaderValue::from_static("DENY"));
         source.insert(
             "content-security-policy",
             HeaderValue::from_static(
                 "default-src 'self'; frame-ancestors 'none'; script-src 'self'",
             ),
         );
-        source.insert("x-frame-options", HeaderValue::from_static("DENY"));
         let mut target = HeaderMap::new();
 
         copy_response_headers(&source, &mut target, &lease);
@@ -1693,41 +986,5 @@ mod tests {
             .as_deref(),
             Some("session=secret; Path=/; HttpOnly; Secure")
         );
-    }
-
-    #[test]
-    fn proc_socket_parser_keeps_only_local_listeners() {
-        let contents = "\
-  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt uid timeout inode
-   0: 0100007F:1435 00000000:0000 0A 00000000:00000000 00:00000000 00000000 1000 0 12345 1
-   1: 00000000:1F90 00000000:0000 0A 00000000:00000000 00:00000000 00000000 1000 0 23456 1
-   2: 0102A8C0:2382 00000000:0000 0A 00000000:00000000 00:00000000 00000000 1000 0 34567 1
-   3: 0100007F:0CEA 00000000:0000 01 00000000:00000000 00:00000000 00000000 1000 0 45678 1
-";
-
-        let sockets = parse_listening_sockets(contents);
-
-        assert_eq!(sockets.get(&12_345), Some(&5_173));
-        assert_eq!(sockets.get(&23_456), Some(&8_080));
-        assert!(!sockets.contains_key(&34_567));
-        assert!(!sockets.contains_key(&45_678));
-    }
-
-    #[test]
-    fn socket_links_expose_their_inode() {
-        assert_eq!(socket_inode(Path::new("socket:[98765]")), Some(98_765));
-        assert_eq!(socket_inode(Path::new("pipe:[98765]")), None);
-    }
-
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn discovery_attributes_a_listener_to_the_workspace_process() {
-        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
-        let port = listener.local_addr().unwrap().port();
-        let root = std::env::current_dir().unwrap();
-
-        let candidates = discover_workspace_listeners(&root).unwrap();
-
-        assert!(candidates.iter().any(|candidate| candidate.port == port));
     }
 }

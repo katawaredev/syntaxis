@@ -133,10 +133,18 @@ set.
 
 ### Application previews
 
-The Preview module connects to an HTTP development server from the selected runtime. The default
-runtime-port target uses `127.0.0.1`; start the project in Terminal and bind it there. On Linux
-runtimes, Syntaxis finds listening HTTP processes whose working directory is inside the selected
-workspace and offers their ports as Preview suggestions; manual port entry remains available.
+The Preview module connects to an HTTP development server from the selected runtime. For a
+runtime-port target, Syntaxis tries IPv4 loopback (`127.0.0.1`) first and then IPv6 loopback
+(`::1`). Start the project in Terminal and bind it to either loopback address or a wildcard
+interface. For example, Vite can be pinned to IPv4 loopback with:
+
+```bash
+npm run dev -- --host 127.0.0.1
+```
+
+On Linux runtimes, Syntaxis finds listening HTTP processes whose working directory is inside the
+selected workspace, probes them over both loopback families, and offers reachable ports as Preview
+suggestions; manual port entry remains available.
 
 Use the explicit HTTP(S) URL target for an existing remote app or a Docker service reachable from
 the Syntaxis runtime, such as `http://frontend:3000`. Only origins are accepted: credentials, paths,
@@ -166,14 +174,37 @@ origin:
 SYNTAXIS_PREVIEW_ORIGIN=https://preview.example.com
 ```
 
+DNS and TLS are separate requirements. Create an explicit wildcard DNS record at the exact preview
+suffix; do not rely on a broader wildcard higher in the zone:
+
+```text
+*.preview.example.com.  A      203.0.113.10
+```
+
+A CNAME pointing to the public Syntaxis hostname is also valid. Wildcard certificates require
+DNS-01 validation. The certificate client needs a module for the authoritative DNS provider and a
+credential with permission to read the zone and create and remove its temporary TXT records. A
+reverse-proxy route does not create the DNS record.
+
 Wildcard DNS and TLS for `*.preview.example.com` must route to the same Syntaxis listener. For
-example, once wildcard certificate provisioning has been configured, the Caddy route is:
+example, after wildcard certificate provisioning has been configured, the Caddy route is:
 
 ```caddyfile
 *.preview.example.com {
 	reverse_proxy syntaxis:8080
 }
 ```
+
+Verify DNS, TLS, and routing before creating a real preview:
+
+```bash
+dig +short test.preview.example.com
+curl -I https://test.preview.example.com
+```
+
+An HTTP `401 Unauthorized` for that made-up label is expected: it confirms that DNS, TLS, Caddy,
+and the Syntaxis preview gateway are reachable, while Syntaxis correctly rejects an invalid preview
+credential.
 
 The unguessable private hostname is the owner's bearer credential; no gateway cookie or query token
 is required. The main Syntaxis session cookie remains host-only and is not sent to the project
@@ -233,10 +264,10 @@ state and user-updated Pi installation survive image upgrades:
 docker exec -it syntaxis pi
 ```
 
-For `arvigeus.one`, the service can use the published
-`${SYNTAXIS_IMAGE:-ghcr.io/katawaredev/syntaxis:latest}` image, keep the same `/Projects`, SSH, and
-GnuPG mounts, and proxy Caddy to `syntaxis:8080`. Set `HOST_PROJECTS` to the server's projects
-directory; this replaces devbox's old `/workspace` convention.
+An external deployment can use the published
+`${SYNTAXIS_IMAGE:-ghcr.io/katawaredev/syntaxis:latest}` image, keep the `/Projects`, SSH, and GnuPG
+mounts, and proxy its public hostname to `syntaxis:8080`. Set `HOST_PROJECTS` to the server's
+projects directory.
 
 ### Publishing
 
