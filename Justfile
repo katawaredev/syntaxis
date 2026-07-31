@@ -169,8 +169,9 @@ versions:
         fi
     done
 
-# Interactively update Bun and Cargo dependencies.
-# Use `just update latest` to allow new major versions and rewrite manifests.
+# Interactively update mise tools plus Bun and Cargo dependencies.
+# Mise tool pins are bumped to the selected latest versions in mise.toml.
+# Use `just update latest` to allow new major dependency versions and rewrite manifests.
 update mode="compatible":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -187,6 +188,10 @@ update mode="compatible":
         exit 1
     fi
 
+    echo "== mise tools =="
+    mise upgrade --local --bump --interactive
+
+    echo
     echo "== Bun dependencies =="
     if [[ "$mode" == "latest" ]]; then
         bun update --interactive --latest
