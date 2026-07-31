@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/katawaredev/syntaxis/compare/v0.4.1...v0.4.2) (2026-07-31)
+
+
+### Bug Fixes
+
+* **preview:** revamp ([f1381ec](https://github.com/katawaredev/syntaxis/commit/f1381ec5f0ad9f7eed8bcc67df7f9a0ef32602b5))
+
 ## [0.4.1](https://github.com/katawaredev/syntaxis/compare/v0.4.0...v0.4.1) (2026-07-31)
 
 
