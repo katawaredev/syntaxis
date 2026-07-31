@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.1](https://github.com/katawaredev/syntaxis/compare/v0.4.0...v0.4.1) (2026-07-31)
+
+
+### Bug Fixes
+
+* add mise config ([7c16679](https://github.com/katawaredev/syntaxis/commit/7c16679a0972253da599a4be79a14e07fb6ed9a3))
+* **docker:** add missing tools ([1b9071b](https://github.com/katawaredev/syntaxis/commit/1b9071ba9693a5dba80c97024a9799f2d770dd84))
+* update bumps mise deps ([56f8b25](https://github.com/katawaredev/syntaxis/commit/56f8b25035ba51372eeef8656ea8832dce520466))
+* **workspace:** aggressive cleanup ([5811663](https://github.com/katawaredev/syntaxis/commit/5811663c567cd5b23c564f0aa1b03967dbf47b3d))
+
 ## [0.4.0](https://github.com/katawaredev/syntaxis/compare/v0.3.1...v0.4.0) (2026-07-30)
 
 
