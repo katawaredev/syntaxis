@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.5.0](https://github.com/katawaredev/syntaxis/compare/v0.4.2...v0.5.0) (2026-08-01)
+
+
+### Features
+
+* **ai:** add global instructions support ([f9eb890](https://github.com/katawaredev/syntaxis/commit/f9eb890a0711263344b3735fe57fc5b44c3a2791))
+* **git:** allow skipping verification ([2399d78](https://github.com/katawaredev/syntaxis/commit/2399d78e0af3a0e395150674e8eae4c1668b1c57))
+
+
+### Bug Fixes
+
+* **ai:** don't submit on suggestion press ([336709d](https://github.com/katawaredev/syntaxis/commit/336709d351c6b2b4424e61ef62f5ed6a8f71973b))
+* mobile view ([e643e98](https://github.com/katawaredev/syntaxis/commit/e643e98a117c73b557f3de0b8daf8dada51bafa8))
+* **terminal:** touch scroll ([ef7c2d1](https://github.com/katawaredev/syntaxis/commit/ef7c2d1e1d570bfdb9ec6b534169f72acd45eb2c))
+* **ui:** cleanup top bar ([1a63f7e](https://github.com/katawaredev/syntaxis/commit/1a63f7eea1b326d3ebf71f74e6ca0c221b9c6c67))
+
 ## [0.4.2](https://github.com/katawaredev/syntaxis/compare/v0.4.1...v0.4.2) (2026-07-31)
 
 
