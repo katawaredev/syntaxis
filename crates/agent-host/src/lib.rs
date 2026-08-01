@@ -13,7 +13,7 @@ use std::{
 use syntaxis_agent::{
     AgentError, AgentErrorCode, AgentSessionSummary, AgentSnapshot, AgentStatus, ChatItem,
     ClientMessage, ConversationSearchResult, ExtensionUiRequest, ImageAttachment, ItemStatus,
-    ModelSummary, PiCommand, PromptDelivery, ServerMessage, SessionStats, ThinkingLevel,
+    ModelCost, ModelSummary, PiCommand, PromptDelivery, ServerMessage, SessionStats, ThinkingLevel,
     TokenUsage,
 };
 use syntaxis_notifications::{AppNotification, NotificationKind, NotificationTarget};
@@ -1550,7 +1550,41 @@ fn parse_model(value: &Value) -> Option<ModelSummary> {
         name,
         reasoning,
         supports_images,
+        context_window: value
+            .get("contextWindow")
+            .and_then(Value::as_u64)
+            .unwrap_or(128_000),
+        max_tokens: value
+            .get("maxTokens")
+            .and_then(Value::as_u64)
+            .unwrap_or(16_384),
+        cost: parse_model_cost(value.get("cost")),
     })
+}
+fn parse_model_cost(cost: Option<&Value>) -> ModelCost {
+    let rate = |value: Option<&Value>, field| {
+        value
+            .and_then(|value| value.get(field))
+            .and_then(Value::as_f64)
+            .map_or(0, |rate| rounded_u64(rate * 1_000_000.0, 1.0e15))
+    };
+    let has_paid_tier = cost
+        .and_then(|cost| cost.get("tiers"))
+        .and_then(Value::as_array)
+        .is_some_and(|tiers| {
+            tiers.iter().any(|tier| {
+                ["input", "output", "cacheRead", "cacheWrite"]
+                    .iter()
+                    .any(|field| rate(Some(tier), field) > 0)
+            })
+        });
+    ModelCost {
+        input: rate(cost, "input"),
+        output: rate(cost, "output"),
+        cache_read: rate(cost, "cacheRead"),
+        cache_write: rate(cost, "cacheWrite"),
+        has_paid_tier,
+    }
 }
 fn parse_command(value: &Value) -> Option<PiCommand> {
     Some(PiCommand {
@@ -1944,6 +1978,36 @@ mod tests {
     use super::*;
     use syntaxis_workspace::{WorkspaceAvailability, WorkspaceIcon, WorkspaceIconSymbol};
     #[test]
+    fn model_parser_preserves_filter_metadata() -> Result<(), String> {
+        let model = parse_model(&json!({
+            "provider": "example",
+            "id": "reasoner",
+            "name": "Reasoner",
+            "reasoning": true,
+            "input": ["text", "image"],
+            "contextWindow": 200_000,
+            "maxTokens": 32_000,
+            "cost": {
+                "input": 0.25,
+                "output": 1.5,
+                "cacheRead": 0.025,
+                "cacheWrite": 0,
+                "tiers": [{ "inputTokensAbove": 100_000, "input": 0.5 }]
+            }
+        }))
+        .ok_or_else(|| "valid model metadata was rejected".to_owned())?;
+        assert!(model.reasoning);
+        assert!(model.supports_images);
+        assert_eq!(model.context_window, 200_000);
+        assert_eq!(model.max_tokens, 32_000);
+        assert_eq!(model.cost.input, 250_000);
+        assert_eq!(model.cost.output, 1_500_000);
+        assert_eq!(model.cost.cache_read, 25_000);
+        assert!(model.cost.has_paid_tier);
+        assert!(!model.cost.is_free());
+        Ok(())
+    }
+    #[test]
     fn history_maps_pi_messages_and_tool_results() {
         let messages = vec![
             json!({ "role" : "user", "content" : "Inspect src" }),
@@ -1980,7 +2044,7 @@ mod tests {
         assert!(output.ends_with('…'));
     }
     #[test]
-    fn frames_fragmented_utf8_and_discards_oversized_records() {
+    fn frames_fragmented_utf8_and_discards_oversized_records() -> Result<(), serde_json::Error> {
         let mut framer = BoundedLfFramer::new(32);
         assert!(framer.push(b"{\"text\":\"a\xE2").is_empty());
         let records = framer.push(b"\x80\xA8b\"}\r\nok\n");
@@ -1988,13 +2052,14 @@ mod tests {
         let FramedLine::Line(first) = &records[0] else {
             panic!("expected a JSON record");
         };
-        let first: Value = serde_json::from_slice(first).unwrap();
+        let first: Value = serde_json::from_slice(first)?;
         assert_eq!(first["text"], "a\u{2028}b");
         let mut bounded = BoundedLfFramer::new(4);
         assert_eq!(
             bounded.push(b"12345\nok\n"),
             vec![FramedLine::Oversized, FramedLine::Line(b"ok".to_vec())]
         );
+        Ok(())
     }
     #[test]
     fn only_agent_settled_marks_the_session_idle() {
@@ -2055,8 +2120,9 @@ mod tests {
         assert_eq!(lock(&state).snapshot.pending_messages, 3);
     }
     #[test]
-    fn completion_and_attention_notifications_replace_and_clear() {
-        let temp = tempfile::tempdir().unwrap();
+    fn completion_and_attention_notifications_replace_and_clear(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
         let record = WorkspaceRecord {
             id: WorkspaceId::new("workspace-1"),
             slug: "project-one".into(),
@@ -2126,5 +2192,6 @@ mod tests {
             },
         );
         assert!(notifications.snapshot().is_empty());
+        Ok(())
     }
 }

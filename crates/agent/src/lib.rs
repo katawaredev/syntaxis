@@ -1,6 +1,6 @@
 //! Shared, Pi-specific chat protocol used between the Syntaxis client and host.
 use serde::{Deserialize, Serialize};
-pub const PROTOCOL_VERSION: u16 = 4;
+pub const PROTOCOL_VERSION: u16 = 5;
 pub const MAX_PROMPT_BYTES: usize = 128 * 1024;
 pub const MAX_PROMPT_IMAGES: usize = 5;
 pub const MAX_IMAGE_BYTES: u64 = 8 * 1024 * 1024;
@@ -139,6 +139,25 @@ impl ChatItem {
         }
     }
 }
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ModelCost {
+    /// Catalog rates in micro-USD per million tokens.
+    pub input: u64,
+    pub output: u64,
+    pub cache_read: u64,
+    pub cache_write: u64,
+    pub has_paid_tier: bool,
+}
+impl ModelCost {
+    #[must_use]
+    pub const fn is_free(&self) -> bool {
+        self.input == 0
+            && self.output == 0
+            && self.cache_read == 0
+            && self.cache_write == 0
+            && !self.has_paid_tier
+    }
+}
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ModelSummary {
     pub provider: String,
@@ -146,6 +165,9 @@ pub struct ModelSummary {
     pub name: String,
     pub reasoning: bool,
     pub supports_images: bool,
+    pub context_window: u64,
+    pub max_tokens: u64,
+    pub cost: ModelCost,
 }
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ImageAttachment {
@@ -478,20 +500,17 @@ impl AgentError {
 mod tests {
     use super::*;
     #[test]
-    fn protocol_messages_are_stably_tagged() {
+    fn protocol_messages_are_stably_tagged() -> Result<(), serde_json::Error> {
         let message = ClientMessage::Prompt {
             text: "Inspect this project".into(),
             delivery: PromptDelivery::Prompt,
             images: Vec::new(),
         };
-        let value = serde_json::to_value(&message).expect("client message should serialize");
+        let value = serde_json::to_value(&message)?;
         assert_eq!(value["type"], "prompt");
         assert_eq!(value["delivery"], "prompt");
-        assert_eq!(
-            serde_json::from_value::<ClientMessage>(value)
-                .expect("serialized client message should deserialize"),
-            message
-        );
+        assert_eq!(serde_json::from_value::<ClientMessage>(value)?, message);
+        Ok(())
     }
     #[test]
     fn prompt_validation_rejects_empty_and_unbounded_input() {

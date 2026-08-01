@@ -18,6 +18,38 @@ pub(super) use extension_dialog::ExtensionRequestDialog;
 pub(super) use session_sidebar::AgentSessionSidebar;
 pub(super) use timeline::AgentTimeline;
 
+#[derive(Clone, Copy, Default, Eq, PartialEq)]
+enum PricingFilter {
+    #[default]
+    All,
+    Free,
+    Metered,
+}
+impl PricingFilter {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::Free => "free",
+            Self::Metered => "metered",
+        }
+    }
+
+    fn from_str(value: &str) -> Self {
+        match value {
+            "free" => Self::Free,
+            "metered" => Self::Metered,
+            _ => Self::All,
+        }
+    }
+}
+#[derive(Clone, Copy, Default)]
+struct ModelFilters {
+    pricing: PricingFilter,
+    reasoning_only: bool,
+    vision_only: bool,
+    min_context: u64,
+}
+
 #[component]
 pub(super) fn AgentHeader(
     workspace_name: String,
@@ -117,6 +149,10 @@ fn ModelPicker(
 ) -> Element {
     let mut open = use_signal(|| false);
     let mut query = use_signal(String::new);
+    let mut pricing = use_signal(PricingFilter::default);
+    let mut reasoning_only = use_signal(|| false);
+    let mut vision_only = use_signal(|| false);
+    let mut min_context = use_signal(|| 0_u64);
     let selected_key = selected.as_ref().map(ModelSummary::key);
     let selected_name = selected
         .as_ref()
@@ -124,7 +160,16 @@ fn ModelPicker(
     let selected_provider = selected
         .as_ref()
         .map_or_else(|| "Pi".to_owned(), |model| model.provider.clone());
-    let groups = group_models(models.clone(), &query());
+    let groups = group_models(
+        models.clone(),
+        &query(),
+        ModelFilters {
+            pricing: pricing(),
+            reasoning_only: reasoning_only(),
+            vision_only: vision_only(),
+            min_context: min_context(),
+        },
+    );
     rsx! {
         PopoverRoot {
             class: "relative min-w-0",
@@ -163,6 +208,50 @@ fn ModelPicker(
                         placeholder: "Search models or providers…",
                         aria_label: "Search Pi models",
                         oninput: move |event| query.set(event.value()),
+                    }
+                }
+                div { class: "space-y-2 border-b border-border bg-secondary/20 px-3 py-2",
+                    div { class: "flex flex-wrap items-center gap-1.5",
+                        select {
+                            class: "h-7 rounded-md border border-input bg-background px-2 text-[10px] text-foreground",
+                            aria_label: "Filter models by catalog price",
+                            value: pricing().as_str(),
+                            onchange: move |event| pricing.set(PricingFilter::from_str(&event.value())),
+                            option { value: "all", "Any price" }
+                            option { value: "free", "Free ($0 rates)" }
+                            option { value: "metered", "Metered" }
+                        }
+                        select {
+                            class: "h-7 rounded-md border border-input bg-background px-2 text-[10px] text-foreground",
+                            aria_label: "Minimum model context window",
+                            value: min_context().to_string(),
+                            onchange: move |event| {
+                                min_context.set(event.value().parse().unwrap_or_default());
+                            },
+                            option { value: "0", "Any context" }
+                            option { value: "128000", "128K+ context" }
+                            option { value: "200000", "200K+ context" }
+                            option { value: "1000000", "1M+ context" }
+                        }
+                        label { class: "flex h-7 cursor-pointer items-center gap-1 rounded-md border border-input bg-background px-2 text-[10px]",
+                            input {
+                                r#type: "checkbox",
+                                checked: reasoning_only(),
+                                onchange: move |event| reasoning_only.set(event.checked()),
+                            }
+                            "Reasoning"
+                        }
+                        label { class: "flex h-7 cursor-pointer items-center gap-1 rounded-md border border-input bg-background px-2 text-[10px]",
+                            input {
+                                r#type: "checkbox",
+                                checked: vision_only(),
+                                onchange: move |event| vision_only.set(event.checked()),
+                            }
+                            "Vision"
+                        }
+                    }
+                    p { class: "text-[9px] leading-relaxed text-muted-foreground",
+                        "Pi only lists models available through configured credentials. Prices are catalog token rates; subscription models may still show metered rates."
                     }
                 }
                 div { class: "max-h-[min(420px,70vh)] overflow-y-auto p-1.5",
@@ -272,15 +361,19 @@ fn ModelRow(
                     }
                 }
             }
-            span { class: "flex min-w-0 justify-end gap-1 overflow-hidden",
-                if model.supports_images {
-                    span { class: "rounded bg-secondary px-1.5 py-0.5 text-[8px] text-muted-foreground",
-                        "vision"
-                    }
+            span { class: "min-w-0 text-right",
+                strong {
+                    class: if model.cost.is_free() { "block text-[9px] font-medium text-success" } else { "block text-[9px] font-medium text-muted-foreground" },
+                    title: "Input / output catalog price per million tokens",
+                    {format_model_price(&model)}
                 }
-                if model.reasoning {
-                    span { class: "rounded bg-secondary px-1.5 py-0.5 text-[8px] text-muted-foreground",
-                        "reasoning"
+                small { class: "block truncate text-[8px] text-muted-foreground",
+                    {format_context_window(model.context_window)}
+                    if model.reasoning {
+                        " · reasoning"
+                    }
+                    if model.supports_images {
+                        " · vision"
                     }
                 }
             }
@@ -315,13 +408,27 @@ fn ProviderMark(provider: String, size: u32) -> Element {
     }
 }
 
-fn group_models(models: Vec<ModelSummary>, query: &str) -> Vec<(String, Vec<ModelSummary>)> {
+fn group_models(
+    models: Vec<ModelSummary>,
+    query: &str,
+    filters: ModelFilters,
+) -> Vec<(String, Vec<ModelSummary>)> {
     let query = query.trim().to_ascii_lowercase();
     let mut groups = BTreeMap::<String, Vec<ModelSummary>>::new();
     for model in models {
         let searchable =
             format!("{} {} {}", model.provider, model.name, model.id).to_ascii_lowercase();
-        if query.is_empty() || searchable.contains(&query) {
+        let pricing_matches = match filters.pricing {
+            PricingFilter::All => true,
+            PricingFilter::Free => model.cost.is_free(),
+            PricingFilter::Metered => !model.cost.is_free(),
+        };
+        if (query.is_empty() || searchable.contains(&query))
+            && pricing_matches
+            && (!filters.reasoning_only || model.reasoning)
+            && (!filters.vision_only || model.supports_images)
+            && model.context_window >= filters.min_context
+        {
             groups
                 .entry(model.provider.clone())
                 .or_default()
@@ -335,6 +442,47 @@ fn group_models(models: Vec<ModelSummary>, query: &str) -> Vec<(String, Vec<Mode
             (provider, models)
         })
         .collect()
+}
+
+fn format_model_price(model: &ModelSummary) -> String {
+    if model.cost.is_free() {
+        return "Free".to_owned();
+    }
+    let tiers = if model.cost.has_paid_tier { "+" } else { "" };
+    format!(
+        "{} in · {} out{tiers}",
+        format_model_rate(model.cost.input),
+        format_model_rate(model.cost.output),
+    )
+}
+
+fn format_model_rate(microusd: u64) -> String {
+    let mut rate = format!(
+        "${}.{:04}",
+        microusd / 1_000_000,
+        (microusd % 1_000_000) / 100
+    );
+    while rate.ends_with('0') {
+        rate.pop();
+    }
+    if rate.ends_with('.') {
+        rate.pop();
+    }
+    rate
+}
+
+fn format_context_window(tokens: u64) -> String {
+    if tokens >= 1_000_000 {
+        let whole = tokens / 1_000_000;
+        let tenth = (tokens % 1_000_000) / 100_000;
+        if tenth == 0 {
+            format!("{whole}M context")
+        } else {
+            format!("{whole}.{tenth}M context")
+        }
+    } else {
+        format!("{}K context", tokens / 1_000)
+    }
 }
 
 #[component]
