@@ -68,12 +68,17 @@
     viewportFrame = requestAnimationFrame(() => {
       viewportFrame = null;
       if (coarsePointer.matches && window.visualViewport) {
-        document.documentElement.style.setProperty(
-          "--app-height",
-          `${Math.round(window.visualViewport.height)}px`,
-        );
+        const viewport = window.visualViewport;
+        const rootStyle = document.documentElement.style;
+        rootStyle.setProperty("--app-top", `${Math.round(viewport.offsetTop)}px`);
+        rootStyle.setProperty("--app-left", `${Math.round(viewport.offsetLeft)}px`);
+        rootStyle.setProperty("--app-width", `${Math.round(viewport.width)}px`);
+        rootStyle.setProperty("--app-height", `${Math.round(viewport.height)}px`);
       } else {
-        document.documentElement.style.removeProperty("--app-height");
+        const rootStyle = document.documentElement.style;
+        for (const property of ["--app-top", "--app-left", "--app-width", "--app-height"]) {
+          rootStyle.removeProperty(property);
+        }
       }
       positionTouchOverlays();
     });
