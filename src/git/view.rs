@@ -251,6 +251,7 @@ fn WorkspaceGit(slug: String) -> Element {
         let retry = CommitRequest {
             message: request.message.clone(),
             amend: request.amend,
+            skip_hooks: request.skip_hooks,
             signing_passphrase: None,
         };
         pending.set(true);
@@ -288,6 +289,7 @@ fn WorkspaceGit(slug: String) -> Element {
         let retry = CommitRequest {
             message: request.message.clone(),
             amend: request.amend,
+            skip_hooks: request.skip_hooks,
             signing_passphrase: None,
         };
         let slug = signing_slug.clone();

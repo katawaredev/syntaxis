@@ -680,6 +680,7 @@ async fn diff_stage_unstage_discard_and_commit_match_real_git_state() {
             CommitRequest {
                 message: "add new file".into(),
                 amend: false,
+                skip_hooks: false,
                 signing_passphrase: None,
             },
         )
@@ -704,6 +705,52 @@ async fn diff_stage_unstage_discard_and_commit_match_real_git_state() {
         .changes
         .iter()
         .any(|change| change.path == temporary && change.worktree == Some(ChangeKind::Untracked)));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn commit_can_skip_validation_hooks() {
+    use std::{fs::OpenOptions, io::Write, os::unix::fs::OpenOptionsExt};
+
+    let repository = init_repository();
+    fs::write(repository.path().join("tracked.txt"), "base\n").unwrap();
+    git(repository.path(), &["add", "tracked.txt"]);
+    git(repository.path(), &["commit", "-m", "base"]);
+    fs::write(repository.path().join("tracked.txt"), "changed\n").unwrap();
+    git(repository.path(), &["add", "tracked.txt"]);
+
+    let hook = repository.path().join(".git/hooks/pre-commit");
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o700)
+        .open(hook)
+        .unwrap();
+    file.write_all(b"#!/bin/sh\nexit 1\n").unwrap();
+    drop(file);
+
+    let host = HostGit::default();
+    let workspace = workspace(repository.path());
+    let request = CommitRequest {
+        message: "validated change".into(),
+        amend: false,
+        skip_hooks: false,
+        signing_passphrase: None,
+    };
+    let error = host.commit(&workspace, request.clone()).await.unwrap_err();
+    assert_eq!(error.code, GitErrorCode::CommandFailed);
+
+    let outcome = host
+        .commit(
+            &workspace,
+            CommitRequest {
+                skip_hooks: true,
+                ..request
+            },
+        )
+        .await
+        .unwrap();
+    assert!(matches!(outcome, CommitOutcome::Committed { .. }));
 }
 
 #[cfg(unix)]
@@ -739,6 +786,7 @@ async fn signing_failure_becomes_an_in_app_retry_outcome() {
             CommitRequest {
                 message: "signed change".into(),
                 amend: false,
+                skip_hooks: false,
                 signing_passphrase: None,
             },
         )

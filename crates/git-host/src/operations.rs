@@ -230,6 +230,9 @@ impl GitOperations for HostGit {
         if request.amend {
             arguments.push("--amend".into());
         }
+        if request.skip_hooks {
+            arguments.push("--no-verify".into());
+        }
 
         let passphrase = request.signing_passphrase.take().map(Zeroizing::new);
         let signing_configured = self

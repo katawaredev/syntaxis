@@ -16,6 +16,8 @@ pub struct CloneResult {
 pub struct CommitRequest {
     pub message: String,
     pub amend: bool,
+    #[serde(default)]
+    pub skip_hooks: bool,
     /// Present only for an in-app retry after the configured signer requested
     /// a passphrase. The server must discard this after the operation.
     pub signing_passphrase: Option<String>,

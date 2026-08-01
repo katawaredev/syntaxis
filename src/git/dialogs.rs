@@ -659,10 +659,11 @@ pub(super) fn CommitDialog(
 ) -> Element {
     let mut message = use_signal(|| initial_message);
     let mut amend = use_signal(|| false);
+    let mut skip_hooks = use_signal(|| false);
     rsx! {
         Modal {
             title: if amend() { "Amend previous commit" } else { "Commit staged changes" },
-            description: "Git will use the configured identity, hooks, and signing settings.",
+            description: "Git will use the configured identity and signing settings.",
             on_close,
             DialogForm {
                 Field { control_id: "commit-message", label: "Commit message",
@@ -698,6 +699,15 @@ pub(super) fn CommitDialog(
                     }
                     span { "Amend previous commit" }
                 }
+                label { class: "compact flex items-center gap-2.5 py-1.75",
+                    Checkbox {
+                        checked: skip_hooks(),
+                        aria_label: "Skip Git commit validation hooks",
+                        disabled: pending,
+                        on_checked_change: move |checked| skip_hooks.set(checked),
+                    }
+                    span { "Skip validations (--no-verify)" }
+                }
                 if let Some(error) = error {
                     p { class: "text-xs text-destructive", role: "alert", "{error}" }
                 }
@@ -717,6 +727,7 @@ pub(super) fn CommitDialog(
                                 .call(CommitRequest {
                                     message: message(),
                                     amend: amend(),
+                                    skip_hooks: skip_hooks(),
                                     signing_passphrase: None,
                                 });
                         },
