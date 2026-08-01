@@ -264,16 +264,21 @@ The initial UI rendered by the component on the client must be identical to the 
 * Use the `use_server_future` hook instead of `use_resource`. It runs the future on the server, serializes the result, and sends it to the client, ensuring the client has the data immediately for its first render.
 * Any code that relies on browser-specific APIs (like accessing `localStorage`) must be run *after* hydration. Place this code inside a `use_effect` hook.
 
-# Validation
+## Validation
 
-Run the code fix-and-validation workflow when your changes affect Rust source
-code, Cargo manifests, or build/lint configuration that the command checks:
+If your changes affect Rust source code, Cargo manifests, or build/lint configuration, **do not run the validation workflow immediately**.
+
+Instead, ask for confirmation first:
+
+> "The changes affect Rust code or build configuration. Shall I run `just qa` now?"
+
+Only run:
 
 ```bash
 just qa
 ```
 
-Do not run it after documentation-only changes, asset updates, or other changes
-unrelated to code quality. The command auto-fixes formatting and Clippy issues,
-then runs code checks, tests, and doctests, so only run it when those provide
-meaningful validation for the files you changed.
+after the user explicitly confirms.
+
+Do **not** ask for confirmation or run the command after documentation-only changes, asset updates, or other changes unrelated to code quality. The command auto-fixes formatting and Clippy issues, then runs code checks, tests, and doctests, so it should only be used when those checks are relevant.
+
