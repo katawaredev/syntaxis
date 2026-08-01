@@ -50,6 +50,7 @@ impl RendererOutputBatch {
 pub enum RendererAction {
     Clear,
     Copy,
+    CopyAll,
     Paste,
     Fit,
     Focus,
@@ -59,6 +60,7 @@ impl RendererAction {
         match self {
             Self::Clear => "clear",
             Self::Copy => "copy",
+            Self::CopyAll => "copy_all",
             Self::Paste => "paste",
             Self::Fit => "fit",
             Self::Focus => "focus",

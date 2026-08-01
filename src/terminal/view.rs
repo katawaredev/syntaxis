@@ -35,6 +35,7 @@ const TERMINAL_SCRIPT: Asset = asset!("/assets/terminal/terminal.bundle.js");
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum TerminalAction {
     Copy,
+    CopyAll,
     Paste,
     Clear,
     Restart,
@@ -1036,8 +1037,19 @@ fn RemoteTerminal(
                                 ),
                             }
                             TerminalMenuItem {
-                                action: TerminalAction::Paste,
+                                action: TerminalAction::CopyAll,
                                 index: 1,
+                                label: "Copy all",
+                                disabled: selected.is_none(),
+                                on_select: move |_| send_renderer_action(
+                                    &mut renderer_command,
+                                    &mut renderer_command_sequence,
+                                    RendererAction::CopyAll,
+                                ),
+                            }
+                            TerminalMenuItem {
+                                action: TerminalAction::Paste,
+                                index: 2,
                                 label: "Paste",
                                 disabled: selected.is_none(),
                                 on_select: move |_| send_renderer_action(
@@ -1048,7 +1060,7 @@ fn RemoteTerminal(
                             }
                             TerminalMenuItem {
                                 action: TerminalAction::Clear,
-                                index: 2,
+                                index: 3,
                                 label: "Clear terminal",
                                 disabled: selected.is_none(),
                                 on_select: move |_| send_renderer_action(
@@ -1059,7 +1071,7 @@ fn RemoteTerminal(
                             }
                             TerminalMenuItem {
                                 action: TerminalAction::Restart,
-                                index: 3,
+                                index: 4,
                                 label: "Restart terminal",
                                 disabled: selected.is_none(),
                                 on_select: {
@@ -1082,7 +1094,7 @@ fn RemoteTerminal(
                             hr {}
                             TerminalMenuItem {
                                 action: TerminalAction::Detach,
-                                index: 4,
+                                index: 5,
                                 label: "Detach session",
                                 disabled: selected.is_none(),
                                 on_select: {
@@ -1099,7 +1111,7 @@ fn RemoteTerminal(
                             }
                             TerminalMenuItem {
                                 action: TerminalAction::Refresh,
-                                index: 5,
+                                index: 6,
                                 label: "Refresh sessions",
                                 disabled: !connection_ready,
                                 on_select: move |_| client.send(ClientMessage::List),
@@ -1107,7 +1119,7 @@ fn RemoteTerminal(
                             hr {}
                             TerminalMenuItem {
                                 action: TerminalAction::Close,
-                                index: 6,
+                                index: 7,
                                 label: "Close terminal",
                                 destructive: true,
                                 disabled: selected.is_none(),
@@ -1125,7 +1137,7 @@ fn RemoteTerminal(
                             }
                             TerminalMenuItem {
                                 action: TerminalAction::CloseOthers,
-                                index: 7,
+                                index: 8,
                                 label: "Close all others",
                                 destructive: true,
                                 disabled: selected.is_none() || sessions.read().len() < 2,
@@ -1147,7 +1159,7 @@ fn RemoteTerminal(
                             }
                             TerminalMenuItem {
                                 action: TerminalAction::CloseAll,
-                                index: 8,
+                                index: 9,
                                 label: "Close all terminals",
                                 destructive: true,
                                 disabled: sessions.read().is_empty(),

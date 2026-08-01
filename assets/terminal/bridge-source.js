@@ -47,6 +47,95 @@ function sourceLinks(term, id, row) {
   return links;
 }
 
+function touchById(touches, id) {
+  for (let index = 0; index < touches.length; index += 1) {
+    const touch = touches[index];
+    if (touch.identifier === id) return touch;
+  }
+  return null;
+}
+
+function installTouchScrolling(term, container) {
+  const touchDevice = navigator.maxTouchPoints > 0 || window.matchMedia("(pointer: coarse)").matches;
+  const element = container.querySelector(".xterm");
+  if (!touchDevice || !element) return { dispose() {} };
+
+  const previousTouchAction = element.style.touchAction;
+  const previousOverscrollBehavior = element.style.overscrollBehavior;
+  element.style.touchAction = "none";
+  element.style.overscrollBehavior = "contain";
+
+  let touchId = null;
+  let startY = 0;
+  let lastY = 0;
+  let pendingPixels = 0;
+  let dragging = false;
+
+  const reset = () => {
+    touchId = null;
+    pendingPixels = 0;
+    dragging = false;
+  };
+  const cellHeight = () => {
+    const screenHeight = element.querySelector(".xterm-screen")?.getBoundingClientRect().height ?? 0;
+    return screenHeight > 0 && term.rows > 0 ? screenHeight / term.rows : 16.8;
+  };
+  const onTouchStart = event => {
+    if (event.touches.length !== 1) {
+      reset();
+      return;
+    }
+    const touch = event.touches[0];
+    touchId = touch.identifier;
+    startY = touch.clientY;
+    lastY = touch.clientY;
+    pendingPixels = 0;
+    dragging = false;
+  };
+  const onTouchMove = event => {
+    if (touchId === null || event.touches.length !== 1) return;
+    const touch = touchById(event.touches, touchId);
+    if (!touch) return;
+
+    if (!dragging && Math.abs(touch.clientY - startY) < 4) return;
+    dragging = true;
+    pendingPixels += lastY - touch.clientY;
+    lastY = touch.clientY;
+
+    const rowHeight = cellHeight();
+    const lines = pendingPixels < 0
+      ? Math.ceil(pendingPixels / rowHeight)
+      : Math.floor(pendingPixels / rowHeight);
+    if (lines !== 0) {
+      term.scrollLines(lines);
+      pendingPixels -= lines * rowHeight;
+    }
+    event.preventDefault();
+  };
+  const onTouchEnd = event => {
+    if (touchId === null || touchById(event.changedTouches, touchId) === null) return;
+    if (dragging) event.preventDefault();
+    reset();
+  };
+  const onTouchCancel = () => reset();
+
+  element.addEventListener("touchstart", onTouchStart, { passive: true });
+  element.addEventListener("touchmove", onTouchMove, { passive: false });
+  element.addEventListener("touchend", onTouchEnd, { passive: false });
+  element.addEventListener("touchcancel", onTouchCancel, { passive: true });
+
+  return {
+    dispose() {
+      element.removeEventListener("touchstart", onTouchStart);
+      element.removeEventListener("touchmove", onTouchMove);
+      element.removeEventListener("touchend", onTouchEnd);
+      element.removeEventListener("touchcancel", onTouchCancel);
+      element.style.touchAction = previousTouchAction;
+      element.style.overscrollBehavior = previousOverscrollBehavior;
+    },
+  };
+}
+
 async function mount(id) {
   dispose(id);
 
@@ -81,6 +170,7 @@ async function mount(id) {
   const fitAddon = new FitAddon();
   term.loadAddon(fitAddon);
   term.open(container);
+  const touchScrolling = installTouchScrolling(term, container);
   const dataSubscription = term.onData(data => emit("input", id, { data }));
   const resizeSubscription = term.onResize(({ cols, rows }) => {
     const rect = container.getBoundingClientRect();
@@ -111,7 +201,7 @@ async function mount(id) {
     fitAddon,
     container,
     resizeObserver,
-    subscriptions: [dataSubscription, resizeSubscription, linkSubscription],
+    subscriptions: [dataSubscription, resizeSubscription, linkSubscription, touchScrolling],
     cancelFit: () => {
       if (fitFrame !== null) cancelAnimationFrame(fitFrame);
     },
@@ -145,6 +235,16 @@ async function action(id, name) {
         if (!navigator.clipboard?.writeText) throw new Error("Clipboard write access is unavailable");
         await navigator.clipboard.writeText(selection);
         emit("action_result", id, { action: name, ok: true, message: "Selection copied" });
+        break;
+      }
+      case "copy_all": {
+        if (!navigator.clipboard?.writeText) throw new Error("Clipboard write access is unavailable");
+        term.selectAll();
+        const contents = term.getSelection();
+        term.clearSelection();
+        if (!contents) throw new Error("Terminal has no output to copy");
+        await navigator.clipboard.writeText(contents);
+        emit("action_result", id, { action: name, ok: true, message: "Terminal contents copied" });
         break;
       }
       case "paste": {
