@@ -6,7 +6,7 @@ use dioxus_icons::lucide::{
     Check, ChevronDown, ChevronLeft, ChevronRight, Code, Command, Copy, Ellipsis, EllipsisVertical,
     ExternalLink, Eye, FileDiff, FileInput, FileMinus, FilePlus, FolderOpen, FolderPlus, GitBranch,
     GitCommitHorizontal, GitFork, Hash, Info, ListChevronsDownUp, ListChevronsUpDown, ListOrdered,
-    Menu, Mic, PanelLeftOpen, Paperclip, Play, Plus, RefreshCw, Regex, Repeat1, Replace,
+    LogOut, Menu, Mic, PanelLeftOpen, Paperclip, Play, Plus, RefreshCw, Regex, Repeat1, Replace,
     ReplaceAll, RotateCcw, Save, Search, Send, Share2, ShieldAlert, Sparkles, Square, SquarePen,
     SquareTerminal, Trash2, Type, WholeWord, X,
 };
@@ -43,6 +43,7 @@ pub enum AppIcon {
     Worktree,
     GoToLine,
     LineNumbers,
+    Logout,
     MatchCase,
     MatchWholeWord,
     Menu,
@@ -227,6 +228,11 @@ pub fn Icon(icon: AppIcon, #[props(default = 16)] size: u32) -> Element {
         AppIcon::LineNumbers => {
             rsx! {
                 Hash { size }
+            }
+        }
+        AppIcon::Logout => {
+            rsx! {
+                LogOut { size }
             }
         }
         AppIcon::MatchCase => {

@@ -7,6 +7,7 @@ use crate::{
     workspace::{Home, WorkspaceShell},
 };
 use dioxus::prelude::*;
+use syntaxis_ui::prelude::{AppIcon, Icon};
 const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");
 pub(crate) const FAVICON: Asset = asset!("/assets/favicon.ico");
 const FAVICON_SVG: Asset = asset!("/assets/favicon.svg");
@@ -103,9 +104,12 @@ pub(crate) fn LogoutButton() -> Element {
         form { action: "/auth/logout", method: "post",
             button {
                 r#type: "submit",
-                class: "inline-flex h-8.5 items-center justify-center rounded-lg px-2.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+                class: "touch-target grid size-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
                 title: "Sign out",
-                "Sign out"
+                "aria-label": "Sign out",
+                span { "aria-hidden": "true",
+                    Icon { icon: AppIcon::Logout, size: 15 }
+                }
             }
         }
     }

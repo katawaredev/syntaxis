@@ -1,4 +1,5 @@
 use dioxus::prelude::*;
+use dioxus_primitives::popover::{PopoverContent, PopoverRoot, PopoverTrigger};
 use syntaxis_ui::prelude::{AppIcon, Icon, StatusBadge, Tone};
 
 use crate::{
@@ -102,20 +103,25 @@ pub fn WorkspaceShell() -> Element {
         .as_ref()
         .and_then(|result| result.as_ref().ok())
         .cloned();
-    let (runtime_label, runtime_message, runtime_ready, runtime_location) = match runtime_snapshot {
+    let (runtime_label, runtime_message, runtime_tone, runtime_location) = match runtime_snapshot {
         Some(RuntimeState::Ready { identity, .. }) => (
             match identity.location {
                 ExecutionLocation::Local => "Local",
                 ExecutionLocation::Remote => "Remote",
             },
             format!("{} ready", identity.label),
-            true,
+            Tone::Success,
             Some(identity.location),
         ),
-        Some(RuntimeState::Unavailable { message }) => ("Offline", message, false, None),
-        Some(RuntimeState::Connecting) | None => {
-            ("Connecting", "Connecting to runtime".into(), false, None)
+        Some(RuntimeState::Unavailable { message }) => {
+            ("Offline", message, Tone::Destructive, None)
         }
+        Some(RuntimeState::Connecting) | None => (
+            "Connecting",
+            "Connecting to runtime".into(),
+            Tone::Warning,
+            None,
+        ),
     };
     let event_revision = (event_state.revision)();
     let runtime_message = if event_revision == 0 {
@@ -161,11 +167,10 @@ pub fn WorkspaceShell() -> Element {
                     strong { class: "truncate text-[13px]", {project_name} }
                     StatusBadge { label: runtime_label, tone: Tone::Neutral }
                 }
-                div { class: "ml-auto flex items-center gap-2 pr-2 text-[11px] text-muted-foreground",
+                div { class: "ml-auto flex items-center gap-1 pr-2 text-[11px] text-muted-foreground",
+                    RuntimeStatusIndicator { message: runtime_message, tone: runtime_tone }
                     NotificationMenu {}
                     LogoutButton {}
-                    span { class: if runtime_ready { "size-2 rounded-full bg-success shadow-[0_0_0.5rem_color-mix(in_oklch,var(--success),transparent_20%)]" } else { "size-2 rounded-full bg-warning" } }
-                    span { class: "max-md:hidden", {runtime_message} }
                 }
             }
             div { class: "min-h-0 flex-1 overflow-hidden", Outlet::<Route> {} }
@@ -212,6 +217,43 @@ pub fn WorkspaceShell() -> Element {
                         slug: slug.clone(),
                         query: crate::ai::AiQuery::default(),
                     },
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn RuntimeStatusIndicator(message: String, tone: Tone) -> Element {
+    let mut open = use_signal(|| false);
+    let dot_class = match tone {
+        Tone::Success => {
+            "bg-success shadow-[0_0_0.5rem_color-mix(in_oklch,var(--success),transparent_20%)]"
+        }
+        Tone::Warning => "bg-warning",
+        Tone::Destructive => "bg-destructive",
+        Tone::Neutral => "bg-muted-foreground",
+    };
+    rsx! {
+        PopoverRoot {
+            class: "relative shrink-0",
+            is_modal: false,
+            open: open(),
+            on_open_change: move |next| open.set(next),
+            PopoverTrigger {
+                class: if open() { "grid size-8 place-items-center rounded-lg bg-accent" } else { "grid size-8 place-items-center rounded-lg hover:bg-accent" },
+                aria_label: message.clone(),
+                aria_expanded: open(),
+                title: message.clone(),
+                span {
+                    class: "size-2 rounded-full {dot_class}",
+                    "aria-hidden": "true",
+                }
+            }
+            PopoverContent { class: "touch-popover absolute top-[calc(100%+6px)] right-0 z-90 w-[min(280px,calc(100vw-1rem))] rounded-xl border border-border bg-popover p-3 shadow-2xl",
+                strong { class: "block text-xs text-foreground", "Runtime status" }
+                p { class: "mt-1 break-words text-[10px] leading-relaxed text-muted-foreground",
+                    "{message}"
                 }
             }
         }
