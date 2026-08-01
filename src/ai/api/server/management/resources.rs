@@ -120,7 +120,7 @@ pub(super) fn safe_relative_path(value: &str) -> Result<PathBuf, ServerFnError> 
 pub(super) fn reject_symlink(path: &Path) -> Result<(), ServerFnError> {
     match fs::symlink_metadata(path) {
         Ok(metadata) if metadata.file_type().is_symlink() => {
-            Err(client_error("Syntaxis will not modify a linked skill"))
+            Err(client_error("Syntaxis will not modify a linked resource"))
         }
         Ok(_) | Err(_) => Ok(()),
     }

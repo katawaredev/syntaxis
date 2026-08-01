@@ -254,6 +254,19 @@ pub(crate) async fn update_pi_setting(
     server::update_pi_setting(WorkspaceId::new(workspace_id), path, value).await
 }
 
+#[post("/api/pi/instructions")]
+pub(crate) async fn pi_global_instructions(workspace_id: String) -> Result<String, ServerFnError> {
+    server::pi_global_instructions(WorkspaceId::new(workspace_id)).await
+}
+
+#[post("/api/pi/instructions/save")]
+pub(crate) async fn save_pi_global_instructions(
+    workspace_id: String,
+    content: String,
+) -> Result<String, ServerFnError> {
+    server::save_pi_global_instructions(WorkspaceId::new(workspace_id), content).await
+}
+
 #[post("/api/pi/update")]
 pub(crate) async fn update_pi(workspace_id: String) -> Result<PiOperationResult, ServerFnError> {
     server::update_pi(WorkspaceId::new(workspace_id)).await

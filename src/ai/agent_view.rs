@@ -9,6 +9,7 @@ use super::components::{
     ExtensionRequestDialog,
 };
 use super::extensions::ExtensionsPanel;
+use super::instructions::GlobalInstructionsPanel;
 use super::management::{AiPanel, AiSidebarTabs, SettingsPanel, SettingsSidebar};
 use super::resources::{PromptTemplatesPanel, SkillsPanel};
 use super::runtime::{use_agent_runtime, AgentRuntime};
@@ -376,6 +377,14 @@ fn RemoteAgent(
                                 "Drop images to attach"
                             }
                         }
+                    }
+                } else if selected_settings_section() == AiSettingsSection::GlobalInstructions {
+                    GlobalInstructionsPanel {
+                        workspace_id: workspace_id.clone(),
+                        toast: session_toast,
+                        sidebar_open: sidebar_open(),
+                        on_toggle_sidebar: move |()| sidebar_open.toggle(),
+                        on_open_sidebar: move |()| drawer.set(true),
                     }
                 } else if selected_settings_section() == AiSettingsSection::Extensions {
                     ExtensionsPanel {

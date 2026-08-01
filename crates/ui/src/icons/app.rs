@@ -5,10 +5,10 @@ use dioxus_icons::lucide::{
     ArrowDown, ArrowUp, Bell, Bot, BrainCog, BrushCleaning, CaseSensitive, ChartNoAxesColumn,
     Check, ChevronDown, ChevronLeft, ChevronRight, Code, Command, Copy, Ellipsis, EllipsisVertical,
     ExternalLink, Eye, FileDiff, FileInput, FileMinus, FilePlus, FolderOpen, FolderPlus, GitBranch,
-    GitCommitHorizontal, GitFork, Hash, ListChevronsDownUp, ListChevronsUpDown, ListOrdered, Menu,
-    Mic, PanelLeftOpen, Paperclip, Play, Plus, RefreshCw, Regex, Repeat1, Replace, ReplaceAll,
-    RotateCcw, Save, Search, Send, Share2, Sparkles, Square, SquarePen, SquareTerminal, Trash2,
-    Type, WholeWord, X,
+    GitCommitHorizontal, GitFork, Hash, Info, ListChevronsDownUp, ListChevronsUpDown, ListOrdered,
+    Menu, Mic, PanelLeftOpen, Paperclip, Play, Plus, RefreshCw, Regex, Repeat1, Replace,
+    ReplaceAll, RotateCcw, Save, Search, Send, Share2, ShieldAlert, Sparkles, Square, SquarePen,
+    SquareTerminal, Trash2, Type, WholeWord, X,
 };
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum AppIcon {
@@ -38,6 +38,7 @@ pub enum AppIcon {
     FilePlus,
     Folder,
     FolderPlus,
+    Info,
     GitBranch,
     Worktree,
     GoToLine,
@@ -60,6 +61,7 @@ pub enum AppIcon {
     Search,
     Send,
     Share,
+    ShieldAlert,
     Sparkles,
     Bot,
     Stop,
@@ -202,6 +204,11 @@ pub fn Icon(icon: AppIcon, #[props(default = 16)] size: u32) -> Element {
                 FolderPlus { size }
             }
         }
+        AppIcon::Info => {
+            rsx! {
+                Info { size }
+            }
+        }
         AppIcon::GitBranch => {
             rsx! {
                 GitBranch { size }
@@ -310,6 +317,11 @@ pub fn Icon(icon: AppIcon, #[props(default = 16)] size: u32) -> Element {
         AppIcon::Share => {
             rsx! {
                 Share2 { size }
+            }
+        }
+        AppIcon::ShieldAlert => {
+            rsx! {
+                ShieldAlert { size }
             }
         }
         AppIcon::Sparkles => {

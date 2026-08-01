@@ -39,15 +39,17 @@ pub enum AiSettingsSection {
     #[default]
     General,
     ProviderAccounts,
+    GlobalInstructions,
     PromptTemplates,
     Skills,
     Extensions,
 }
 
 impl AiSettingsSection {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::General,
         Self::ProviderAccounts,
+        Self::GlobalInstructions,
         Self::PromptTemplates,
         Self::Skills,
         Self::Extensions,
@@ -57,6 +59,7 @@ impl AiSettingsSection {
         match self {
             Self::General => "General",
             Self::ProviderAccounts => "Provider accounts",
+            Self::GlobalInstructions => "Global instructions",
             Self::PromptTemplates => "Prompt templates",
             Self::Skills => "Skills",
             Self::Extensions => "Extensions",
@@ -67,6 +70,7 @@ impl AiSettingsSection {
         match self {
             Self::General => "general",
             Self::ProviderAccounts => "provider-accounts",
+            Self::GlobalInstructions => "global-instructions",
             Self::PromptTemplates => "prompt-templates",
             Self::Skills => "skills",
             Self::Extensions => "extensions",
@@ -86,6 +90,7 @@ impl std::str::FromStr for AiSettingsSection {
     fn from_str(section: &str) -> Result<Self, Self::Err> {
         Ok(match section {
             "provider-accounts" => Self::ProviderAccounts,
+            "global-instructions" => Self::GlobalInstructions,
             "prompt-templates" => Self::PromptTemplates,
             "skills" => Self::Skills,
             "extensions" => Self::Extensions,

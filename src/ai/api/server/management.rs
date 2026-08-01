@@ -22,6 +22,7 @@ use crate::ai::{
 };
 
 mod auth;
+mod instructions;
 mod packages;
 mod prompts;
 mod resources;
@@ -33,6 +34,7 @@ pub(crate) use auth::{
     cancel_pi_provider_login, logout_pi_provider, pi_provider_login_status, pi_providers,
     respond_to_pi_provider_login, start_pi_provider_login,
 };
+pub(crate) use instructions::{pi_global_instructions, save_pi_global_instructions};
 pub(crate) use packages::{manage_pi_package, pi_packages};
 pub(crate) use prompts::{delete_prompt_template, prompt_templates, save_prompt_template};
 use resources::*;

@@ -2,9 +2,24 @@
 
 Syntaxis exposes Pi management inside the AI module. The top-level sidebar has
 Chat and Settings tabs. The General page groups the small sets of
-agent-relevant settings into labeled subsections; prompt templates, skills, and
-extensions follow it. Management work runs on the workspace server, not in the
-browser.
+agent-relevant settings into labeled subsections; global instructions, prompt
+templates, skills, and extensions follow it. Management work runs on the
+workspace server, not in the browser.
+
+## Global instructions
+
+The Global instructions section manages Pi's instance-wide
+`~/.pi/agent/AGENTS.md` (or the equivalent file under `PI_CODING_AGENT_DIR`).
+The file is shared by every workspace and is loaded automatically into new Pi
+sessions. Saving an empty editor removes the file. Existing Pi processes retain
+the instructions they loaded at startup until they reload or are replaced by a
+new chat.
+
+Syntaxis treats this as an operator preference rather than an enforcement
+boundary. Instructions can guide Pi away from expensive or unsafe commands,
+but deployments must still use container limits or a Pi extension when a rule
+must be technically enforced. The editor refuses to follow a symbolic link and
+applies the same 512 KiB size limit as other text resources.
 
 ## Extensions
 

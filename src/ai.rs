@@ -3,6 +3,7 @@ pub(crate) mod api;
 mod components;
 mod extensions;
 mod generated_settings;
+mod instructions;
 mod management;
 pub(crate) mod notifications;
 mod resources;
