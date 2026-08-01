@@ -90,7 +90,7 @@ fn RemoteAgent(
         snapshot,
         sessions,
         selected_id,
-        draft,
+        mut draft,
         mut error,
         mut extension_request,
         attachments,
@@ -353,11 +353,8 @@ fn RemoteAgent(
                             items: current.items.clone(),
                             status: current.status,
                             on_suggestion: move |text: String| {
-                                send_prompt
-                                    .call(ComposerSubmission {
-                                        text,
-                                        images: Vec::new(),
-                                    });
+                                draft.set(text);
+                                composer_error.set(None);
                             },
                         }
                         AgentComposer {
