@@ -500,17 +500,20 @@ impl AgentError {
 mod tests {
     use super::*;
     #[test]
-    fn protocol_messages_are_stably_tagged() -> Result<(), serde_json::Error> {
+    fn protocol_messages_are_stably_tagged() {
         let message = ClientMessage::Prompt {
             text: "Inspect this project".into(),
             delivery: PromptDelivery::Prompt,
             images: Vec::new(),
         };
-        let value = serde_json::to_value(&message)?;
+        let value = serde_json::to_value(&message).expect("client message should serialize");
         assert_eq!(value["type"], "prompt");
         assert_eq!(value["delivery"], "prompt");
-        assert_eq!(serde_json::from_value::<ClientMessage>(value)?, message);
-        Ok(())
+        assert_eq!(
+            serde_json::from_value::<ClientMessage>(value)
+                .expect("client message should deserialize"),
+            message
+        );
     }
     #[test]
     fn prompt_validation_rejects_empty_and_unbounded_input() {

@@ -1557,7 +1557,7 @@ fn parse_model(value: &Value) -> Option<ModelSummary> {
         max_tokens: value
             .get("maxTokens")
             .and_then(Value::as_u64)
-            .unwrap_or(16_384),
+            .unwrap_or(0x4000),
         cost: parse_model_cost(value.get("cost")),
     })
 }
@@ -1574,7 +1574,7 @@ fn parse_model_cost(cost: Option<&Value>) -> ModelCost {
         .is_some_and(|tiers| {
             tiers.iter().any(|tier| {
                 ["input", "output", "cacheRead", "cacheWrite"]
-                    .iter()
+                    .into_iter()
                     .any(|field| rate(Some(tier), field) > 0)
             })
         });
@@ -1978,6 +1978,10 @@ mod tests {
     use super::*;
     use syntaxis_workspace::{WorkspaceAvailability, WorkspaceIcon, WorkspaceIconSymbol};
     #[test]
+    #[allow(
+        clippy::panic_in_result_fn,
+        reason = "the test uses Result for fallible setup and assertions for behavior"
+    )]
     fn model_parser_preserves_filter_metadata() -> Result<(), String> {
         let model = parse_model(&json!({
             "provider": "example",
@@ -2044,6 +2048,10 @@ mod tests {
         assert!(output.ends_with('…'));
     }
     #[test]
+    #[allow(
+        clippy::panic_in_result_fn,
+        reason = "the test uses Result for fallible setup and assertions for behavior"
+    )]
     fn frames_fragmented_utf8_and_discards_oversized_records() -> Result<(), serde_json::Error> {
         let mut framer = BoundedLfFramer::new(32);
         assert!(framer.push(b"{\"text\":\"a\xE2").is_empty());
@@ -2120,6 +2128,10 @@ mod tests {
         assert_eq!(lock(&state).snapshot.pending_messages, 3);
     }
     #[test]
+    #[allow(
+        clippy::panic_in_result_fn,
+        reason = "the test uses Result for fallible setup and assertions for behavior"
+    )]
     fn completion_and_attention_notifications_replace_and_clear(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let temp = tempfile::tempdir()?;

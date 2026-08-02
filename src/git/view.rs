@@ -130,8 +130,10 @@ fn WorkspaceGit(slug: String) -> Element {
     });
 
     use_effect(move || {
-        if let Some(error) = operation_error() {
-            toast.set(Some((error, Tone::Destructive)));
+        if dialog() == GitDialog::None {
+            if let Some(error) = operation_error() {
+                toast.set(Some((error, Tone::Destructive)));
+            }
         }
     });
 
@@ -779,6 +781,7 @@ fn WorkspaceGit(slug: String) -> Element {
                 on_close: move |()| {
                     if !pending() {
                         dialog.set(GitDialog::None);
+                        operation_error.set(None);
                     }
                 },
                 on_submit: on_commit,
@@ -792,6 +795,7 @@ fn WorkspaceGit(slug: String) -> Element {
                     if !pending() {
                         dialog.set(GitDialog::None);
                         retry_commit.set(None);
+                        operation_error.set(None);
                     }
                 },
                 on_submit: on_signing_retry,
