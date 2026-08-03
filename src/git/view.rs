@@ -391,6 +391,7 @@ fn WorkspaceGit(slug: String) -> Element {
                             selected_commit,
                             selected,
                             pending: pending(),
+                            on_select: move |()| {},
                             on_mutation,
                         }
                     }
@@ -765,6 +766,7 @@ fn WorkspaceGit(slug: String) -> Element {
                             selected_commit,
                             selected,
                             pending: pending(),
+                            on_select: move |()| drawer.set(false),
                             on_mutation,
                         }
                     }

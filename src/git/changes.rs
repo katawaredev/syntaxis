@@ -24,6 +24,7 @@ pub(super) fn GitSidebar(
     mut selected_commit: Signal<Option<String>>,
     selected: Signal<Option<SelectedChange>>,
     pending: bool,
+    on_select: EventHandler<()>,
     on_mutation: EventHandler<Mutation>,
 ) -> Element {
     let conflicts = repository
@@ -74,6 +75,7 @@ pub(super) fn GitSidebar(
                                 selected,
                                 pending,
                                 batch_label: None,
+                                on_select,
                                 on_mutation,
                             }
                             ChangeSection {
@@ -83,6 +85,7 @@ pub(super) fn GitSidebar(
                                 selected,
                                 pending,
                                 batch_label: Some("Unstage".into()),
+                                on_select,
                                 on_mutation,
                             }
                             ChangeSection {
@@ -92,6 +95,7 @@ pub(super) fn GitSidebar(
                                 selected,
                                 pending,
                                 batch_label: Some("Stage".into()),
+                                on_select,
                                 on_mutation,
                             }
                         }
@@ -104,7 +108,10 @@ pub(super) fn GitSidebar(
                             class: if selected_commit().as_deref() == Some(commit.oid.as_str()) { "flex w-full min-w-0 gap-2 rounded-md bg-muted p-2 text-left text-foreground" } else { "flex w-full min-w-0 gap-2 rounded-md p-2 text-left text-muted-foreground hover:bg-muted/60 hover:text-foreground" },
                             onclick: {
                                 let oid = commit.oid.clone();
-                                move |_| selected_commit.set(Some(oid.clone()))
+                                move |_| {
+                                    selected_commit.set(Some(oid.clone()));
+                                    on_select.call(());
+                                }
                             },
                             span { class: "mt-1.5 size-2 shrink-0 rounded-full border-2 border-primary" }
                             span { class: "min-w-0",
@@ -129,6 +136,7 @@ pub(super) fn ChangeSection(
     selected: Signal<Option<SelectedChange>>,
     pending: bool,
     batch_label: Option<String>,
+    on_select: EventHandler<()>,
     on_mutation: EventHandler<Mutation>,
 ) -> Element {
     if changes.is_empty() {
@@ -159,7 +167,12 @@ pub(super) fn ChangeSection(
             }
             div { class: "space-y-1",
                 for change in changes {
-                    ChangeRow { change, kind, selected }
+                    ChangeRow {
+                        change,
+                        kind,
+                        selected,
+                        on_select,
+                    }
                 }
             }
         }
@@ -171,6 +184,7 @@ pub(super) fn ChangeRow(
     change: FileChange,
     kind: DiffKind,
     mut selected: Signal<Option<SelectedChange>>,
+    on_select: EventHandler<()>,
 ) -> Element {
     let path = change.path.as_str().to_owned();
     let selection = SelectedChange {
@@ -194,7 +208,10 @@ pub(super) fn ChangeRow(
     rsx! {
         button {
             class: if active { "flex min-h-9 w-full min-w-0 items-center gap-2 rounded-md bg-muted p-2 text-left text-xs text-foreground" } else { "flex min-h-9 w-full min-w-0 items-center gap-2 rounded-md p-2 text-left text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground" },
-            onclick: move |_| selected.set(Some(selection.clone())),
+            onclick: move |_| {
+                selected.set(Some(selection.clone()));
+                on_select.call(());
+            },
             FileIcon { path: path.clone(), size: 15 }
             span { class: "min-w-0 flex-1 truncate", "{path}" }
             GitChangeBadge { kind: change_kind }
