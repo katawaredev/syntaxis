@@ -62,6 +62,8 @@ RUN npm install --global --prefix /opt/syntaxis-pi \
 RUN usermod --login dev --home /home/dev --move-home node \
     && groupmod --new-name dev node \
     && mkdir -p /Projects /home/dev/.cargo/git /home/dev/.cargo/registry \
+    && printf '\n# Activate project-local Mise tools.\neval "$(/usr/local/bin/mise activate bash)"\n' \
+    >> /home/dev/.bashrc \
     && chown -R dev:dev \
     /Projects \
     /home/dev/.cargo \
@@ -73,7 +75,7 @@ ENV HOME=/home/dev \
     CARGO_HOME=/home/dev/.cargo \
     NPM_CONFIG_PREFIX=/home/dev/.local
 ENV PATH="${CARGO_HOME}/bin:/usr/local/cargo/bin:${PATH}"
-ENV PATH="${HOME}/.local/bin:${PATH}"
+ENV PATH="${HOME}/.local/share/mise/shims:${HOME}/.local/bin:${PATH}"
 
 USER dev
 WORKDIR /Projects/syntaxis
@@ -136,6 +138,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 RUN usermod --login dev --home /home/dev --move-home node \
     && groupmod --new-name dev node \
     && mkdir -p /app /Projects \
+    && printf '\n# Activate project-local Mise tools.\neval "$(/usr/local/bin/mise activate bash)"\n' \
+    >> /home/dev/.bashrc \
     && chown dev:dev /app /Projects
 
 COPY --from=build --chown=dev:dev /build-output /app
@@ -148,7 +152,7 @@ ENV HOME=/home/dev \
     PORT=8080 \
     NPM_CONFIG_PREFIX=/home/dev/.local \
     SYNTAXIS_PROJECTS_ROOT=/Projects
-ENV PATH="${HOME}/.local/bin:${PATH}"
+ENV PATH="${HOME}/.local/share/mise/shims:${HOME}/.local/bin:${PATH}"
 
 USER dev
 WORKDIR /Projects
