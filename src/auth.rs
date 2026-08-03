@@ -31,6 +31,7 @@ const INSECURE_COOKIE_NAME: &str = "syntaxis-session";
 const SESSION_LIFETIME: Duration = Duration::from_hours(720);
 const LOGIN_WINDOW: Duration = Duration::from_mins(5);
 const MAX_LOGIN_FAILURES: u8 = 5;
+const LOGIN_HTML: &str = include_str!("auth/login.html");
 
 #[derive(Clone)]
 struct AuthState {
@@ -471,164 +472,17 @@ pub(crate) fn print_password_hash() -> Result<(), String> {
     writeln!(io::stdout().lock(), "{hash}").map_err(|error| error.to_string())
 }
 
-#[allow(
-    clippy::too_many_lines,
-    reason = "the self-contained login document keeps unauthenticated assets minimal"
-)]
 fn login_html(error: Option<&str>) -> String {
-    let login_font = crate::app::GEIST_FONT;
-    let login_favicon = crate::app::FAVICON;
+    let login_favicon = crate::app::FAVICON.to_string();
+    let login_font = crate::app::GEIST_FONT.to_string();
     let error = error.map_or_else(String::new, |message| {
         format!("<p class=\"error\" role=\"alert\">{message}</p>")
     });
-    let html = format!(
-        r#"<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="robots" content="noindex,nofollow">
-<title>Sign in · Syntaxis</title>
-<link rel="icon" href="{login_favicon}">
-<style>
-:root {{
-  color-scheme:dark;
-  --background:oklch(0.205 0.003 247.9);
-  --foreground:oklch(0.842 0.004 247.9);
-  --card:oklch(24.29% 0.0024 247.93);
-  --primary:oklch(0.63 0.123 236.5);
-  --primary-foreground:oklch(1 0 0);
-  --muted-foreground:oklch(0.626 0.006 247.9);
-  --input:oklch(1 0 0 / 13%);
-  --ring:oklch(0.612 0.118 236.5);
-  --destructive:oklch(0.687 0.174 25.7);
-}}
-@font-face {{
-  font-family:"Geist Variable";
-  src:url("{login_font}") format("woff2");
-  font-style:normal;
-  font-weight:100 900;
-  font-display:swap;
-}}
-* {{ box-sizing: border-box; }}
-body {{
-  margin:0;
-  min-height:100dvh;
-  display:grid;
-  place-items:center;
-  padding:max(1.5rem,env(safe-area-inset-top)) max(1.25rem,env(safe-area-inset-right)) max(1.5rem,env(safe-area-inset-bottom)) max(1.25rem,env(safe-area-inset-left));
-  background:var(--background);
-  color:var(--foreground);
-  font:14px/1.45 "Geist Variable",ui-sans-serif,system-ui,sans-serif;
-  font-synthesis:none;
-  -webkit-font-smoothing:antialiased;
-}}
-main {{ width:min(100%,23rem); }}
-.eyebrow {{
-  margin:0 0 .45rem;
-  color:var(--primary);
-  font-size:.625rem;
-  font-weight:750;
-  letter-spacing:.14em;
-}}
-h1 {{ margin:0; font-size:1.75rem; font-weight:600; letter-spacing:-.035em; line-height:1.15; }}
-.description {{ margin:.45rem 0 0; color:var(--muted-foreground); font-size:.875rem; }}
-form {{ display:grid; gap:.9rem; margin-top:1.75rem; }}
-label {{ display:grid; gap:.42rem; font-size:.75rem; font-weight:650; }}
-input,button {{ width:100%; height:2.65rem; border-radius:.45rem; font:inherit; }}
-input {{
-  border:1px solid var(--input);
-  background:var(--card);
-  color:var(--foreground);
-  padding:0 .75rem;
-}}
-input:focus {{ border-color:var(--ring); outline:2px solid color-mix(in oklch,var(--ring),transparent 68%); outline-offset:1px; }}
-button {{
-  border:0;
-  background:var(--primary);
-  color:var(--primary-foreground);
-  font-size:.8rem;
-  font-weight:700;
-  cursor:pointer;
-  transition:filter 120ms ease;
-}}
-button:hover {{ filter:brightness(1.08); }}
-button:focus-visible {{ outline:2px solid var(--ring); outline-offset:2px; }}
-.error {{
-  margin:0;
-  border:1px solid color-mix(in oklch,var(--destructive),transparent 65%);
-  border-radius:.45rem;
-  background:color-mix(in oklch,var(--destructive),transparent 92%);
-  color:var(--destructive);
-  padding:.6rem .7rem;
-  font-size:.75rem;
-}}
-@media (max-width:420px) {{
-  body {{ place-items:start center; padding-top:max(12vh,env(safe-area-inset-top)); }}
-}}
-</style>
-</head>
-<body>
-<main>
-<p class="eyebrow">PRIVATE WORKSPACE</p>
-<h1>Welcome back</h1>
-<p class="description">Sign in to continue to Syntaxis.</p>
-<form action="/login" method="post">
-<!-- LOGIN_ERROR -->
-<label>Password
-<input name="password" type="password" autocomplete="current-password" required autofocus>
-</label>
-<button type="submit">Sign in</button>
-</form>
-</main>
-</body>
-</html>"#
-    );
-    html.replace("<!-- LOGIN_ERROR -->", &error)
+    LOGIN_HTML
+        .replace("<!-- LOGIN_FAVICON -->", &login_favicon)
+        .replace("<!-- LOGIN_FONT -->", &login_font)
+        .replace("<!-- LOGIN_ERROR -->", &error)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn cookie_parser_matches_complete_cookie_names() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            COOKIE,
-            HeaderValue::from_static("other=x; __Host-syntaxis-session=secret; suffix=y"),
-        );
-
-        assert_eq!(cookie_value(&headers, SECURE_COOKIE_NAME), Some("secret"));
-        assert_eq!(cookie_value(&headers, "session"), None);
-    }
-
-    #[test]
-    fn same_origin_compares_request_host() {
-        let matching = Request::builder()
-            .method(Method::POST)
-            .header(HOST, "code.example.test")
-            .header(ORIGIN, "https://code.example.test")
-            .body(axum::body::Body::empty())
-            .unwrap();
-        let foreign = Request::builder()
-            .method(Method::POST)
-            .header(HOST, "code.example.test")
-            .header(ORIGIN, "https://evil.example.test")
-            .body(axum::body::Body::empty())
-            .unwrap();
-
-        assert!(origin_is_allowed(&matching));
-        assert!(!origin_is_allowed(&foreign));
-    }
-
-    #[test]
-    fn login_page_replaces_the_error_placeholder() {
-        let without_error = login_html(None);
-        let with_error = login_html(Some("Incorrect password."));
-
-        assert!(!without_error.contains("LOGIN_ERROR"));
-        assert!(!without_error.contains("{error}"));
-        assert!(with_error.contains("Incorrect password."));
-    }
-}
+mod tests;

@@ -9,7 +9,11 @@ pre-commit:
         - "clippy.toml"
         - "Dioxus.toml"
         - "assets/**"
-      run: just pre-commit
+      run: >-
+        if command -v just >/dev/null 2>&1 && command -v cc >/dev/null 2>&1;
+        then just pre-commit;
+        else mise run pre-commit;
+        fi
       skip:
         - merge
         - rebase
