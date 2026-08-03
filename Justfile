@@ -453,7 +453,7 @@ docker-prod-stop:
     fi
 
 # Run Dioxus checks.
-dx-check: build-editor
+dx-check: build-assets
     dx check
 
 # Format Rust and RSX source.
@@ -503,7 +503,7 @@ dx *args:
 # -----------------------------------------------------------------------------
 
 # Run the project's strict Clippy configuration with warnings treated as errors.
-clippy platform=default_platform: build-editor
+clippy platform=default_platform: build-assets
     cargo clippy \
         --workspace \
         --all-targets \
@@ -515,7 +515,7 @@ clippy platform=default_platform: build-editor
 lint platform=default_platform: (clippy platform)
 
 # Run tests using cargo-nextest.
-test filter="": build-editor
+test filter="": build-assets
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -533,11 +533,11 @@ test filter="": build-editor
     cargo "${args[@]}"
 
 # Run standard Cargo tests, including doctests.
-test-cargo: build-editor
+test-cargo: build-assets
     cargo test --workspace
 
 # Run doctests, which cargo-nextest does not replace.
-test-doc: build-editor
+test-doc: build-assets
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -606,12 +606,12 @@ ci platform=default_platform: format-check dx-check (lint platform) test test-do
     @echo "All quality gates passed."
 
 # Auto-fix code-quality issues, then run code validation and doctests.
-qa platform=default_platform: build-editor (fix platform) test-doc
+qa platform=default_platform: build-assets (fix platform) test-doc
     @echo
     @echo "All code quality gates passed."
 
 # Verify formatting and linting without modifying files (for git pre-commit).
-pre-commit platform=default_platform: build-editor
+pre-commit platform=default_platform: build-assets
     cargo fmt --all -- --check
     dx fmt --check
     cargo clippy \
@@ -623,7 +623,7 @@ pre-commit platform=default_platform: build-editor
     dx check
 
 # Apply formatting, then perform the fast validation workflow.
-fix platform=default_platform: build-editor
+fix platform=default_platform: build-assets
     cargo fmt --all
     dx fmt
     cargo clippy \

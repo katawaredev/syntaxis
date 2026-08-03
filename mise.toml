@@ -1,12 +1,15 @@
 [tools]
 rust = { version = "stable", profile = "minimal", components = [
-    "clippy",
-    "rust-analyzer",
-    "rust-src",
-    "rustfmt",
-], targets = ["wasm32-unknown-unknown"] }
+  "clippy",
+  "rust-analyzer",
+  "rust-src",
+  "rustfmt",
+], targets = [
+  "wasm32-unknown-unknown",
+] }
 node = "24"
 bun = "1.3.14"
+pixi = "latest"
 just = "1.57.0"
 lefthook = "2.1.10"
 taplo = "latest"
@@ -25,19 +28,16 @@ cargo-binstall = "1.21.0"
 
 [tasks.setup]
 description = "Install locked JavaScript dependencies and Git hooks"
-run = [
-    "bun install --frozen-lockfile",
-    "lefthook install",
-]
+run = ["bun install --frozen-lockfile", "lefthook install"]
 
 [tasks.qa]
 description = "Auto-fix and validate the default web build"
-run = "just qa"
+run = "pixi run qa"
 
 [tasks."qa:server"]
 description = "Auto-fix and validate the server build"
-run = "just qa server"
+run = "pixi run qa-server"
 
 [tasks.serve]
 description = "Start the default development server"
-run = "just serve"
+run = "pixi run serve"
