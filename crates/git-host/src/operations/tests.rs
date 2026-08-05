@@ -1,4 +1,4 @@
-use std::{fmt::Write as _, fs, path::Path, process::Command};
+use std::{ffi::OsString, fmt::Write as _, fs, path::Path, process::Command};
 
 use syntaxis_git::{
     parse_diff_hunks, BranchRequest, ChangeKind, ClonePhase, CloneRequest, CommitOutcome,
@@ -12,6 +12,22 @@ use tempfile::TempDir;
 use tokio_util::sync::CancellationToken;
 
 use crate::HostGit;
+
+use super::{push_arguments, GITHUB_SSH_PUSH_REWRITE};
+
+#[test]
+fn github_ssh_push_fallback_is_command_scoped() {
+    assert_eq!(push_arguments(false, false), vec![OsString::from("push")]);
+    assert_eq!(
+        push_arguments(true, true),
+        vec![
+            OsString::from("-c"),
+            OsString::from(GITHUB_SSH_PUSH_REWRITE),
+            OsString::from("push"),
+            OsString::from("--force-with-lease"),
+        ]
+    );
+}
 
 #[tokio::test]
 async fn initializes_a_workspace_once_with_a_main_branch() {

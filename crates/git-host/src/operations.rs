@@ -23,6 +23,8 @@ const MAX_TAG_MESSAGE_BYTES: usize = 256 * 1024;
 const MAX_CONFLICT_FILE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_PASSPHRASE_BYTES: usize = 16 * 1024;
 const MAX_REMOTE_URL_BYTES: usize = 64 * 1024;
+const GITHUB_SSH_PUSH_REWRITE: &str =
+    "url.ssh://git@github.com/.pushInsteadOf=https://github.com/";
 
 impl HostGit {
     /// Returns ignored, untracked paths using Git's complete exclude rules.
@@ -921,20 +923,36 @@ impl GitOperations for HostGit {
         force_with_lease: bool,
     ) -> GitResult<PushOutcome> {
         let root = validated_root(workspace)?;
-        let mut arguments = vec!["push".into()];
-        if force_with_lease {
-            arguments.push("--force-with-lease".into());
-        }
-        let result = self
+        let environment = [("GIT_TERMINAL_PROMPT", "0".into())];
+        let arguments = push_arguments(force_with_lease, false);
+        let mut result = self
             .run(
                 &root,
                 &arguments,
                 None,
-                &[("GIT_TERMINAL_PROMPT", "0".into())],
+                &environment,
                 &[0],
                 CancellationToken::new(),
             )
             .await;
+        if result
+            .as_ref()
+            .is_err_and(|error| error.code == GitErrorCode::Authentication)
+        {
+            // Public GitHub repositories are commonly cloned over HTTPS even when the
+            // developer authenticates with SSH. Retry using a command-scoped rewrite so
+            // the configured remote and the user's Git configuration remain untouched.
+            result = self
+                .run(
+                    &root,
+                    &push_arguments(force_with_lease, true),
+                    None,
+                    &environment,
+                    &[0],
+                    CancellationToken::new(),
+                )
+                .await;
+        }
         match result {
             Ok(_) => Ok(PushOutcome::Pushed {
                 result: RemoteResult {
@@ -1663,6 +1681,18 @@ fn parse_comparison_counts(output: &[u8]) -> GitResult<(u32, u32)> {
         return Err(parse_error());
     }
     Ok((base_only, head_only))
+}
+
+fn push_arguments(force_with_lease: bool, github_ssh_fallback: bool) -> Vec<OsString> {
+    let mut arguments = Vec::with_capacity(usize::from(github_ssh_fallback) * 2 + 2);
+    if github_ssh_fallback {
+        arguments.extend(["-c".into(), GITHUB_SSH_PUSH_REWRITE.into()]);
+    }
+    arguments.push("push".into());
+    if force_with_lease {
+        arguments.push("--force-with-lease".into());
+    }
+    arguments
 }
 
 fn validate_revision(value: &str) -> GitResult<()> {
