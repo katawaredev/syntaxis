@@ -1,7 +1,7 @@
 use syntaxis_git::{WorktreeCreateRequest, WorktreeInfo};
 use syntaxis_workspace::{
     BinaryFile, BrowseDirectory, FileEntry, FileVersion, RelativePath, RuntimeState, TextFile,
-    WorkspaceCleanupEntry, WorkspaceRecord, WorkspaceSession,
+    WorkspaceCleanupEntry, WorkspaceRecord, WorkspaceSection, WorkspaceSession,
 };
 #[cfg(feature = "desktop")]
 use syntaxis_workspace::{ExecutionLocation, WorkspaceId};
@@ -53,6 +53,21 @@ pub async fn touch_workspace(workspace_id: String) -> Result<(), String> {
         RuntimeTarget::DesktopLocal => host_registry()?
             .touch(&WorkspaceId::new(workspace_id))
             .await
+            .map_err(|error| error.message),
+    }
+}
+
+pub async fn set_workspace_last_section(
+    workspace_id: String,
+    section: WorkspaceSection,
+) -> Result<(), String> {
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::api::set_workspace_last_section(workspace_id, section)
+            .await
+            .map_err(server_error_message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => host_registry()?
+            .set_last_section(&WorkspaceId::new(workspace_id), section)
             .map_err(|error| error.message),
     }
 }

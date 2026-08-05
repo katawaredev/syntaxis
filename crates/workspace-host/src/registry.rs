@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use syntaxis_workspace::{
     ErrorCode, RelativePath, WorkspaceAvailability, WorkspaceCleanupEntry, WorkspaceError,
     WorkspaceIcon, WorkspaceId, WorkspaceProfile, WorkspaceRecord, WorkspaceRegistry,
-    WorkspaceResult, WorkspaceSession,
+    WorkspaceResult, WorkspaceSection, WorkspaceSession,
 };
 use uuid::Uuid;
 
@@ -62,6 +62,8 @@ struct StoredWorkspace {
     profile: WorkspaceProfile,
     registered_at_unix_ms: i64,
     last_opened_unix_ms: i64,
+    #[serde(default)]
+    last_section: WorkspaceSection,
 }
 
 impl StoredWorkspace {
@@ -80,6 +82,7 @@ impl StoredWorkspace {
             profile: self.profile,
             registered_at_unix_ms: self.registered_at_unix_ms,
             last_opened_unix_ms: self.last_opened_unix_ms,
+            last_section: self.last_section,
             availability,
         }
     }
@@ -96,6 +99,7 @@ impl From<WorkspaceRecord> for StoredWorkspace {
             profile: record.profile,
             registered_at_unix_ms: record.registered_at_unix_ms,
             last_opened_unix_ms: record.last_opened_unix_ms,
+            last_section: record.last_section,
         }
     }
 }
@@ -449,6 +453,7 @@ impl WorkspaceRegistryStore {
             root,
             registered_at_unix_ms: timestamp,
             last_opened_unix_ms: timestamp,
+            last_section: WorkspaceSection::Files,
             availability: WorkspaceAvailability::Available,
         };
         self.update_file(|file| {
@@ -501,6 +506,22 @@ impl WorkspaceRegistryStore {
                 .find(|record| record.id == *id)
                 .ok_or_else(workspace_not_found)?;
             record.last_opened_unix_ms = timestamp;
+            Ok(())
+        })
+    }
+
+    pub fn set_last_section(
+        &self,
+        id: &WorkspaceId,
+        section: WorkspaceSection,
+    ) -> WorkspaceResult<()> {
+        self.update_file(|file| {
+            let record = file
+                .workspaces
+                .iter_mut()
+                .find(|record| record.id == *id)
+                .ok_or_else(workspace_not_found)?;
+            record.last_section = section;
             Ok(())
         })
     }

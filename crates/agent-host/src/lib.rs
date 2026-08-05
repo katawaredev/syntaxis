@@ -2146,6 +2146,7 @@ mod tests {
             profile: syntaxis_workspace::WorkspaceProfile::default(),
             registered_at_unix_ms: 0,
             last_opened_unix_ms: 0,
+            last_section: Default::default(),
             availability: WorkspaceAvailability::Available,
         };
         let notifications = HostNotificationHub::default();

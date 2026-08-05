@@ -17,6 +17,17 @@ pub enum WorkspaceAvailability {
     Missing,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkspaceSection {
+    #[default]
+    Files,
+    Terminal,
+    Git,
+    Preview,
+    Ai,
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WorkspaceIconSymbol {
@@ -188,5 +199,7 @@ pub struct WorkspaceRecord {
     pub profile: WorkspaceProfile,
     pub registered_at_unix_ms: i64,
     pub last_opened_unix_ms: i64,
+    #[serde(default)]
+    pub last_section: WorkspaceSection,
     pub availability: WorkspaceAvailability,
 }

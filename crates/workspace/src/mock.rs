@@ -65,6 +65,7 @@ impl WorkspaceRegistry for MockWorkspaceRegistry {
             profile: crate::WorkspaceProfile::default(),
             registered_at_unix_ms: i64::try_from(sequence).unwrap_or(i64::MAX),
             last_opened_unix_ms: i64::try_from(sequence).unwrap_or(i64::MAX),
+            last_section: Default::default(),
             availability: WorkspaceAvailability::Available,
         };
         records.push(record.clone());

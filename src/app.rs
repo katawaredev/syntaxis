@@ -8,6 +8,7 @@ use crate::{
 };
 use dioxus::prelude::*;
 use syntaxis_ui::prelude::{AppIcon, Icon};
+use syntaxis_workspace::WorkspaceSection;
 const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");
 pub(crate) const FAVICON: Asset = asset!("/assets/favicon.ico");
 const FAVICON_SVG: Asset = asset!("/assets/favicon.svg");
@@ -60,6 +61,28 @@ pub enum Route {
     #[route("/workspaces/:slug/ai/settings/:section")]
     AiSettings { slug: String, section: AiSettingsSection },
 }
+
+impl Route {
+    pub(crate) fn for_workspace_section(slug: String, section: WorkspaceSection) -> Self {
+        match section {
+            WorkspaceSection::Files => Self::Files {
+                slug,
+                query: FilesQuery::default(),
+            },
+            WorkspaceSection::Terminal => Self::Terminal {
+                slug,
+                query: TerminalQuery::default(),
+            },
+            WorkspaceSection::Git => Self::Git { slug },
+            WorkspaceSection::Preview => Self::Preview { slug },
+            WorkspaceSection::Ai => Self::Ai {
+                slug,
+                query: AiQuery::default(),
+            },
+        }
+    }
+}
+
 #[component]
 pub fn App() -> Element {
     let notification_center = crate::ai::notifications::use_notification_center();

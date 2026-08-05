@@ -26,5 +26,5 @@ pub use runtime::{
 pub use session::{FileSession, WorkspaceSession};
 pub use workspace::{
     WorkspaceAvailability, WorkspaceCleanupEntry, WorkspaceIcon, WorkspaceIconSymbol, WorkspaceId,
-    WorkspaceLanguage, WorkspaceProfile, WorkspaceRecord, WorkspaceTechnology,
+    WorkspaceLanguage, WorkspaceProfile, WorkspaceRecord, WorkspaceSection, WorkspaceTechnology,
 };

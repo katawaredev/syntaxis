@@ -1,6 +1,8 @@
 use std::{fs, process::Command};
 
-use syntaxis_workspace::{ErrorCode, FileSession, WorkspaceRegistry, WorkspaceSession};
+use syntaxis_workspace::{
+    ErrorCode, FileSession, WorkspaceRegistry, WorkspaceSection, WorkspaceSession,
+};
 use tempfile::tempdir;
 
 use crate::{RegistrationPolicy, WorkspaceRegistryStore};
@@ -13,6 +15,9 @@ fn registry_persists_and_reports_missing_workspaces() {
     let store = WorkspaceRegistryStore::open(&registry, RegistrationPolicy::Unrestricted).unwrap();
     let registered =
         futures_lite::future::block_on(store.register(project.path().to_str().unwrap())).unwrap();
+    store
+        .set_last_section(&registered.id, WorkspaceSection::Git)
+        .unwrap();
     drop(store);
 
     let saved: serde_json::Value = serde_json::from_slice(&fs::read(&registry).unwrap()).unwrap();
@@ -26,6 +31,7 @@ fn registry_persists_and_reports_missing_workspaces() {
         WorkspaceRegistryStore::open(&registry, RegistrationPolicy::Unrestricted).unwrap();
     let records = futures_lite::future::block_on(reopened.list()).unwrap();
     assert_eq!(records[0].id, registered.id);
+    assert_eq!(records[0].last_section, WorkspaceSection::Git);
     assert_eq!(
         records[0].availability,
         syntaxis_workspace::WorkspaceAvailability::Missing

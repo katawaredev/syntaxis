@@ -7,22 +7,15 @@ use crate::{
     files::use_files_session,
     mock::WORKSPACES,
 };
-use syntaxis_workspace::{ExecutionLocation, RuntimeState};
+use syntaxis_workspace::{ExecutionLocation, RuntimeState, WorkspaceSection};
 
-use super::client::{list_workspaces, runtime_state, touch_workspace};
+use super::client::{
+    list_workspaces, runtime_state, set_workspace_last_section, touch_workspace,
+};
 use super::worktrees::use_active_workspace;
 use super::ProjectIcon;
 use super::{events::WorkspaceEventBridge, WorkspaceEventState};
 use crate::ai::notifications::NotificationMenu;
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Module {
-    Files,
-    Terminal,
-    Git,
-    Preview,
-    Ai,
-}
 
 #[component]
 pub fn WorkspaceShell() -> Element {
@@ -37,16 +30,17 @@ pub fn WorkspaceShell() -> Element {
     use_context_provider(|| event_state);
     let route = use_route::<Route>();
     let (slug, active) = match route {
-        Route::Files { slug, .. } => (slug, Module::Files),
-        Route::Terminal { slug, .. } => (slug, Module::Terminal),
-        Route::Git { slug } => (slug, Module::Git),
-        Route::Preview { slug } => (slug, Module::Preview),
-        Route::Ai { slug, .. } | Route::AiSettings { slug, .. } => (slug, Module::Ai),
-        Route::Home {} => ("syntaxis".into(), Module::Files),
+        Route::Files { slug, .. } => (slug, WorkspaceSection::Files),
+        Route::Terminal { slug, .. } => (slug, WorkspaceSection::Terminal),
+        Route::Git { slug } => (slug, WorkspaceSection::Git),
+        Route::Preview { slug } => (slug, WorkspaceSection::Preview),
+        Route::Ai { slug, .. } | Route::AiSettings { slug, .. } => (slug, WorkspaceSection::Ai),
+        Route::Home {} => ("syntaxis".into(), WorkspaceSection::Files),
     };
     let workspaces = use_resource(list_workspaces);
     let runtime = use_resource(runtime_state);
     let mut touched_workspace = use_signal(|| None::<String>);
+    let mut persisted_section = use_signal(|| None::<(String, WorkspaceSection)>);
     let registered_workspace = workspaces()
         .as_ref()
         .and_then(|result| result.as_ref().ok())
@@ -82,12 +76,19 @@ pub fn WorkspaceShell() -> Element {
         else {
             return;
         };
-        if touched_workspace().as_ref() == Some(&workspace_id) {
+        if touched_workspace().as_ref() != Some(&workspace_id) {
+            touched_workspace.set(Some(workspace_id.clone()));
+            let touched_id = workspace_id.clone();
+            spawn(async move {
+                let _ = touch_workspace(touched_id).await;
+            });
+        }
+        if persisted_section().as_ref() == Some(&(workspace_id.clone(), active)) {
             return;
         }
-        touched_workspace.set(Some(workspace_id.clone()));
+        persisted_section.set(Some((workspace_id.clone(), active)));
         spawn(async move {
-            let _ = touch_workspace(workspace_id).await;
+            let _ = set_workspace_last_section(workspace_id, active).await;
         });
     });
     let project_name = registered_workspace.as_ref().map_or_else(
@@ -180,7 +181,7 @@ pub fn WorkspaceShell() -> Element {
                 NavItem {
                     label: "Files",
                     icon: AppIcon::Folder,
-                    active: active == Module::Files,
+                    active: active == WorkspaceSection::Files,
                     to: Route::Files {
                         slug: slug.clone(),
                         query: crate::files::FilesQuery::default(),
@@ -189,7 +190,7 @@ pub fn WorkspaceShell() -> Element {
                 NavItem {
                     label: "Terminal",
                     icon: AppIcon::Terminal,
-                    active: active == Module::Terminal,
+                    active: active == WorkspaceSection::Terminal,
                     to: Route::Terminal {
                         slug: slug.clone(),
                         query: crate::terminal::TerminalQuery::default(),
@@ -198,13 +199,13 @@ pub fn WorkspaceShell() -> Element {
                 NavItem {
                     label: "Git",
                     icon: AppIcon::GitBranch,
-                    active: active == Module::Git,
+                    active: active == WorkspaceSection::Git,
                     to: Route::Git { slug: slug.clone() },
                 }
                 NavItem {
                     label: "Preview",
                     icon: AppIcon::Eye,
-                    active: active == Module::Preview,
+                    active: active == WorkspaceSection::Preview,
                     to: Route::Preview {
                         slug: slug.clone(),
                     },
@@ -212,7 +213,7 @@ pub fn WorkspaceShell() -> Element {
                 NavItem {
                     label: "AI",
                     icon: AppIcon::Bot,
-                    active: active == Module::Ai,
+                    active: active == WorkspaceSection::Ai,
                     to: Route::Ai {
                         slug: slug.clone(),
                         query: crate::ai::AiQuery::default(),

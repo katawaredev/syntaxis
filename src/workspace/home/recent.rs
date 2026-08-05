@@ -214,10 +214,10 @@ fn WorkspaceRow(
         article { class: if availability == WorkspaceAvailability::Missing { "flex min-h-22 min-w-0 items-center border-b border-border opacity-65 first:rounded-t-xl last:rounded-b-xl last:border-b-0 hover:bg-accent/60 max-md:min-h-16" } else { "flex min-h-22 min-w-0 items-center border-b border-border first:rounded-t-xl last:rounded-b-xl last:border-b-0 hover:bg-accent/60 max-md:min-h-16" },
             Link {
                 class: "grid min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-3 max-md:grid-cols-[auto_minmax(0,1fr)] max-md:py-2.5",
-                to: Route::Files {
-                    slug: workspace.slug.clone(),
-                    query: crate::files::FilesQuery::default(),
-                },
+                to: Route::for_workspace_section(
+                    workspace.slug.clone(),
+                    workspace.last_section,
+                ),
                 onclick: move |event: MouseEvent| {
                     if availability == WorkspaceAvailability::Missing {
                         event.prevent_default();
