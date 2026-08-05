@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.6.0](https://github.com/katawaredev/syntaxis/compare/v0.5.0...v0.6.0) (2026-08-05)
+
+
+### Features
+
+* **ai:** add model filter ([d9f1010](https://github.com/katawaredev/syntaxis/commit/d9f1010508d2e742569c431a149a6d735633e7aa))
+* prompt draft, better session restore and image preview ([805ea21](https://github.com/katawaredev/syntaxis/commit/805ea212d3622233daf676f6b71f94648e8a4b37))
+
+
+### Bug Fixes
+
+* **docker:** mise integration ([2821ab6](https://github.com/katawaredev/syntaxis/commit/2821ab668a300a1d2ea567d16f032a5ee4eeb370))
+* **git:** better handling git repos over ssh ([4a33cda](https://github.com/katawaredev/syntaxis/commit/4a33cda1778a8c44519d67e86088f14e530029bf))
+* **git:** hide drawer when selecting file (mobile only) ([9c39730](https://github.com/katawaredev/syntaxis/commit/9c397308efca4f23a5d8577ec4c151755457f18c))
+* **git:** mobile panel for small screens. ([748b356](https://github.com/katawaredev/syntaxis/commit/748b356fd610fd0341bbb6c15619b1582d5964a8))
+* **ui:** duplicate error messgaes ([48bc51e](https://github.com/katawaredev/syntaxis/commit/48bc51e8be7fd9d22187fbf2bf967cc88285a3a2))
+* **workspace:** restore last selected section ([8485c2b](https://github.com/katawaredev/syntaxis/commit/8485c2bff86546395706044a30fccdf915b770c5))
+
 ## [0.5.0](https://github.com/katawaredev/syntaxis/compare/v0.4.2...v0.5.0) (2026-08-01)
 
 
