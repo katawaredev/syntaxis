@@ -25,12 +25,12 @@ You need to create a main function that sets up the Dioxus runtime and mounts yo
 use dioxus::prelude::*;
 
 fn main() {
-	dioxus::launch(App);
+ dioxus::launch(App);
 }
 
 #[component]
 fn App() -> Element {
-	rsx! { "Hello, Dioxus!" }
+ rsx! { "Hello, Dioxus!" }
 }
 ```
 
@@ -45,22 +45,22 @@ dx serve
 
 ```rust
 rsx! {
-	div {
-		class: "container", // Attribute
-		color: "red", // Inline styles
-		width: if condition { "100%" }, // Conditional attributes
-		"Hello, Dioxus!"
-	}
-	// Prefer loops over iterators
-	for i in 0..5 {
-		div { "{i}" } // use elements or components directly in loops
-	}
-	if condition {
-		div { "Condition is true!" } // use elements or components directly in conditionals
-	}
+ div {
+  class: "container", // Attribute
+  color: "red", // Inline styles
+  width: if condition { "100%" }, // Conditional attributes
+  "Hello, Dioxus!"
+ }
+ // Prefer loops over iterators
+ for i in 0..5 {
+  div { "{i}" } // use elements or components directly in loops
+ }
+ if condition {
+  div { "Condition is true!" } // use elements or components directly in conditionals
+ }
 
-	{children} // Expressions are wrapped in brace
-	{(0..5).map(|i| rsx! { span { "Item {i}" } })} // Iterators must be wrapped in braces
+ {children} // Expressions are wrapped in brace
+ {(0..5).map(|i| rsx! { span { "Item {i}" } })} // Iterators must be wrapped in braces
 }
 ```
 
@@ -70,10 +70,10 @@ The asset macro can be used to link to local files to use in your project. All l
 
 ```rust
 rsx! {
-	img {
-		src: asset!("/assets/image.png"),
-		alt: "An image",
-	}
+ img {
+  src: asset!("/assets/image.png"),
+  alt: "An image",
+ }
 }
 ```
 
@@ -83,9 +83,9 @@ The `document::Stylesheet` component will inject the stylesheet into the `<head>
 
 ```rust
 rsx! {
-	document::Stylesheet {
-		href: asset!("/assets/styles.css"),
-	}
+ document::Stylesheet {
+  href: asset!("/assets/styles.css"),
+ }
 }
 ```
 
@@ -96,25 +96,26 @@ Components are the building blocks of apps
 * Component are functions annotated with the `#[component]` macro.
 * The function name must start with a capital letter or contain an underscore.
 * A component re-renders only under two conditions:
-	1.  Its props change (as determined by `PartialEq`).
-	2.  An internal reactive state it depends on is updated.
+
+ 1. Its props change (as determined by `PartialEq`).
+ 2. An internal reactive state it depends on is updated.
 
 ```rust
 #[component]
 fn Input(mut value: Signal<String>) -> Element {
-	rsx! {
-		input {
+ rsx! {
+  input {
             value,
-			oninput: move |e| {
-				*value.write() = e.value();
-			},
-			onkeydown: move |e| {
-				if e.key() == Key::Enter {
-					value.write().clear();
-				}
-			},
-		}
-	}
+   oninput: move |e| {
+    *value.write() = e.value();
+   },
+   onkeydown: move |e| {
+    if e.key() == Key::Enter {
+     value.write().clear();
+    }
+   },
+  }
+ }
 }
 ```
 
@@ -137,21 +138,21 @@ Use `use_memo` to create a memoized value that recalculates when its dependencie
 ```rust
 #[component]
 fn Counter() -> Element {
-	let mut count = use_signal(|| 0);
-	let mut doubled = use_memo(move || count() * 2); // doubled will re-run when count changes because it reads the signal
+ let mut count = use_signal(|| 0);
+ let mut doubled = use_memo(move || count() * 2); // doubled will re-run when count changes because it reads the signal
 
-	rsx! {
-		h1 { "Count: {count}" } // Counter will re-render when count changes because it reads the signal
-		h2 { "Doubled: {doubled}" }
-		button {
-			onclick: move |_| *count.write() += 1, // Writing to the signal rerenders Counter
-			"Increment"
-		}
-		button {
-			onclick: move |_| count.with_mut(|count| *count += 1), // use with_mut to mutate the signal
-			"Increment with with_mut"
-		}
-	}
+ rsx! {
+  h1 { "Count: {count}" } // Counter will re-render when count changes because it reads the signal
+  h2 { "Doubled: {doubled}" }
+  button {
+   onclick: move |_| *count.write() += 1, // Writing to the signal rerenders Counter
+   "Increment"
+  }
+  button {
+   onclick: move |_| count.with_mut(|count| *count += 1), // use with_mut to mutate the signal
+   "Increment with with_mut"
+  }
+ }
 }
 ```
 
@@ -162,19 +163,19 @@ The Context API allows you to share state down the component tree. A parent prov
 ```rust
 #[component]
 fn App() -> Element {
-	let mut theme = use_signal(|| "light".to_string());
-	use_context_provider(|| theme); // Provide a type to children
-	rsx! { Child {} }
+ let mut theme = use_signal(|| "light".to_string());
+ use_context_provider(|| theme); // Provide a type to children
+ rsx! { Child {} }
 }
 
 #[component]
 fn Child() -> Element {
-	let theme = use_context::<Signal<String>>(); // Consume the same type
-	rsx! {
-		div {
-			"Current theme: {theme}"
-		}
-	}
+ let theme = use_context::<Signal<String>>(); // Consume the same type
+ rsx! {
+  div {
+   "Current theme: {theme}"
+  }
+ }
 }
 ```
 
@@ -184,17 +185,18 @@ For state that depends on an asynchronous operation (like a network request), Di
 
 * The `use_resource` hook takes an `async` closure. It re-runs this closure whenever any signals it depends on (reads) are updated
 * The `Resource` object returned can be in several states when read:
+
 1. `None` if the resource is still loading
 2. `Some(value)` if the resource has successfully loaded
 
 ```rust
 let mut dog = use_resource(move || async move {
-	// api request
+ // api request
 });
 
 match dog() {
-	Some(dog_info) => rsx! { Dog { dog_info } },
-	None => rsx! { "Loading..." },
+ Some(dog_info) => rsx! { Dog { dog_info } },
+ None => rsx! { "Loading..." },
 }
 ```
 
@@ -209,24 +211,24 @@ You can use the `#[layout(NavBar)]` to create a layout shared between pages and 
 ```rust
 #[derive(Routable, Clone, PartialEq)]
 enum Route {
-	#[layout(NavBar)] // This will use NavBar as the layout for all routes
-		#[route("/")]
-		Home {},
-		#[route("/blog/:id")] // Dynamic segment
-		BlogPost { id: i32 },
+ #[layout(NavBar)] // This will use NavBar as the layout for all routes
+  #[route("/")]
+  Home {},
+  #[route("/blog/:id")] // Dynamic segment
+  BlogPost { id: i32 },
 }
 
 #[component]
 fn NavBar() -> Element {
-	rsx! {
-		a { href: "/", "Home" }
-		Outlet<Route> {} // Renders Home or BlogPost
-	}
+ rsx! {
+  a { href: "/", "Home" }
+  Outlet<Route> {} // Renders Home or BlogPost
+ }
 }
 
 #[component]
 fn App() -> Element {
-	rsx! { Router::<Route> {} }
+ rsx! { Router::<Route> {} }
 }
 ```
 
@@ -249,8 +251,8 @@ Use the `#[post]` / `#[get]` macros to define an `async` function that will only
 ```rust
 #[post("/api/double/:path/&query")]
 async fn double_server(number: i32, path: String, query: i32) -> Result<i32, ServerFnError> {
-	tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-	Ok(number * 2)
+ tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+ Ok(number * 2)
 }
 ```
 
@@ -259,10 +261,34 @@ async fn double_server(number: i32, path: String, query: i32) -> Result<i32, Ser
 Hydration is the process of making a server-rendered HTML page interactive on the client. The server sends the initial HTML, and then the client-side runs, attaches event listeners, and takes control of future rendering.
 
 ### Errors
+
 The initial UI rendered by the component on the client must be identical to the UI rendered on the server.
 
 * Use the `use_server_future` hook instead of `use_resource`. It runs the future on the server, serializes the result, and sends it to the client, ensuring the client has the data immediately for its first render.
 * Any code that relies on browser-specific APIs (like accessing `localStorage`) must be run *after* hydration. Place this code inside a `use_effect` hook.
+
+## Container toolchain
+
+Apply this section only when `/.dockerenv` or `/run/.containerenv` exists. On a
+normal development machine, use the developer's existing native tools.
+
+The container has an intentionally minimal `PATH`. Do not first try `just`,
+`cargo`, `pixi`, or other project tools directly. From the repository root:
+
+1. Read `mise.toml`, `pixi.toml`, and `pixi.lock`.
+2. Check `command -v mise`, `mise trust --show`, and `mise current`.
+3. If setup is missing, obtain approval before the resource-intensive bootstrap:
+
+   ```bash
+   MISE_JOBS=2 mise install
+   mise exec -- pixi install --locked
+   ```
+
+   Review an untrusted config before running `mise trust mise.toml`.
+4. Keep both layers active afterward. Prefer `mise run qa`,
+   `mise run qa:server`, and `mise run serve`; use
+   `mise exec -- pixi run just <task>` for an unaliased task. Do not rely on
+   interactive shell activation persisting between agent tool calls.
 
 ## Validation
 
@@ -270,15 +296,9 @@ If your changes affect Rust source code, Cargo manifests, or build/lint configur
 
 Instead, ask for confirmation first:
 
-> "The changes affect Rust code or build configuration. Shall I run `just qa` now?"
+> "The changes affect Rust code or build configuration. Shall I run the validation workflow now?"
 
-Only run:
-
-```bash
-just qa
-```
-
-after the user explicitly confirms.
+After explicit confirmation, run `mise run qa` in a container or `just qa` on the
+developer's normal machine.
 
 Do **not** ask for confirmation or run the command after documentation-only changes, asset updates, or other changes unrelated to code quality. The command auto-fixes formatting and Clippy issues, then runs code checks, tests, and doctests, so it should only be used when those checks are relevant.
-
