@@ -191,7 +191,7 @@ example, after wildcard certificate provisioning has been configured, the Caddy 
 
 ```caddyfile
 *.preview.example.com {
-	reverse_proxy syntaxis:8080
+ reverse_proxy syntaxis:8080
 }
 ```
 
@@ -255,8 +255,8 @@ docker compose -f docker-compose.prod.yml build
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-Production Compose joins the external `${DOCKER_NETWORK:-caddy_net}` network and exposes port `8080`
-to other containers on that network. Its persistent home defaults to
+Production Compose works without an existing proxy network and publishes the app on
+`${SYNTAXIS_BIND:-127.0.0.1}:${SYNTAXIS_PORT:-8080}`. Its persistent home defaults to
 `${DATA:-./data}/syntaxis/home`. Run `pi` once inside the container to authenticate; the resulting
 state and user-updated Pi installation survive image upgrades:
 
@@ -265,9 +265,20 @@ docker exec -it syntaxis pi
 ```
 
 An external deployment can use the published
-`${SYNTAXIS_IMAGE:-ghcr.io/katawaredev/syntaxis:latest}` image, keep the `/Projects`, SSH, and GnuPG
-mounts, and proxy its public hostname to `syntaxis:8080`. Set `HOST_PROJECTS` to the server's
-projects directory.
+`${SYNTAXIS_IMAGE:-ghcr.io/katawaredev/syntaxis:latest}` image and keep the `/Projects`, SSH, and
+GnuPG mounts. Set `HOST_PROJECTS` to the server's projects directory.
+
+To connect a Caddy container through an existing network, add the optional Compose override:
+
+```bash
+docker compose \
+  -f docker-compose.prod.yml \
+  -f docker-compose.caddy.yml \
+  up -d
+```
+
+The network defaults to `caddy_net`; override it with `DOCKER_NETWORK`. Caddy can then proxy the
+public hostname to `syntaxis:8080`.
 
 ### Publishing
 
@@ -296,55 +307,27 @@ upgrading Rust, Node, Bun, or Dioxus. Checkout-specific overrides belong in
 ignored `mise.local.toml`.
 
 Common commands remain available through the Justfile. Mise also exposes the
-main entry points as `mise run serve`, `mise run qa`, and `mise run qa:server`.
+main entry points as `mise run serve`, `mise run qa`, and `mise run qa:server`. See
+[`docs/maintenance.md`](docs/maintenance.md) for tooling boundaries, CI policy, dependency updates,
+and production networking.
 
-Your new bare-bones project includes minimal organization with a single `main.rs` file and a few assets.
+The repository intentionally keeps Mise available inside Syntaxis containers: workspaces opened by
+Syntaxis may declare any Mise-supported language or toolchain. Pixi is an additional, project-local
+layer used only to supply Syntaxis's locked native and WebAssembly C compilers; it does not limit
+which tools user workspaces can install.
 
-```
-project/
-├─ assets/ # Any assets that are used by the app should be placed here
-├─ src/
-│  ├─ main.rs # main.rs is the entry point to your application and currently contains all components for the app
-├─ Cargo.toml # The Cargo.toml file defines the dependencies and feature flags for your project
-```
-
-### Automatic Tailwind (Dioxus 0.7+)
-
-As of Dioxus 0.7, there no longer is a need to manually install tailwind. Simply `dx serve` and you're good to go!
-
-Automatic tailwind is supported by checking for a file called `tailwind.css` in your app's manifest directory (next to Cargo.toml). To customize the file, use the dioxus.toml:
-
-```toml
-[application]
-tailwind_input = "my.css"
-tailwind_output = "assets/out.css" # also customize the location of the out file!
-```
-
-### Tailwind Manual Install
-
-To use tailwind plugins or manually customize tailwind, you can install the Tailwind CLI and use it directly.
-
-### Tailwind
-1. Install bun: https://bun.sh
-2. Install the Tailwind CSS CLI: https://tailwindcss.com/docs/installation/tailwind-cli
-3. Run the following command in the root of the project to start the Tailwind CSS compiler:
+For day-to-day work, use the stable Just interface rather than invoking Cargo or Dioxus commands
+manually:
 
 ```bash
-bunx @tailwindcss/cli -i ./input.css -o ./assets/tailwind.css --watch
+mise run serve       # web development server
+mise run qa          # apply safe fixes, then validate the web build
+mise run qa:server   # apply safe fixes, then validate the server build
 ```
 
-### Serving Your App
-
-Run the following command in the root of your project to start developing with the default platform:
-
-```bash
-dx serve --platform web
-```
-
-To run for a different platform, use the `--platform platform` flag. E.g.
-```bash
-dx serve --platform desktop
-```
+`just check web` and `just check server` provide non-mutating checks when an already activated native
+toolchain is preferred. The pre-commit hook only refreshes generated assets and checks formatting;
+compilation and tests remain explicit locally and run for pull requests in GitHub Actions.
 
 ## Lighthouse
 

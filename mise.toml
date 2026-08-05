@@ -31,8 +31,20 @@ description = "Install locked JavaScript dependencies and Git hooks"
 run = ["bun install --frozen-lockfile", "lefthook install"]
 
 [tasks.pre-commit]
-description = "Validate staged Rust and asset changes with the Pixi toolchain"
+description = "Refresh generated assets and check formatting"
 run = "pixi run just pre-commit"
+
+[tasks.check]
+description = "Validate the default web build without modifying files"
+run = "pixi run just check web"
+
+[tasks."check:server"]
+description = "Validate the server build without modifying files"
+run = "pixi run just check server"
+
+[tasks.ci]
+description = "Run the complete, manually requested quality audit"
+run = "pixi run just ci web && pixi run just check server"
 
 [tasks.qa]
 description = "Auto-fix and validate the default web build"

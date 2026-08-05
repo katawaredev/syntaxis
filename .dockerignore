@@ -12,4 +12,5 @@ assets/tailwind.css
 assets/terminal/terminal.bundle.js
 assets/terminal/terminal.bundle.stamp
 crates/code-editor/assets/editor.bundle.js
+crates/code-editor/assets/lsp.bundle.js
 crates/code-editor/assets/editor.bundle.stamp

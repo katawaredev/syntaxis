@@ -412,6 +412,11 @@ docker-prod port=default_port:
     host_projects="${HOST_PROJECTS:-${HOME}/Projects}"
     data_dir="${DATA:-./data}/prod-home"
 
+    if [[ -z "${SYNTAXIS_PASSWORD_HASH:-}" ]]; then
+        echo "SYNTAXIS_PASSWORD_HASH is required; run 'just auth-password' first." >&2
+        exit 1
+    fi
+
     if "$docker" container inspect "$container" >/dev/null 2>&1; then
         echo "Container '$container' already exists." >&2
         echo "Stop it with: just docker-prod-stop" >&2
@@ -428,6 +433,9 @@ docker-prod port=default_port:
         --env HOME=/home/dev \
         --env SHELL=/bin/bash \
         --env SYNTAXIS_PROJECTS_ROOT=/Projects \
+        --env SYNTAXIS_PASSWORD_HASH \
+        --env SYNTAXIS_API_TOKEN="${SYNTAXIS_API_TOKEN:-}" \
+        --env SYNTAXIS_PREVIEW_ORIGIN="${SYNTAXIS_PREVIEW_ORIGIN:-}" \
         --env VERCEL_OIDC_TOKEN="${VERCEL_OIDC_TOKEN:-}" \
         --volume "$data_dir:/home/dev" \
         --volume "$host_home/.ssh:/home/dev/.ssh:ro" \
@@ -452,9 +460,20 @@ docker-prod-stop:
         echo "Container '$container' is not running."
     fi
 
-# Run Dioxus checks.
-dx-check: build-assets
-    dx check
+# Run Dioxus checks for one explicit build platform.
+dx-check platform=default_platform: build-assets
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    case "{{ platform }}" in
+        web | server | desktop)
+            dx check "--{{ platform }}"
+            ;;
+        *)
+            echo "Dioxus check supports web, server, or desktop; got '{{ platform }}'." >&2
+            exit 2
+            ;;
+    esac
 
 # Format Rust and RSX source.
 format:
@@ -514,8 +533,8 @@ clippy platform=default_platform: build-assets
 # Backwards-compatible name for the Clippy quality gate.
 lint platform=default_platform: (clippy platform)
 
-# Run tests using cargo-nextest.
-test filter="": build-assets
+# Run tests using cargo-nextest. The filter remains the first argument for convenience.
+test filter="" platform=default_platform: build-assets
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -525,24 +544,37 @@ test filter="": build-assets
         exit 1
     fi
 
-    args=(nextest run --workspace --no-tests pass)
+    args=(
+        nextest run
+        --workspace
+        --no-tests pass
+        --no-default-features
+        --features "{{ platform }}"
+    )
     if [[ -n "{{ filter }}" ]]; then
         args+=("{{ filter }}")
     fi
 
     cargo "${args[@]}"
 
-# Run standard Cargo tests, including doctests.
-test-cargo: build-assets
-    cargo test --workspace
+# Run standard Cargo tests, including doctests, for one build platform.
+test-cargo platform=default_platform: build-assets
+    cargo test \
+        --workspace \
+        --no-default-features \
+        --features "{{ platform }}"
 
 # Run doctests, which cargo-nextest does not replace.
-test-doc: build-assets
+test-doc platform=default_platform: build-assets
     #!/usr/bin/env bash
     set -euo pipefail
 
     if cargo metadata --no-deps --format-version 1 2>/dev/null | grep -q '"lib"'; then
-        cargo test --doc --workspace
+        cargo test \
+            --doc \
+            --workspace \
+            --no-default-features \
+            --features "{{ platform }}"
     else
         echo "No library targets found; skipping doctests."
     fi
@@ -597,30 +629,23 @@ expand *args:
 # Composite workflows
 # -----------------------------------------------------------------------------
 
-# Fast local validation before committing.
-check platform=default_platform: format-check dx-check (lint platform) test
+# Fast, non-mutating local validation for one platform.
+check platform=default_platform: format-check (dx-check platform) (lint platform) (test "" platform)
 
-# Full validation suitable for CI or pre-push checks.
-ci platform=default_platform: format-check dx-check (lint platform) test test-doc deny machete
+# Full validation suitable for a manually requested CI run.
+ci platform=default_platform: format-check (dx-check platform) (lint platform) (test "" platform) (test-doc platform) deny machete
     @echo
     @echo "All quality gates passed."
 
-# Auto-fix code-quality issues, then run code validation and doctests.
-qa platform=default_platform: build-assets (fix platform) test-doc
+# Lazy-developer workflow: apply safe fixes, then validate one platform and its doctests.
+qa platform=default_platform: build-assets (fix platform) (test-doc platform)
     @echo
     @echo "All code quality gates passed."
 
-# Verify formatting and linting without modifying files (for git pre-commit).
-pre-commit platform=default_platform: build-assets
+# Keep commits responsive: generated assets and formatting only. CI owns compilation and tests.
+pre-commit: build-assets
     cargo fmt --all -- --check
     dx fmt --check
-    cargo clippy \
-        --workspace \
-        --all-targets \
-        --no-default-features \
-        --features "{{ platform }}" \
-        -- -D warnings
-    dx check
 
 # Apply formatting, then perform the fast validation workflow.
 fix platform=default_platform: build-assets

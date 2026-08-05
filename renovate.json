@@ -1,0 +1,28 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "schedule": ["before 6am on the first day of the month"],
+  "timezone": "Etc/UTC",
+  "dependencyDashboard": true,
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "rebaseWhen": "conflicted",
+  "minimumReleaseAge": "7 days",
+  "rangeStrategy": "update-lockfile",
+  "packageRules": [
+    {
+      "description": "Keep routine maintenance low-noise",
+      "matchUpdateTypes": ["digest", "patch", "minor"],
+      "groupName": "monthly non-major dependencies"
+    },
+    {
+      "description": "Never merge toolchain or dependency changes without review",
+      "matchManagers": ["cargo", "npm", "dockerfile", "docker-compose", "github-actions", "mise"],
+      "automerge": false
+    }
+  ],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on the first day of the month"]
+  }
+}

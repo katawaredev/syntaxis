@@ -1,0 +1,10 @@
+services:
+  syntaxis:
+    networks:
+      - default
+      - caddy
+
+networks:
+  caddy:
+    external: true
+    name: "${DOCKER_NETWORK:-caddy_net}"
