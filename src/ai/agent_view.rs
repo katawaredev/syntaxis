@@ -182,6 +182,10 @@ fn RemoteAgent(
     let connected = connection.read().is_ready();
     let current = snapshot();
     let active_id = selected_id();
+    let draft_key = format!(
+        "syntaxis:ai-draft:{workspace_id}:{}",
+        active_id.as_deref().unwrap_or("new")
+    );
     let session_title = if draft_session() {
         "New chat".into()
     } else {
@@ -364,6 +368,7 @@ fn RemoteAgent(
                             connected: composer_connected,
                             working: is_working,
                             pending_messages: current.pending_messages,
+                            draft_key,
                             commands: current.commands.clone(),
                             accepts_images,
                             on_send: send_prompt,

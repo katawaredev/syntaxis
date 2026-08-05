@@ -345,6 +345,8 @@ pub(super) fn use_agent_runtime(
         }
     });
 
+    use_browser_resume(connection, client);
+
     AgentRuntime {
         connection,
         snapshot,
@@ -360,6 +362,49 @@ pub(super) fn use_agent_runtime(
         pending_new_prompt,
         client,
     }
+}
+
+fn use_browser_resume(connection: Signal<ConnectionState>, mut client: Coroutine<ClientMessage>) {
+    let mut bridge = use_signal(|| None::<dioxus::document::Eval>);
+    use_effect(move || {
+        let mut events = document::eval(
+            r#"
+            let scheduled = false;
+            const resume = () => {
+                if (document.visibilityState !== "visible" || scheduled) return;
+                scheduled = true;
+                requestAnimationFrame(() => {
+                    scheduled = false;
+                    dioxus.send(true);
+                });
+            };
+            window.addEventListener("focus", resume);
+            window.addEventListener("online", resume);
+            document.addEventListener("visibilitychange", resume);
+            await dioxus.recv();
+            window.removeEventListener("focus", resume);
+            window.removeEventListener("online", resume);
+            document.removeEventListener("visibilitychange", resume);
+            "#,
+        );
+        bridge.set(Some(events));
+        spawn(async move {
+            while events.recv::<bool>().await.is_ok() {
+                match connection() {
+                    ConnectionState::Ready => client.send(ClientMessage::Ping { nonce: 0 }),
+                    ConnectionState::Reconnecting(_) | ConnectionState::Failed(_) => {
+                        client.restart();
+                    }
+                    ConnectionState::Connecting => {}
+                }
+            }
+        });
+    });
+    use_drop(move || {
+        if let Some(events) = bridge() {
+            let _ = events.send(true);
+        }
+    });
 }
 
 fn reconnect_delay_ms(attempt: u8) -> u64 {

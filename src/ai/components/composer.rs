@@ -20,6 +20,7 @@ pub(crate) fn AgentComposer(
     connected: bool,
     working: bool,
     pending_messages: usize,
+    draft_key: String,
     commands: Vec<PiCommand>,
     accepts_images: bool,
     on_send: EventHandler<ComposerSubmission>,
@@ -34,6 +35,8 @@ pub(crate) fn AgentComposer(
     let first_command = matching_commands(&commands, &draft()).first().cloned();
     let keyboard_commands = commands.clone();
     let button_commands = commands.clone();
+    let keyboard_draft_key = draft_key.clone();
+    let button_draft_key = draft_key.clone();
     rsx! {
         footer { class: "bg-card px-2.5 pt-1 pb-[max(0.65rem,env(safe-area-inset-bottom))]",
             div { class: "relative mx-auto max-w-3xl",
@@ -58,6 +61,7 @@ pub(crate) fn AgentComposer(
                             placeholder: if working { "Steer Pi while it works…" } else { "Ask Pi to change or inspect this project…" },
                             aria_label: "Message Pi",
                             "data-images-enabled": accepts_images && connected,
+                            "data-draft-key": draft_key.clone(),
                             oninput: move |event| {
                                 draft.set(event.value());
                                 composer_error.set(None);
@@ -74,6 +78,7 @@ pub(crate) fn AgentComposer(
                                             attachments,
                                             composer_error,
                                             &keyboard_commands,
+                                            &keyboard_draft_key,
                                             on_send,
                                         );
                                     }
@@ -136,6 +141,7 @@ pub(crate) fn AgentComposer(
                                     attachments,
                                     composer_error,
                                     &button_commands,
+                                    &button_draft_key,
                                     on_send,
                                 );
                             },
@@ -159,6 +165,7 @@ fn submit_composer(
     mut attachments: Signal<Vec<ImageAttachment>>,
     mut composer_error: Signal<Option<String>>,
     commands: &[PiCommand],
+    draft_key: &str,
     on_send: EventHandler<ComposerSubmission>,
 ) {
     if !can_send {
@@ -177,7 +184,18 @@ fn submit_composer(
         text: draft(),
         images: attachments(),
     });
+    clear_saved_draft(draft_key);
     attachments.set(Vec::new());
+}
+
+fn clear_saved_draft(draft_key: &str) {
+    let eval = document::eval(
+        r"
+        const key = await dioxus.recv();
+        try { window.localStorage?.removeItem(key); } catch {}
+        ",
+    );
+    let _ = eval.send(draft_key);
 }
 
 #[component]

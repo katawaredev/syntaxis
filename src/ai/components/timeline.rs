@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
-use syntaxis_agent::{AgentStatus, ChatItem, ItemStatus};
-use syntaxis_ui::prelude::{AppIcon, Icon};
+use syntaxis_agent::{AgentStatus, ChatItem, ImageAttachment, ItemStatus};
+use syntaxis_ui::prelude::{AppIcon, Icon, Modal};
 
 use crate::files::preview::render_markdown;
 
@@ -15,6 +15,7 @@ pub(crate) fn AgentTimeline(
 ) -> Element {
     let is_empty = items.is_empty();
     let mut visible_count = use_signal(|| INITIAL_RENDER_ITEMS);
+    let mut viewed_image = use_signal(|| None::<ImageAttachment>);
     let hidden_count = items.len().saturating_sub(visible_count());
     let visible_items = items.into_iter().skip(hidden_count).collect::<Vec<_>>();
     rsx! {
@@ -55,7 +56,11 @@ pub(crate) fn AgentTimeline(
                         }
                     }
                     for item in visible_items {
-                        AgentTimelineItem { key: "{item.id()}", item }
+                        AgentTimelineItem {
+                            key: "{item.id()}",
+                            item,
+                            on_image: move |image| viewed_image.set(Some(image)),
+                        }
                     }
                     if matches!(status, AgentStatus::Working | AgentStatus::Compacting) {
                         div { class: "flex items-center gap-2 px-1 py-1 text-[11px] text-muted-foreground",
@@ -74,23 +79,48 @@ pub(crate) fn AgentTimeline(
                 }
             }
         }
+        if let Some(image) = viewed_image() {
+            Modal {
+                title: image.name.clone(),
+                content_class: "max-w-[min(72rem,calc(100vw-1.5rem))] overflow-hidden",
+                on_close: move |()| viewed_image.set(None),
+                div { class: "grid max-h-[calc(100dvh-7rem)] place-items-center px-3 pb-3",
+                    img {
+                        class: "max-h-[calc(100dvh-8rem)] max-w-full rounded-lg object-contain",
+                        src: image.data_url(),
+                        alt: image.name,
+                    }
+                }
+            }
+        }
     }
 }
 
 #[component]
-fn AgentTimelineItem(item: ChatItem) -> Element {
+fn AgentTimelineItem(item: ChatItem, on_image: EventHandler<ImageAttachment>) -> Element {
     match item {
         ChatItem::User { text, images, .. } => {
             let rendered = render_markdown(&text);
             rsx! {
-                article { class: "ml-auto max-w-[88%] rounded-xl rounded-br-sm border border-border bg-secondary px-3.5 py-2.5 text-[13px] leading-relaxed text-secondary-foreground shadow-sm",
+                article {
+                    class: "ml-auto max-w-[88%] rounded-xl rounded-br-sm border border-border bg-secondary px-3.5 py-2.5 text-[13px] leading-relaxed text-secondary-foreground shadow-sm",
+                    dir: "auto",
                     if !images.is_empty() {
                         div { class: "mb-2 grid max-w-lg grid-cols-2 gap-1.5",
                             for image in images {
-                                img {
-                                    class: "max-h-52 min-h-20 w-full rounded-lg bg-black/10 object-cover",
-                                    src: image.data_url(),
-                                    alt: image.name,
+                                button {
+                                    class: "cursor-zoom-in rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+                                    r#type: "button",
+                                    aria_label: "Open {image.name}",
+                                    onclick: {
+                                        let image = image.clone();
+                                        move |_| on_image.call(image.clone())
+                                    },
+                                    img {
+                                        class: "max-h-52 min-h-20 w-full rounded-lg bg-black/10 object-cover",
+                                        src: image.data_url(),
+                                        alt: image.name,
+                                    }
                                 }
                             }
                         }
@@ -116,7 +146,9 @@ fn AgentTimelineItem(item: ChatItem) -> Element {
                     if !thinking.trim().is_empty() {
                         details { class: "mb-2 rounded-lg border border-border bg-background/60 text-[11px] text-muted-foreground",
                             summary { class: "cursor-pointer px-3 py-2 select-none", "Reasoning" }
-                            div { class: "max-h-60 overflow-auto border-t border-border px-3 py-2 font-mono text-[10px] leading-relaxed whitespace-pre-wrap",
+                            div {
+                                class: "max-h-60 overflow-auto border-t border-border px-3 py-2 font-mono text-[10px] leading-relaxed whitespace-pre-wrap",
+                                dir: "auto",
                                 "{thinking}"
                             }
                         }
@@ -126,6 +158,7 @@ fn AgentTimelineItem(item: ChatItem) -> Element {
                     } else {
                         div {
                             class: "ai-markdown",
+                            dir: "auto",
                             dangerous_inner_html: rendered,
                         }
                     }
