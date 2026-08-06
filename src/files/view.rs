@@ -1166,7 +1166,6 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                             let reload_path = path.clone();
                             let input_path = path.clone();
                             let active_diff = diff();
-                            let diff_mode = active_diff.is_some();
                             let diff_original = match active_diff {
                                 Some(diff) => Some(diff.original.unwrap_or_default()),
                                 None => None,
@@ -1188,7 +1187,6 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                         }
                                     }
                                     CodeEditor {
-                                        key: format!("{}-{diff_mode}", buffer.path),
                                         id: "syntaxis-active-editor",
                                         class: "size-full min-h-full rounded-none",
                                         value: buffer.contents.clone(),

@@ -26,7 +26,7 @@ fn workspace(root: &Path) -> WorkspaceRecord {
         profile: syntaxis_workspace::WorkspaceProfile::default(),
         registered_at_unix_ms: 0,
         last_opened_unix_ms: 0,
-        last_section: Default::default(),
+        last_section: syntaxis_workspace::WorkspaceSection::default(),
         availability: WorkspaceAvailability::Available,
     }
 }

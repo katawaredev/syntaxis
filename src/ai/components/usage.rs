@@ -134,7 +134,7 @@ fn context_percent(stats: &SessionStats) -> u8 {
         .or_else(|| {
             let tokens = stats.context_tokens?;
             let window = stats.context_window?.max(1);
-            Some(((tokens.saturating_mul(100) / window).min(100)) as u8)
+            Some(u8::try_from((tokens.saturating_mul(100) / window).min(100)).unwrap_or(100))
         })
         .unwrap_or_default()
         .min(100)
