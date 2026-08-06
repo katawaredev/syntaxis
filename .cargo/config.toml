@@ -1,0 +1,3 @@
+[env]
+# The web build's C compatibility shim targets wasm32, which GCC cannot emit.
+CC_wasm32_unknown_unknown = { value = "clang", force = false }

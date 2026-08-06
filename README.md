@@ -312,9 +312,9 @@ main entry points as `mise run serve`, `mise run qa`, and `mise run qa:server`. 
 and production networking.
 
 The repository intentionally keeps Mise available inside Syntaxis containers: workspaces opened by
-Syntaxis may declare any Mise-supported language or toolchain. Pixi is an additional, project-local
-layer used only to supply Syntaxis's locked native and WebAssembly C compilers; it does not limit
-which tools user workspaces can install.
+Syntaxis may declare any Mise-supported language or toolchain. Syntaxis containers include the
+standard native build toolchain and Clang, which the project's WebAssembly C shim requires. On a
+non-container host, install an equivalent C/C++ toolchain and Clang before building the project.
 
 For day-to-day work, use the stable Just interface rather than invoking Cargo or Dioxus commands
 manually:

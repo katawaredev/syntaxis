@@ -275,22 +275,20 @@ Apply this section only when `/.dockerenv` or `/run/.containerenv` exists. On a
 normal development machine, use the developer's existing native tools.
 
 The container has an intentionally minimal `PATH`. Do not first try `just`,
-`cargo`, `pixi`, or other project tools directly. From the repository root:
+`cargo`, or other project tools directly. From the repository root:
 
-1. Read `mise.toml`, `pixi.toml`, and `pixi.lock`.
+1. Read `mise.toml`.
 2. Check `command -v mise`, `mise trust --show`, and `mise current`.
 3. If setup is missing, obtain approval before the resource-intensive bootstrap:
 
    ```bash
    MISE_JOBS=2 mise install
-   mise exec -- pixi install --locked
    ```
 
    Review an untrusted config before running `mise trust mise.toml`.
-4. Keep both layers active afterward. Prefer `mise run qa`,
-   `mise run qa:server`, and `mise run serve`; use
-   `mise exec -- pixi run just <task>` for an unaliased task. Do not rely on
-   interactive shell activation persisting between agent tool calls.
+4. Prefer `mise run qa`, `mise run qa:server`, and `mise run serve`; use
+   `mise exec -- just <task>` for an unaliased task. Do not rely on interactive
+   shell activation persisting between agent tool calls.
 
 ## Validation
 
