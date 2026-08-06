@@ -236,7 +236,7 @@ fn RemoteAgent(
                             AgentSessionSidebar {
                                 workspace_id: workspace_id.clone(),
                                 sessions: sessions(),
-                                selected_id: active_id.clone(),
+                                selected_id,
                                 loading: !sessions_loaded(),
                                 unavailable: connection_failed,
                                 connected,
@@ -279,7 +279,7 @@ fn RemoteAgent(
                                 AgentSessionSidebar {
                                     workspace_id: workspace_id.clone(),
                                     sessions: sessions(),
-                                    selected_id: active_id.clone(),
+                                    selected_id,
                                     loading: !sessions_loaded(),
                                     unavailable: connection_failed,
                                     connected,

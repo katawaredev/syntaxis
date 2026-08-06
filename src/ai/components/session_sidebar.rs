@@ -13,7 +13,7 @@ use crate::ai::api;
 pub(crate) fn AgentSessionSidebar(
     workspace_id: String,
     sessions: Vec<AgentSessionSummary>,
-    selected_id: Option<String>,
+    selected_id: ReadSignal<Option<String>>,
     loading: bool,
     unavailable: bool,
     connected: bool,
@@ -36,6 +36,7 @@ pub(crate) fn AgentSessionSidebar(
         }
     });
     let active_query = query().trim().to_owned();
+    let selected_id = selected_id();
     rsx! {
         nav {
             class: "flex h-full min-h-0 flex-col bg-sidebar",
