@@ -1,10 +1,21 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CloneMode {
+    #[default]
+    Full,
+    Blobless,
+    Shallow,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CloneRequest {
     pub url: String,
     pub destination_parent: String,
     pub directory_name: Option<String>,
+    #[serde(default)]
+    pub mode: CloneMode,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

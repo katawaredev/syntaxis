@@ -1,7 +1,7 @@
 use std::{ffi::OsString, fmt::Write as _, fs, path::Path, process::Command};
 
 use syntaxis_git::{
-    parse_diff_hunks, BranchRequest, ChangeKind, ClonePhase, CloneRequest, CommitOutcome,
+    parse_diff_hunks, BranchRequest, ChangeKind, CloneMode, ClonePhase, CloneRequest, CommitOutcome,
     CommitRequest, ConflictChoice, ConflictRequest, DiffKind, GitErrorCode, GitOperations,
     HunkAction, HunkRequest, MergeOutcome, PushOutcome, TagRequest,
 };
@@ -598,6 +598,7 @@ async fn clones_from_a_real_git_transport_into_a_new_destination() {
                 url: format!("git://127.0.0.1:{port}/remote.git"),
                 destination_parent: projects.path().to_string_lossy().into_owned(),
                 directory_name: None,
+                mode: CloneMode::Full,
             },
             CancellationToken::new(),
             progress_tx,
@@ -631,6 +632,7 @@ async fn cancelled_clone_removes_its_partial_destination() {
                 url: "git://127.0.0.1:9/repository.git".into(),
                 destination_parent: projects.path().to_string_lossy().into_owned(),
                 directory_name: Some("cancelled".into()),
+                mode: CloneMode::Full,
             },
             cancellation,
             progress,

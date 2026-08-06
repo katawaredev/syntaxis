@@ -12,7 +12,9 @@ mod status;
 pub use clone_progress::{
     CloneClientMessage, ClonePhase, CloneProgress, CloneServerMessage, CLONE_PROTOCOL_VERSION,
 };
-pub use commit::{CloneRequest, CloneResult, CommitOutcome, CommitRequest, CommitResult};
+pub use commit::{
+    CloneMode, CloneRequest, CloneResult, CommitOutcome, CommitRequest, CommitResult,
+};
 pub use conflict::{
     parse_conflict_file, resolve_conflict_block, ConflictBlock, ConflictChoice, ConflictFile,
     ConflictRequest, ResolvedConflict,

@@ -3,7 +3,7 @@ use dioxus::{
     prelude::ServerFnError,
 };
 use syntaxis_git::{
-    BranchComparison, BranchInfo, BranchRequest, CloneClientMessage, CloneRequest,
+    BranchComparison, BranchInfo, BranchRequest, CloneClientMessage, CloneMode, CloneRequest,
     CloneServerMessage, CommitDetail, CommitInfo, CommitOutcome, CommitRequest, ConflictChoice,
     ConflictFile, ConflictRequest, DiffKind, GitErrorCode, GitOperations, HunkAction, HunkRequest,
     MergeOutcome, PushOutcome, RemoteInfo, RemoteRequest, RemoteResult, RepositoryState,
@@ -77,6 +77,7 @@ pub(super) async fn clone_repository(
             url,
             destination_parent: destination_parent.to_string_lossy().into_owned(),
             directory_name: None,
+            mode: CloneMode::Full,
         })
         .await
         .map_err(server_error)?;
@@ -137,6 +138,7 @@ async fn receive_clone_request(
         url,
         destination_parent,
         directory_name,
+        mode,
     }) = socket.recv().await
     else {
         send_clone_error(socket, "Clone protocol start message required.").await;
@@ -161,6 +163,7 @@ async fn receive_clone_request(
         url,
         destination_parent,
         directory_name: Some(directory_name),
+        mode,
     })
 }
 

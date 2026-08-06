@@ -3,7 +3,8 @@ use std::{ffi::OsString, path::Path};
 use async_trait::async_trait;
 use syntaxis_git::{
     parse_conflict_file, parse_diff_hunks, resolve_conflict_block, BranchComparison, BranchInfo,
-    BranchRequest, ClonePhase, CloneProgress, CloneRequest, CloneResult, CommitDetail, CommitInfo,
+    BranchRequest, CloneMode, ClonePhase, CloneProgress, CloneRequest, CloneResult, CommitDetail,
+    CommitInfo,
     CommitOutcome, CommitRequest, CommitResult, ConflictFile, ConflictRequest, DiffKind, GitError,
     GitErrorCode, GitOperations, GitResult, HunkAction, HunkRequest, MergeOutcome, PushOutcome,
     RemoteInfo, RemoteRequest, RemoteResult, RepositoryStatus, TagInfo, TagRequest, UnifiedDiff,
@@ -1019,13 +1020,13 @@ impl HostGit {
             phase: ClonePhase::Preparing,
             percent: None,
         });
-        let arguments = [
-            "clone".into(),
-            "--progress".into(),
-            "--".into(),
-            request.url.into(),
-            directory_name.into(),
-        ];
+        let mut arguments: Vec<OsString> = vec!["clone".into(), "--progress".into()];
+        match request.mode {
+            CloneMode::Full => {}
+            CloneMode::Blobless => arguments.push("--filter=blob:none".into()),
+            CloneMode::Shallow => arguments.extend(["--depth".into(), "1".into()]),
+        }
+        arguments.extend(["--".into(), request.url.into(), directory_name.into()]);
         let mut clone_runner = self.clone();
         clone_runner.config.timeout = clone_runner.config.clone_timeout;
         if let Err(error) = clone_runner

@@ -4,10 +4,11 @@ use futures_util::{
     pin_mut, FutureExt, StreamExt,
 };
 use syntaxis_git::{
-    CloneClientMessage, ClonePhase, CloneProgress, CloneServerMessage, CLONE_PROTOCOL_VERSION,
+    CloneClientMessage, CloneMode, ClonePhase, CloneProgress, CloneServerMessage,
+    CLONE_PROTOCOL_VERSION,
 };
 use syntaxis_ui::prelude::{
-    Button, ButtonKind, DialogActions, DialogForm, Field, Modal, TextInput, TextInputType,
+    Button, ButtonKind, DialogActions, DialogForm, Field, Modal, Select, TextInput, TextInputType,
 };
 
 use super::RequestState;
@@ -31,6 +32,7 @@ pub(super) fn GitUrlDialog(
 ) -> Element {
     let mut git_url = use_signal(String::new);
     let mut destination = use_signal(|| "/".to_owned());
+    let mut clone_mode = use_signal(CloneMode::default);
     let mut request = use_signal(|| RequestState::Idle);
     let mut progress = use_signal(|| None::<CloneProgress>);
     let mut paste_pending = use_signal(|| false);
@@ -152,6 +154,26 @@ pub(super) fn GitUrlDialog(
                         },
                     }
                 }
+                Field { control_id: "clone-mode", label: "Clone mode",
+                    Select {
+                        value: match clone_mode() {
+                            CloneMode::Full => "full",
+                            CloneMode::Blobless => "blobless",
+                            CloneMode::Shallow => "shallow",
+                        },
+                        disabled: pending,
+                        onchange: move |event: FormEvent| {
+                            clone_mode.set(match event.value().as_str() {
+                                "blobless" => CloneMode::Blobless,
+                                "shallow" => CloneMode::Shallow,
+                                _ => CloneMode::Full,
+                            });
+                        },
+                        option { value: "full", "Full" }
+                        option { value: "blobless", "Blobless" }
+                        option { value: "shallow", "Shallow" }
+                    }
+                }
                 match request() {
                     RequestState::Idle => rsx! {},
                     RequestState::Pending => rsx! {
@@ -203,6 +225,7 @@ pub(super) fn GitUrlDialog(
                                     url,
                                     destination_parent: destination.parent,
                                     directory_name: destination.directory_name,
+                                    mode: clone_mode(),
                                 });
                         },
                     }

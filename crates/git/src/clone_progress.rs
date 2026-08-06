@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 use syntaxis_workspace::WorkspaceRecord;
 
-pub const CLONE_PROTOCOL_VERSION: u16 = 2;
+use crate::CloneMode;
+
+pub const CLONE_PROTOCOL_VERSION: u16 = 3;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -29,6 +31,7 @@ pub enum CloneClientMessage {
         url: String,
         destination_parent: String,
         directory_name: String,
+        mode: CloneMode,
     },
     Cancel,
 }
@@ -45,7 +48,7 @@ pub enum CloneServerMessage {
 
 #[cfg(test)]
 mod tests {
-    use super::{CloneClientMessage, CLONE_PROTOCOL_VERSION};
+    use super::{CloneClientMessage, CloneMode, CLONE_PROTOCOL_VERSION};
 
     #[test]
     fn clone_start_carries_an_explicit_protocol_version() {
@@ -54,6 +57,7 @@ mod tests {
             url: "https://example.invalid/repository.git".into(),
             destination_parent: "/srv/projects".into(),
             directory_name: "repository".into(),
+            mode: CloneMode::Shallow,
         };
         assert!(matches!(
             message,
