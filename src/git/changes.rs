@@ -14,7 +14,7 @@ use super::{
     TrackExtension, UnifiedDiff, UnifiedDiffView, WritableExt,
 };
 
-const DIFF_TITLEBAR_CLASS: &str = "sticky top-0 z-10 flex min-h-14 min-w-165 items-center justify-between gap-3 border-b border-border bg-background/95 p-3 font-sans backdrop-blur-sm max-md:min-h-0 max-md:min-w-0 max-md:flex-col max-md:items-stretch max-md:gap-2 max-md:px-2.5 max-md:py-2";
+const DIFF_TITLEBAR_CLASS: &str = "sticky top-0 z-10 flex min-h-14 min-w-165 items-center justify-between gap-3 border-b border-border bg-background/95 p-3 font-sans backdrop-blur-sm max-md:min-h-13 max-md:min-w-0 max-md:gap-1.5 max-md:px-2 max-md:py-2";
 
 #[component]
 pub(super) fn GitSidebar(
@@ -264,10 +264,10 @@ pub(super) fn ChangeDetail(
                     FileIcon { path: selection.path.clone(), size: 16 }
                     strong { class: "min-w-0 truncate text-sm font-medium", "{selection.path}" }
                 }
-                div { class: "flex shrink-0 items-center gap-1.5 max-md:w-full max-md:justify-between",
-                    div { class: "flex shrink-0 items-center gap-1.5",
+                div { class: "flex shrink-0 items-center gap-1.5 max-md:gap-1",
+                    div { class: "flex shrink-0 items-center gap-1.5 max-md:gap-1",
                         button {
-                            class: "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground max-sm:px-2",
+                            class: "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground max-md:px-2",
                             title: if expanded { "Collapse diff context" } else { "Expand diff context" },
                             "aria-label": if expanded { "Collapse diff context" } else { "Expand diff context" },
                             onclick: move |_| on_expand.call(()),
@@ -275,7 +275,7 @@ pub(super) fn ChangeDetail(
                                 icon: if expanded { AppIcon::Collapse } else { AppIcon::Expand },
                                 size: 13,
                             }
-                            span { class: "max-sm:hidden",
+                            span { class: "max-md:hidden",
                                 if expanded {
                                     "Collapse"
                                 } else {
@@ -283,48 +283,55 @@ pub(super) fn ChangeDetail(
                                 }
                             }
                         }
-                        span { class: "flex shrink-0 items-center gap-2 px-1",
+                        span { class: "flex shrink-0 items-center gap-2 px-1 max-md:hidden",
                             span { class: "text-[10px] text-red-400", "−{deletions}" }
                             span { class: "text-[10px] text-emerald-400", "+{additions}" }
                         }
                     }
-                    div { class: "flex shrink-0 items-center gap-1.5",
+                    div { class: "flex shrink-0 items-center gap-1.5 max-md:gap-1",
                         if selection.kind == DiffKind::Staged {
                             button {
-                                class: "inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs text-foreground hover:bg-muted disabled:opacity-50 max-sm:px-2",
+                                class: "inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs text-foreground hover:bg-muted disabled:opacity-50 max-md:px-2",
+                                title: "Unstage file",
+                                "aria-label": "Unstage file",
                                 disabled: pending,
                                 onclick: {
                                     let path = selection.path.clone();
                                     move |_| on_mutation.call(Mutation::Unstage(vec![path.clone()]))
                                 },
-                                span {
-                                    "− Unstage"
+                                Icon { icon: AppIcon::FileMinus, size: 13 }
+                                span { class: "max-[420px]:hidden",
+                                    "Unstage"
                                     span { class: "max-sm:hidden", " file" }
                                 }
                             }
                         } else {
                             button {
-                                class: "inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs text-foreground hover:bg-muted disabled:opacity-50 max-sm:px-2",
+                                class: "inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs text-foreground hover:bg-muted disabled:opacity-50 max-md:px-2",
+                                title: "Stage file",
+                                "aria-label": "Stage file",
                                 disabled: pending,
                                 onclick: {
                                     let path = selection.path.clone();
                                     move |_| on_mutation.call(Mutation::Stage(vec![path.clone()]))
                                 },
                                 Icon { icon: AppIcon::Plus, size: 13 }
-                                span {
+                                span { class: "max-[420px]:hidden",
                                     "Stage"
                                     span { class: "max-sm:hidden", " file" }
                                 }
                             }
                             button {
-                                class: "inline-flex h-8 items-center gap-1.5 rounded-md bg-destructive/12 px-2.5 text-xs text-destructive hover:bg-destructive/20 disabled:opacity-50 max-sm:px-2",
+                                class: "inline-flex h-8 items-center gap-1.5 rounded-md bg-destructive/12 px-2.5 text-xs text-destructive hover:bg-destructive/20 disabled:opacity-50 max-md:px-2",
+                                title: "Discard changes",
+                                "aria-label": "Discard changes",
                                 disabled: pending,
                                 onclick: {
                                     let path = selection.path.clone();
                                     move |_| on_mutation.call(Mutation::Discard(vec![path.clone()]))
                                 },
                                 Icon { icon: AppIcon::Refresh, size: 13 }
-                                "Discard"
+                                span { class: "max-[420px]:hidden", "Discard" }
                             }
                         }
                     }

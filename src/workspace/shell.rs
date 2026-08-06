@@ -47,50 +47,56 @@ pub fn WorkspaceShell() -> Element {
         .and_then(|workspaces| workspaces.iter().find(|workspace| workspace.slug == slug))
         .cloned();
     let active_slug = slug.clone();
-    use_effect(move || {
-        let Some(workspace) = workspaces()
-            .as_ref()
-            .and_then(|result| result.as_ref().ok())
-            .and_then(|workspaces| {
-                workspaces
-                    .iter()
-                    .find(|workspace| workspace.slug == active_slug)
-            })
-            .cloned()
-        else {
-            return;
-        };
-        active_workspace.set_base(workspace);
-    });
+    use_effect(use_reactive(
+        (&active_slug,),
+        move |(active_slug,)| {
+            let Some(workspace) = workspaces()
+                .as_ref()
+                .and_then(|result| result.as_ref().ok())
+                .and_then(|workspaces| {
+                    workspaces
+                        .iter()
+                        .find(|workspace| workspace.slug == active_slug)
+                })
+                .cloned()
+            else {
+                return;
+            };
+            active_workspace.set_base(workspace);
+        },
+    ));
     let touch_slug = slug.clone();
-    use_effect(move || {
-        let Some(workspace_id) = workspaces()
-            .as_ref()
-            .and_then(|result| result.as_ref().ok())
-            .and_then(|workspaces| {
-                workspaces
-                    .iter()
-                    .find(|workspace| workspace.slug == touch_slug)
-            })
-            .map(|workspace| workspace.id.0.clone())
-        else {
-            return;
-        };
-        if touched_workspace().as_ref() != Some(&workspace_id) {
-            touched_workspace.set(Some(workspace_id.clone()));
-            let touched_id = workspace_id.clone();
+    use_effect(use_reactive(
+        (&touch_slug, &active),
+        move |(touch_slug, active)| {
+            let Some(workspace_id) = workspaces()
+                .as_ref()
+                .and_then(|result| result.as_ref().ok())
+                .and_then(|workspaces| {
+                    workspaces
+                        .iter()
+                        .find(|workspace| workspace.slug == touch_slug)
+                })
+                .map(|workspace| workspace.id.0.clone())
+            else {
+                return;
+            };
+            if touched_workspace().as_ref() != Some(&workspace_id) {
+                touched_workspace.set(Some(workspace_id.clone()));
+                let touched_id = workspace_id.clone();
+                spawn(async move {
+                    let _ = touch_workspace(touched_id).await;
+                });
+            }
+            if persisted_section().as_ref() == Some(&(workspace_id.clone(), active)) {
+                return;
+            }
+            persisted_section.set(Some((workspace_id.clone(), active)));
             spawn(async move {
-                let _ = touch_workspace(touched_id).await;
+                let _ = set_workspace_last_section(workspace_id, active).await;
             });
-        }
-        if persisted_section().as_ref() == Some(&(workspace_id.clone(), active)) {
-            return;
-        }
-        persisted_section.set(Some((workspace_id.clone(), active)));
-        spawn(async move {
-            let _ = set_workspace_last_section(workspace_id, active).await;
-        });
-    });
+        },
+    ));
     let project_name = registered_workspace.as_ref().map_or_else(
         || {
             WORKSPACES
