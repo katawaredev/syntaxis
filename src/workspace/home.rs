@@ -143,7 +143,7 @@ pub fn Home() -> Element {
                         onclick: move |_| dialog.set(HomeDialog::WorkspaceFolder),
                     }
                     SourceAction {
-                        icon: AppIcon::Command,
+                        icon: AppIcon::FolderGit2,
                         title: "Open Git URL".to_owned(),
                         description: "Clone a Git repository".to_owned(),
                         onclick: move |_| dialog.set(HomeDialog::Git),

@@ -4,11 +4,11 @@ use dioxus::prelude::*;
 use dioxus_icons::lucide::{
     ArrowDown, ArrowUp, Bell, Bot, BrainCog, BrushCleaning, CaseSensitive, ChartNoAxesColumn,
     Check, ChevronDown, ChevronLeft, ChevronRight, Code, Command, Copy, Ellipsis, EllipsisVertical,
-    ExternalLink, Eye, FileDiff, FileInput, FileMinus, FilePlus, FolderOpen, FolderPlus, GitBranch,
-    GitCommitHorizontal, GitFork, Hash, Info, ListChevronsDownUp, ListChevronsUpDown, ListOrdered,
-    LogOut, Menu, Mic, PanelLeftOpen, Paperclip, Play, Plus, RefreshCw, Regex, Repeat1, Replace,
-    ReplaceAll, RotateCcw, Save, Search, Send, Share2, ShieldAlert, Sparkles, Square, SquarePen,
-    SquareTerminal, Trash2, Type, WholeWord, X,
+    ExternalLink, Eye, FileDiff, FileInput, FileMinus, FilePlus, FolderGit2, FolderOpen,
+    FolderPlus, GitBranch, GitCommitHorizontal, GitFork, Hash, Info, ListChevronsDownUp,
+    ListChevronsUpDown, ListOrdered, LogOut, Menu, Mic, PanelLeftOpen, Paperclip, Play, Plus,
+    RefreshCw, Regex, Repeat1, Replace, ReplaceAll, RotateCcw, Save, Search, Send, Share2,
+    ShieldAlert, Sparkles, Square, SquarePen, SquareTerminal, Trash2, Type, WholeWord, X,
 };
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum AppIcon {
@@ -37,6 +37,7 @@ pub enum AppIcon {
     FileMove,
     FilePlus,
     Folder,
+    FolderGit2,
     FolderPlus,
     Info,
     GitBranch,
@@ -198,6 +199,11 @@ pub fn Icon(icon: AppIcon, #[props(default = 16)] size: u32) -> Element {
         AppIcon::Folder => {
             rsx! {
                 FolderOpen { size }
+            }
+        }
+        AppIcon::FolderGit2 => {
+            rsx! {
+                FolderGit2 { size }
             }
         }
         AppIcon::FolderPlus => {
