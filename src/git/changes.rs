@@ -136,7 +136,9 @@ pub(super) fn GitSidebar(
                                 },
                                 span { class: "mt-1.5 size-2 shrink-0 rounded-full border-2 border-primary" }
                                 span { class: "min-w-0",
-                                    strong { class: "block truncate text-xs font-medium", "{commit.subject}" }
+                                    strong { class: "block truncate text-xs font-medium",
+                                        "{commit.subject}"
+                                    }
                                     small { class: "mt-1 block truncate font-mono text-[10px] text-muted-foreground",
                                         "{commit.short_oid} · {commit.author_name}"
                                     }

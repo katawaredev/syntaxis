@@ -4,10 +4,10 @@ use async_trait::async_trait;
 use syntaxis_git::{
     parse_conflict_file, parse_diff_hunks, resolve_conflict_block, BranchComparison, BranchInfo,
     BranchRequest, CloneMode, ClonePhase, CloneProgress, CloneRequest, CloneResult, CommitDetail,
-    CommitInfo,
-    CommitOutcome, CommitRequest, CommitResult, ConflictFile, ConflictRequest, DiffKind, GitError,
-    GitErrorCode, GitOperations, GitResult, HunkAction, HunkRequest, MergeOutcome, PushOutcome,
-    RemoteInfo, RemoteRequest, RemoteResult, RepositoryStatus, TagInfo, TagRequest, UnifiedDiff,
+    CommitInfo, CommitOutcome, CommitRequest, CommitResult, ConflictFile, ConflictRequest,
+    DiffKind, GitError, GitErrorCode, GitOperations, GitResult, HunkAction, HunkRequest,
+    MergeOutcome, PushOutcome, RemoteInfo, RemoteRequest, RemoteResult, RepositoryStatus, TagInfo,
+    TagRequest, UnifiedDiff,
 };
 use syntaxis_workspace::{
     ErrorCode as WorkspaceErrorCode, RelativePath, WorkspaceFiles, WorkspaceRecord,
@@ -24,8 +24,7 @@ const MAX_TAG_MESSAGE_BYTES: usize = 256 * 1024;
 const MAX_CONFLICT_FILE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_PASSPHRASE_BYTES: usize = 16 * 1024;
 const MAX_REMOTE_URL_BYTES: usize = 64 * 1024;
-const GITHUB_SSH_PUSH_REWRITE: &str =
-    "url.ssh://git@github.com/.pushInsteadOf=https://github.com/";
+const GITHUB_SSH_PUSH_REWRITE: &str = "url.ssh://git@github.com/.pushInsteadOf=https://github.com/";
 
 impl HostGit {
     /// Returns ignored, untracked paths using Git's complete exclude rules.

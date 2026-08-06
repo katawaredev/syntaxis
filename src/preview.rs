@@ -545,12 +545,16 @@ fn WorkspacePreview(workspace_id: String) -> Element {
                             }
                         }
                         if candidates_loading {
-                            h2 { class: "text-lg font-semibold text-foreground", "Looking for preview servers…" }
+                            h2 { class: "text-lg font-semibold text-foreground",
+                                "Looking for preview servers…"
+                            }
                             p { class: "mt-2 max-w-md leading-relaxed text-muted-foreground",
                                 "Checking running workspace processes for a web server. You can still enter a port or URL above."
                             }
                         } else {
-                            h2 { class: "text-lg font-semibold text-foreground", "Connect a web preview" }
+                            h2 { class: "text-lg font-semibold text-foreground",
+                                "Connect a web preview"
+                            }
                             p { class: "mt-2 max-w-md leading-relaxed text-muted-foreground",
                                 "Start the project dev server in Terminal, bind it to 127.0.0.1, then enter its runtime port here."
                             }

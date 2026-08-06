@@ -1,9 +1,9 @@
 use std::{ffi::OsString, fmt::Write as _, fs, path::Path, process::Command};
 
 use syntaxis_git::{
-    parse_diff_hunks, BranchRequest, ChangeKind, CloneMode, ClonePhase, CloneRequest, CommitOutcome,
-    CommitRequest, ConflictChoice, ConflictRequest, DiffKind, GitErrorCode, GitOperations,
-    HunkAction, HunkRequest, MergeOutcome, PushOutcome, TagRequest,
+    parse_diff_hunks, BranchRequest, ChangeKind, CloneMode, ClonePhase, CloneRequest,
+    CommitOutcome, CommitRequest, ConflictChoice, ConflictRequest, DiffKind, GitErrorCode,
+    GitOperations, HunkAction, HunkRequest, MergeOutcome, PushOutcome, TagRequest,
 };
 use syntaxis_workspace::{
     RelativePath, WorkspaceAvailability, WorkspaceIcon, WorkspaceId, WorkspaceRecord,

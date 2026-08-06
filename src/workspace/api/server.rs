@@ -93,7 +93,9 @@ pub(super) fn set_workspace_last_section(
     id: &WorkspaceId,
     section: WorkspaceSection,
 ) -> Result<(), ServerFnError> {
-    registry()?.set_last_section(id, section).map_err(server_error)
+    registry()?
+        .set_last_section(id, section)
+        .map_err(server_error)
 }
 
 pub(super) async fn load_workspace_session(

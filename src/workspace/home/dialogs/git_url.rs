@@ -163,11 +163,14 @@ pub(super) fn GitUrlDialog(
                         },
                         disabled: pending,
                         onchange: move |event: FormEvent| {
-                            clone_mode.set(match event.value().as_str() {
-                                "blobless" => CloneMode::Blobless,
-                                "shallow" => CloneMode::Shallow,
-                                _ => CloneMode::Full,
-                            });
+                            clone_mode
+                                .set(
+                                    match event.value().as_str() {
+                                        "blobless" => CloneMode::Blobless,
+                                        "shallow" => CloneMode::Shallow,
+                                        _ => CloneMode::Full,
+                                    },
+                                );
                         },
                         option { value: "full", "Full" }
                         option { value: "blobless", "Blobless" }

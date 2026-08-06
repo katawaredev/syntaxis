@@ -9,9 +9,7 @@ use crate::{
 };
 use syntaxis_workspace::{ExecutionLocation, RuntimeState, WorkspaceSection};
 
-use super::client::{
-    list_workspaces, runtime_state, set_workspace_last_section, touch_workspace,
-};
+use super::client::{list_workspaces, runtime_state, set_workspace_last_section, touch_workspace};
 use super::worktrees::use_active_workspace;
 use super::ProjectIcon;
 use super::{events::WorkspaceEventBridge, WorkspaceEventState};
@@ -47,24 +45,21 @@ pub fn WorkspaceShell() -> Element {
         .and_then(|workspaces| workspaces.iter().find(|workspace| workspace.slug == slug))
         .cloned();
     let active_slug = slug.clone();
-    use_effect(use_reactive(
-        (&active_slug,),
-        move |(active_slug,)| {
-            let Some(workspace) = workspaces()
-                .as_ref()
-                .and_then(|result| result.as_ref().ok())
-                .and_then(|workspaces| {
-                    workspaces
-                        .iter()
-                        .find(|workspace| workspace.slug == active_slug)
-                })
-                .cloned()
-            else {
-                return;
-            };
-            active_workspace.set_base(workspace);
-        },
-    ));
+    use_effect(use_reactive((&active_slug,), move |(active_slug,)| {
+        let Some(workspace) = workspaces()
+            .as_ref()
+            .and_then(|result| result.as_ref().ok())
+            .and_then(|workspaces| {
+                workspaces
+                    .iter()
+                    .find(|workspace| workspace.slug == active_slug)
+            })
+            .cloned()
+        else {
+            return;
+        };
+        active_workspace.set_base(workspace);
+    }));
     let touch_slug = slug.clone();
     use_effect(use_reactive(
         (&touch_slug, &active),
