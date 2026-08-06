@@ -2,7 +2,7 @@ use futures_lite::future::block_on;
 
 use crate::{
     MockWorkspaceFiles, RelativePath, WorkspaceAvailability, WorkspaceFiles, WorkspaceIcon,
-    WorkspaceIconSymbol, WorkspaceId, WorkspaceRecord,
+    WorkspaceIconSymbol, WorkspaceId, WorkspaceRecord, WorkspaceSection,
 };
 
 fn workspace() -> WorkspaceRecord {
@@ -17,7 +17,7 @@ fn workspace() -> WorkspaceRecord {
         profile: crate::WorkspaceProfile::default(),
         registered_at_unix_ms: 0,
         last_opened_unix_ms: 0,
-        last_section: Default::default(),
+        last_section: WorkspaceSection::default(),
         availability: WorkspaceAvailability::Available,
     }
 }

@@ -510,6 +510,12 @@ impl WorkspaceRegistryStore {
         })
     }
 
+    /// Persists the last section visited in a workspace.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the workspace is not registered or the registry file
+    /// cannot be read or updated.
     pub fn set_last_section(
         &self,
         id: &WorkspaceId,
