@@ -77,7 +77,13 @@ pub fn Git(slug: String) -> Element {
             WorkspaceGit { key: "{workspace.id.0}", slug: workspace.id.0 }
         },
         None => rsx! {
-            div { class: "grid size-full place-items-center bg-card text-sm text-muted-foreground",
+            div {
+                class: "flex size-full items-center justify-center gap-2 bg-card text-sm text-muted-foreground",
+                role: "status",
+                span {
+                    class: "size-5 animate-spin rounded-full border-2 border-border border-t-primary",
+                    aria_hidden: "true",
+                }
                 "Loading workspace Git checkout…"
             }
         },
@@ -324,6 +330,11 @@ fn WorkspaceGit(slug: String) -> Element {
     };
 
     let status_snapshot = status();
+    let status_loading = status_snapshot.is_none();
+    let status_error = status_snapshot
+        .as_ref()
+        .and_then(|result| result.as_ref().err())
+        .map(ToString::to_string);
     let repository_missing = status_snapshot
         .as_ref()
         .is_some_and(|result| matches!(result, Ok(RepositoryState::Uninitialized)));
@@ -347,7 +358,13 @@ fn WorkspaceGit(slug: String) -> Element {
         .and_then(|result| result.as_ref().ok())
         .cloned()
         .unwrap_or_default();
-    let commit_list = history()
+    let history_snapshot = history();
+    let history_loading = history_snapshot.is_none();
+    let history_error = history_snapshot
+        .as_ref()
+        .and_then(|result| result.as_ref().err())
+        .map(ToString::to_string);
+    let commit_list = history_snapshot
         .as_ref()
         .and_then(|result| result.as_ref().ok())
         .cloned()
@@ -378,7 +395,27 @@ fn WorkspaceGit(slug: String) -> Element {
     let push_disabled = pending() || repository.branch.upstream.is_none() || commits_to_push == 0;
 
     rsx! {
-        if repository_missing {
+        if status_loading {
+            div {
+                class: "flex size-full items-center justify-center gap-2 bg-card text-sm text-muted-foreground",
+                role: "status",
+                span {
+                    class: "size-5 animate-spin rounded-full border-2 border-border border-t-primary",
+                    aria_hidden: "true",
+                }
+                "Loading repository status…"
+            }
+        } else if let Some(status_error) = status_error {
+            div { class: "flex size-full flex-col items-center justify-center gap-3 bg-card p-6 text-center",
+                strong { class: "text-sm text-destructive", "Could not load repository status" }
+                p { class: "max-w-lg text-xs text-muted-foreground", "{status_error}" }
+                Button {
+                    label: "Try again",
+                    kind: ButtonKind::Ghost,
+                    onclick: move |_| *refresh_key.write() += 1,
+                }
+            }
+        } else if repository_missing {
             RepositoryWelcome { pending: pending(), on_initialize }
         } else {
             div { class: if sidebar_open() { "grid size-full min-h-0 min-w-0 grid-cols-[310px_minmax(0,1fr)] overflow-hidden max-md:block" } else { "grid size-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] overflow-hidden max-md:block" },
@@ -388,6 +425,8 @@ fn WorkspaceGit(slug: String) -> Element {
                             repository: repository.clone(),
                             view,
                             commits: commit_list.clone(),
+                            history_loading,
+                            history_error: history_error.clone(),
                             selected_commit,
                             selected,
                             pending: pending(),
@@ -557,6 +596,21 @@ fn WorkspaceGit(slug: String) -> Element {
                             }
                         }
                         div { class: "git-toolbar flex shrink-0 items-center gap-1",
+                            if pending() {
+                                span {
+                                    class: "flex items-center gap-1.5 px-1 text-[10px] text-muted-foreground @max-[640px]:hidden",
+                                    role: "status",
+                                    span {
+                                        class: "size-3 animate-spin rounded-full border-2 border-border border-t-primary",
+                                        aria_hidden: "true",
+                                    }
+                                    if refreshing() {
+                                        "Refreshing…"
+                                    } else {
+                                        "Working…"
+                                    }
+                                }
+                            }
                             if repository.conflict_count() > 0 {
                                 button {
                                     class: "h-7 rounded-md bg-destructive/10 px-2 text-[11px] text-destructive hover:bg-destructive/20 @max-[520px]:hidden",
@@ -728,6 +782,7 @@ fn WorkspaceGit(slug: String) -> Element {
                         if view() == SidebarView::History {
                             HistoryDetail {
                                 detail: commit_detail().flatten(),
+                                selected: selected_commit().is_some(),
                                 pending: pending(),
                                 on_checkout: move |_| {
                                     operation_error.set(None);
@@ -763,6 +818,8 @@ fn WorkspaceGit(slug: String) -> Element {
                             repository: repository.clone(),
                             view,
                             commits: commit_list.clone(),
+                            history_loading,
+                            history_error: history_error.clone(),
                             selected_commit,
                             selected,
                             pending: pending(),

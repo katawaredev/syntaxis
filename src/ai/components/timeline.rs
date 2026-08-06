@@ -11,6 +11,9 @@ const RENDER_PAGE_ITEMS: usize = 100;
 pub(crate) fn AgentTimeline(
     items: Vec<ChatItem>,
     status: AgentStatus,
+    loading: bool,
+    creating: bool,
+    unavailable: bool,
     on_suggestion: EventHandler<String>,
 ) -> Element {
     let is_empty = items.is_empty();
@@ -24,7 +27,28 @@ pub(crate) fn AgentTimeline(
             "data-agent-scroll": true,
             role: "log",
             "aria-live": "polite",
-            if is_empty {
+            if unavailable {
+                div { class: "mx-auto flex min-h-full w-full max-w-2xl flex-col items-center justify-center px-3 py-8 text-center",
+                    h1 { class: "text-lg font-semibold tracking-tight", "Conversation unavailable" }
+                    p { class: "mt-1.5 max-w-sm text-xs leading-relaxed text-muted-foreground",
+                        "Reconnect to Pi to load this chat."
+                    }
+                }
+            } else if loading {
+                div {
+                    class: "mx-auto flex min-h-full w-full max-w-2xl flex-col items-center justify-center gap-3 px-3 py-8 text-center text-sm text-muted-foreground",
+                    role: "status",
+                    span {
+                        class: "size-6 animate-spin rounded-full border-2 border-border border-t-primary",
+                        aria_hidden: "true",
+                    }
+                    if creating {
+                        "Creating your chat…"
+                    } else {
+                        "Loading conversation…"
+                    }
+                }
+            } else if is_empty {
                 div { class: "mx-auto flex min-h-full w-full max-w-2xl flex-col items-center justify-center px-3 py-8 text-center",
                     div { class: "grid size-12 place-items-center rounded-2xl border border-border bg-background text-primary shadow-sm",
                         Icon { icon: AppIcon::Sparkles, size: 23 }

@@ -170,6 +170,7 @@ fn RemoteTerminal(
     let notification_center = use_context::<crate::ai::notifications::NotificationCenter>();
     let mut connection = use_signal(|| ConnectionState::Connecting);
     let mut sessions = use_signal(Vec::<SessionSummary>::new);
+    let mut sessions_loaded = use_signal(|| false);
     let mut active = use_signal(|| None::<SessionId>);
     let mut remembered = use_signal(|| None::<SessionId>);
     let mut remembered_loaded = use_signal(|| embedded);
@@ -387,6 +388,7 @@ fn RemoteTerminal(
                                     ServerMessage::Sessions {
                                         sessions: available,
                                     } => {
+                                        sessions_loaded.set(true);
                                         let start_initializer = pending_command.read().is_some()
                                             && !initializer_started();
                                         let requested =
@@ -1194,6 +1196,14 @@ fn RemoteTerminal(
                                 kind: ButtonKind::Primary,
                                 onclick: move |_| client.restart(),
                             }
+                        }
+                    },
+                    ConnectionState::Ready if !sessions_loaded() => rsx! {
+                        div {
+                            class: "absolute inset-0 flex flex-col items-center justify-center gap-2 bg-card text-muted-foreground",
+                            role: "status",
+                            span { class: "size-5 animate-spin rounded-full border-2 border-border border-t-primary" }
+                            "Loading terminal sessions…"
                         }
                     },
                     ConnectionState::Ready if selected.is_none() && embedded => rsx! {

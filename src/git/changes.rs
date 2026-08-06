@@ -21,6 +21,8 @@ pub(super) fn GitSidebar(
     repository: RepositoryStatus,
     view: Signal<SidebarView>,
     commits: Vec<CommitInfo>,
+    history_loading: bool,
+    history_error: Option<String>,
     mut selected_commit: Signal<Option<String>>,
     selected: Signal<Option<SelectedChange>>,
     pending: bool,
@@ -103,21 +105,41 @@ pub(super) fn GitSidebar(
                 }
             } else {
                 div { class: "touch-scroll-region min-h-0 flex-1 touch-pan-y space-y-1 overflow-y-auto overscroll-contain p-2",
-                    for commit in commits {
-                        button {
-                            class: if selected_commit().as_deref() == Some(commit.oid.as_str()) { "flex w-full min-w-0 gap-2 rounded-md bg-muted p-2 text-left text-foreground" } else { "flex w-full min-w-0 gap-2 rounded-md p-2 text-left text-muted-foreground hover:bg-muted/60 hover:text-foreground" },
-                            onclick: {
-                                let oid = commit.oid.clone();
-                                move |_| {
-                                    selected_commit.set(Some(oid.clone()));
-                                    on_select.call(());
-                                }
-                            },
-                            span { class: "mt-1.5 size-2 shrink-0 rounded-full border-2 border-primary" }
-                            span { class: "min-w-0",
-                                strong { class: "block truncate text-xs font-medium", "{commit.subject}" }
-                                small { class: "mt-1 block truncate font-mono text-[10px] text-muted-foreground",
-                                    "{commit.short_oid} · {commit.author_name}"
+                    if history_loading {
+                        div {
+                            class: "flex min-h-40 items-center justify-center gap-2 text-xs text-muted-foreground",
+                            role: "status",
+                            span {
+                                class: "size-4 shrink-0 animate-spin rounded-full border-2 border-border border-t-primary",
+                                aria_hidden: "true",
+                            }
+                            "Loading commit history…"
+                        }
+                    } else if let Some(error) = history_error {
+                        div { class: "m-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive",
+                            "Could not load history: {error}"
+                        }
+                    } else if commits.is_empty() {
+                        div { class: "grid min-h-40 place-items-center p-4 text-center text-xs text-muted-foreground",
+                            "No commits yet."
+                        }
+                    } else {
+                        for commit in commits {
+                            button {
+                                class: if selected_commit().as_deref() == Some(commit.oid.as_str()) { "flex w-full min-w-0 gap-2 rounded-md bg-muted p-2 text-left text-foreground" } else { "flex w-full min-w-0 gap-2 rounded-md p-2 text-left text-muted-foreground hover:bg-muted/60 hover:text-foreground" },
+                                onclick: {
+                                    let oid = commit.oid.clone();
+                                    move |_| {
+                                        selected_commit.set(Some(oid.clone()));
+                                        on_select.call(());
+                                    }
+                                },
+                                span { class: "mt-1.5 size-2 shrink-0 rounded-full border-2 border-primary" }
+                                span { class: "min-w-0",
+                                    strong { class: "block truncate text-xs font-medium", "{commit.subject}" }
+                                    small { class: "mt-1 block truncate font-mono text-[10px] text-muted-foreground",
+                                        "{commit.short_oid} · {commit.author_name}"
+                                    }
                                 }
                             }
                         }
@@ -339,7 +361,15 @@ pub(super) fn ChangeDetail(
             }
             match result {
                 None => rsx! {
-                    div { class: "grid min-h-48 place-items-center text-xs text-muted-foreground", "Loading Git diff…" }
+                    div {
+                        class: "flex min-h-48 items-center justify-center gap-2 text-xs text-muted-foreground",
+                        role: "status",
+                        span {
+                            class: "size-4 animate-spin rounded-full border-2 border-border border-t-primary",
+                            aria_hidden: "true",
+                        }
+                        "Loading Git diff…"
+                    }
                 },
                 Some(Err(error)) => rsx! {
                     div { class: "m-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive",
@@ -391,8 +421,16 @@ pub(super) fn ConflictDetail(
             }
             match conflict {
                 None => rsx! {
-                    div { class: "grid min-h-48 place-items-center text-xs text-muted-foreground", "Loading conflict…" }
-                },
+                    div {
+                        class: "flex min-h-48 items-center justify-center gap-2 text-xs text-muted-foreground",
+                        role: "status",
+                        span {
+                            class: "size-4 animate-spin rounded-full border-2 border-border border-t-primary",
+                            aria_hidden: "true",
+                        }
+                        "Loading conflict…"
+                    }
+                }
                 Some(Err(error)) => rsx! {
                     div { class: "grid min-h-48 place-items-center p-8 text-center",
                         div { class: "max-w-lg rounded-md border border-warning/40 bg-warning/10 p-4",

@@ -15,14 +15,29 @@ use super::{
 #[component]
 pub(super) fn HistoryDetail(
     detail: Option<Result<CommitDetail, ServerFnError>>,
+    selected: bool,
     pending: bool,
     on_checkout: EventHandler<String>,
     on_revert: EventHandler<String>,
 ) -> Element {
     let Some(detail) = detail else {
-        return rsx! {
-            div { class: "grid h-full min-h-60 place-items-center p-8 text-center text-sm text-muted-foreground",
-                "Select a commit to inspect its Git-generated patch."
+        return if selected {
+            rsx! {
+                div {
+                    class: "flex h-full min-h-60 items-center justify-center gap-2 p-8 text-center text-sm text-muted-foreground",
+                    role: "status",
+                    span {
+                        class: "size-5 shrink-0 animate-spin rounded-full border-2 border-border border-t-primary",
+                        aria_hidden: "true",
+                    }
+                    "Loading commit details…"
+                }
+            }
+        } else {
+            rsx! {
+                div { class: "grid h-full min-h-60 place-items-center p-8 text-center text-sm text-muted-foreground",
+                    "Select a commit to inspect its Git-generated patch."
+                }
             }
         };
     };

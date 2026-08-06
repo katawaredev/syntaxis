@@ -89,7 +89,9 @@ fn RemoteAgent(
         connection,
         snapshot,
         sessions,
+        sessions_loaded,
         selected_id,
+        session_loading,
         mut draft,
         mut error,
         mut extension_request,
@@ -180,13 +182,20 @@ fn RemoteAgent(
     });
 
     let connected = connection.read().is_ready();
+    let connection_failed = connection.read().is_failed();
     let current = snapshot();
     let active_id = selected_id();
     let draft_key = format!(
         "syntaxis:ai-draft:{workspace_id}:{}",
         active_id.as_deref().unwrap_or("new")
     );
-    let session_title = if draft_session() {
+    let session_title = if session_loading() {
+        if draft_session() {
+            "Creating chat…".into()
+        } else {
+            "Loading chat…".into()
+        }
+    } else if draft_session() {
         "New chat".into()
     } else {
         active_id
@@ -228,6 +237,8 @@ fn RemoteAgent(
                                 workspace_id: workspace_id.clone(),
                                 sessions: sessions(),
                                 selected_id: active_id.clone(),
+                                loading: !sessions_loaded(),
+                                unavailable: connection_failed,
                                 connected,
                                 on_select: move |session_id: String| runtime.select_session(session_id),
                                 on_new: move |()| runtime.create_session(),
@@ -269,6 +280,8 @@ fn RemoteAgent(
                                     workspace_id: workspace_id.clone(),
                                     sessions: sessions(),
                                     selected_id: active_id.clone(),
+                                    loading: !sessions_loaded(),
+                                    unavailable: connection_failed,
                                     connected,
                                     on_select: move |session_id: String| {
                                         runtime.select_session(session_id);
@@ -356,6 +369,9 @@ fn RemoteAgent(
                         AgentTimeline {
                             items: current.items.clone(),
                             status: current.status,
+                            loading: session_loading(),
+                            creating: creating_session() && draft_session(),
+                            unavailable: connection_failed,
                             on_suggestion: move |text: String| {
                                 draft.set(text);
                                 composer_error.set(None);

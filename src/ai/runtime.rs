@@ -29,6 +29,10 @@ impl ConnectionState {
         matches!(self, Self::Ready)
     }
 
+    pub(super) fn is_failed(&self) -> bool {
+        matches!(self, Self::Failed(_))
+    }
+
     pub(super) fn label(&self) -> String {
         match self {
             Self::Connecting => "Connecting".into(),
@@ -55,7 +59,9 @@ pub(super) struct AgentRuntime {
     pub connection: Signal<ConnectionState>,
     pub snapshot: Signal<AgentSnapshot>,
     pub sessions: Signal<Vec<AgentSessionSummary>>,
+    pub sessions_loaded: Signal<bool>,
     pub selected_id: Signal<Option<String>>,
+    pub session_loading: Signal<bool>,
     pub draft: Signal<String>,
     pub error: Signal<Option<String>>,
     pub extension_request: Signal<Option<ExtensionUiRequest>>,
@@ -74,6 +80,7 @@ impl AgentRuntime {
         self.draft_session.set(false);
         self.pending_new_prompt.set(None);
         self.selected_id.set(Some(session_id.clone()));
+        self.session_loading.set(true);
         self.snapshot.set(AgentSnapshot::default());
         self.extension_request.set(None);
         self.client
@@ -90,6 +97,7 @@ impl AgentRuntime {
         self.pending_new_prompt.set(None);
         self.draft_session.set(true);
         self.creating_session.set(true);
+        self.session_loading.set(true);
         self.client.send(ClientMessage::CreateSession);
     }
 
@@ -148,7 +156,9 @@ pub(super) fn use_agent_runtime(
     let mut connection = use_signal(|| ConnectionState::Connecting);
     let mut snapshot = use_signal(AgentSnapshot::default);
     let mut sessions = use_signal(Vec::<AgentSessionSummary>::new);
+    let mut sessions_loaded = use_signal(|| false);
     let mut selected_id = use_signal(|| None::<String>);
+    let mut session_loading = use_signal(|| true);
     let mut draft = use_signal(String::new);
     let mut error = use_signal(|| None::<String>);
     let mut extension_request = use_signal(|| None);
@@ -232,6 +242,7 @@ pub(super) fn use_agent_runtime(
                                     sessions: available,
                                 } = &message
                                 {
+                                    sessions_loaded.set(true);
                                     if !initial_selection_sent {
                                         let create_requested = active_workspace
                                             .should_create_agent_session(&workspace_target_id);
@@ -292,6 +303,7 @@ pub(super) fn use_agent_runtime(
                                 if let ServerMessage::SelectedSession { session_id, .. } = &message
                                 {
                                     creating_session.set(false);
+                                    session_loading.set(false);
                                     replacement_selection_pending = false;
                                     if let Some(submission) = pending_new_prompt() {
                                         let action = session_action(
@@ -312,6 +324,7 @@ pub(super) fn use_agent_runtime(
                                 } else if matches!(message, ServerMessage::Error { .. })
                                     && pending_new_prompt().is_some()
                                 {
+                                    session_loading.set(false);
                                     if let Some(submission) = pending_new_prompt.write().take() {
                                         draft.set(submission.text);
                                         attachments.set(submission.images);
@@ -322,6 +335,11 @@ pub(super) fn use_agent_runtime(
                                     && creating_session()
                                 {
                                     creating_session.set(false);
+                                    session_loading.set(false);
+                                } else if matches!(message, ServerMessage::Error { .. })
+                                    && session_loading()
+                                {
+                                    session_loading.set(false);
                                 }
                                 apply_server_message(
                                     message,
@@ -351,7 +369,9 @@ pub(super) fn use_agent_runtime(
         connection,
         snapshot,
         sessions,
+        sessions_loaded,
         selected_id,
+        session_loading,
         draft,
         error,
         extension_request,

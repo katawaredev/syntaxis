@@ -92,7 +92,13 @@ pub fn Files(slug: String, query: FilesQuery) -> Element {
             }
         },
         None => rsx! {
-            div { class: "grid size-full place-items-center bg-card text-sm text-muted-foreground",
+            div {
+                class: "flex size-full items-center justify-center gap-2 bg-card text-sm text-muted-foreground",
+                role: "status",
+                span {
+                    class: "size-5 animate-spin rounded-full border-2 border-border border-t-primary",
+                    aria_hidden: "true",
+                }
                 "Loading workspace files…"
             }
         },
@@ -167,6 +173,8 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
     let close_request = use_signal(|| None::<CloseRequest>);
     let mut git_revert_request = use_signal(|| None::<GitRevertRequest>);
     let mut toast = use_signal(|| None::<ToastState>);
+    let initial_loading = initial().is_none();
+    let initial_failed = initial().is_some_and(|result| result.is_err());
     let drawer_blocked = file_dialog().is_some()
         || close_request().is_some()
         || git_revert_request().is_some()
@@ -639,6 +647,8 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                         git_status: git_status(),
                         ignored_paths: ignored_paths(),
                         show_ignored: show_ignored(),
+                        loading: initial_loading,
+                        load_failed: initial_failed,
                         pending: pending(),
                         on_open: move |entry: FileEntry| {
                             diff.set(None);
@@ -713,6 +723,8 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                         git_status: git_status(),
                         ignored_paths: ignored_paths(),
                         show_ignored: show_ignored(),
+                        loading: initial_loading,
+                        load_failed: initial_failed,
                         pending: pending(),
                         on_open: move |entry: FileEntry| {
                             diff.set(None);
@@ -1103,7 +1115,8 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                             EmptyEditor {
                                 loading: loading_path()
                                     .map(|path| format!("Opening {}…", file_label(&path)))
-                                    .or_else(|| initial().is_none().then(|| "Loading workspace…".into())),
+                                    .or_else(|| initial_loading.then(|| "Loading workspace…".into())),
+                                unavailable: initial_failed,
                             }
                         },
                         Some(

@@ -95,18 +95,22 @@ pub(super) fn EditorStatus(
 }
 
 #[component]
-pub(super) fn EmptyEditor(loading: Option<String>) -> Element {
+pub(super) fn EmptyEditor(loading: Option<String>, #[props(default)] unavailable: bool) -> Element {
     rsx! {
         div { class: "flex size-full flex-col items-center justify-center p-7 text-center",
-            h2 { class: "text-lg text-foreground",
-                if let Some(label) = loading.as_ref() {
+            h2 { class: if unavailable { "text-lg text-destructive" } else { "text-lg text-foreground" },
+                if unavailable {
+                    "Workspace files unavailable"
+                } else if let Some(label) = loading.as_ref() {
                     "{label}"
                 } else {
                     "No open files"
                 }
             }
             p { class: "mt-1.75 max-w-97.5 text-muted-foreground",
-                if loading.is_some() {
+                if unavailable {
+                    "Use Refresh in the explorer to try loading the workspace again."
+                } else if loading.is_some() {
                     "Reading the remote workspace."
                 } else {
                     "Choose a file from the explorer to open it."

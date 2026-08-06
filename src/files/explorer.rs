@@ -46,6 +46,8 @@ pub(super) fn Explorer(
     git_status: Option<RepositoryStatus>,
     ignored_paths: BTreeSet<String>,
     show_ignored: bool,
+    loading: bool,
+    load_failed: bool,
     pending: bool,
     on_open: EventHandler<FileEntry>,
     on_search_open: EventHandler<WorkspaceSearchResult>,
@@ -346,6 +348,20 @@ pub(super) fn Explorer(
                                 }
                             }
                         }
+                    }
+                } else if loading {
+                    div {
+                        class: "flex items-center gap-2 p-3 text-xs text-muted-foreground",
+                        role: "status",
+                        span {
+                            class: "size-3.5 shrink-0 animate-spin rounded-full border-2 border-current/30 border-t-primary",
+                            aria_hidden: "true",
+                        }
+                        "Loading workspace files…"
+                    }
+                } else if load_failed {
+                    div { class: "p-3 text-xs text-destructive",
+                        "Could not load workspace files. Use Refresh to try again."
                     }
                 } else if nodes.is_empty() {
                     div { class: "p-3 text-xs text-muted-foreground",

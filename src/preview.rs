@@ -107,7 +107,13 @@ pub(crate) fn Preview(slug: String) -> Element {
             WorkspacePreview { key: "{workspace.id.0}", workspace_id: workspace.id.0 }
         },
         None => rsx! {
-            div { class: "grid size-full place-items-center bg-card text-sm text-muted-foreground",
+            div {
+                class: "flex size-full items-center justify-center gap-2 bg-card text-sm text-muted-foreground",
+                role: "status",
+                span {
+                    class: "size-5 animate-spin rounded-full border-2 border-border border-t-primary",
+                    aria_hidden: "true",
+                }
                 "Loading workspace preview…"
             }
         },
@@ -144,6 +150,7 @@ fn WorkspacePreview(workspace_id: String) -> Element {
     let mut actions_open = use_signal(|| false);
     let mut toast = use_signal(|| None::<(String, Tone)>);
     let connecting = use_signal(|| false);
+    let mut frame_loading = use_signal(|| false);
     let mut reload_key = use_signal(|| 0_u64);
     let connection_state = PreviewConnectionState {
         lease,
@@ -154,21 +161,32 @@ fn WorkspacePreview(workspace_id: String) -> Element {
     };
     let detected = candidates().and_then(Result::ok).unwrap_or_default();
     let detected_target = single_candidate_target(&detected);
+    let config_loading = config.state() == UseResourceState::Pending;
+    let candidates_loading = candidates.state() == UseResourceState::Pending;
     let restoring = session.state() == UseResourceState::Pending;
-    let controls_busy = connecting() || sharing() || restoring;
+    let initializing = config_loading || restoring;
+    let controls_busy = connecting() || sharing() || initializing;
     let access_busy = connecting() || sharing();
     let target_missing = if url_target() {
         url().trim().is_empty()
     } else {
         port().trim().is_empty()
     };
-    let connect_label = if restoring {
+    let connect_label = if config_loading {
+        "Preparing…"
+    } else if restoring {
         "Restoring…"
     } else if connecting() {
         "Connecting…"
     } else {
         "Connect"
     };
+
+    use_effect(move || {
+        let active_lease = lease().map(|lease| lease.id);
+        let _ = reload_key();
+        frame_loading.set(active_lease.is_some());
+    });
 
     use_effect(move || {
         if config_applied() {
@@ -358,9 +376,11 @@ fn WorkspacePreview(workspace_id: String) -> Element {
                         r#type: "button",
                         title: "Detect preview servers again",
                         "aria-label": "Detect preview servers again",
-                        disabled: candidates.state() == UseResourceState::Pending,
+                        disabled: candidates_loading,
                         onclick: move |_| candidates.restart(),
-                        Icon { icon: AppIcon::Refresh, size: 14 }
+                        span { class: if candidates_loading { "animate-spin" } else { "" },
+                            Icon { icon: AppIcon::Refresh, size: 14 }
+                        }
                     }
                     button {
                         class: "inline-flex h-8 shrink-0 items-center justify-center rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-wait disabled:opacity-60 max-md:w-8 max-md:px-0",
@@ -370,8 +390,10 @@ fn WorkspacePreview(workspace_id: String) -> Element {
                         disabled: controls_busy || target_missing,
                         span { class: "max-md:hidden", "{connect_label}" }
                         span { class: "md:hidden",
-                            if restoring || connecting() {
-                                Icon { icon: AppIcon::Refresh, size: 14 }
+                            if initializing || connecting() {
+                                span { class: "animate-spin",
+                                    Icon { icon: AppIcon::Refresh, size: 14 }
+                                }
                             } else {
                                 Icon { icon: AppIcon::Play, size: 14 }
                             }
@@ -463,10 +485,30 @@ fn WorkspacePreview(workspace_id: String) -> Element {
                     }
                 }
             }
-            div { class: "min-h-0 flex-1 bg-background",
-                if restoring {
-                    div { class: "flex size-full flex-col items-center justify-center p-7 text-center text-sm text-muted-foreground",
-                        "Restoring active preview…"
+            div { class: "relative min-h-0 flex-1 bg-background",
+                if initializing {
+                    div {
+                        class: "flex size-full flex-col items-center justify-center gap-3 p-7 text-center text-sm text-muted-foreground",
+                        role: "status",
+                        span {
+                            class: "size-5 animate-spin rounded-full border-2 border-border border-t-primary",
+                            aria_hidden: "true",
+                        }
+                        if config_loading {
+                            "Loading preview settings…"
+                        } else {
+                            "Restoring active preview…"
+                        }
+                    }
+                } else if connecting() {
+                    div {
+                        class: "flex size-full flex-col items-center justify-center gap-3 p-7 text-center text-sm text-muted-foreground",
+                        role: "status",
+                        span {
+                            class: "size-5 animate-spin rounded-full border-2 border-border border-t-primary",
+                            aria_hidden: "true",
+                        }
+                        "Connecting to preview…"
                     }
                 } else if let Some(active_lease) = lease() {
                     iframe {
@@ -477,18 +519,44 @@ fn WorkspacePreview(workspace_id: String) -> Element {
                         "sandbox": "allow-downloads allow-forms allow-modals allow-pointer-lock allow-popups allow-same-origin allow-scripts",
                         allow: "clipboard-read; clipboard-write; fullscreen",
                         referrerpolicy: "no-referrer",
+                        onload: move |_| frame_loading.set(false),
+                    }
+                    if frame_loading() {
+                        div {
+                            class: "pointer-events-none absolute inset-0 flex items-center justify-center gap-2 bg-background text-sm text-muted-foreground",
+                            role: "status",
+                            span {
+                                class: "size-5 animate-spin rounded-full border-2 border-border border-t-primary",
+                                aria_hidden: "true",
+                            }
+                            "Loading preview page…"
+                        }
                     }
                 } else {
                     div { class: "flex size-full flex-col items-center justify-center p-7 text-center",
                         div { class: "mb-3.5 grid size-13.5 place-items-center rounded-2xl border border-border bg-card text-muted-foreground",
-                            Icon { icon: AppIcon::Eye, size: 24 }
+                            if candidates_loading {
+                                span {
+                                    class: "size-5 animate-spin rounded-full border-2 border-border border-t-primary",
+                                    aria_hidden: "true",
+                                }
+                            } else {
+                                Icon { icon: AppIcon::Eye, size: 24 }
+                            }
                         }
-                        h2 { class: "text-lg font-semibold text-foreground", "Connect a web preview" }
-                        p { class: "mt-2 max-w-md leading-relaxed text-muted-foreground",
-                            "Start the project dev server in Terminal, bind it to 127.0.0.1, then enter its runtime port here."
-                        }
-                        p { class: "mt-2 text-xs text-muted-foreground",
-                            "The port remains private; browser traffic passes through an authenticated Syntaxis gateway."
+                        if candidates_loading {
+                            h2 { class: "text-lg font-semibold text-foreground", "Looking for preview servers…" }
+                            p { class: "mt-2 max-w-md leading-relaxed text-muted-foreground",
+                                "Checking running workspace processes for a web server. You can still enter a port or URL above."
+                            }
+                        } else {
+                            h2 { class: "text-lg font-semibold text-foreground", "Connect a web preview" }
+                            p { class: "mt-2 max-w-md leading-relaxed text-muted-foreground",
+                                "Start the project dev server in Terminal, bind it to 127.0.0.1, then enter its runtime port here."
+                            }
+                            p { class: "mt-2 text-xs text-muted-foreground",
+                                "The port remains private; browser traffic passes through an authenticated Syntaxis gateway."
+                            }
                         }
                     }
                 }

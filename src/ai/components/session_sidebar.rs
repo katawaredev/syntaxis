@@ -14,6 +14,8 @@ pub(crate) fn AgentSessionSidebar(
     workspace_id: String,
     sessions: Vec<AgentSessionSummary>,
     selected_id: Option<String>,
+    loading: bool,
+    unavailable: bool,
     connected: bool,
     on_select: EventHandler<String>,
     on_new: EventHandler<()>,
@@ -107,6 +109,20 @@ pub(crate) fn AgentSessionSidebar(
                                 }
                             }
                         },
+                    }
+                } else if unavailable {
+                    div { class: "grid h-full min-h-40 place-items-center px-4 text-center text-xs text-muted-foreground",
+                        "Chats are unavailable while Pi is offline."
+                    }
+                } else if loading {
+                    div {
+                        class: "flex h-full items-center justify-center gap-2 px-4 text-center text-xs text-muted-foreground",
+                        role: "status",
+                        span {
+                            class: "size-4 shrink-0 animate-spin rounded-full border-2 border-border border-t-primary",
+                            aria_hidden: "true",
+                        }
+                        "Loading chats…"
                     }
                 } else if sessions.is_empty() {
                     div { class: "flex h-full flex-col items-center justify-center px-4 text-center",
