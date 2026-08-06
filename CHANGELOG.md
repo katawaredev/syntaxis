@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.1](https://github.com/katawaredev/syntaxis/compare/v0.6.0...v0.6.1) (2026-08-06)
+
+
+### Bug Fixes
+
+* **git:** display clone mode ([6bb4d84](https://github.com/katawaredev/syntaxis/commit/6bb4d84b1e22e9176331e4eb42b47ae10528ec95))
+* **ui:** better loading state ([0c09478](https://github.com/katawaredev/syntaxis/commit/0c0947844aee707b383e66eb67a36a176128c7ee))
+* **ui:** change git icon ([4d66bef](https://github.com/katawaredev/syntaxis/commit/4d66bef3f2ad31e8044f256a9dd03131605aae1f))
+* **ui:** inconsistent interface behaviour ([adbe214](https://github.com/katawaredev/syntaxis/commit/adbe21438db17c6c990c032de680d7d6a1167267))
+* **ui:** move ai send button to right. ([70dbc10](https://github.com/katawaredev/syntaxis/commit/70dbc104b717f7a8f87f6614a7c88480f48f3846))
+* **ui:** usage ring ([057ebd8](https://github.com/katawaredev/syntaxis/commit/057ebd81a8d2cf6c2d2452c1735a9ed53436841b))
+* use build-essential ([503f5a7](https://github.com/katawaredev/syntaxis/commit/503f5a795a9162aeaf41d7259909172a0ddbc407))
+
 ## [0.6.0](https://github.com/katawaredev/syntaxis/compare/v0.5.0...v0.6.0) (2026-08-05)
 
 
