@@ -3,15 +3,8 @@ use super::*;
 #[component]
 pub(super) fn UsageMenu(stats: Option<SessionStats>) -> Element {
     let mut open = use_signal(|| false);
-    let percent = stats
-        .as_ref()
-        .and_then(|stats| stats.context_percent)
-        .unwrap_or_default();
-    let gauge_color = usage_color(percent);
-    let gauge_style = format!(
-        "background: conic-gradient({gauge_color} {}%, var(--muted) 0)",
-        percent.min(100)
-    );
+    let percent = stats.as_ref().map_or(0, context_percent);
+    let remaining = 100_u8.saturating_sub(percent);
     rsx! {
         PopoverRoot {
             class: "relative shrink-0",
@@ -23,10 +16,33 @@ pub(super) fn UsageMenu(stats: Option<SessionStats>) -> Element {
                 aria_label: "Session usage",
                 aria_expanded: open(),
                 title: "Session usage · {percent}% context",
-                span {
-                    class: "relative grid size-6 place-items-center rounded-full",
-                    style: gauge_style,
-                    span { class: "grid size-4.5 place-items-center rounded-full bg-background",
+                span { class: "relative grid size-6 place-items-center",
+                    svg {
+                        key: "usage-ring-{percent}",
+                        class: "absolute inset-0 size-6 -rotate-90",
+                        view_box: "0 0 24 24",
+                        fill: "none",
+                        aria_hidden: "true",
+                        circle {
+                            class: "stroke-muted",
+                            cx: "12",
+                            cy: "12",
+                            r: "9",
+                            path_length: "100",
+                            stroke_width: "3",
+                        }
+                        circle {
+                            class: usage_ring_class(percent),
+                            cx: "12",
+                            cy: "12",
+                            r: "9",
+                            path_length: "100",
+                            stroke_width: "3",
+                            stroke_linecap: "round",
+                            stroke_dasharray: "{percent} {remaining}",
+                        }
+                    }
+                    span { class: "relative grid size-4.5 place-items-center rounded-full bg-background",
                         Icon { icon: AppIcon::Usage, size: 11 }
                     }
                 }
@@ -74,7 +90,7 @@ fn UsagePopover(stats: Option<SessionStats>) -> Element {
 
 #[component]
 fn ContextUsage(stats: SessionStats) -> Element {
-    let percent = stats.context_percent.unwrap_or_default();
+    let percent = context_percent(&stats);
     let label = match (stats.context_tokens, stats.context_window) {
         (Some(tokens), Some(window)) => {
             format!(
@@ -112,11 +128,23 @@ fn UsageStat(label: String, value: String) -> Element {
     }
 }
 
-fn usage_color(percent: u8) -> &'static str {
+fn context_percent(stats: &SessionStats) -> u8 {
+    stats
+        .context_percent
+        .or_else(|| {
+            let tokens = stats.context_tokens?;
+            let window = stats.context_window?.max(1);
+            Some(((tokens.saturating_mul(100) / window).min(100)) as u8)
+        })
+        .unwrap_or_default()
+        .min(100)
+}
+
+fn usage_ring_class(percent: u8) -> &'static str {
     match percent {
-        85.. => "var(--destructive)",
-        65.. => "var(--warning)",
-        _ => "var(--primary)",
+        85.. => "stroke-destructive",
+        65.. => "stroke-warning",
+        _ => "stroke-primary",
     }
 }
 
