@@ -4,7 +4,7 @@ use async_trait::async_trait;
 
 use crate::{
     ErrorCode, WorkspaceAvailability, WorkspaceError, WorkspaceIcon, WorkspaceIconSymbol,
-    WorkspaceId, WorkspaceRecord, WorkspaceRegistry, WorkspaceResult,
+    WorkspaceId, WorkspaceRecord, WorkspaceRegistry, WorkspaceResult, WorkspaceSection,
 };
 
 /// In-memory registry for UI previews and operation-boundary tests.
@@ -65,7 +65,7 @@ impl WorkspaceRegistry for MockWorkspaceRegistry {
             profile: crate::WorkspaceProfile::default(),
             registered_at_unix_ms: i64::try_from(sequence).unwrap_or(i64::MAX),
             last_opened_unix_ms: i64::try_from(sequence).unwrap_or(i64::MAX),
-            last_section: Default::default(),
+            last_section: WorkspaceSection::default(),
             availability: WorkspaceAvailability::Available,
         };
         records.push(record.clone());
