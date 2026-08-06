@@ -110,42 +110,46 @@ pub(crate) fn AgentComposer(
                             disabled: !connected,
                             onclick: move |_| toggle_speech(),
                         }
-                        span { class: "min-w-0 flex-1 truncate px-1 text-[9px] text-muted-foreground max-[520px]:hidden",
-                            if working {
-                                if pending_messages > 0 {
-                                    "Steer queued · {pending_messages} pending"
+                        span { class: "min-w-0 flex-1 truncate px-1 text-[9px] text-muted-foreground",
+                            span { class: "max-[520px]:hidden",
+                                if working {
+                                    if pending_messages > 0 {
+                                        "Steer queued · {pending_messages} pending"
+                                    } else {
+                                        "Enter steers · Shift+Enter adds a line"
+                                    }
                                 } else {
-                                    "Enter steers · Shift+Enter adds a line"
+                                    "Markdown supported · Enter sends · Shift+Enter adds a line"
                                 }
-                            } else {
-                                "Markdown supported · Enter sends · Shift+Enter adds a line"
                             }
                         }
-                        if working {
-                            IconButton {
-                                label: "Stop Pi",
-                                icon: AppIcon::Stop,
-                                danger: true,
-                                onclick: move |_| on_abort.call(()),
+                        div { class: "ml-auto flex shrink-0 items-center gap-1",
+                            if working {
+                                IconButton {
+                                    label: "Stop Pi",
+                                    icon: AppIcon::Stop,
+                                    danger: true,
+                                    onclick: move |_| on_abort.call(()),
+                                }
                             }
-                        }
-                        button {
-                            class: "grid size-8.5 place-items-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-35",
-                            disabled: !can_send,
-                            aria_label: if working { "Steer Pi" } else { "Send message" },
-                            title: if working { "Steer Pi" } else { "Send message" },
-                            onclick: move |_| {
-                                submit_composer(
-                                    can_send,
-                                    draft,
-                                    attachments,
-                                    composer_error,
-                                    &button_commands,
-                                    &button_draft_key,
-                                    on_send,
-                                );
-                            },
-                            Icon { icon: AppIcon::Send, size: 15 }
+                            button {
+                                class: "grid size-8.5 place-items-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-35",
+                                disabled: !can_send,
+                                aria_label: if working { "Steer Pi" } else { "Send message" },
+                                title: if working { "Steer Pi" } else { "Send message" },
+                                onclick: move |_| {
+                                    submit_composer(
+                                        can_send,
+                                        draft,
+                                        attachments,
+                                        composer_error,
+                                        &button_commands,
+                                        &button_draft_key,
+                                        on_send,
+                                    );
+                                },
+                                Icon { icon: AppIcon::Send, size: 15 }
+                            }
                         }
                     }
                 }
