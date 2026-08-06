@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.2](https://github.com/katawaredev/syntaxis/compare/v0.6.1...v0.6.2) (2026-08-06)
+
+
+### Bug Fixes
+
+* ci ([a2c72df](https://github.com/katawaredev/syntaxis/commit/a2c72dff15d6b9e82e64634e50f573b798882976))
+* clippy errors ([715d3bc](https://github.com/katawaredev/syntaxis/commit/715d3bce398558a38397a61246e1f9d3efc25afc))
+* failed build ([80654da](https://github.com/katawaredev/syntaxis/commit/80654da7e5caf67ea8d84e4784d9d02a42960055))
+* formatting ([b438323](https://github.com/katawaredev/syntaxis/commit/b438323626a810a087872fa639d04496f48399f9))
+* missing import ([34400bd](https://github.com/katawaredev/syntaxis/commit/34400bd5a751f5767c1836db72226933a6a628d0))
+* pi version ([8de0124](https://github.com/katawaredev/syntaxis/commit/8de0124762ada63a2479dc57abffadbccb9f2cf6))
+
 ## [0.6.1](https://github.com/katawaredev/syntaxis/compare/v0.6.0...v0.6.1) (2026-08-06)
 
 
