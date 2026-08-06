@@ -22,7 +22,7 @@ pub(super) fn UsageMenu(stats: Option<SessionStats>) -> Element {
                         class: "absolute inset-0 size-6 -rotate-90",
                         view_box: "0 0 24 24",
                         fill: "none",
-                        aria_hidden: "true",
+                        "aria-hidden": "true",
                         circle {
                             class: "stroke-muted",
                             cx: "12",

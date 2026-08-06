@@ -430,7 +430,7 @@ pub(super) fn ConflictDetail(
                         }
                         "Loading conflict…"
                     }
-                }
+                },
                 Some(Err(error)) => rsx! {
                     div { class: "grid min-h-48 place-items-center p-8 text-center",
                         div { class: "max-w-lg rounded-md border border-warning/40 bg-warning/10 p-4",

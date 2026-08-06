@@ -1188,7 +1188,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                         }
                                     }
                                     CodeEditor {
-                                        key: "{buffer.path}-{diff_mode}",
+                                        key: format!("{}-{diff_mode}", buffer.path),
                                         id: "syntaxis-active-editor",
                                         class: "size-full min-h-full rounded-none",
                                         value: buffer.contents.clone(),
