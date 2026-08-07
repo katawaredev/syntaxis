@@ -317,14 +317,20 @@ pub(super) fn save_path(
     let Some(workspace) = workspace else {
         return;
     };
-    let Some(buffer) = documents.read().iter().find_map(|document| match document {
-        OpenDocument::Text(buffer) if buffer.path == path => Some(buffer.clone()),
-        _ => None,
+    let Some((source, config, version)) = documents.read().iter().find_map(|document| {
+        match document {
+            OpenDocument::Text(buffer) if buffer.path == path => Some((
+                buffer.contents.clone(),
+                buffer.config.clone(),
+                buffer.version.clone(),
+            )),
+            _ => None,
+        }
     }) else {
         return;
     };
     spawn(async move {
-        let contents = apply_editor_config(&buffer.contents, &buffer.config);
+        let contents = apply_editor_config(&source, &config);
         let relative = match RelativePath::try_from(path.clone()) {
             Ok(path) => path,
             Err(error) => {
@@ -343,7 +349,7 @@ pub(super) fn save_path(
             workspace,
             relative,
             contents.clone(),
-            buffer.version,
+            version,
             MAX_TEXT_BYTES,
         )
         .await
@@ -455,15 +461,20 @@ pub(super) fn save_and_close(
         .iter()
         .filter_map(|document| match document {
             OpenDocument::Text(buffer) if paths.contains(&buffer.path) && buffer.is_dirty() => {
-                Some(buffer.clone())
+                Some((
+                    buffer.path.clone(),
+                    buffer.contents.clone(),
+                    buffer.config.clone(),
+                    buffer.version.clone(),
+                ))
             }
             _ => None,
         })
         .collect::<Vec<_>>();
     spawn(async move {
-        for buffer in snapshots {
-            let contents = apply_editor_config(&buffer.contents, &buffer.config);
-            let relative = match RelativePath::try_from(buffer.path.clone()) {
+        for (path, source, config, version) in snapshots {
+            let contents = apply_editor_config(&source, &config);
+            let relative = match RelativePath::try_from(path) {
                 Ok(path) => path,
                 Err(error) => {
                     set_error(toast, error.message);
@@ -474,7 +485,7 @@ pub(super) fn save_and_close(
                 workspace.clone(),
                 relative,
                 contents,
-                buffer.version,
+                version,
                 MAX_TEXT_BYTES,
             )
             .await

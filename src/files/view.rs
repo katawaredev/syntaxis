@@ -534,14 +534,14 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
             .read()
             .iter()
             .find(|document| document.path() == path)
-            .cloned()
+            .map(ActiveDocumentView::from)
     });
     let active_buffer = active_document
         .as_ref()
         .and_then(|document| match document {
-            OpenDocument::Text(buffer) => Some(ActiveBufferMeta {
-                path: buffer.path.clone(),
-                status: buffer.status,
+            ActiveDocumentView::Text { path, status, .. } => Some(ActiveBufferMeta {
+                path: path.clone(),
+                status: *status,
             }),
             _ => None,
         });
@@ -590,9 +590,9 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
     let active_reference = active_document
         .as_ref()
         .and_then(|document| match document {
-            OpenDocument::Text(buffer) => Some(format_editor_reference(
-                &buffer.path,
-                &buffer.contents,
+            ActiveDocumentView::Text { path, contents, .. } => Some(format_editor_reference(
+                path,
+                contents,
                 &editor_selection(),
             )),
             _ => None,
@@ -1120,29 +1120,29 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                             }
                         },
                         Some(
-                            OpenDocument::Text(buffer),
-                        ) if diff().is_none() && is_markdown(&buffer.path) && markdown_preview() => {
+                            ActiveDocumentView::Text { path: _, contents, .. },
+                        ) if diff().is_none() && active_markdown && markdown_preview() => {
                             rsx! {
-                                MarkdownPreview { source: buffer.contents }
+                                MarkdownPreview { source: contents }
                             }
                         }
                         Some(
-                            OpenDocument::Text(buffer),
-                        ) if diff().is_none() && is_svg(&buffer.path) && svg_preview() => {
+                            ActiveDocumentView::Text { path, contents, .. },
+                        ) if diff().is_none() && active_svg && svg_preview() => {
                             rsx! {
-                                SafeSvgPreview { source: buffer.contents, path: buffer.path }
+                                SafeSvgPreview { source: contents, path }
                             }
                         }
                         Some(
-                            OpenDocument::Text(buffer),
-                        ) if diff().is_none() && is_csv(&buffer.path) && csv_preview() => {
+                            ActiveDocumentView::Text { path, contents, .. },
+                        ) if diff().is_none() && active_csv && csv_preview() => {
                             rsx! {
-                                CsvPreview { source: buffer.contents, path: buffer.path }
+                                CsvPreview { source: contents, path }
                             }
                         }
-                        Some(OpenDocument::Text(buffer)) => {
-                            let language = language_for_path(&buffer.path);
-                            let language_slug = language_slug_for_path(&buffer.path);
+                        Some(ActiveDocumentView::Text { path, contents, status, config }) => {
+                            let language = language_for_path(&path);
+                            let language_slug = language_slug_for_path(&path);
                             let configured_language_services = if let Some(workspace) = workspace() {
                                 let servers = language_servers_for_language(
                                     language_slug,
@@ -1161,8 +1161,6 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                             } else {
                                 Vec::new()
                             };
-                            let config = buffer.config.clone();
-                            let path = buffer.path.clone();
                             let reload_path = path.clone();
                             let input_path = path.clone();
                             let active_diff = diff();
@@ -1172,7 +1170,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                             };
                             rsx! {
                                 div { class: "relative size-full min-h-0",
-                                    if buffer.status == BufferStatus::Conflict {
+                                    if status == BufferStatus::Conflict {
                                         div { class: "absolute top-2 right-3 z-10 flex items-center gap-2 rounded-md border border-warning/40 bg-popover px-2.5 py-1.5 text-[10px] shadow-lg",
                                             span { class: "text-warning", "File changed on disk" }
                                             button {
@@ -1189,10 +1187,10 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                     CodeEditor {
                                         id: "syntaxis-active-editor",
                                         class: "size-full min-h-full rounded-none",
-                                        value: buffer.contents.clone(),
+                                        value: contents,
                                         language,
                                         language_name: language_slug,
-                                        filename: buffer.path.clone(),
+                                        filename: path.clone(),
                                         line_numbers: line_numbers(),
                                         word_wrap: word_wrap(),
                                         tab_width: config.tab_width,
@@ -1250,10 +1248,10 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                 }
                             }
                         }
-                        Some(OpenDocument::Image { path, data_url, size }) => rsx! {
+                        Some(ActiveDocumentView::Image { path, data_url, size }) => rsx! {
                             ImagePreview { path, data_url, size }
                         },
-                        Some(OpenDocument::Large { path, size }) => rsx! {
+                        Some(ActiveDocumentView::Large { path, size }) => rsx! {
                             UnsupportedPreview {
                                 path,
                                 size,
@@ -1261,7 +1259,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                 reason: "Files larger than 4 MiB are not loaded into the editor.",
                             }
                         },
-                        Some(OpenDocument::Unsupported { path, size, reason }) => rsx! {
+                        Some(ActiveDocumentView::Unsupported { path, size, reason }) => rsx! {
                             UnsupportedPreview {
                                 path,
                                 size,

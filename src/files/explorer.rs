@@ -60,25 +60,30 @@ pub(super) fn Explorer(
     let mut search_request = use_signal(|| None::<(u64, String)>);
     let mut search_revision = use_signal(|| 0_u64);
     let mut visible_search_files = use_signal(|| 100_usize);
-    let changes_by_path = git_status.map_or_else(BTreeMap::new, |status| {
-        status
-            .changes
-            .into_iter()
-            .map(|change| (change.path.as_str().to_owned(), change))
-            .collect::<BTreeMap<_, _>>()
-    });
-    let git_paths = changes_by_path.keys().cloned().collect::<BTreeSet<_>>();
-    let directory_changes = directory_change_kinds(&changes_by_path);
     let active_view = view();
     let filter_changes = active_view == ExplorerView::Files && changed_only();
+    let (changes_by_path, directory_changes, nodes) = if active_view == ExplorerView::Files {
+        let changes_by_path = git_status.map_or_else(BTreeMap::new, |status| {
+            status
+                .changes
+                .into_iter()
+                .map(|change| (change.path.as_str().to_owned(), change))
+                .collect::<BTreeMap<_, _>>()
+        });
+        let git_paths = changes_by_path.keys().cloned().collect::<BTreeSet<_>>();
+        let directory_changes = directory_change_kinds(&changes_by_path);
+        let nodes = tree.read().flattened_with_expansion(
+            "",
+            filter_changes.then_some(&git_paths),
+            &ignored_paths,
+            show_ignored,
+            filter_changes,
+        );
+        (changes_by_path, directory_changes, nodes)
+    } else {
+        (BTreeMap::new(), BTreeMap::new(), Vec::new())
+    };
     let search_query = search();
-    let nodes = tree.read().flattened_with_expansion(
-        "",
-        filter_changes.then_some(&git_paths),
-        &ignored_paths,
-        show_ignored,
-        filter_changes,
-    );
     let mut search_results = use_resource(move || {
         let request = search_request();
         let options = search_options();
@@ -304,7 +309,7 @@ pub(super) fn Explorer(
                                 let total = results.items.len();
                                 let shown = visible_search_files().min(total);
                                 let nodes = search_result_nodes(
-                                    results.items.into_iter().take(shown).collect(),
+                                    results.items.into_iter().take(shown),
                                 );
                                 rsx! {
                                     for node in nodes {
@@ -466,32 +471,28 @@ enum SearchResultNode {
     },
 }
 
-fn search_result_nodes(results: Vec<WorkspaceSearchResult>) -> Vec<SearchResultNode> {
+fn search_result_nodes(
+    results: impl IntoIterator<Item = WorkspaceSearchResult>,
+) -> Vec<SearchResultNode> {
     let mut nodes = BTreeMap::<String, SearchResultNode>::new();
     for result in results {
         let path = result.entry.path.as_str().to_owned();
-        let parts = path.split('/').map(str::to_owned).collect::<Vec<_>>();
-        let mut parent = String::new();
-        for (depth, name) in parts.iter().take(parts.len().saturating_sub(1)).enumerate() {
-            if !parent.is_empty() {
-                parent.push('/');
-            }
-            parent.push_str(name);
+        let mut depth = 0;
+        let mut name_start = 0;
+        for (directory_end, _) in path.match_indices('/') {
+            let directory = &path[..directory_end];
+            let name = &path[name_start..directory_end];
             nodes
-                .entry(parent.clone())
+                .entry(directory.to_owned())
                 .or_insert_with(|| SearchResultNode::Directory {
-                    path: parent.clone(),
-                    name: name.clone(),
+                    path: directory.to_owned(),
+                    name: name.to_owned(),
                     depth,
                 });
+            depth += 1;
+            name_start = directory_end + 1;
         }
-        nodes.insert(
-            path,
-            SearchResultNode::File {
-                result,
-                depth: parts.len().saturating_sub(1),
-            },
-        );
+        nodes.insert(path, SearchResultNode::File { result, depth });
     }
     nodes.into_values().collect()
 }

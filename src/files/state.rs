@@ -1,5 +1,5 @@
 use dioxus::prelude::*;
-use syntaxis_editor::{BufferStatus, EditorBuffer};
+use syntaxis_editor::{BufferStatus, EditorBuffer, EditorConfig};
 use syntaxis_git::{DiffKind, UnifiedDiff};
 use syntaxis_ui::prelude::Tone;
 
@@ -38,6 +38,60 @@ impl OpenDocument {
 
     pub(super) fn is_dirty(&self) -> bool {
         matches!(self, Self::Text(buffer) if buffer.is_dirty())
+    }
+}
+
+pub(super) enum ActiveDocumentView {
+    Text {
+        path: String,
+        contents: String,
+        status: BufferStatus,
+        config: EditorConfig,
+    },
+    Image {
+        path: String,
+        data_url: String,
+        size: u64,
+    },
+    Large {
+        path: String,
+        size: u64,
+    },
+    Unsupported {
+        path: String,
+        size: u64,
+        reason: String,
+    },
+}
+
+impl From<&OpenDocument> for ActiveDocumentView {
+    fn from(document: &OpenDocument) -> Self {
+        match document {
+            OpenDocument::Text(buffer) => Self::Text {
+                path: buffer.path.clone(),
+                contents: buffer.contents.clone(),
+                status: buffer.status,
+                config: buffer.config.clone(),
+            },
+            OpenDocument::Image {
+                path,
+                data_url,
+                size,
+            } => Self::Image {
+                path: path.clone(),
+                data_url: data_url.clone(),
+                size: *size,
+            },
+            OpenDocument::Large { path, size } => Self::Large {
+                path: path.clone(),
+                size: *size,
+            },
+            OpenDocument::Unsupported { path, size, reason } => Self::Unsupported {
+                path: path.clone(),
+                size: *size,
+                reason: reason.clone(),
+            },
+        }
     }
 }
 

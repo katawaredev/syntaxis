@@ -1,4 +1,6 @@
 use std::collections::BTreeSet;
+#[cfg(any(test, feature = "desktop", feature = "server"))]
+use std::sync::Arc;
 
 use dioxus::prelude::*;
 use dioxus_code_editor::EditorRange;
@@ -58,6 +60,36 @@ impl Default for WorkspaceSearchOptions {
             fuzzy: true,
             case_sensitive: false,
             scope: SearchScope::FileNamesAndContents,
+        }
+    }
+}
+
+#[cfg(any(test, feature = "desktop", feature = "server"))]
+enum PreparedQuery {
+    Fuzzy {
+        characters: Vec<char>,
+        case_sensitive: bool,
+    },
+    Literal(regex::Regex),
+}
+
+#[cfg(any(test, feature = "desktop", feature = "server"))]
+impl PreparedQuery {
+    fn new(query: &str, options: WorkspaceSearchOptions) -> Option<Self> {
+        if query.is_empty() {
+            return None;
+        }
+        if options.fuzzy {
+            Some(Self::Fuzzy {
+                characters: query.chars().collect(),
+                case_sensitive: options.case_sensitive,
+            })
+        } else {
+            regex::RegexBuilder::new(&regex::escape(query))
+                .case_insensitive(!options.case_sensitive)
+                .build()
+                .ok()
+                .map(Self::Literal)
         }
     }
 }
@@ -145,15 +177,18 @@ async fn search_workspace_files_local(
         }
     }
 
+    let Some(query) = PreparedQuery::new(&query, options).map(Arc::new) else {
+        return Ok(WorkspaceSearchResults::default());
+    };
     let mut results = stream::iter(files)
         .map(|entry| {
             let workspace = workspace.clone();
-            let query = query.clone();
+            let query = Arc::clone(&query);
             async move {
                 let name_score = options
                     .scope
                     .searches_names()
-                    .then(|| match_score(entry.path.as_str(), &query, options))
+                    .then(|| match_score(entry.path.as_str(), &query))
                     .flatten();
                 let mut content_result = ContentSearchResult::default();
                 if options.scope.searches_contents() && entry.size <= MAX_TEXT_BYTES {
@@ -161,8 +196,7 @@ async fn search_workspace_files_local(
                         workspace_client::read_text(workspace, entry.path.clone(), MAX_TEXT_BYTES)
                             .await
                     {
-                        content_result =
-                            content_matches_async(file.content, query.clone(), options).await;
+                        content_result = content_matches_async(file.content, query).await;
                     }
                 }
                 if name_score.is_none() && content_result.ranges.is_empty() {
@@ -211,40 +245,45 @@ fn server_error_message(error: ServerFnError) -> String {
 #[cfg(any(feature = "desktop", feature = "server"))]
 async fn content_matches_async(
     source: String,
-    query: String,
-    options: WorkspaceSearchOptions,
+    query: Arc<PreparedQuery>,
 ) -> ContentSearchResult {
     #[cfg(any(feature = "desktop", feature = "server"))]
     {
-        tokio::task::spawn_blocking(move || content_matches(&source, &query, options))
+        tokio::task::spawn_blocking(move || content_matches_prepared(&source, &query))
             .await
             .unwrap_or_default()
     }
     #[cfg(not(any(feature = "desktop", feature = "server")))]
     {
-        content_matches(&source, &query, options)
+        content_matches_prepared(&source, &query)
     }
 }
 
 #[cfg(any(feature = "desktop", feature = "server"))]
 fn is_ignored(path: &str, ignored_paths: &BTreeSet<String>) -> bool {
-    ignored_paths.iter().any(|ignored| {
-        path == ignored
-            || path
-                .strip_prefix(ignored)
-                .is_some_and(|rest| rest.starts_with('/'))
-    })
+    let mut candidate = path;
+    loop {
+        if ignored_paths.contains(candidate) {
+            return true;
+        }
+        let Some((parent, _)) = candidate.rsplit_once('/') else {
+            return false;
+        };
+        candidate = parent;
+    }
 }
 
 #[cfg(any(feature = "desktop", feature = "server"))]
-fn match_score(candidate: &str, query: &str, options: WorkspaceSearchOptions) -> Option<usize> {
-    if options.fuzzy {
-        let ranges = fuzzy_ranges(candidate, query, options.case_sensitive)?;
-        Some(ranges.last()?.end.saturating_sub(ranges.first()?.start) - ranges.len())
-    } else {
-        literal_ranges(candidate, query, options.case_sensitive)
-            .first()
-            .map(|range| range.start)
+fn match_score(candidate: &str, query: &PreparedQuery) -> Option<usize> {
+    match query {
+        PreparedQuery::Fuzzy {
+            characters,
+            case_sensitive,
+        } => {
+            let ranges = fuzzy_ranges_prepared(candidate, characters, *case_sensitive)?;
+            Some(ranges.last()?.end.saturating_sub(ranges.first()?.start) - ranges.len())
+        }
+        PreparedQuery::Literal(expression) => expression.find(candidate).map(|matched| matched.start()),
     }
 }
 
@@ -262,24 +301,25 @@ fn content_matches(
     query: &str,
     options: WorkspaceSearchOptions,
 ) -> ContentSearchResult {
-    if options.fuzzy {
-        fuzzy_content_matches(source, query, options.case_sensitive)
-    } else {
-        literal_content_matches(source, query, options.case_sensitive)
+    PreparedQuery::new(query, options)
+        .map_or_else(ContentSearchResult::default, |query| {
+            content_matches_prepared(source, &query)
+        })
+}
+
+#[cfg(any(test, feature = "desktop", feature = "server"))]
+fn content_matches_prepared(source: &str, query: &PreparedQuery) -> ContentSearchResult {
+    match query {
+        PreparedQuery::Fuzzy {
+            characters,
+            case_sensitive,
+        } => fuzzy_content_matches(source, characters, *case_sensitive),
+        PreparedQuery::Literal(expression) => literal_content_matches(source, expression),
     }
 }
 
 #[cfg(any(test, feature = "desktop", feature = "server"))]
-fn literal_content_matches(source: &str, query: &str, case_sensitive: bool) -> ContentSearchResult {
-    if query.is_empty() {
-        return ContentSearchResult::default();
-    }
-    let Ok(expression) = regex::RegexBuilder::new(&regex::escape(query))
-        .case_insensitive(!case_sensitive)
-        .build()
-    else {
-        return ContentSearchResult::default();
-    };
+fn literal_content_matches(source: &str, expression: &regex::Regex) -> ContentSearchResult {
     let mut result = ContentSearchResult::default();
     let mut offset = 0;
     for (line_index, raw_line) in source.split_inclusive('\n').enumerate() {
@@ -307,36 +347,35 @@ fn literal_content_matches(source: &str, query: &str, case_sensitive: bool) -> C
 }
 
 #[cfg(any(test, feature = "desktop", feature = "server"))]
-fn fuzzy_content_matches(source: &str, query: &str, case_sensitive: bool) -> ContentSearchResult {
+fn fuzzy_content_matches(source: &str, query: &[char], case_sensitive: bool) -> ContentSearchResult {
     let mut result = ContentSearchResult::default();
     let mut offset = 0;
     for (line_index, raw_line) in source.split_inclusive('\n').enumerate() {
         let line = raw_line.trim_end_matches(['\r', '\n']);
-        if let Some(line_ranges) = fuzzy_ranges(line, query, case_sensitive)
+        if let Some(mut line_ranges) = fuzzy_ranges_prepared(line, query, case_sensitive)
             .filter(|ranges| is_compact_content_match(line, ranges))
         {
             result.match_count += 1;
-            let absolute_ranges = line_ranges
-                .into_iter()
-                .map(|range| EditorRange {
-                    start: offset + range.start,
-                    end: offset + range.end,
-                })
-                .collect::<Vec<_>>();
-            if result.occurrences.len() < MAX_OCCURRENCES_PER_FILE {
+            for range in &mut line_ranges {
+                range.start += offset;
+                range.end += offset;
+            }
+            if result.occurrences.len() < MAX_OCCURRENCES_PER_FILE
+                && let Some((first, last)) = line_ranges.first().zip(line_ranges.last())
+            {
                 result.occurrences.push(SearchOccurrence {
                     line: line_index + 1,
                     preview: line.trim().to_owned(),
                     target: EditorRange {
-                        start: absolute_ranges.first().unwrap().start,
-                        end: absolute_ranges.last().unwrap().end,
+                        start: first.start,
+                        end: last.end,
                     },
                 });
             }
             let remaining = MAX_HIGHLIGHT_RANGES_PER_FILE.saturating_sub(result.ranges.len());
             result
                 .ranges
-                .extend(absolute_ranges.into_iter().take(remaining));
+                .extend(line_ranges.into_iter().take(remaining));
         }
         offset += raw_line.len();
     }
@@ -345,66 +384,85 @@ fn fuzzy_content_matches(source: &str, query: &str, case_sensitive: bool) -> Con
 
 #[cfg(any(test, feature = "desktop", feature = "server"))]
 fn literal_ranges(source: &str, query: &str, case_sensitive: bool) -> Vec<EditorRange> {
-    if query.is_empty() {
+    let options = WorkspaceSearchOptions {
+        fuzzy: false,
+        case_sensitive,
+        ..WorkspaceSearchOptions::default()
+    };
+    let Some(PreparedQuery::Literal(expression)) = PreparedQuery::new(query, options) else {
         return Vec::new();
-    }
-    regex::RegexBuilder::new(&regex::escape(query))
-        .case_insensitive(!case_sensitive)
-        .build()
-        .map(|expression| {
-            expression
-                .find_iter(source)
-                .map(|matched| EditorRange {
-                    start: matched.start(),
-                    end: matched.end(),
-                })
-                .collect()
+    };
+    expression
+        .find_iter(source)
+        .map(|matched| EditorRange {
+            start: matched.start(),
+            end: matched.end(),
         })
-        .unwrap_or_default()
+        .collect()
 }
 
 #[cfg(any(test, feature = "desktop", feature = "server"))]
 fn fuzzy_ranges(source: &str, query: &str, case_sensitive: bool) -> Option<Vec<EditorRange>> {
-    let source_chars = source.char_indices().collect::<Vec<_>>();
-    let query_chars = query.chars().collect::<Vec<_>>();
-    let first = *query_chars.first()?;
-    let mut best = None::<Vec<EditorRange>>;
+    let characters = query.chars().collect::<Vec<_>>();
+    fuzzy_ranges_prepared(source, &characters, case_sensitive)
+}
 
-    for (start_index, &(start, candidate)) in source_chars.iter().enumerate() {
-        if !chars_match(candidate, first, case_sensitive) {
-            continue;
-        }
-        let mut ranges = vec![EditorRange {
-            start,
-            end: start + candidate.len_utf8(),
-        }];
-        let mut source_index = start_index + 1;
-        for &wanted in &query_chars[1..] {
-            let Some((matched_index, &(start, candidate))) = source_chars
-                .iter()
-                .enumerate()
-                .skip(source_index)
-                .find(|(_, (_, candidate))| chars_match(*candidate, wanted, case_sensitive))
-            else {
-                ranges.clear();
-                break;
-            };
-            ranges.push(EditorRange {
-                start,
-                end: start + candidate.len_utf8(),
-            });
-            source_index = matched_index + 1;
-        }
-        if ranges.len() == query_chars.len()
-            && best.as_ref().is_none_or(|current| {
-                ranges.last().unwrap().end - ranges.first().unwrap().start
-                    < current.last().unwrap().end - current.first().unwrap().start
-            })
-        {
-            best = Some(ranges);
+#[cfg(any(test, feature = "desktop", feature = "server"))]
+fn fuzzy_ranges_prepared(
+    source: &str,
+    query: &[char],
+    case_sensitive: bool,
+) -> Option<Vec<EditorRange>> {
+    let last_query_index = query.len().checked_sub(1)?;
+    let mut prefix_starts = vec![None; query.len()];
+    let mut best = None::<EditorRange>;
+
+    for (offset, candidate) in source.char_indices() {
+        for query_index in (0..query.len()).rev() {
+            if !chars_match(candidate, query[query_index], case_sensitive) {
+                continue;
+            }
+            if query_index == 0 {
+                prefix_starts[0] = Some(offset);
+            } else if let Some(start) = prefix_starts[query_index - 1] {
+                prefix_starts[query_index] = Some(start);
+            }
+            if query_index == last_query_index {
+                let Some(start) = prefix_starts[query_index] else {
+                    continue;
+                };
+                let candidate_range = EditorRange {
+                    start,
+                    end: offset + candidate.len_utf8(),
+                };
+                if best.as_ref().is_none_or(|current| {
+                    candidate_range.end - candidate_range.start < current.end - current.start
+                }) {
+                    best = Some(candidate_range);
+                }
+            }
         }
     }
-    best
+
+    let best = best?;
+    let mut wanted = query.iter();
+    let mut current = wanted.next()?;
+    let mut ranges = Vec::with_capacity(query.len());
+    for (relative_offset, candidate) in source[best.start..best.end].char_indices() {
+        if !chars_match(candidate, *current, case_sensitive) {
+            continue;
+        }
+        let start = best.start + relative_offset;
+        ranges.push(EditorRange {
+            start,
+            end: start + candidate.len_utf8(),
+        });
+        let Some(next) = wanted.next() else {
+            break;
+        };
+        current = next;
+    }
+    (ranges.len() == query.len()).then_some(ranges)
 }
 
 #[cfg(any(test, feature = "desktop", feature = "server"))]
@@ -421,10 +479,20 @@ fn is_compact_content_match(source: &str, ranges: &[EditorRange]) -> bool {
     let Some((first, last)) = ranges.first().zip(ranges.last()) else {
         return false;
     };
-    let span = source[first.start..last.end].chars().count();
+    let span = source
+        .get(first.start..last.end)
+        .unwrap_or_default()
+        .chars()
+        .count();
     let largest_gap = ranges
         .windows(2)
-        .map(|pair| source[pair[0].end..pair[1].start].chars().count())
+        .map(|pair| {
+            source
+                .get(pair[0].end..pair[1].start)
+                .unwrap_or_default()
+                .chars()
+                .count()
+        })
         .max()
         .unwrap_or(0);
     largest_gap <= 2 && span <= ranges.len() + ranges.len().div_ceil(2).max(2)
@@ -435,11 +503,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn ignored_paths_match_entries_and_descendants_only() {
+        let ignored = BTreeSet::from(["target".to_owned(), "nested/cache".to_owned()]);
+        assert!(is_ignored("target/debug/app", &ignored));
+        assert!(is_ignored("nested/cache", &ignored));
+        assert!(!is_ignored("targeted/file", &ignored));
+        assert!(!is_ignored("nested/cached/file", &ignored));
+    }
+
+    #[test]
     fn fuzzy_matching_preserves_source_byte_ranges() {
         let ranges = fuzzy_ranges("src/FileSearch.rs", "fsr", false).unwrap();
         let matched = ranges
             .iter()
-            .map(|range| &"src/FileSearch.rs"[range.start..range.end])
+            .map(|range| {
+                "src/FileSearch.rs"
+                    .get(range.start..range.end)
+                    .unwrap_or_default()
+            })
             .collect::<String>();
         assert_eq!(matched.to_ascii_lowercase(), "fsr");
     }

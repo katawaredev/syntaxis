@@ -276,12 +276,17 @@ async fn read_clone_progress(
         }
         output.extend_from_slice(&buffer[..count]);
         pending.extend_from_slice(&buffer[..count]);
-        while let Some(separator) = pending
+        let mut consumed = 0;
+        while let Some(separator) = pending[consumed..]
             .iter()
             .position(|byte| matches!(byte, b'\r' | b'\n'))
         {
-            let line = pending.drain(..=separator).collect::<Vec<_>>();
-            forward_progress_line(&line, progress);
+            let end = consumed + separator + 1;
+            forward_progress_line(&pending[consumed..end], progress);
+            consumed = end;
+        }
+        if consumed > 0 {
+            pending.drain(..consumed);
         }
     }
 }
