@@ -15,6 +15,7 @@ pub(super) enum ProjectTemplate {
     Blazor,
     Vite,
     VitePlus,
+    Cloudflare,
     Shadcn,
     React,
     Vue,
@@ -70,7 +71,7 @@ pub(super) const CATEGORIES: [TemplateCategory; 4] = [
     TemplateCategory::Native,
 ];
 
-pub(super) const TEMPLATES: [TemplateDefinition; 29] = [
+pub(super) const TEMPLATES: [TemplateDefinition; 30] = [
     TemplateDefinition {
         template: ProjectTemplate::Empty,
         label: "Empty",
@@ -179,6 +180,16 @@ pub(super) const TEMPLATES: [TemplateDefinition; 29] = [
         category: TemplateCategory::Web,
         command: Some(
             "if ! command -v vp >/dev/null 2>&1; then curl -fsSL https://vite.plus | bash; fi; export PATH=\"${VP_HOME:-$HOME/.vite-plus}/bin:$PATH\"; vp create --directory .",
+        ),
+    },
+    TemplateDefinition {
+        template: ProjectTemplate::Cloudflare,
+        label: "Cloudflare",
+        description: "Interactive Workers app",
+        icon: ProjectTemplateIcon::Cloudflare,
+        category: TemplateCategory::Web,
+        command: Some(
+            "mise x node@lts -- npm create cloudflare@latest -- . && mise use -y node@lts",
         ),
     },
     TemplateDefinition {

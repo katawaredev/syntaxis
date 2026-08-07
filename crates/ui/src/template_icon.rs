@@ -13,6 +13,7 @@ pub enum ProjectTemplateIcon {
     Dotnet,
     Vite,
     VitePlus,
+    Cloudflare,
     React,
     Tanstack,
     ReactRouter,
@@ -54,6 +55,9 @@ pub fn TemplateIcon(icon: ProjectTemplateIcon, #[props(default = 24)] size: u32)
         },
         ProjectTemplateIcon::Vite | ProjectTemplateIcon::VitePlus => rsx! {
             color::Vite { size }
+        },
+        ProjectTemplateIcon::Cloudflare => rsx! {
+            color::CloudflareWorkersIcon { size }
         },
         ProjectTemplateIcon::React => rsx! {
             color::React { size }

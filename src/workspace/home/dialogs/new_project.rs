@@ -329,7 +329,7 @@ mod tests {
 
     #[test]
     fn starter_catalog_is_unique_and_includes_interactive_generators() {
-        assert_eq!(TEMPLATES.len(), 29);
+        assert_eq!(TEMPLATES.len(), 30);
         assert_eq!(
             TEMPLATES
                 .iter()
@@ -345,6 +345,9 @@ mod tests {
         let tanstack = template_definition(ProjectTemplate::TanstackStart)
             .command
             .expect("TanStack Start should have an initializer");
+        let cloudflare = template_definition(ProjectTemplate::Cloudflare)
+            .command
+            .expect("Cloudflare should have an initializer");
         let shadcn = template_definition(ProjectTemplate::Shadcn)
             .command
             .expect("shadcn/ui should have an initializer");
@@ -363,6 +366,7 @@ mod tests {
 
         assert!(vite_plus.contains("vp create --directory ."));
         assert!(tanstack.contains("@tanstack/cli@latest create ."));
+        assert!(cloudflare.contains("npm create cloudflare@latest -- ."));
         assert!(shadcn.contains("shadcn@latest init"));
         assert!(shadcn.contains("--name \"$project_name\""));
         assert!(shadcn.contains("cp -a -- \"$project_name\"/. ."));
