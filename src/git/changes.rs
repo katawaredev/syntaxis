@@ -354,7 +354,7 @@ pub(super) fn ChangeDetail(
                                     let path = selection.path.clone();
                                     move |_| on_mutation.call(Mutation::Discard(vec![path.clone()]))
                                 },
-                                Icon { icon: AppIcon::Refresh, size: 13 }
+                                Icon { icon: AppIcon::Revert, size: 13 }
                                 span { class: "max-[420px]:hidden", "Discard" }
                             }
                         }
