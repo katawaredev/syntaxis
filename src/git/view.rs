@@ -15,6 +15,8 @@ use syntaxis_ui::prelude::{
     PanelHeader, PanelHeaderKind, TextArea, TextInput, TextInputType, Toast, Tone,
 };
 
+use crate::{app::Route, files::FilesQuery};
+
 #[path = "changes.rs"]
 mod changes;
 #[path = "dialogs.rs"]
@@ -94,7 +96,6 @@ pub fn Git(slug: String) -> Element {
 fn WorkspaceGit(slug: String) -> Element {
     let mut refresh_key = use_signal(|| 0_u64);
     let mut selected = use_signal(|| None::<SelectedChange>);
-    let mut expanded_diff = use_signal(|| false);
     let view = use_signal(SidebarView::default);
     let selected_commit = use_signal(|| None::<String>);
     let RepositoryResources {
@@ -106,7 +107,7 @@ fn WorkspaceGit(slug: String) -> Element {
         diff,
         conflict,
         commit_detail,
-    } = use_repository_resources(&slug, refresh_key, selected, expanded_diff, selected_commit);
+    } = use_repository_resources(&slug, refresh_key, selected, selected_commit);
     let mut drawer = use_signal(|| false);
     let mut sidebar_open = use_signal(|| true);
     let mut branch_dialog_target = use_signal(|| None::<String>);
@@ -130,11 +131,6 @@ fn WorkspaceGit(slug: String) -> Element {
             drawer.set(false);
         }
     });
-    use_effect(move || {
-        let _ = selected();
-        expanded_diff.set(false);
-    });
-
     use_effect(move || {
         if dialog() == GitDialog::None {
             if let Some(error) = operation_error() {
@@ -797,13 +793,12 @@ fn WorkspaceGit(slug: String) -> Element {
                             }
                         } else {
                             ChangeDetail {
+                                slug: slug.clone(),
                                 selection: selected(),
                                 change: selected_file_change,
                                 diff: diff().flatten(),
                                 conflict: conflict().flatten(),
-                                expanded: expanded_diff(),
                                 pending: pending(),
-                                on_expand: move |()| expanded_diff.toggle(),
                                 on_mutation,
                             }
                         }

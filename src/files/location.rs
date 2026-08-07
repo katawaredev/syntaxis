@@ -9,6 +9,7 @@ pub struct FilesQuery {
     pub(super) column: Option<usize>,
     pub(super) end_line: Option<usize>,
     pub(super) end_column: Option<usize>,
+    pub(super) view_changes: Option<syntaxis_git::DiffKind>,
 }
 
 impl FilesQuery {
@@ -32,6 +33,15 @@ impl FilesQuery {
             column: column.map(|value| value.max(1)),
             end_line: end_line.map(|value| value.max(1)),
             end_column: end_column.map(|value| value.max(1)),
+            view_changes: None,
+        }
+    }
+
+    pub(crate) fn view_changes(path: String, kind: syntaxis_git::DiffKind) -> Self {
+        Self {
+            path: Some(path),
+            view_changes: Some(kind),
+            ..Self::default()
         }
     }
 }
@@ -52,6 +62,13 @@ impl From<&str> for FilesQuery {
                         result.end_column = result.end_column.or(location.end_column);
                     }
                 }
+                "changes" if result.view_changes.is_none() => {
+                    result.view_changes = match value.as_ref() {
+                        "staged" => Some(syntaxis_git::DiffKind::Staged),
+                        "worktree" => Some(syntaxis_git::DiffKind::Worktree),
+                        _ => None,
+                    };
+                }
                 _ => {}
             }
         }
@@ -64,6 +81,15 @@ impl fmt::Display for FilesQuery {
         let mut serializer = url::form_urlencoded::Serializer::new(String::new());
         if let Some(path) = self.path.as_deref() {
             serializer.append_pair("path", path);
+        }
+        if let Some(kind) = self.view_changes {
+            serializer.append_pair(
+                "changes",
+                match kind {
+                    syntaxis_git::DiffKind::Staged => "staged",
+                    syntaxis_git::DiffKind::Worktree => "worktree",
+                },
+            );
         }
         let mut query = serializer.finish();
         if let Some(location) = compact_location(self) {
@@ -198,6 +224,23 @@ mod tests {
         assert_eq!(
             link,
             "/workspaces/syntaxis-demo/files?path=src%2Ffolder+with+spaces%2Fmain.rs&at=42:17-25"
+        );
+        assert_eq!(link.parse::<crate::app::Route>().unwrap(), route);
+    }
+
+    #[test]
+    fn file_change_links_round_trip_through_the_router() {
+        let route = crate::app::Route::Files {
+            slug: "syntaxis-demo".into(),
+            query: FilesQuery::view_changes(
+                "src/folder with spaces/main.rs".into(),
+                syntaxis_git::DiffKind::Worktree,
+            ),
+        };
+        let link = route.to_string();
+        assert_eq!(
+            link,
+            "/workspaces/syntaxis-demo/files?path=src%2Ffolder+with+spaces%2Fmain.rs&changes=worktree"
         );
         assert_eq!(link.parse::<crate::app::Route>().unwrap(), route);
     }

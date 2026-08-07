@@ -6,8 +6,9 @@ use super::{
     component, diff_line_class, dioxus_core, dioxus_elements, dioxus_signals,
     language_slug_for_path, parse_diff_hunks, rsx, ActionCallback, AnyStorage, AppIcon, ChangeKind,
     CommitInfo, ConflictChoice, ConflictFile, DiffHunk, DiffKind, DiffLayout, Element,
-    EventHandler, FileChange, FileIcon, GitChangeBadge, GlobalAttributesExtension, History,
-    HunkAction, Icon, InputExtension, Language, LinkExtension, Mutation, OptionExtension, Props,
+    EventHandler, FileChange, FileIcon, FilesQuery, GitChangeBadge, GlobalAttributesExtension,
+    History, HunkAction, Icon, InputExtension, Language, Link, LinkExtension, Mutation,
+    OptionExtension, Props, Route,
     ReadableExt, ReadableHashMapExt, ReadableHashSetExt, ReadableOptionExt, ReadableResultExt,
     ReadableStrExt, ReadableVecExt, RepositoryStatus, Result, SelectExtension, SelectedChange,
     ServerFnError, SidebarView, Signal, Storage, StyleExtension, SvgAttributesExtension,
@@ -247,13 +248,12 @@ pub(super) fn ChangeRow(
 
 #[component]
 pub(super) fn ChangeDetail(
+    slug: String,
     selection: Option<SelectedChange>,
     change: Option<FileChange>,
     diff: Option<Result<UnifiedDiff, ServerFnError>>,
     conflict: Option<Result<ConflictFile, ServerFnError>>,
-    expanded: bool,
     pending: bool,
-    on_expand: EventHandler<()>,
     on_mutation: EventHandler<Mutation>,
 ) -> Element {
     let Some(selection) = selection else {
@@ -290,22 +290,19 @@ pub(super) fn ChangeDetail(
                 }
                 div { class: "flex shrink-0 items-center gap-1.5 max-md:gap-1",
                     div { class: "flex shrink-0 items-center gap-1.5 max-md:gap-1",
-                        button {
+                        Link {
                             class: "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground max-md:px-2",
-                            title: if expanded { "Collapse diff context" } else { "Expand diff context" },
-                            "aria-label": if expanded { "Collapse diff context" } else { "Expand diff context" },
-                            onclick: move |_| on_expand.call(()),
-                            Icon {
-                                icon: if expanded { AppIcon::Collapse } else { AppIcon::Expand },
-                                size: 13,
-                            }
-                            span { class: "max-md:hidden",
-                                if expanded {
-                                    "Collapse"
-                                } else {
-                                    "Expand"
-                                }
-                            }
+                            title: "Open in Files with changes visible",
+                            "aria-label": "Open in Files with changes visible",
+                            to: Route::Files {
+                                slug: slug.clone(),
+                                query: FilesQuery::view_changes(
+                                    selection.path.clone(),
+                                    selection.kind,
+                                ),
+                            },
+                            Icon { icon: AppIcon::Expand, size: 13 }
+                            span { class: "max-md:hidden", "Open in Files" }
                         }
                         span { class: "flex shrink-0 items-center gap-2 px-1 max-md:hidden",
                             span { class: "text-[10px] text-red-400", "−{deletions}" }
@@ -389,15 +386,11 @@ pub(super) fn ChangeDetail(
                     }
                 },
                 Some(Ok(diff)) => rsx! {
-                    if expanded {
-                        FullFileDiff { diff, path: selection.path }
-                    } else {
-                        HunkDiff {
-                            diff,
-                            selection,
-                            pending,
-                            on_mutation,
-                        }
+                    HunkDiff {
+                        diff,
+                        selection,
+                        pending,
+                        on_mutation,
                     }
                 },
             }
@@ -662,24 +655,6 @@ fn HunkCard(
                 old_line_offset: hunk.old_start.saturating_sub(1),
                 new_line_offset: hunk.new_start.saturating_sub(1),
             }
-        }
-    }
-}
-
-#[component]
-fn FullFileDiff(diff: UnifiedDiff, path: String) -> Element {
-    let (Some(original), Some(current)) = (diff.original, diff.current) else {
-        return rsx! {
-            RawPatch { patch: diff.patch }
-        };
-    };
-    rsx! {
-        UnifiedDiffView {
-            original,
-            current,
-            language: diff_language(&path),
-            collapse_unchanged: false,
-            layout: DiffLayout::FullFile,
         }
     }
 }

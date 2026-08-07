@@ -384,6 +384,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
 
     use_effect({
         let query = query.clone();
+        let query_diff_slug = route_slug.clone();
         move || {
             let Some(path) = query.path.clone() else {
                 return;
@@ -423,7 +424,12 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                         active_path,
                         loading_path,
                         loading_documents,
-                        None,
+                        query.view_changes.map(|kind| OpenDiffRequest {
+                            slug: query_diff_slug.clone(),
+                            kind,
+                            diff,
+                            toast,
+                        }),
                     ),
                     Ok(_) => {
                         pending_location.set(None);
