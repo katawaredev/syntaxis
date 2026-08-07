@@ -271,6 +271,7 @@ fn WorkspaceGit(slug: String) -> Element {
                 Ok(CommitOutcome::Committed { commit }) => {
                     dialog.set(GitDialog::None);
                     retry_commit.set(None);
+                    selected.set(None);
                     *refresh_key.write() += 1;
                     toast.set(Some((
                         format!("Committed {} · {}", short_oid(&commit.oid), commit.summary),
@@ -310,6 +311,7 @@ fn WorkspaceGit(slug: String) -> Element {
                 Ok(CommitOutcome::Committed { commit }) => {
                     dialog.set(GitDialog::None);
                     retry_commit.set(None);
+                    selected.set(None);
                     *refresh_key.write() += 1;
                     toast.set(Some((
                         format!(
