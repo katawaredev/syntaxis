@@ -1,7 +1,8 @@
 //! Shared, Pi-specific chat protocol used between the Syntaxis client and host.
 use serde::{Deserialize, Serialize};
-pub const PROTOCOL_VERSION: u16 = 5;
+pub const PROTOCOL_VERSION: u16 = 6;
 pub const MAX_PROMPT_BYTES: usize = 128 * 1024;
+pub const MAX_SESSION_NAME_CHARS: usize = 80;
 pub const MAX_PROMPT_IMAGES: usize = 5;
 pub const MAX_IMAGE_BYTES: u64 = 8 * 1024 * 1024;
 pub const MAX_TOTAL_IMAGE_BYTES: u64 = 16 * 1024 * 1024;
@@ -271,6 +272,10 @@ pub enum ClientMessage {
     DeleteSession {
         session_id: String,
     },
+    RenameSession {
+        session_id: String,
+        name: String,
+    },
     SessionAction {
         session_id: String,
         action: Box<ClientMessage>,
@@ -345,12 +350,21 @@ impl ClientMessage {
             }
             Self::SelectSession { session_id }
             | Self::DeleteSession { session_id }
+            | Self::RenameSession { session_id, .. }
             | Self::SessionAction { session_id, .. }
                 if session_id.trim().is_empty() =>
             {
                 Err(AgentError::new(
                     AgentErrorCode::InvalidRequest,
                     "A Pi session id is required",
+                ))
+            }
+            Self::RenameSession { name, .. }
+                if name.trim().is_empty() || name.trim().chars().count() > MAX_SESSION_NAME_CHARS =>
+            {
+                Err(AgentError::new(
+                    AgentErrorCode::InvalidRequest,
+                    "A session name between 1 and 80 characters is required",
                 ))
             }
             Self::SessionAction { action, .. }
@@ -374,6 +388,7 @@ impl ClientMessage {
             | Self::CreateSession
             | Self::SelectSession { .. }
             | Self::DeleteSession { .. }
+            | Self::RenameSession { .. }
             | Self::Prompt { .. }
             | Self::Abort
             | Self::SetModel { .. }
@@ -394,6 +409,7 @@ impl ClientMessage {
             Self::CreateSession
             | Self::SelectSession { .. }
             | Self::DeleteSession { .. }
+            | Self::RenameSession { .. }
             | Self::Prompt { .. }
             | Self::Abort
             | Self::SetModel { .. }

@@ -249,6 +249,33 @@ impl HostAgentWorkspace {
         self.emit_sessions();
         Ok(())
     }
+    /// Set the Pi-supported display name for a session.
+    ///
+    /// # Errors
+    ///
+    /// Returns validation, lookup, or process errors.
+    pub async fn rename_session(&self, id: &str, name: &str) -> Result<(), AgentError> {
+        let request = ClientMessage::RenameSession {
+            session_id: id.to_owned(),
+            name: name.to_owned(),
+        };
+        request.validate()?;
+        self.select_session(id).await?;
+        let process = lock(&self.sessions)
+            .get(id)
+            .and_then(|session| session.process.clone())
+            .ok_or_else(|| AgentError::new(AgentErrorCode::Unavailable, "Pi is not running"))?;
+        let name = name.split_whitespace().collect::<Vec<_>>().join(" ");
+        process
+            .send(json!({ "type": "set_session_name", "name": name }))
+            .await?;
+        if let Some(session) = lock(&self.sessions).get_mut(id) {
+            session.summary.title.clone_from(&name);
+            session.summary.updated_at_ms = now_ms();
+        }
+        self.emit_sessions();
+        Ok(())
+    }
     /// Forward an action to one independently running Pi session.
     ///
     /// # Errors
@@ -683,6 +710,7 @@ impl HostAgentSession {
             ClientMessage::CreateSession
             | ClientMessage::SelectSession { .. }
             | ClientMessage::DeleteSession { .. }
+            | ClientMessage::RenameSession { .. }
             | ClientMessage::SessionAction { .. } => Err(AgentError::new(
                 AgentErrorCode::InvalidRequest,
                 "Workspace-level action sent to a Pi session",

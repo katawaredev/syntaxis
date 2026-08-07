@@ -19,6 +19,7 @@ pub(crate) fn AgentSessionSidebar(
     connected: bool,
     on_select: EventHandler<String>,
     on_new: EventHandler<()>,
+    on_rename: EventHandler<String>,
     on_delete: EventHandler<String>,
 ) -> Element {
     let mut query = use_signal(String::new);
@@ -153,6 +154,7 @@ pub(crate) fn AgentSessionSidebar(
                                 session,
                                 connected,
                                 on_select,
+                                on_rename,
                                 on_delete,
                             }
                         }
@@ -258,6 +260,7 @@ fn AgentSessionRow(
     active: bool,
     connected: bool,
     on_select: EventHandler<String>,
+    on_rename: EventHandler<String>,
     on_delete: EventHandler<String>,
 ) -> Element {
     let mut menu_open = use_signal(|| false);
@@ -269,6 +272,7 @@ fn AgentSessionRow(
         AgentStatus::Failed => "bg-destructive",
         AgentStatus::Stopped => "bg-muted-foreground/50",
     };
+    let rename_id = session.id.clone();
     let delete_id = session.id.clone();
     rsx! {
         li { class: if active { "group relative flex items-stretch rounded-lg border border-primary/25 bg-primary/10" } else { "group relative flex items-stretch rounded-lg border border-transparent hover:bg-accent" },
@@ -300,8 +304,21 @@ fn AgentSessionRow(
                 }
                 MenuContent { class: "top-[calc(50%+16px)] right-0 w-44",
                     DropdownMenuItem::<String> {
-                        value: delete_id.clone(),
+                        value: rename_id.clone(),
                         index: 0_usize,
+                        disabled: !connected,
+                        on_select: move |session_id| {
+                            on_rename.call(session_id);
+                            menu_open.set(false);
+                        },
+                        span { class: "flex items-center gap-2",
+                            Icon { icon: AppIcon::NewChat, size: 13 }
+                            "Rename chat"
+                        }
+                    }
+                    DropdownMenuItem::<String> {
+                        value: delete_id.clone(),
+                        index: 1_usize,
                         disabled: !connected,
                         class: "!text-destructive",
                         on_select: move |session_id| {

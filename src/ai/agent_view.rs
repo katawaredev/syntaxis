@@ -1,6 +1,8 @@
 use dioxus::html::HasFileData;
 use dioxus::prelude::*;
-use syntaxis_agent::{AgentSessionSummary, AgentStatus, ClientMessage};
+use syntaxis_agent::{
+    AgentSessionSummary, AgentStatus, ClientMessage, MAX_SESSION_NAME_CHARS,
+};
 use syntaxis_notifications::NotificationTarget;
 use syntaxis_ui::prelude::{Button, ButtonKind, DialogActions, Drawer, Modal, Toast, Tone};
 
@@ -125,14 +127,18 @@ fn RemoteAgent(
     ));
     let management_revision = use_signal(|| 0_u64);
     let mut drag_active = use_signal(|| false);
+    let mut rename_target = use_signal(|| None::<AgentSessionSummary>);
+    let mut rename_value = use_signal(String::new);
     let mut delete_target = use_signal(|| None::<AgentSessionSummary>);
     let mut session_toast = use_signal(|| None::<(String, Tone)>);
     let worktree_flow = use_worktree_flow(active_workspace, session_toast);
     let drawer_blocked = worktree_flow.is_dialog_open()
+        || rename_target().is_some()
         || delete_target().is_some()
         || extension_request().is_some();
     use_effect(move || {
         if worktree_flow.is_dialog_open()
+            || rename_target().is_some()
             || delete_target().is_some()
             || extension_request().is_some()
         {
@@ -242,6 +248,15 @@ fn RemoteAgent(
                                 connected,
                                 on_select: move |session_id: String| runtime.select_session(session_id),
                                 on_new: move |()| runtime.create_session(),
+                                on_rename: move |session_id: String| {
+                                    if let Some(session) = sessions()
+                                        .into_iter()
+                                        .find(|session| session.id == session_id)
+                                    {
+                                        rename_value.set(session.title.clone());
+                                        rename_target.set(Some(session));
+                                    }
+                                },
                                 on_delete: move |session_id: String| {
                                     delete_target
                                         .set(sessions().into_iter().find(|session| session.id == session_id));
@@ -290,6 +305,16 @@ fn RemoteAgent(
                                     on_new: move |()| {
                                         drawer.set(false);
                                         runtime.create_session();
+                                    },
+                                    on_rename: move |session_id: String| {
+                                        drawer.set(false);
+                                        if let Some(session) = sessions()
+                                            .into_iter()
+                                            .find(|session| session.id == session_id)
+                                        {
+                                            rename_value.set(session.title.clone());
+                                            rename_target.set(Some(session));
+                                        }
                                     },
                                     on_delete: move |session_id: String| {
                                         drawer.set(false);
@@ -450,6 +475,48 @@ fn RemoteAgent(
             active_workspace,
             files_session,
             event_state,
+        }
+        if let Some(session) = rename_target() {
+            Modal {
+                title: "Rename chat",
+                description: "Set the display name stored by Pi for this session.",
+                on_close: move |()| rename_target.set(None),
+                div { class: "flex flex-col gap-2.25 px-5 pt-3 pb-5",
+                    label {
+                        class: "text-xs font-medium text-foreground",
+                        r#for: "ai-session-name",
+                        "Chat name"
+                    }
+                    input {
+                        id: "ai-session-name",
+                        class: "h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20",
+                        r#type: "text",
+                        value: rename_value(),
+                        autofocus: true,
+                        maxlength: MAX_SESSION_NAME_CHARS,
+                        oninput: move |event| rename_value.set(event.value()),
+                    }
+                    DialogActions {
+                        Button {
+                            label: "Cancel",
+                            kind: ButtonKind::Ghost,
+                            onclick: move |_| rename_target.set(None),
+                        }
+                        Button {
+                            label: "Rename chat",
+                            kind: ButtonKind::Primary,
+                            disabled: rename_value().trim().is_empty(),
+                            onclick: move |_| {
+                                client.send(ClientMessage::RenameSession {
+                                    session_id: session.id.clone(),
+                                    name: rename_value().trim().to_owned(),
+                                });
+                                rename_target.set(None);
+                            },
+                        }
+                    }
+                }
+            }
         }
         if let Some(session) = delete_target() {
             Modal {

@@ -94,6 +94,9 @@ pub(super) async fn agent_socket(
                             ClientMessage::DeleteSession { session_id } => agent.delete_session(&session_id).await.map(|()| {
                                 ServerMessage::Sessions { sessions: agent.sessions() }
                             }),
+                            ClientMessage::RenameSession { session_id, name } => agent.rename_session(&session_id, &name).await.map(|()| {
+                                ServerMessage::Sessions { sessions: agent.sessions() }
+                            }),
                             ClientMessage::SessionAction { session_id, action } => {
                                 agent.handle(&session_id, *action).await.map(|()| ServerMessage::Sessions { sessions: agent.sessions() })
                             }
