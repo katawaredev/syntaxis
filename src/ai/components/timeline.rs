@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 use syntaxis_agent::{AgentStatus, ChatItem, ImageAttachment, ItemStatus};
-use syntaxis_ui::prelude::{AppIcon, Icon, Modal};
+use syntaxis_ui::prelude::{AppIcon, Icon, IconButton, Modal};
 
 use crate::files::preview::render_markdown;
 
@@ -14,7 +14,10 @@ pub(crate) fn AgentTimeline(
     loading: bool,
     creating: bool,
     unavailable: bool,
+    can_edit: bool,
     on_suggestion: EventHandler<String>,
+    on_edit: EventHandler<(String, String, Vec<ImageAttachment>)>,
+    on_copy: EventHandler<String>,
 ) -> Element {
     let is_empty = items.is_empty();
     let mut visible_count = use_signal(|| INITIAL_RENDER_ITEMS);
@@ -83,7 +86,10 @@ pub(crate) fn AgentTimeline(
                         AgentTimelineItem {
                             key: "{item.id()}",
                             item,
+                            can_edit,
                             on_image: move |image| viewed_image.set(Some(image)),
+                            on_edit,
+                            on_copy,
                         }
                     }
                     if matches!(status, AgentStatus::Working | AgentStatus::Compacting) {
@@ -121,38 +127,73 @@ pub(crate) fn AgentTimeline(
 }
 
 #[component]
-fn AgentTimelineItem(item: ChatItem, on_image: EventHandler<ImageAttachment>) -> Element {
+fn AgentTimelineItem(
+    item: ChatItem,
+    can_edit: bool,
+    on_image: EventHandler<ImageAttachment>,
+    on_edit: EventHandler<(String, String, Vec<ImageAttachment>)>,
+    on_copy: EventHandler<String>,
+) -> Element {
     match item {
-        ChatItem::User { text, images, .. } => {
+        ChatItem::User {
+            entry_id,
+            text,
+            images,
+            ..
+        } => {
             let rendered = render_markdown(&text);
+            let copy_text = text.clone();
+            let edit_text = text.clone();
+            let edit_images = images.clone();
             rsx! {
-                article {
-                    class: "ml-auto max-w-[88%] rounded-xl rounded-br-sm border border-border bg-secondary px-3.5 py-2.5 text-[13px] leading-relaxed text-secondary-foreground shadow-sm",
-                    dir: "auto",
-                    if !images.is_empty() {
-                        div { class: "mb-2 grid max-w-lg grid-cols-2 gap-1.5",
-                            for image in images {
-                                button {
-                                    class: "cursor-zoom-in rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
-                                    r#type: "button",
-                                    aria_label: "Open {image.name}",
-                                    onclick: {
-                                        let image = image.clone();
-                                        move |_| on_image.call(image.clone())
-                                    },
-                                    img {
-                                        class: "max-h-52 min-h-20 w-full rounded-lg bg-black/10 object-cover",
-                                        src: image.data_url(),
-                                        alt: image.name,
+                div { class: "group/message ml-auto flex max-w-[88%] flex-col items-end",
+                    article {
+                        class: "max-w-full rounded-xl rounded-br-sm border border-border bg-secondary px-3.5 py-2.5 text-[13px] leading-relaxed text-secondary-foreground shadow-sm",
+                        dir: "auto",
+                        if !images.is_empty() {
+                            div { class: "mb-2 grid max-w-lg grid-cols-2 gap-1.5",
+                                for image in images {
+                                    button {
+                                        class: "cursor-zoom-in rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+                                        r#type: "button",
+                                        aria_label: "Open {image.name}",
+                                        onclick: {
+                                            let image = image.clone();
+                                            move |_| on_image.call(image.clone())
+                                        },
+                                        img {
+                                            class: "max-h-52 min-h-20 w-full rounded-lg bg-black/10 object-cover",
+                                            src: image.data_url(),
+                                            alt: image.name,
+                                        }
                                     }
                                 }
                             }
                         }
+                        if !text.is_empty() {
+                            div {
+                                class: "ai-markdown ai-user-markdown",
+                                dangerous_inner_html: rendered,
+                            }
+                        }
                     }
-                    if !text.is_empty() {
-                        div {
-                            class: "ai-markdown ai-user-markdown",
-                            dangerous_inner_html: rendered,
+                    div { class: "flex min-h-9 items-center gap-0.5 pt-0.5 opacity-0 transition-opacity group-hover/message:opacity-100 focus-within:opacity-100 max-[520px]:opacity-100",
+                        if !copy_text.is_empty() {
+                            IconButton {
+                                label: "Copy message",
+                                icon: AppIcon::Copy,
+                                onclick: move |_| on_copy.call(copy_text.clone()),
+                            }
+                        }
+                        if let Some(entry_id) = entry_id {
+                            IconButton {
+                                label: "Edit message and branch from here",
+                                icon: AppIcon::NewChat,
+                                disabled: !can_edit,
+                                onclick: move |_| {
+                                    on_edit.call((entry_id.clone(), edit_text.clone(), edit_images.clone()));
+                                },
+                            }
                         }
                     }
                 }
@@ -165,8 +206,9 @@ fn AgentTimelineItem(item: ChatItem, on_image: EventHandler<ImageAttachment>) ->
             ..
         } => {
             let rendered = render_markdown(&text);
+            let copy_text = text.clone();
             rsx! {
-                article { class: "max-w-full py-1 pr-2",
+                article { class: "group/message max-w-full py-1 pr-2",
                     if !thinking.trim().is_empty() {
                         details { class: "mb-2 rounded-lg border border-border bg-background/60 text-[11px] text-muted-foreground",
                             summary { class: "cursor-pointer px-3 py-2 select-none", "Reasoning" }
@@ -192,6 +234,15 @@ fn AgentTimelineItem(item: ChatItem, on_image: EventHandler<ImageAttachment>) ->
                                 "Stopped"
                             } else {
                                 "Response failed"
+                            }
+                        }
+                    }
+                    if !copy_text.is_empty() && status != ItemStatus::Streaming {
+                        div { class: "flex min-h-9 items-center pt-0.5 opacity-0 transition-opacity group-hover/message:opacity-100 focus-within:opacity-100 max-[520px]:opacity-100",
+                            IconButton {
+                                label: "Copy response",
+                                icon: AppIcon::Copy,
+                                onclick: move |_| on_copy.call(copy_text.clone()),
                             }
                         }
                     }

@@ -1,6 +1,6 @@
 //! Shared, Pi-specific chat protocol used between the Syntaxis client and host.
 use serde::{Deserialize, Serialize};
-pub const PROTOCOL_VERSION: u16 = 6;
+pub const PROTOCOL_VERSION: u16 = 7;
 pub const MAX_PROMPT_BYTES: usize = 128 * 1024;
 pub const MAX_SESSION_NAME_CHARS: usize = 80;
 pub const MAX_PROMPT_IMAGES: usize = 5;
@@ -96,6 +96,7 @@ pub enum ItemStatus {
 pub enum ChatItem {
     User {
         id: String,
+        entry_id: Option<String>,
         text: String,
         images: Vec<ImageAttachment>,
     },
@@ -285,6 +286,9 @@ pub enum ClientMessage {
         delivery: PromptDelivery,
         images: Vec<ImageAttachment>,
     },
+    ForkMessage {
+        entry_id: String,
+    },
     Abort,
     SetModel {
         provider: String,
@@ -340,6 +344,10 @@ impl ClientMessage {
                     "Attach up to 5 images, 8 MiB each and 16 MiB total",
                 ))
             }
+            Self::ForkMessage { entry_id } if entry_id.trim().is_empty() => Err(AgentError::new(
+                AgentErrorCode::InvalidRequest,
+                "A Pi message entry id is required",
+            )),
             Self::SetModel { provider, model_id }
                 if provider.trim().is_empty() || model_id.trim().is_empty() =>
             {
@@ -360,7 +368,8 @@ impl ClientMessage {
                 ))
             }
             Self::RenameSession { name, .. }
-                if name.trim().is_empty() || name.trim().chars().count() > MAX_SESSION_NAME_CHARS =>
+                if name.trim().is_empty()
+                    || name.trim().chars().count() > MAX_SESSION_NAME_CHARS =>
             {
                 Err(AgentError::new(
                     AgentErrorCode::InvalidRequest,
@@ -371,6 +380,7 @@ impl ClientMessage {
                 if !matches!(
                     action.as_ref(),
                     Self::Prompt { .. }
+                        | Self::ForkMessage { .. }
                         | Self::Abort
                         | Self::SetModel { .. }
                         | Self::SetThinkingLevel { .. }
@@ -390,6 +400,7 @@ impl ClientMessage {
             | Self::DeleteSession { .. }
             | Self::RenameSession { .. }
             | Self::Prompt { .. }
+            | Self::ForkMessage { .. }
             | Self::Abort
             | Self::SetModel { .. }
             | Self::SetThinkingLevel { .. }
@@ -411,6 +422,7 @@ impl ClientMessage {
             | Self::DeleteSession { .. }
             | Self::RenameSession { .. }
             | Self::Prompt { .. }
+            | Self::ForkMessage { .. }
             | Self::Abort
             | Self::SetModel { .. }
             | Self::SetThinkingLevel { .. }

@@ -1,7 +1,7 @@
 use dioxus::html::HasFileData;
 use dioxus::prelude::*;
 use syntaxis_agent::{
-    AgentSessionSummary, AgentStatus, ClientMessage, MAX_SESSION_NAME_CHARS,
+    AgentSessionSummary, AgentStatus, ClientMessage, ImageAttachment, MAX_SESSION_NAME_CHARS,
 };
 use syntaxis_notifications::NotificationTarget;
 use syntaxis_ui::prelude::{Button, ButtonKind, DialogActions, Drawer, Modal, Toast, Tone};
@@ -97,7 +97,7 @@ fn RemoteAgent(
         mut draft,
         mut error,
         mut extension_request,
-        attachments,
+        mut attachments,
         mut composer_error,
         draft_session,
         creating_session,
@@ -397,10 +397,22 @@ fn RemoteAgent(
                             loading: session_loading(),
                             creating: creating_session() && draft_session(),
                             unavailable: connection_failed,
+                            can_edit: connected && !is_working,
                             on_suggestion: move |text: String| {
                                 draft.set(text);
                                 composer_error.set(None);
                             },
+                            on_edit: move |(entry_id, text, images): (String, String, Vec<ImageAttachment>)| {
+                                draft.set(text);
+                                attachments.set(images);
+                                composer_error.set(None);
+                                runtime
+                                    .send_to_selected(ClientMessage::ForkMessage {
+                                        entry_id,
+                                    });
+                                focus_ai_composer();
+                            },
+                            on_copy: move |text: String| copy_ai_message(text, session_toast),
                         }
                         AgentComposer {
                             draft,
@@ -507,10 +519,11 @@ fn RemoteAgent(
                             kind: ButtonKind::Primary,
                             disabled: rename_value().trim().is_empty(),
                             onclick: move |_| {
-                                client.send(ClientMessage::RenameSession {
-                                    session_id: session.id.clone(),
-                                    name: rename_value().trim().to_owned(),
-                                });
+                                client
+                                    .send(ClientMessage::RenameSession {
+                                        session_id: session.id.clone(),
+                                        name: rename_value().trim().to_owned(),
+                                    });
                                 rename_target.set(None);
                             },
                         }
@@ -585,4 +598,56 @@ fn RemoteAgent(
             }
         }
     }
+}
+
+fn focus_ai_composer() {
+    let _ = document::eval(
+        r#"
+        requestAnimationFrame(() => {
+            const composer = document.getElementById("syntaxis-ai-composer");
+            composer?.focus({ preventScroll: false });
+            if (composer) composer.setSelectionRange(composer.value.length, composer.value.length);
+        });
+        "#,
+    );
+}
+
+fn copy_ai_message(value: String, mut toast: Signal<Option<(String, Tone)>>) {
+    let eval = document::eval(
+        r#"
+        const text = await dioxus.recv();
+        try {
+            if (globalThis.navigator?.clipboard?.writeText) {
+                await globalThis.navigator.clipboard.writeText(text);
+            } else {
+                const input = document.createElement("textarea");
+                input.value = text;
+                input.style.position = "fixed";
+                input.style.opacity = "0";
+                document.body.appendChild(input);
+                input.select();
+                const copied = document.execCommand("copy");
+                input.remove();
+                if (!copied) throw new Error("The browser rejected the copy command.");
+            }
+            return null;
+        } catch (error) {
+            return error instanceof Error ? error.message : String(error);
+        }
+        "#,
+    );
+    let _ = eval.send(value);
+    spawn(async move {
+        match eval.join::<Option<String>>().await {
+            Ok(None) => toast.set(Some(("Message copied".into(), Tone::Success))),
+            Ok(Some(message)) => toast.set(Some((
+                format!("Could not copy message: {message}"),
+                Tone::Destructive,
+            ))),
+            Err(problem) => toast.set(Some((
+                format!("Could not copy message: {problem}"),
+                Tone::Destructive,
+            ))),
+        }
+    });
 }

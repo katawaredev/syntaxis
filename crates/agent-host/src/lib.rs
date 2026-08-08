@@ -324,23 +324,46 @@ impl HostAgentWorkspace {
     fn bridge(&self, id: String, mut receiver: broadcast::Receiver<ServerMessage>) {
         let workspace = self.clone();
         tokio::spawn(async move {
+            let mut active_id = id;
             loop {
                 match receiver.recv().await {
                     Ok(event) => {
-                        workspace.update_summary(&id, &event);
+                        if let ServerMessage::SessionChanged {
+                            session_id: Some(next_id),
+                            ..
+                        } = &event
+                        {
+                            if *next_id != active_id
+                                && workspace.rekey_forked_session(&active_id, next_id)
+                            {
+                                active_id.clone_from(next_id);
+                                workspace.emit_sessions();
+                                if let Some(snapshot) = lock(&workspace.sessions)
+                                    .get(&active_id)
+                                    .and_then(|session| session.process.as_ref())
+                                    .map(HostAgentSession::snapshot)
+                                {
+                                    let _ = workspace.events.send(ServerMessage::SelectedSession {
+                                        session_id: active_id.clone(),
+                                        snapshot,
+                                    });
+                                }
+                            }
+                        }
+                        workspace.update_summary(&active_id, &event);
                         let _ = workspace.events.send(ServerMessage::SessionEvent {
-                            session_id: id.clone(),
+                            session_id: active_id.clone(),
                             event: Box::new(event),
                         });
                     }
                     Err(broadcast::error::RecvError::Lagged(_)) => {
                         let snapshot = lock(&workspace.sessions)
-                            .get(&id)
+                            .get(&active_id)
                             .and_then(|session| session.process.as_ref())
                             .map(HostAgentSession::snapshot);
                         if let Some(snapshot) = snapshot {
                             let _ = workspace.events.send(ServerMessage::SessionEvent {
-                                session_id: id.clone(),
+                                session_id: active_id.clone(),
                                 event: Box::new(ServerMessage::Snapshot { snapshot }),
                             });
                         }
@@ -349,6 +372,38 @@ impl HostAgentWorkspace {
                 }
             }
         });
+    }
+
+    fn rekey_forked_session(&self, previous_id: &str, next_id: &str) -> bool {
+        let mut sessions = lock(&self.sessions);
+        if sessions.contains_key(next_id) {
+            return false;
+        }
+        let Some(mut forked) = sessions.remove(previous_id) else {
+            return false;
+        };
+        if let Some(original_path) = forked.path.take() {
+            let mut original_summary = forked.summary.clone();
+            original_summary.status = AgentStatus::Stopped;
+            original_summary.status_message = "Saved".into();
+            original_summary.running = false;
+            sessions.insert(
+                previous_id.to_owned(),
+                ManagedSession {
+                    path: Some(original_path),
+                    summary: original_summary,
+                    process: None,
+                },
+            );
+        }
+        forked.summary.id = next_id.to_owned();
+        forked.summary.updated_at_ms = now_ms();
+        forked.path = forked
+            .process
+            .as_ref()
+            .and_then(HostAgentSession::session_file);
+        sessions.insert(next_id.to_owned(), forked);
+        true
     }
     fn update_summary(&self, id: &str, event: &ServerMessage) {
         let mut changed = false;
@@ -404,11 +459,14 @@ impl HostAgentWorkspace {
                     }
                     changed = true;
                 }
-                ServerMessage::SessionChanged {
-                    session_name: Some(name),
-                    ..
-                } => {
-                    session.summary.title = prompt_title(name);
+                ServerMessage::SessionChanged { session_name, .. } => {
+                    if let Some(name) = session_name {
+                        session.summary.title = prompt_title(name);
+                    }
+                    session.path = session
+                        .process
+                        .as_ref()
+                        .and_then(HostAgentSession::session_file);
                     changed = true;
                 }
                 ServerMessage::ExtensionUiRequest { request } => {
@@ -499,6 +557,7 @@ struct RuntimeState {
     session_file: Option<PathBuf>,
     current_assistant: Option<String>,
     accept_initial_history: bool,
+    fork_messages: Vec<(String, String)>,
     extension_requests: VecDeque<ExtensionUiRequest>,
 }
 impl HostAgentSession {
@@ -548,6 +607,7 @@ impl HostAgentSession {
             session_file: None,
             current_assistant: None,
             accept_initial_history: true,
+            fork_messages: Vec::new(),
             extension_requests: VecDeque::new(),
         }));
         let stderr_buffer = Arc::new(Mutex::new(String::new()));
@@ -617,6 +677,7 @@ impl HostAgentSession {
                 let text = text.trim().to_owned();
                 let item = ChatItem::User {
                     id: new_id("user"),
+                    entry_id: None,
                     text: text.clone(),
                     images: images.clone(),
                 };
@@ -643,6 +704,20 @@ impl HostAgentSession {
                     }
                 };
                 self.send(command).await
+            }
+            ClientMessage::ForkMessage { entry_id } => {
+                lock(&self.state).accept_initial_history = true;
+                self.send(json!({ "type" : "fork", "entryId" : entry_id }))
+                    .await?;
+                for command in [
+                    "get_state",
+                    "get_messages",
+                    "get_fork_messages",
+                    "get_session_stats",
+                ] {
+                    self.send(json!({ "type" : command })).await?;
+                }
+                Ok(())
             }
             ClientMessage::Abort => self.send(json!({ "type" : "abort" })).await,
             ClientMessage::SetModel { provider, model_id } => {
@@ -722,6 +797,7 @@ impl HostAgentSession {
         for (id, command) in [
             ("syntaxis-state", "get_state"),
             ("syntaxis-messages", "get_messages"),
+            ("syntaxis-fork-messages", "get_fork_messages"),
             ("syntaxis-models", "get_available_models"),
             ("syntaxis-commands", "get_commands"),
             ("syntaxis-stats", "get_session_stats"),
@@ -1014,10 +1090,11 @@ fn handle_pi_record(
                 message: "Ready".into(),
                 pending_messages: 0,
             });
-            let _ = command_tx.try_send(json!(
-                { "id" : new_id("syntaxis-stats"), "type" : "get_session_stats",
-                }
-            ));
+            for command in ["get_session_stats", "get_fork_messages"] {
+                let _ = command_tx.try_send(json!(
+                    { "id" : new_id("syntaxis-refresh"), "type" : command }
+                ));
+            }
         }
         "queue_update" => {
             let pending_messages = ["steering", "followUp"]
@@ -1118,11 +1195,43 @@ fn handle_pi_response(
                     return;
                 }
                 guard.snapshot.items = map_history(messages);
+                apply_fork_message_ids(&mut guard.snapshot.items, &guard.fork_messages);
                 guard.current_assistant = None;
                 guard.accept_initial_history = false;
                 let snapshot = guard.snapshot.clone();
                 drop(guard);
                 let _ = events.send(ServerMessage::Snapshot { snapshot });
+            }
+        }
+        "get_fork_messages" => {
+            let fork_messages = data
+                .get("messages")
+                .and_then(Value::as_array)
+                .map(|messages| {
+                    messages
+                        .iter()
+                        .filter_map(|message| {
+                            Some((
+                                string_field(message, "entryId")?,
+                                string_field(message, "text").unwrap_or_default(),
+                            ))
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            let mut guard = lock(state);
+            guard.fork_messages = fork_messages;
+            let messages = guard.fork_messages.clone();
+            apply_fork_message_ids(&mut guard.snapshot.items, &messages);
+            let snapshot = guard.snapshot.clone();
+            drop(guard);
+            let _ = events.send(ServerMessage::Snapshot { snapshot });
+        }
+        "fork" => {
+            if data.get("cancelled").and_then(Value::as_bool) != Some(true) {
+                if let Some(text) = string_field(data, "text") {
+                    let _ = events.send(ServerMessage::ComposerText { text });
+                }
             }
         }
         "get_available_models" => {
@@ -1685,6 +1794,7 @@ fn map_history(messages: &[Value]) -> Vec<ChatItem> {
                         &mut items,
                         ChatItem::User {
                             id: format!("history-user-{index}"),
+                            entry_id: None,
                             text,
                             images: extract_message_images(message),
                         },
@@ -1775,6 +1885,24 @@ fn map_history(messages: &[Value]) -> Vec<ChatItem> {
     }
     items
 }
+fn apply_fork_message_ids(items: &mut [ChatItem], messages: &[(String, String)]) {
+    let mut message_index = 0;
+    for item in items {
+        let ChatItem::User { entry_id, text, .. } = item else {
+            continue;
+        };
+        *entry_id = None;
+        if let Some(offset) = messages[message_index..]
+            .iter()
+            .position(|(_, candidate)| candidate == text)
+        {
+            message_index += offset;
+            *entry_id = Some(messages[message_index].0.clone());
+            message_index += 1;
+        }
+    }
+}
+
 fn assistant_item_from_message(message: &Value, status: ItemStatus, id: String) -> ChatItem {
     let mut text = String::new();
     let mut thinking = String::new();
