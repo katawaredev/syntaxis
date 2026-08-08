@@ -391,6 +391,9 @@ fn WorkspaceGit(slug: String) -> Element {
     let commits_to_push = repository.branch.ahead;
     let pull_disabled = pending() || repository.branch.upstream.is_none() || commits_to_pull == 0;
     let push_disabled = pending() || repository.branch.upstream.is_none() || commits_to_push == 0;
+    let diff_loading = diff.state() == UseResourceState::Pending;
+    let conflict_loading = conflict.state() == UseResourceState::Pending;
+    let commit_detail_loading = commit_detail.state() == UseResourceState::Pending;
 
     rsx! {
         if status_loading {
@@ -779,7 +782,7 @@ fn WorkspaceGit(slug: String) -> Element {
                     div { class: "touch-scroll-region min-h-0 min-w-0 flex-1 touch-pan-y overflow-auto bg-background",
                         if view() == SidebarView::History {
                             HistoryDetail {
-                                detail: commit_detail().flatten(),
+                                detail: if commit_detail_loading { None } else { commit_detail().flatten() },
                                 selected: selected_commit().is_some(),
                                 pending: pending(),
                                 on_checkout: move |_| {
@@ -796,8 +799,8 @@ fn WorkspaceGit(slug: String) -> Element {
                                 slug: slug.clone(),
                                 selection: selected(),
                                 change: selected_file_change,
-                                diff: diff().flatten(),
-                                conflict: conflict().flatten(),
+                                diff: if diff_loading { None } else { diff().flatten() },
+                                conflict: if conflict_loading { None } else { conflict().flatten() },
                                 pending: pending(),
                                 on_mutation,
                             }
