@@ -7,12 +7,12 @@ use super::{
     language_slug_for_path, parse_diff_hunks, rsx, ActionCallback, AnyStorage, AppIcon, ChangeKind,
     CommitInfo, ConflictChoice, ConflictFile, DiffHunk, DiffKind, DiffLayout, Element,
     EventHandler, FileChange, FileIcon, FilesQuery, GitChangeBadge, GlobalAttributesExtension,
-    History, HunkAction, Icon, InputExtension, Language, Link, LinkExtension, Mutation,
-    OptionExtension, Props, Route,
-    ReadableExt, ReadableHashMapExt, ReadableHashSetExt, ReadableOptionExt, ReadableResultExt,
-    ReadableStrExt, ReadableVecExt, RepositoryStatus, Result, SelectExtension, SelectedChange,
-    ServerFnError, SidebarView, Signal, Storage, StyleExtension, SvgAttributesExtension,
-    TrackExtension, UnifiedDiff, UnifiedDiffView, WritableExt,
+    HasAttributes, History, HunkAction, Icon, InputExtension, Language, Link, LinkExtension,
+    Mutation, OptionExtension, Props, ReadableExt, ReadableHashMapExt, ReadableHashSetExt,
+    ReadableOptionExt, ReadableResultExt, ReadableStrExt, ReadableVecExt, RepositoryStatus, Result,
+    Route, SelectExtension, SelectedChange, ServerFnError, SidebarView, Signal, Storage,
+    StyleExtension, SvgAttributesExtension, TrackExtension, UnifiedDiff, UnifiedDiffView,
+    WritableExt,
 };
 
 const DIFF_TITLEBAR_CLASS: &str = "sticky top-0 z-10 flex min-h-14 min-w-165 items-center justify-between gap-3 border-b border-border bg-background/95 p-3 font-sans backdrop-blur-sm max-md:min-h-13 max-md:min-w-0 max-md:gap-1.5 max-md:px-2 max-md:py-2";
@@ -296,10 +296,7 @@ pub(super) fn ChangeDetail(
                             "aria-label": "Open in Files with changes visible",
                             to: Route::Files {
                                 slug: slug.clone(),
-                                query: FilesQuery::view_changes(
-                                    selection.path.clone(),
-                                    selection.kind,
-                                ),
+                                query: FilesQuery::view_changes(selection.path.clone(), selection.kind),
                             },
                             Icon { icon: AppIcon::Expand, size: 13 }
                             span { class: "max-md:hidden", "Open in Files" }

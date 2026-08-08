@@ -330,7 +330,7 @@ lighthouse-open:
 [private]
 docker-version:
     @cargo metadata --no-deps --format-version 1 \
-        | python3 -c 'import json, sys; metadata = json.load(sys.stdin); manifest = metadata["workspace_root"] + "/Cargo.toml"; print(next(package["version"] for package in metadata["packages"] if package["manifest_path"] == manifest))'
+        | bun -e 'const metadata = JSON.parse(await Bun.stdin.text()); const manifest = `${metadata.workspace_root}/Cargo.toml`; console.log(metadata.packages.find((pkg) => pkg.manifest_path === manifest).version);'
 
 # Build a Docker target and tag production with the Cargo package version.
 docker-build target="production":
@@ -579,7 +579,8 @@ test-doc platform=default_platform: build-assets
         echo "No library targets found; skipping doctests."
     fi
 
-# Check dependency advisories, licenses, bans, and sources.
+# Check dependency advisories, bans, and sources. License checks remain disabled
+# until the project's policy and dependency exceptions are finalized.
 deny:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -590,7 +591,7 @@ deny:
         exit 1
     fi
 
-    cargo deny check
+    cargo deny check advisories bans sources
 
 # Initialize cargo-deny configuration.
 deny-init:

@@ -396,7 +396,7 @@ impl HostAgentWorkspace {
                 },
             );
         }
-        forked.summary.id = next_id.to_owned();
+        next_id.clone_into(&mut forked.summary.id);
         forked.summary.updated_at_ms = now_ms();
         forked.path = forked
             .process
@@ -1187,46 +1187,8 @@ fn handle_pi_response(
                 pending_messages: snapshot.pending_messages,
             });
         }
-        "get_messages" => {
-            let messages = data.get("messages").and_then(Value::as_array);
-            if let Some(messages) = messages {
-                let mut guard = lock(state);
-                if !guard.accept_initial_history {
-                    return;
-                }
-                guard.snapshot.items = map_history(messages);
-                apply_fork_message_ids(&mut guard.snapshot.items, &guard.fork_messages);
-                guard.current_assistant = None;
-                guard.accept_initial_history = false;
-                let snapshot = guard.snapshot.clone();
-                drop(guard);
-                let _ = events.send(ServerMessage::Snapshot { snapshot });
-            }
-        }
-        "get_fork_messages" => {
-            let fork_messages = data
-                .get("messages")
-                .and_then(Value::as_array)
-                .map(|messages| {
-                    messages
-                        .iter()
-                        .filter_map(|message| {
-                            Some((
-                                string_field(message, "entryId")?,
-                                string_field(message, "text").unwrap_or_default(),
-                            ))
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
-            let mut guard = lock(state);
-            guard.fork_messages = fork_messages;
-            let messages = guard.fork_messages.clone();
-            apply_fork_message_ids(&mut guard.snapshot.items, &messages);
-            let snapshot = guard.snapshot.clone();
-            drop(guard);
-            let _ = events.send(ServerMessage::Snapshot { snapshot });
-        }
+        "get_messages" => handle_messages_response(data, state, events),
+        "get_fork_messages" => handle_fork_messages_response(data, state, events),
         "fork" => {
             if data.get("cancelled").and_then(Value::as_bool) != Some(true) {
                 if let Some(text) = string_field(data, "text") {
@@ -1283,6 +1245,57 @@ fn handle_pi_response(
         _ => {}
     }
 }
+fn handle_messages_response(
+    data: &Value,
+    state: &Arc<Mutex<RuntimeState>>,
+    events: &mpsc::UnboundedSender<ServerMessage>,
+) {
+    let Some(messages) = data.get("messages").and_then(Value::as_array) else {
+        return;
+    };
+    let mut guard = lock(state);
+    if !guard.accept_initial_history {
+        return;
+    }
+    guard.snapshot.items = map_history(messages);
+    let fork_messages = guard.fork_messages.clone();
+    apply_fork_message_ids(&mut guard.snapshot.items, &fork_messages);
+    guard.current_assistant = None;
+    guard.accept_initial_history = false;
+    let snapshot = guard.snapshot.clone();
+    drop(guard);
+    let _ = events.send(ServerMessage::Snapshot { snapshot });
+}
+
+fn handle_fork_messages_response(
+    data: &Value,
+    state: &Arc<Mutex<RuntimeState>>,
+    events: &mpsc::UnboundedSender<ServerMessage>,
+) {
+    let fork_messages = data
+        .get("messages")
+        .and_then(Value::as_array)
+        .map(|messages| {
+            messages
+                .iter()
+                .filter_map(|message| {
+                    Some((
+                        string_field(message, "entryId")?,
+                        string_field(message, "text").unwrap_or_default(),
+                    ))
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let mut guard = lock(state);
+    guard.fork_messages = fork_messages;
+    let messages = guard.fork_messages.clone();
+    apply_fork_message_ids(&mut guard.snapshot.items, &messages);
+    let snapshot = guard.snapshot.clone();
+    drop(guard);
+    let _ = events.send(ServerMessage::Snapshot { snapshot });
+}
+
 fn handle_message_start(
     record: &Value,
     state: &Arc<Mutex<RuntimeState>>,
@@ -2237,6 +2250,7 @@ mod tests {
             session_file: None,
             current_assistant: None,
             accept_initial_history: false,
+            fork_messages: Vec::new(),
             extension_requests: VecDeque::new(),
         }));
         let (events, mut receiver) = mpsc::unbounded_channel();
@@ -2267,6 +2281,7 @@ mod tests {
             session_file: None,
             current_assistant: None,
             accept_initial_history: false,
+            fork_messages: Vec::new(),
             extension_requests: VecDeque::new(),
         }));
         let (events, _receiver) = mpsc::unbounded_channel();

@@ -53,14 +53,14 @@ jobs:
       - name: Install cargo-binstall
         uses: cargo-bins/cargo-binstall@main
         with:
-          version: "1.21.0"
+          version: "1.21.1"
 
       - name: Install validation tools
         run: |
           cargo binstall --no-confirm --locked \
-            just@1.57.0 \
-            dioxus-cli@0.7.9 \
-            cargo-nextest@0.9.140
+            just@1.58.0 \
+            dioxus-cli@0.7.10 \
+            cargo-nextest@0.9.143
 
       - name: Install full-audit tools
         if: github.event_name == 'workflow_dispatch'

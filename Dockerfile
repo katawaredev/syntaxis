@@ -1,8 +1,9 @@
 # syntax=docker/dockerfile:1.7
 
-ARG NODE_VERSION=24
+ARG NODE_VERSION=26.7.0
 ARG BUN_VERSION=1.3.14
-ARG DIOXUS_VERSION=0.7.9
+ARG DIOXUS_VERSION=0.7.10
+ARG JUST_VERSION=1.58.0
 
 FROM docker.io/oven/bun:${BUN_VERSION} AS bun
 
@@ -20,6 +21,7 @@ RUN apt-get update \
 FROM docker.io/library/node:${NODE_VERSION}-trixie AS development
 
 ARG DIOXUS_VERSION
+ARG JUST_VERSION
 
 ENV DEBIAN_FRONTEND=noninteractive \
     CARGO_HOME=/usr/local/cargo \
@@ -50,7 +52,7 @@ RUN rustup set profile minimal \
     && rustup default stable \
     && rustup target add wasm32-unknown-unknown \
     && cargo install --locked --version "${DIOXUS_VERSION}" dioxus-cli \
-    && cargo install --locked just
+    && cargo install --locked --version "${JUST_VERSION}" just
 
 RUN npm install --global --prefix /opt/syntaxis-pi \
     @earendil-works/pi-coding-agent \

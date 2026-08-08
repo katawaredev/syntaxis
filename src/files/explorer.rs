@@ -308,9 +308,7 @@ pub(super) fn Explorer(
                             Some(Ok(results)) => {
                                 let total = results.items.len();
                                 let shown = visible_search_files().min(total);
-                                let nodes = search_result_nodes(
-                                    results.items.into_iter().take(shown),
-                                );
+                                let nodes = search_result_nodes(results.items.into_iter().take(shown));
                                 rsx! {
                                     for node in nodes {
                                         match node {

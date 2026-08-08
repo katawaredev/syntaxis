@@ -7,20 +7,20 @@ license = "MIT"
 
 [workspace]
 members = [
-    "crates/agent",
-    "crates/agent-host",
-    "crates/editor",
-    "crates/code-editor",
-    "crates/git",
-    "crates/git-host",
-    "crates/lsp-host",
-    "crates/notifications",
-    "crates/notifications-host",
-    "crates/terminal",
-    "crates/terminal-host",
-    "crates/ui",
-    "crates/workspace",
-    "crates/workspace-host",
+  "crates/agent",
+  "crates/agent-host",
+  "crates/editor",
+  "crates/code-editor",
+  "crates/git",
+  "crates/git-host",
+  "crates/lsp-host",
+  "crates/notifications",
+  "crates/notifications-host",
+  "crates/terminal",
+  "crates/terminal-host",
+  "crates/ui",
+  "crates/workspace",
+  "crates/workspace-host",
 ]
 resolver = "2"
 
@@ -34,44 +34,45 @@ bytes = "1.12.1"
 csv = "1.4.0"
 dioxus = { version = "0.7.9", features = ["router", "fullstack"] }
 dioxus-code = { git = "https://github.com/DioxusLabs/dioxus-code", rev = "928568e248ebcda602ee0c071af44dfef849ec15", default-features = false, features = [
-    "macro",
-    "runtime",
-    "lang-bash",
-    "lang-c",
-    "lang-c-sharp",
-    "lang-cpp",
-    "lang-css",
-    "lang-dart",
-    "lang-diff",
-    "lang-dockerfile",
-    "lang-go",
-    "lang-html",
-    "lang-ini",
-    "lang-java",
-    "lang-javascript",
-    "lang-json",
-    "lang-kotlin",
-    "lang-lua",
-    "lang-markdown",
-    "lang-nginx",
-    "lang-php",
-    "lang-powershell",
-    "lang-python",
-    "lang-ruby",
-    "lang-scss",
-    "lang-sql",
-    "lang-toml",
-    "lang-tsx",
-    "lang-typescript",
-    "lang-xml",
-    "lang-yaml",
+  "macro",
+  "runtime",
+  "lang-bash",
+  "lang-c",
+  "lang-c-sharp",
+  "lang-cpp",
+  "lang-css",
+  "lang-dart",
+  "lang-diff",
+  "lang-dockerfile",
+  "lang-go",
+  "lang-html",
+  "lang-ini",
+  "lang-java",
+  "lang-javascript",
+  "lang-json",
+  "lang-kotlin",
+  "lang-lua",
+  "lang-markdown",
+  "lang-nginx",
+  "lang-php",
+  "lang-powershell",
+  "lang-python",
+  "lang-ruby",
+  "lang-scss",
+  "lang-sql",
+  "lang-toml",
+  "lang-tsx",
+  "lang-typescript",
+  "lang-xml",
+  "lang-yaml",
 ] }
 dioxus-code-editor = { path = "crates/code-editor" }
-dioxus-icons = "0.1.0"
 dioxus-primitives = { git = "https://github.com/DioxusLabs/dioxus-components", rev = "bf007c15d0cf4d04d3181cc46cf12325aa773955" }
 dioxus-sdk-time = "0.7.0"
 futures-util = "0.3.33"
-pulldown-cmark = { version = "0.13.4", default-features = false, features = ["html"] }
+pulldown-cmark = { version = "0.13.4", default-features = false, features = [
+  "html",
+] }
 regex = "1.13.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.150"
@@ -98,11 +99,25 @@ gloo-timers = { version = "0.4.0", features = ["futures"] }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 argon2 = { version = "0.5.3", optional = true }
 rand_core = { version = "0.6.4", features = ["getrandom"], optional = true }
-reqwest = { version = "0.12.28", default-features = false, features = ["json", "rustls-tls", "stream"], optional = true }
+reqwest = { version = "0.12.28", default-features = false, features = [
+  "json",
+  "rustls-tls",
+  "stream",
+], optional = true }
 rpassword = { version = "7.4.0", optional = true }
 subtle = { version = "2.6.1", optional = true }
-tokio = { version = "1.53.0", features = ["io-util", "macros", "net", "process", "rt", "sync", "time"], optional = true }
-tokio-tungstenite = { version = "0.28.0", features = ["rustls-tls-webpki-roots"], optional = true }
+tokio = { version = "1.53.0", features = [
+  "io-util",
+  "macros",
+  "net",
+  "process",
+  "rt",
+  "sync",
+  "time",
+], optional = true }
+tokio-tungstenite = { version = "0.28.0", features = [
+  "rustls-tls-webpki-roots",
+], optional = true }
 tokio-util = { version = "0.7.18", features = ["rt"], optional = true }
 
 [dev-dependencies]
@@ -117,23 +132,23 @@ web = ["dioxus/web"]
 desktop = ["dioxus/desktop", "dep:syntaxis-workspace-host", "dep:tokio"]
 mobile = ["dioxus/mobile"]
 server = [
-    "dioxus/server",
-    "dep:axum",
-    "dep:argon2",
-    "dep:rand_core",
-    "dep:toml",
-    "dep:syntaxis-agent-host",
-    "dep:syntaxis-git-host",
-    "dep:syntaxis-lsp-host",
-    "dep:syntaxis-notifications-host",
-    "dep:syntaxis-terminal-host",
-    "dep:syntaxis-workspace-host",
-    "dep:reqwest",
-    "dep:rpassword",
-    "dep:subtle",
-    "dep:tokio",
-    "dep:tokio-tungstenite",
-    "dep:tokio-util",
+  "dioxus/server",
+  "dep:axum",
+  "dep:argon2",
+  "dep:rand_core",
+  "dep:toml",
+  "dep:syntaxis-agent-host",
+  "dep:syntaxis-git-host",
+  "dep:syntaxis-lsp-host",
+  "dep:syntaxis-notifications-host",
+  "dep:syntaxis-terminal-host",
+  "dep:syntaxis-workspace-host",
+  "dep:reqwest",
+  "dep:rpassword",
+  "dep:subtle",
+  "dep:tokio",
+  "dep:tokio-tungstenite",
+  "dep:tokio-util",
 ]
 
 [lints]

@@ -13,21 +13,22 @@ fn cookie_parser_matches_complete_cookie_names() {
 }
 
 #[test]
-fn same_origin_compares_request_host() -> Result<(), axum::http::Error> {
+fn same_origin_compares_request_host() {
     let matching = Request::builder()
         .method(Method::POST)
         .header(HOST, "code.example.test")
         .header(ORIGIN, "https://code.example.test")
-        .body(axum::body::Body::empty())?;
+        .body(axum::body::Body::empty())
+        .expect("matching-origin request should be valid");
     let foreign = Request::builder()
         .method(Method::POST)
         .header(HOST, "code.example.test")
         .header(ORIGIN, "https://evil.example.test")
-        .body(axum::body::Body::empty())?;
+        .body(axum::body::Body::empty())
+        .expect("foreign-origin request should be valid");
 
     assert!(origin_is_allowed(&matching));
     assert!(!origin_is_allowed(&foreign));
-    Ok(())
 }
 
 #[test]

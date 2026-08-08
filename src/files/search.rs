@@ -1,5 +1,5 @@
 use std::collections::BTreeSet;
-#[cfg(any(test, feature = "desktop", feature = "server"))]
+#[cfg(any(feature = "desktop", feature = "server"))]
 use std::sync::Arc;
 
 use dioxus::prelude::*;
@@ -243,10 +243,7 @@ fn server_error_message(error: ServerFnError) -> String {
 }
 
 #[cfg(any(feature = "desktop", feature = "server"))]
-async fn content_matches_async(
-    source: String,
-    query: Arc<PreparedQuery>,
-) -> ContentSearchResult {
+async fn content_matches_async(source: String, query: Arc<PreparedQuery>) -> ContentSearchResult {
     #[cfg(any(feature = "desktop", feature = "server"))]
     {
         tokio::task::spawn_blocking(move || content_matches_prepared(&source, &query))
@@ -259,7 +256,7 @@ async fn content_matches_async(
     }
 }
 
-#[cfg(any(feature = "desktop", feature = "server"))]
+#[cfg(any(test, feature = "desktop", feature = "server"))]
 fn is_ignored(path: &str, ignored_paths: &BTreeSet<String>) -> bool {
     let mut candidate = path;
     loop {
@@ -283,7 +280,9 @@ fn match_score(candidate: &str, query: &PreparedQuery) -> Option<usize> {
             let ranges = fuzzy_ranges_prepared(candidate, characters, *case_sensitive)?;
             Some(ranges.last()?.end.saturating_sub(ranges.first()?.start) - ranges.len())
         }
-        PreparedQuery::Literal(expression) => expression.find(candidate).map(|matched| matched.start()),
+        PreparedQuery::Literal(expression) => {
+            expression.find(candidate).map(|matched| matched.start())
+        }
     }
 }
 
@@ -295,16 +294,15 @@ struct ContentSearchResult {
     match_count: usize,
 }
 
-#[cfg(any(test, feature = "desktop", feature = "server"))]
+#[cfg(test)]
 fn content_matches(
     source: &str,
     query: &str,
     options: WorkspaceSearchOptions,
 ) -> ContentSearchResult {
-    PreparedQuery::new(query, options)
-        .map_or_else(ContentSearchResult::default, |query| {
-            content_matches_prepared(source, &query)
-        })
+    PreparedQuery::new(query, options).map_or_else(ContentSearchResult::default, |query| {
+        content_matches_prepared(source, &query)
+    })
 }
 
 #[cfg(any(test, feature = "desktop", feature = "server"))]
@@ -347,7 +345,11 @@ fn literal_content_matches(source: &str, expression: &regex::Regex) -> ContentSe
 }
 
 #[cfg(any(test, feature = "desktop", feature = "server"))]
-fn fuzzy_content_matches(source: &str, query: &[char], case_sensitive: bool) -> ContentSearchResult {
+fn fuzzy_content_matches(
+    source: &str,
+    query: &[char],
+    case_sensitive: bool,
+) -> ContentSearchResult {
     let mut result = ContentSearchResult::default();
     let mut offset = 0;
     for (line_index, raw_line) in source.split_inclusive('\n').enumerate() {
@@ -360,17 +362,17 @@ fn fuzzy_content_matches(source: &str, query: &[char], case_sensitive: bool) -> 
                 range.start += offset;
                 range.end += offset;
             }
-            if result.occurrences.len() < MAX_OCCURRENCES_PER_FILE
-                && let Some((first, last)) = line_ranges.first().zip(line_ranges.last())
-            {
-                result.occurrences.push(SearchOccurrence {
-                    line: line_index + 1,
-                    preview: line.trim().to_owned(),
-                    target: EditorRange {
-                        start: first.start,
-                        end: last.end,
-                    },
-                });
+            if result.occurrences.len() < MAX_OCCURRENCES_PER_FILE {
+                if let Some((first, last)) = line_ranges.first().zip(line_ranges.last()) {
+                    result.occurrences.push(SearchOccurrence {
+                        line: line_index + 1,
+                        preview: line.trim().to_owned(),
+                        target: EditorRange {
+                            start: first.start,
+                            end: last.end,
+                        },
+                    });
+                }
             }
             let remaining = MAX_HIGHLIGHT_RANGES_PER_FILE.saturating_sub(result.ranges.len());
             result
@@ -382,7 +384,7 @@ fn fuzzy_content_matches(source: &str, query: &[char], case_sensitive: bool) -> 
     result
 }
 
-#[cfg(any(test, feature = "desktop", feature = "server"))]
+#[cfg(test)]
 fn literal_ranges(source: &str, query: &str, case_sensitive: bool) -> Vec<EditorRange> {
     let options = WorkspaceSearchOptions {
         fuzzy: false,
@@ -401,7 +403,7 @@ fn literal_ranges(source: &str, query: &str, case_sensitive: bool) -> Vec<Editor
         .collect()
 }
 
-#[cfg(any(test, feature = "desktop", feature = "server"))]
+#[cfg(test)]
 fn fuzzy_ranges(source: &str, query: &str, case_sensitive: bool) -> Option<Vec<EditorRange>> {
     let characters = query.chars().collect::<Vec<_>>();
     fuzzy_ranges_prepared(source, &characters, case_sensitive)

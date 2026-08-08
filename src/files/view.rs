@@ -25,8 +25,9 @@ use syntaxis_workspace::{
 };
 
 use super::state::{
-    ActiveBufferMeta, CloseRequest, FileAction, FileActionDialog, FilesSessionState,
-    GitRevertRequest, OpenDiffRequest, OpenDocument, OpenTab, RevertAction, ToastState,
+    ActiveBufferMeta, ActiveDocumentView, CloseRequest, FileAction, FileActionDialog,
+    FilesSessionState, GitRevertRequest, OpenDiffRequest, OpenDocument, OpenTab, RevertAction,
+    ToastState,
 };
 use super::workspace::load_initial;
 use crate::{
@@ -414,6 +415,8 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
             let mut normalized_location = query.clone();
             normalized_location.path = Some(relative.as_str().to_owned());
             pending_location.set(Some(normalized_location));
+            let query_diff_slug = query_diff_slug.clone();
+            let view_changes = query.view_changes;
             spawn(async move {
                 match workspace_client::stat_file(workspace.clone(), relative).await {
                     Ok(entry) if entry.kind == EntryKind::File => open_document(
@@ -424,7 +427,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                         active_path,
                         loading_path,
                         loading_documents,
-                        query.view_changes.map(|kind| OpenDiffRequest {
+                        view_changes.map(|kind| OpenDiffRequest {
                             slug: query_diff_slug.clone(),
                             kind,
                             diff,
@@ -596,11 +599,9 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
     let active_reference = active_document
         .as_ref()
         .and_then(|document| match document {
-            ActiveDocumentView::Text { path, contents, .. } => Some(format_editor_reference(
-                path,
-                contents,
-                &editor_selection(),
-            )),
+            ActiveDocumentView::Text { path, contents, .. } => {
+                Some(format_editor_reference(path, contents, &editor_selection()))
+            }
             _ => None,
         });
     let active_language_services = active_buffer.as_ref().map_or_else(Vec::new, |buffer| {
@@ -1126,7 +1127,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                             }
                         },
                         Some(
-                            ActiveDocumentView::Text { path: _, contents, .. },
+                            ActiveDocumentView::Text { contents, .. },
                         ) if diff().is_none() && active_markdown && markdown_preview() => {
                             rsx! {
                                 MarkdownPreview { source: contents }

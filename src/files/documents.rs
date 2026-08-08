@@ -317,16 +317,16 @@ pub(super) fn save_path(
     let Some(workspace) = workspace else {
         return;
     };
-    let Some((source, config, version)) = documents.read().iter().find_map(|document| {
-        match document {
+    let Some((source, config, version)) =
+        documents.read().iter().find_map(|document| match document {
             OpenDocument::Text(buffer) if buffer.path == path => Some((
                 buffer.contents.clone(),
                 buffer.config.clone(),
                 buffer.version.clone(),
             )),
             _ => None,
-        }
-    }) else {
+        })
+    else {
         return;
     };
     spawn(async move {
