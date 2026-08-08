@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.7.0](https://github.com/katawaredev/syntaxis/compare/v0.6.2...v0.7.0) (2026-08-08)
+
+
+### Features
+
+* **ai:** allow renaming chats ([f84a043](https://github.com/katawaredev/syntaxis/commit/f84a04334bdb87681c1c9eb9ec6caa54a96623b9))
+* **ai:** edit messages ([3520b0d](https://github.com/katawaredev/syntaxis/commit/3520b0dd0db7c08b5ded33431ca6e2cc3dedd6f5))
+* **git:** use CodeMirror for diff viewer ([9ab01d4](https://github.com/katawaredev/syntaxis/commit/9ab01d42fd64d7285e7ad18f325b4942f6bd01bf))
+* **workspace:** add Cloudflare scaffolding ([fa5ee3e](https://github.com/katawaredev/syntaxis/commit/fa5ee3ef8991172154d10aa61f47d74f77b96266))
+
+
+### Bug Fixes
+
+* **ai:** mark thread as active ([7033298](https://github.com/katawaredev/syntaxis/commit/703329877ae945234f6bd3a48e17ee5ed8485938))
+* **git:** change revert icon ([1c310ff](https://github.com/katawaredev/syntaxis/commit/1c310ff386c09cc0719498b2a0d742a3d26495d2))
+* **git:** clear state after commit ([6eb623f](https://github.com/katawaredev/syntaxis/commit/6eb623f99c7726f48af04da8dd0084aaff7a3b77))
+* **git:** handle changing file ([667ef97](https://github.com/katawaredev/syntaxis/commit/667ef972fdde5323d9903a37add4b363b42959de))
+* lint code ([b833bd5](https://github.com/katawaredev/syntaxis/commit/b833bd5d5478d494ba110dd7610dc3bb649988fd))
+
 ## [0.6.2](https://github.com/katawaredev/syntaxis/compare/v0.6.1...v0.6.2) (2026-08-06)
 
 
