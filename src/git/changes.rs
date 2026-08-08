@@ -6,13 +6,12 @@ use super::{
     component, diff_line_class, dioxus_core, dioxus_elements, dioxus_signals,
     language_slug_for_path, parse_diff_hunks, rsx, ActionCallback, AnyStorage, AppIcon, ChangeKind,
     CommitInfo, ConflictChoice, ConflictFile, DiffHunk, DiffKind, DiffLayout, Element,
-    EventHandler, FileChange, FileIcon, FilesQuery, GitChangeBadge, GlobalAttributesExtension,
-    HasAttributes, History, HunkAction, Icon, InputExtension, Language, Link, LinkExtension,
-    Mutation, OptionExtension, Props, ReadableExt, ReadableHashMapExt, ReadableHashSetExt,
-    ReadableOptionExt, ReadableResultExt, ReadableStrExt, ReadableVecExt, RepositoryStatus, Result,
-    Route, SelectExtension, SelectedChange, ServerFnError, SidebarView, Signal, Storage,
-    StyleExtension, SvgAttributesExtension, TrackExtension, UnifiedDiff, UnifiedDiffView,
-    WritableExt,
+    EventHandler, FileChange, FileIcon, GitChangeBadge, GlobalAttributesExtension, HasAttributes,
+    History, HunkAction, Icon, InputExtension, Language, LinkExtension, Mutation, OptionExtension,
+    Props, ReadableExt, ReadableHashMapExt, ReadableHashSetExt, ReadableOptionExt,
+    ReadableResultExt, ReadableStrExt, ReadableVecExt, RepositoryStatus, Result, SelectExtension,
+    SelectedChange, ServerFnError, SidebarView, Signal, Storage, StyleExtension,
+    SvgAttributesExtension, TrackExtension, UnifiedDiff, UnifiedDiffView, WritableExt,
 };
 
 const DIFF_TITLEBAR_CLASS: &str = "sticky top-0 z-10 flex min-h-14 min-w-165 items-center justify-between gap-3 border-b border-border bg-background/95 p-3 font-sans backdrop-blur-sm max-md:min-h-13 max-md:min-w-0 max-md:gap-1.5 max-md:px-2 max-md:py-2";
@@ -248,12 +247,13 @@ pub(super) fn ChangeRow(
 
 #[component]
 pub(super) fn ChangeDetail(
-    slug: String,
     selection: Option<SelectedChange>,
     change: Option<FileChange>,
     diff: Option<Result<UnifiedDiff, ServerFnError>>,
     conflict: Option<Result<ConflictFile, ServerFnError>>,
+    expanded: bool,
     pending: bool,
+    on_expand: EventHandler<()>,
     on_mutation: EventHandler<Mutation>,
 ) -> Element {
     let Some(selection) = selection else {
@@ -290,16 +290,22 @@ pub(super) fn ChangeDetail(
                 }
                 div { class: "flex shrink-0 items-center gap-1.5 max-md:gap-1",
                     div { class: "flex shrink-0 items-center gap-1.5 max-md:gap-1",
-                        Link {
+                        button {
                             class: "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground max-md:px-2",
-                            title: "Open in Files with changes visible",
-                            "aria-label": "Open in Files with changes visible",
-                            to: Route::Files {
-                                slug: slug.clone(),
-                                query: FilesQuery::view_changes(selection.path.clone(), selection.kind),
-                            },
-                            Icon { icon: AppIcon::Expand, size: 13 }
-                            span { class: "max-md:hidden", "Open in Files" }
+                            title: if expanded { "Collapse diff context" } else { "Expand diff context" },
+                            "aria-label": if expanded { "Collapse diff context" } else { "Expand diff context" },
+                            onclick: move |_| on_expand.call(()),
+                            Icon {
+                                icon: if expanded { AppIcon::Collapse } else { AppIcon::Expand },
+                                size: 13,
+                            }
+                            span { class: "max-md:hidden",
+                                if expanded {
+                                    "Collapse"
+                                } else {
+                                    "Expand"
+                                }
+                            }
                         }
                         span { class: "flex shrink-0 items-center gap-2 px-1 max-md:hidden",
                             span { class: "text-[10px] text-red-400", "−{deletions}" }
@@ -383,11 +389,15 @@ pub(super) fn ChangeDetail(
                     }
                 },
                 Some(Ok(diff)) => rsx! {
-                    HunkDiff {
-                        diff,
-                        selection,
-                        pending,
-                        on_mutation,
+                    if expanded {
+                        FullFileDiff { diff, path: selection.path }
+                    } else {
+                        HunkDiff {
+                            diff,
+                            selection,
+                            pending,
+                            on_mutation,
+                        }
                     }
                 },
             }
@@ -651,6 +661,26 @@ fn HunkCard(
                 layout: DiffLayout::Embedded,
                 old_line_offset: hunk.old_start.saturating_sub(1),
                 new_line_offset: hunk.new_start.saturating_sub(1),
+            }
+        }
+    }
+}
+
+#[component]
+fn FullFileDiff(diff: UnifiedDiff, path: String) -> Element {
+    let (Some(original), Some(current)) = (diff.original, diff.current) else {
+        return rsx! {
+            RawPatch { patch: diff.patch }
+        };
+    };
+    rsx! {
+        div { class: "w-full max-w-full touch-auto overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]",
+            UnifiedDiffView {
+                original,
+                current,
+                language: diff_language(&path),
+                collapse_unchanged: false,
+                layout: DiffLayout::FullFile,
             }
         }
     }

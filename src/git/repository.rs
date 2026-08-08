@@ -36,6 +36,7 @@ pub(super) fn use_repository_resources(
     slug: &str,
     refresh_key: Signal<u64>,
     selected: Signal<Option<SelectedChange>>,
+    expanded_diff: Signal<bool>,
     selected_commit: Signal<Option<String>>,
 ) -> RepositoryResources {
     let status_slug = slug.to_owned();
@@ -100,7 +101,13 @@ pub(super) fn use_repository_resources(
         diff,
         conflict,
         commit_detail,
-    } = use_selection_resources(slug, refresh_key, selected, selected_commit);
+    } = use_selection_resources(
+        slug,
+        refresh_key,
+        selected,
+        expanded_diff,
+        selected_commit,
+    );
     RepositoryResources {
         status,
         branches,
@@ -117,6 +124,7 @@ fn use_selection_resources(
     slug: &str,
     refresh_key: Signal<u64>,
     selected: Signal<Option<SelectedChange>>,
+    expanded_diff: Signal<bool>,
     selected_commit: Signal<Option<String>>,
 ) -> SelectionResources {
     let diff_slug = slug.to_owned();
@@ -124,9 +132,10 @@ fn use_selection_resources(
         let slug = diff_slug.clone();
         let _ = refresh_key();
         let selection = selected();
+        let expanded = expanded_diff();
         async move {
             if let Some(selection) = selection {
-                Some(api::repository_diff(slug, selection.path, selection.kind, false).await)
+                Some(api::repository_diff(slug, selection.path, selection.kind, expanded).await)
             } else {
                 None
             }

@@ -103,6 +103,7 @@ fn RemoteAgent(
         creating_session,
         pending_new_prompt,
         client,
+        ..
     } = runtime;
     let mut drawer = use_signal(|| false);
     let mut sidebar_open = use_signal(|| true);

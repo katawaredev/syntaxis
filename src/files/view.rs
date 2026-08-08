@@ -385,7 +385,6 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
 
     use_effect({
         let query = query.clone();
-        let query_diff_slug = route_slug.clone();
         move || {
             let Some(path) = query.path.clone() else {
                 return;
@@ -415,8 +414,6 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
             let mut normalized_location = query.clone();
             normalized_location.path = Some(relative.as_str().to_owned());
             pending_location.set(Some(normalized_location));
-            let query_diff_slug = query_diff_slug.clone();
-            let view_changes = query.view_changes;
             spawn(async move {
                 match workspace_client::stat_file(workspace.clone(), relative).await {
                     Ok(entry) if entry.kind == EntryKind::File => open_document(
@@ -427,12 +424,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                         active_path,
                         loading_path,
                         loading_documents,
-                        view_changes.map(|kind| OpenDiffRequest {
-                            slug: query_diff_slug.clone(),
-                            kind,
-                            diff,
-                            toast,
-                        }),
+                        None,
                     ),
                     Ok(_) => {
                         pending_location.set(None);
@@ -489,6 +481,11 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
     use_effect({
         let query = query.clone();
         move || {
+            let route_request_pending = query.path.is_some()
+                && (requested_location().as_ref() != Some(&query) || pending_location().is_some());
+            if route_request_pending {
+                return;
+            }
             let Some(path) = active_path() else {
                 if query.path.is_some() && documents.read().is_empty() {
                     navigator.replace(crate::app::Route::Files {

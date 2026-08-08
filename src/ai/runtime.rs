@@ -62,6 +62,8 @@ pub(super) struct AgentRuntime {
     pub sessions_loaded: Signal<bool>,
     pub selected_id: Signal<Option<String>>,
     pub session_loading: Signal<bool>,
+    pending_selection: Signal<Option<String>>,
+    pending_history: Signal<Option<String>>,
     pub draft: Signal<String>,
     pub error: Signal<Option<String>>,
     pub extension_request: Signal<Option<ExtensionUiRequest>>,
@@ -80,6 +82,15 @@ impl AgentRuntime {
         self.draft_session.set(false);
         self.pending_new_prompt.set(None);
         self.selected_id.set(Some(session_id.clone()));
+        self.pending_selection.set(Some(session_id.clone()));
+        self.pending_history.set(
+            self.sessions
+                .read()
+                .iter()
+                .find(|session| session.id == session_id)
+                .is_some_and(|session| !session.running)
+                .then_some(session_id.clone()),
+        );
         self.session_loading.set(true);
         self.snapshot.set(AgentSnapshot::default());
         self.extension_request.set(None);
@@ -95,6 +106,8 @@ impl AgentRuntime {
         self.snapshot.set(AgentSnapshot::default());
         self.extension_request.set(None);
         self.pending_new_prompt.set(None);
+        self.pending_selection.set(None);
+        self.pending_history.set(None);
         self.draft_session.set(true);
         self.creating_session.set(true);
         self.session_loading.set(true);
@@ -159,6 +172,8 @@ pub(super) fn use_agent_runtime(
     let mut sessions_loaded = use_signal(|| false);
     let mut selected_id = use_signal(|| None::<String>);
     let mut session_loading = use_signal(|| true);
+    let mut pending_selection = use_signal(|| None::<String>);
+    let mut pending_history = use_signal(|| None::<String>);
     let mut draft = use_signal(String::new);
     let mut error = use_signal(|| None::<String>);
     let mut extension_request = use_signal(|| None);
@@ -256,6 +271,19 @@ pub(super) fn use_agent_runtime(
                                             )
                                         };
                                         if let Some(request) = request {
+                                            if let ClientMessage::SelectSession { session_id } = &request {
+                                                pending_selection.set(Some(session_id.clone()));
+                                                pending_history.set(
+                                                    available
+                                                        .iter()
+                                                        .find(|session| session.id == *session_id)
+                                                        .is_some_and(|session| !session.running)
+                                                        .then_some(session_id.clone()),
+                                                );
+                                            } else {
+                                                pending_selection.set(None);
+                                                pending_history.set(None);
+                                            }
                                             if socket.send(request).await.is_err() {
                                                 attempt = attempt.saturating_add(1).max(1);
                                                 break;
@@ -288,6 +316,16 @@ pub(super) fn use_agent_runtime(
                                         if let Some(request) =
                                             initial_session_request(available, None, false)
                                         {
+                                            if let ClientMessage::SelectSession { session_id } = &request {
+                                                pending_selection.set(Some(session_id.clone()));
+                                                pending_history.set(
+                                                    available
+                                                        .iter()
+                                                        .find(|session| session.id == *session_id)
+                                                        .is_some_and(|session| !session.running)
+                                                        .then_some(session_id.clone()),
+                                                );
+                                            }
                                             if socket.send(request).await.is_err() {
                                                 attempt = attempt.saturating_add(1).max(1);
                                                 break;
@@ -300,14 +338,65 @@ pub(super) fn use_agent_runtime(
                                         }
                                     }
                                 }
-                                if let ServerMessage::SelectedSession { session_id, .. } = &message
+                                let stale_selection = match &message {
+                                    ServerMessage::SelectedSession { session_id, .. } => {
+                                        if let Some(pending) = pending_selection() {
+                                            pending != *session_id
+                                        } else {
+                                            !creating_session()
+                                                && selected_id().as_ref().is_some_and(|selected| {
+                                                    selected != session_id
+                                                        && sessions().iter().any(|session| {
+                                                            session.id == *selected
+                                                        })
+                                                })
+                                        }
+                                    }
+                                    _ => false,
+                                };
+                                if stale_selection {
+                                    continue;
+                                }
+                                let is_error = matches!(&message, ServerMessage::Error { .. });
+                                let selected_session_id = match &message {
+                                    ServerMessage::SelectedSession { session_id, .. } => {
+                                        Some(session_id.clone())
+                                    }
+                                    _ => None,
+                                };
+                                let loaded_history_id = match &message {
+                                    ServerMessage::SessionEvent { session_id, event }
+                                        if matches!(event.as_ref(), ServerMessage::Snapshot { .. }) =>
+                                    {
+                                        Some(session_id.clone())
+                                    }
+                                    _ => None,
+                                };
+                                apply_server_message(
+                                    message,
+                                    &mut sessions,
+                                    &mut selected_id,
+                                    &mut snapshot,
+                                    &mut draft,
+                                    &mut error,
+                                    &mut extension_request,
+                                );
+                                if let Some(session_id) = loaded_history_id
+                                    && pending_history().as_deref() == Some(session_id.as_str())
+                                    && selected_id().as_deref() == Some(session_id.as_str())
                                 {
-                                    creating_session.set(false);
+                                    pending_history.set(None);
                                     session_loading.set(false);
+                                } else if let Some(session_id) = selected_session_id {
+                                    creating_session.set(false);
+                                    pending_selection.set(None);
+                                    session_loading.set(
+                                        pending_history().as_deref() == Some(session_id.as_str()),
+                                    );
                                     replacement_selection_pending = false;
                                     if let Some(submission) = pending_new_prompt() {
                                         let action = session_action(
-                                            session_id.clone(),
+                                            session_id,
                                             ClientMessage::Prompt {
                                                 text: submission.text,
                                                 images: submission.images,
@@ -321,9 +410,9 @@ pub(super) fn use_agent_runtime(
                                         pending_new_prompt.set(None);
                                     }
                                     draft_session.set(false);
-                                } else if matches!(message, ServerMessage::Error { .. })
-                                    && pending_new_prompt().is_some()
-                                {
+                                } else if is_error && pending_new_prompt().is_some() {
+                                    pending_selection.set(None);
+                                    pending_history.set(None);
                                     session_loading.set(false);
                                     if let Some(submission) = pending_new_prompt.write().take() {
                                         draft.set(submission.text);
@@ -331,25 +420,16 @@ pub(super) fn use_agent_runtime(
                                     }
                                     draft_session.set(true);
                                     creating_session.set(false);
-                                } else if matches!(message, ServerMessage::Error { .. })
-                                    && creating_session()
-                                {
+                                } else if is_error && creating_session() {
+                                    pending_selection.set(None);
+                                    pending_history.set(None);
                                     creating_session.set(false);
                                     session_loading.set(false);
-                                } else if matches!(message, ServerMessage::Error { .. })
-                                    && session_loading()
-                                {
+                                } else if is_error && session_loading() {
+                                    pending_selection.set(None);
+                                    pending_history.set(None);
                                     session_loading.set(false);
                                 }
-                                apply_server_message(
-                                    message,
-                                    &mut sessions,
-                                    &mut selected_id,
-                                    &mut snapshot,
-                                    &mut draft,
-                                    &mut error,
-                                    &mut extension_request,
-                                );
                             }
                             futures_util::future::Either::Right((Err(socket_error), _)) => {
                                 error.set(Some(socket_error.to_string()));
@@ -372,6 +452,8 @@ pub(super) fn use_agent_runtime(
         sessions_loaded,
         selected_id,
         session_loading,
+        pending_selection,
+        pending_history,
         draft,
         error,
         extension_request,
