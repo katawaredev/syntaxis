@@ -11,7 +11,7 @@ use super::{
     Props, ReadableExt, ReadableHashMapExt, ReadableHashSetExt, ReadableOptionExt,
     ReadableResultExt, ReadableStrExt, ReadableVecExt, RepositoryStatus, Result, SelectExtension,
     SelectedChange, ServerFnError, SidebarView, Signal, Storage, StyleExtension,
-    SvgAttributesExtension, TrackExtension, UnifiedDiff, UnifiedDiffView, WritableExt,
+    SvgAttributesExtension, TrackExtension, UnifiedDiff, UnifiedDiffView, WritableExt, use_signal,
 };
 
 const DIFF_TITLEBAR_CLASS: &str = "sticky top-0 z-10 flex min-h-14 min-w-165 items-center justify-between gap-3 border-b border-border bg-background/95 p-3 font-sans backdrop-blur-sm max-md:min-h-13 max-md:min-w-0 max-md:gap-1.5 max-md:px-2 max-md:py-2";
@@ -77,6 +77,7 @@ pub(super) fn GitSidebar(
                                 selected,
                                 pending,
                                 batch_label: None,
+                                collapsible: false,
                                 on_select,
                                 on_mutation,
                             }
@@ -87,6 +88,7 @@ pub(super) fn GitSidebar(
                                 selected,
                                 pending,
                                 batch_label: Some("Unstage".into()),
+                                collapsible: true,
                                 on_select,
                                 on_mutation,
                             }
@@ -97,6 +99,7 @@ pub(super) fn GitSidebar(
                                 selected,
                                 pending,
                                 batch_label: Some("Stage".into()),
+                                collapsible: true,
                                 on_select,
                                 on_mutation,
                             }
@@ -160,9 +163,11 @@ pub(super) fn ChangeSection(
     selected: Signal<Option<SelectedChange>>,
     pending: bool,
     batch_label: Option<String>,
+    collapsible: bool,
     on_select: EventHandler<()>,
     on_mutation: EventHandler<Mutation>,
 ) -> Element {
+    let mut expanded = use_signal(|| true);
     if changes.is_empty() {
         return rsx! {};
     }
@@ -173,7 +178,19 @@ pub(super) fn ChangeSection(
     rsx! {
         section {
             header { class: "mb-1 flex min-h-7 items-center justify-between px-1 text-xs font-medium text-muted-foreground",
-                span { "{title} ({changes.len()})" }
+                if collapsible {
+                    button {
+                        class: "flex min-w-0 flex-1 items-center gap-1.5 text-left hover:text-foreground",
+                        "aria-expanded": expanded(),
+                        onclick: move |_| expanded.toggle(),
+                        span { class: "w-2.5 shrink-0 text-[9px]", aria_hidden: "true",
+                            if expanded() { "▾" } else { "▸" }
+                        }
+                        span { class: "truncate", "{title} ({changes.len()})" }
+                    }
+                } else {
+                    span { "{title} ({changes.len()})" }
+                }
                 if let Some(label) = batch_label {
                     button {
                         class: "h-6 rounded-md border border-border bg-background px-2 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50",
@@ -189,13 +206,15 @@ pub(super) fn ChangeSection(
                     }
                 }
             }
-            div { class: "space-y-1",
-                for change in changes {
-                    ChangeRow {
-                        change,
-                        kind,
-                        selected,
-                        on_select,
+            if !collapsible || expanded() {
+                div { class: "space-y-1",
+                    for change in changes {
+                        ChangeRow {
+                            change,
+                            kind,
+                            selected,
+                            on_select,
+                        }
                     }
                 }
             }
