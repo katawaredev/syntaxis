@@ -3,7 +3,7 @@
     reason = "Dioxus expands the parent glob for RSX hot-reload analysis"
 )]
 use super::{
-    component, dioxus_core, dioxus_elements, dioxus_signals, document, file_glyph,
+    component, dioxus_core, dioxus_elements, dioxus_signals, document, file_glyph, use_drop,
     language_slug_for_path, request_close, rsx, save_path, set_error, set_success, spawn,
     ActionCallback, AnyStorage, AppIcon, ButtonExtension, CanvasExtension, CloseRequest,
     ControlSize, DataExtension, DetailsExtension, DialogExtension, DropdownMenu, DropdownMenuItem,
@@ -11,6 +11,7 @@ use super::{
     FieldsetExtension, FormEvent, GlobalAttributesExtension, HasAttributes, HasFormData,
     HasKeyboardData, HasPointerData, History, Icon, IframeExtension, ImgExtension, InputExtension,
     Key, KeyboardEvent, Language, LiExtension, LinkExtension, MenuButtonTrigger, MenuContent,
+    MountedData,
     MeterExtension, Modifiers, ModifiersInteraction, MpaddedExtension, MspaceExtension,
     ObjectExtension, OlExtension, OpenDocument, OpenTab, OptgroupExtension, OptionExtension,
     PanelTab, PanelTabIndicator, PanelTabWidth, ParamExtension, ProgressExtension, Props,
@@ -20,6 +21,7 @@ use super::{
     VideoExtension, WorkspaceRecord, WritableExt, WritableStringExt, WritableVecExt,
 };
 use regex::RegexBuilder;
+use std::rc::Rc;
 
 pub(super) fn render_tab(
     tab: OpenTab,
@@ -226,6 +228,7 @@ pub(super) fn handle_editor_shortcut(
     documents: Signal<Vec<OpenDocument>>,
     toast: Signal<Option<ToastState>>,
     mut search_panel: Signal<bool>,
+    search_input: Signal<Option<Rc<MountedData>>>,
     mut go_to_line: Signal<bool>,
 ) {
     let modifiers = event.modifiers();
@@ -241,6 +244,7 @@ pub(super) fn handle_editor_shortcut(
         Key::Character(value) if value.eq_ignore_ascii_case("f") => {
             event.prevent_default();
             search_panel.set(true);
+            focus_file_search(search_input);
         }
         Key::Character(value) if value.eq_ignore_ascii_case("g") => {
             event.prevent_default();
@@ -248,6 +252,15 @@ pub(super) fn handle_editor_shortcut(
         }
         _ => {}
     }
+}
+
+fn focus_file_search(search_input: Signal<Option<Rc<MountedData>>>) {
+    let Some(input) = search_input() else {
+        return;
+    };
+    spawn(async move {
+        let _ = input.set_focus(true).await;
+    });
 }
 
 pub(super) fn issue_command(
@@ -276,6 +289,7 @@ pub(super) fn SearchPanel(
     mut options: Signal<SearchOptions>,
     mut replacement: Signal<String>,
     mut replace_open: Signal<bool>,
+    mut search_input: Signal<Option<Rc<MountedData>>>,
     count: usize,
     error: Option<String>,
     on_next: EventHandler<i8>,
@@ -283,6 +297,7 @@ pub(super) fn SearchPanel(
     on_replace_all: EventHandler<()>,
     on_close: EventHandler<()>,
 ) -> Element {
+    use_drop(move || search_input.set(None));
     let active = options();
     let group_class = if error.is_some() {
         "flex min-w-0 flex-1 items-center overflow-hidden rounded-md border border-destructive bg-card/70 shadow-xs"
@@ -300,7 +315,13 @@ pub(super) fn SearchPanel(
                         placeholder: "Find in file",
                         "aria-label": "Find in file",
                         "aria-invalid": error.is_some(),
-                        autofocus: true,
+                        onmounted: move |event| {
+                            let input = event.data();
+                            search_input.set(Some(input.clone()));
+                            spawn(async move {
+                                let _ = input.set_focus(true).await;
+                            });
+                        },
                         oninput: move |event: FormEvent| {
                             query.set(event.value());
                             current.set(0);

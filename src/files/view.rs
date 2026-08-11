@@ -154,6 +154,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
     let mut csv_preview = use_signal(|| false);
     let mut show_ignored = use_signal(|| false);
     let mut search_panel = use_signal(|| false);
+    let search_input = use_signal(|| None::<std::rc::Rc<MountedData>>);
     let search_query = use_signal(String::new);
     let search_options = use_signal(SearchOptions::default);
     let mut search_match = use_signal(|| 0_usize);
@@ -1048,6 +1049,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                         options: search_options,
                         replacement: replace_query,
                         replace_open,
+                        search_input,
                         count: search_status.count,
                         error: search_error,
                         on_next: move |direction| {
@@ -1276,6 +1278,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                             documents,
                                             toast,
                                             search_panel,
+                                            search_input,
                                             go_to_line,
                                         ),
                                     }
