@@ -492,10 +492,20 @@ import { tags } from "@lezer/highlight";
 		}),
 	});
 
+	const scrollPositions = new Map();
 	const configure = (config) => {
+		const filenameChanged = config.filename !== currentConfig.filename;
 		const languageChanged =
-			config.language !== currentConfig.language ||
-			config.filename !== currentConfig.filename;
+			config.language !== currentConfig.language || filenameChanged;
+		const restoredScroll = filenameChanged
+			? (scrollPositions.get(config.filename) ?? { top: 0, left: 0 })
+			: null;
+		if (filenameChanged) {
+			scrollPositions.set(currentConfig.filename, {
+				top: view.scrollDOM.scrollTop,
+				left: view.scrollDOM.scrollLeft,
+			});
+		}
 		const languageServiceChanged =
 			JSON.stringify(config.language_services) !==
 				JSON.stringify(currentConfig.language_services) || languageChanged;
@@ -551,6 +561,16 @@ import { tags } from "@lezer/highlight";
 		});
 		suppressInput = false;
 		currentConfig = config;
+		if (restoredScroll) {
+			view.requestMeasure({
+				read: () => restoredScroll,
+				write: (position) => {
+					if (currentConfig.filename !== config.filename) return;
+					view.scrollDOM.scrollTop = position.top;
+					view.scrollDOM.scrollLeft = position.left;
+				},
+			});
+		}
 		if (languageChanged) void loadLanguage(config);
 		if (languageServiceChanged) void configureLanguageService(config);
 	};
