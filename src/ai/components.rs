@@ -42,7 +42,7 @@ pub(super) fn AgentHeader(
 ) -> Element {
     let connection_ready = connection == "Pi connected";
     let workspace_locked_reason = if !connection_ready {
-        Some("Connect to Pi before changing workspace".to_owned())
+        Some("Connect to the agent before changing workspace".to_owned())
     } else if workspace_locked {
         Some("Workspace cannot be changed after the chat starts".to_owned())
     } else {

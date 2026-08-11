@@ -71,7 +71,7 @@ fn AiRoute(
         None => rsx! {
             div { class: "absolute inset-0 flex flex-col items-center justify-center gap-2 bg-card text-muted-foreground",
                 span { class: "size-5 animate-spin rounded-full border-2 border-border border-t-primary" }
-                "Loading Pi…"
+                "Loading agent…"
             }
         },
     }
@@ -219,7 +219,7 @@ fn RemoteAgent(
         active_id
             .as_ref()
             .and_then(|id| sessions().into_iter().find(|session| session.id == *id))
-            .map_or_else(|| "Pi".into(), |session| session.title)
+            .map_or_else(|| "Agent".into(), |session| session.title)
     };
     let is_working = matches!(
         current.status,
@@ -300,7 +300,7 @@ fn RemoteAgent(
             }
             if drawer() && !drawer_blocked {
                 Drawer {
-                    title: "Pi",
+                    title: "Agent",
                     label: "AI sidebar",
                     content_class: "h-full w-[min(330px,88vw)] justify-self-start border-0 border-r border-border bg-sidebar shadow-[15px_0_50px_#0008]",
                     restore_focus: "button[aria-label='Open AI sidebar']",
@@ -525,7 +525,7 @@ fn RemoteAgent(
         if let Some(session) = rename_target() {
             Modal {
                 title: "Rename chat",
-                description: "Set the display name stored by Pi for this session.",
+                description: "Set the display name stored by the agent for this session.",
                 on_close: move |()| rename_target.set(None),
                 div { class: "flex flex-col gap-2.25 px-5 pt-3 pb-5",
                     label {
@@ -568,13 +568,13 @@ fn RemoteAgent(
         if let Some(session) = delete_target() {
             Modal {
                 title: "Delete chat?",
-                description: "This stops the chat and permanently deletes its Pi session file.",
+                description: "This stops the chat and permanently deletes its agent session file.",
                 on_close: move |()| delete_target.set(None),
                 div { class: "rounded-lg border border-border bg-secondary/35 px-3 py-2 text-xs",
                     strong { class: "block truncate", "{session.title}" }
                     if session.running {
                         small { class: "mt-1 block text-warning",
-                            "Pi is running in this chat and will be stopped."
+                            "The agent is running in this chat and will be stopped."
                         }
                     }
                 }

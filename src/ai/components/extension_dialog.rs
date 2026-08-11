@@ -9,7 +9,7 @@ pub(crate) fn ExtensionRequestDialog(
 ) -> Element {
     let mut value = use_signal(|| request.prefill.clone().unwrap_or_default());
     let description = if request.message.is_empty() {
-        "A Pi extension needs your input.".to_owned()
+        "An agent extension needs your input.".to_owned()
     } else {
         request.message.clone()
     };

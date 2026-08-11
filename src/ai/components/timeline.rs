@@ -34,7 +34,7 @@ pub(crate) fn AgentTimeline(
                 div { class: "mx-auto flex min-h-full w-full max-w-2xl flex-col items-center justify-center px-3 py-8 text-center",
                     h1 { class: "text-lg font-semibold tracking-tight", "Conversation unavailable" }
                     p { class: "mt-1.5 max-w-sm text-xs leading-relaxed text-muted-foreground",
-                        "Reconnect to Pi to load this chat."
+                        "Reconnect to the agent to load this chat."
                     }
                 }
             } else if loading {
@@ -53,13 +53,7 @@ pub(crate) fn AgentTimeline(
                 }
             } else if is_empty {
                 div { class: "mx-auto flex min-h-full w-full max-w-2xl flex-col items-center justify-center px-3 py-8 text-center",
-                    div { class: "grid size-12 place-items-center rounded-2xl border border-border bg-background text-primary shadow-sm",
-                        Icon { icon: AppIcon::Sparkles, size: 23 }
-                    }
-                    h1 { class: "mt-4 text-lg font-semibold tracking-tight", "What should Pi work on?" }
-                    p { class: "mt-1.5 max-w-sm text-xs leading-relaxed text-muted-foreground",
-                        "Pi can inspect files, edit code, run commands, and verify the result in this workspace."
-                    }
+                    h1 { class: "text-lg font-semibold tracking-tight", "What should we work on?" }
                     div { class: "mt-5 grid w-full max-w-md gap-2 sm:grid-cols-3",
                         for suggestion in ["Explain this project", "Find and fix a bug", "Run tests and resolve failures"] {
                             button {
@@ -102,7 +96,7 @@ pub(crate) fn AgentTimeline(
                             if status == AgentStatus::Compacting {
                                 "Compacting context…"
                             } else {
-                                "Pi is working…"
+                                "Agent is working…"
                             }
                         }
                     }

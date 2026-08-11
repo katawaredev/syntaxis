@@ -51,7 +51,7 @@ pub(super) fn ModelPicker(
         .map_or_else(|| "Default model".to_owned(), |model| model.name.clone());
     let selected_provider = selected
         .as_ref()
-        .map_or_else(|| "Pi".to_owned(), |model| model.provider.clone());
+        .map_or_else(|| "Agent".to_owned(), |model| model.provider.clone());
     let groups = group_models(
         models.clone(),
         &query(),
@@ -75,7 +75,7 @@ pub(super) fn ModelPicker(
             },
             PopoverTrigger {
                 class: if open() { "flex h-8 min-w-0 max-w-58 items-center gap-2 rounded-lg border border-primary/30 bg-accent px-2.5 text-left shadow-sm max-[590px]:max-w-34 max-[520px]:size-10 max-[520px]:max-w-none max-[520px]:justify-center max-[520px]:p-0" } else { "flex h-8 min-w-0 max-w-58 items-center gap-2 rounded-lg border border-input bg-background/80 px-2.5 text-left shadow-xs transition-colors hover:bg-accent max-[590px]:max-w-34 max-[520px]:size-10 max-[520px]:max-w-none max-[520px]:justify-center max-[520px]:p-0" },
-                aria_label: "Choose Pi model",
+                aria_label: "Choose agent model",
                 aria_expanded: open(),
                 disabled: disabled || models.is_empty(),
                 span { class: "grid size-5 shrink-0 place-items-center rounded-md bg-primary/10 text-primary",
@@ -98,7 +98,7 @@ pub(super) fn ModelPicker(
                         class: "h-8 min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground",
                         value: query(),
                         placeholder: "Search models or providers…",
-                        aria_label: "Search Pi models",
+                        aria_label: "Search agent models",
                         oninput: move |event| query.set(event.value()),
                     }
                 }
@@ -143,7 +143,7 @@ pub(super) fn ModelPicker(
                         }
                     }
                     p { class: "text-[9px] leading-relaxed text-muted-foreground",
-                        "Pi only lists models available through configured credentials. Prices are catalog token rates; subscription models may still show metered rates."
+                        "The agent only lists models available through configured credentials. Prices are catalog token rates; subscription models may still show metered rates."
                     }
                 }
                 div { class: "max-h-[min(420px,70vh)] overflow-y-auto p-1.5",

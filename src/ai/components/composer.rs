@@ -74,8 +74,8 @@ pub(crate) fn AgentComposer(
                             rows: 3,
                             value: draft(),
                             disabled: !connected,
-                            placeholder: if working { "Steer Pi while it works…" } else { "Ask Pi to change or inspect this project…" },
-                            aria_label: "Message Pi",
+                            placeholder: if working { "Steer the agent while it works…" } else { "Ask agent to change or inspect this project…" },
+                            aria_label: "Message agent",
                             "data-images-enabled": accepts_images && connected,
                             "data-draft-key": draft_key.clone(),
                             oninput: move |event| {
@@ -145,7 +145,7 @@ pub(crate) fn AgentComposer(
                         div { class: "ml-auto flex shrink-0 items-center gap-1",
                             if working {
                                 IconButton {
-                                    label: "Stop Pi",
+                                    label: "Stop agent",
                                     icon: AppIcon::Stop,
                                     danger: true,
                                     onclick: move |_| on_abort.call(()),
@@ -154,8 +154,8 @@ pub(crate) fn AgentComposer(
                             button {
                                 class: "grid size-8.5 place-items-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-35",
                                 disabled: !can_send,
-                                aria_label: if working { "Steer Pi" } else { "Send message" },
-                                title: if working { "Steer Pi" } else { "Send message" },
+                                aria_label: if working { "Steer agent" } else { "Send message" },
+                                title: if working { "Steer agent" } else { "Send message" },
                                 onclick: move |_| {
                                     submit_composer(
                                         can_send,
@@ -198,7 +198,7 @@ fn submit_composer(
         .filter(|command| command.invocation.as_deref() == Some("interactive"))
     {
         composer_error.set(Some(format!(
-            "/{} requires Pi's terminal interface and cannot run here.",
+            "/{} requires the agent's terminal interface and cannot run here.",
             command.name
         )));
         return;
@@ -229,7 +229,7 @@ fn SlashCommandMenu(commands: Vec<PiCommand>, draft: Signal<String>) -> Element 
             div { class: "absolute right-0 bottom-[calc(100%+7px)] left-0 z-60 overflow-hidden rounded-xl border border-border bg-popover shadow-2xl",
                 div { class: "flex items-center gap-2 border-b border-border px-3 py-2 text-[10px] text-muted-foreground",
                     Icon { icon: AppIcon::Command, size: 13 }
-                    "Pi commands"
+                    "Agent commands"
                     span { class: "ml-auto", "Enter to insert" }
                 }
                 div { class: "max-h-64 overflow-y-auto p-1.5",

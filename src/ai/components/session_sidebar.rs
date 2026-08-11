@@ -41,7 +41,7 @@ pub(crate) fn AgentSessionSidebar(
     rsx! {
         nav {
             class: "flex h-full min-h-0 flex-col bg-sidebar",
-            aria_label: "Pi chats",
+            aria_label: "Agent chats",
             div { class: "flex min-h-12 items-center gap-1 border-b border-border px-2",
                 div { class: "flex min-w-0 flex-1 items-center gap-2 rounded-md border border-input bg-background/70 px-2 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/35",
                     Icon { icon: AppIcon::Search, size: 14 }
@@ -114,7 +114,7 @@ pub(crate) fn AgentSessionSidebar(
                     }
                 } else if unavailable {
                     div { class: "grid h-full min-h-40 place-items-center px-4 text-center text-xs text-muted-foreground",
-                        "Chats are unavailable while Pi is offline."
+                        "Chats are unavailable while the agent is offline."
                     }
                 } else if loading {
                     div {
@@ -133,7 +133,7 @@ pub(crate) fn AgentSessionSidebar(
                         }
                         p { class: "mt-3 text-xs font-medium", "No chats yet" }
                         p { class: "mt-1 text-[10px] leading-relaxed text-muted-foreground",
-                            "Start a chat and Pi will keep it here for this project."
+                            "Start a chat and the agent will keep it here for this project."
                         }
                         Button {
                             label: "New chat",
@@ -184,7 +184,7 @@ fn ConversationSearchRow(
     let session_id = result.session_id.clone();
     let role = match result.role {
         ConversationMatchRole::User => "You",
-        ConversationMatchRole::Assistant => "Pi",
+        ConversationMatchRole::Assistant => "Agent",
     };
     let matches = if result.match_count == 1 {
         "1 match".to_owned()
