@@ -21,6 +21,13 @@ use super::{components, notifications, AiQuery, AiSettingsSection};
 
 const AI_CHAT_CSS: Asset = asset!("/assets/ai/chat.css");
 
+#[derive(Clone)]
+struct PendingMessageEdit {
+    entry_id: String,
+    previous_draft: String,
+    previous_attachments: Vec<ImageAttachment>,
+}
+
 #[component]
 pub fn Ai(slug: String, query: AiQuery) -> Element {
     rsx! {
@@ -131,6 +138,7 @@ fn RemoteAgent(
     let mut rename_target = use_signal(|| None::<AgentSessionSummary>);
     let mut rename_value = use_signal(String::new);
     let mut delete_target = use_signal(|| None::<AgentSessionSummary>);
+    let mut editing_message = use_signal(|| None::<PendingMessageEdit>);
     let mut session_toast = use_signal(|| None::<(String, Tone)>);
     let worktree_flow = use_worktree_flow(active_workspace, session_toast);
     let drawer_blocked = worktree_flow.is_dialog_open()
@@ -192,6 +200,9 @@ fn RemoteAgent(
     let connection_failed = connection.read().is_failed();
     let current = snapshot();
     let active_id = selected_id();
+    use_effect(use_reactive((&active_id,), move |_| {
+        editing_message.set(None);
+    }));
     let draft_key = format!(
         "syntaxis:ai-draft:{workspace_id}:{}",
         active_id.as_deref().unwrap_or("new")
@@ -219,6 +230,12 @@ fn RemoteAgent(
         .as_ref()
         .is_some_and(|model| model.supports_images);
     let send_prompt = EventHandler::new(move |submission: ComposerSubmission| {
+        if let Some(edit) = editing_message() {
+            runtime.send_to_selected(ClientMessage::ForkMessage {
+                entry_id: edit.entry_id,
+            });
+            editing_message.set(None);
+        }
         runtime.submit_prompt(submission, is_working);
     });
     let files_dirty = files_session.has_dirty();
@@ -404,13 +421,19 @@ fn RemoteAgent(
                                 composer_error.set(None);
                             },
                             on_edit: move |(entry_id, text, images): (String, String, Vec<ImageAttachment>)| {
+                                let (previous_draft, previous_attachments) = editing_message()
+                                    .map_or_else(
+                                        || (draft(), attachments()),
+                                        |edit| (edit.previous_draft, edit.previous_attachments),
+                                    );
+                                editing_message.set(Some(PendingMessageEdit {
+                                    entry_id,
+                                    previous_draft,
+                                    previous_attachments,
+                                }));
                                 draft.set(text);
                                 attachments.set(images);
                                 composer_error.set(None);
-                                runtime
-                                    .send_to_selected(ClientMessage::ForkMessage {
-                                        entry_id,
-                                    });
                                 focus_ai_composer();
                             },
                             on_copy: move |text: String| copy_ai_message(text, session_toast),
@@ -425,8 +448,18 @@ fn RemoteAgent(
                             draft_key,
                             commands: current.commands.clone(),
                             accepts_images,
+                            editing_message: editing_message().is_some(),
                             on_send: send_prompt,
                             on_abort: move |()| runtime.send_to_selected(ClientMessage::Abort),
+                            on_cancel_edit: move |()| {
+                                if let Some(edit) = editing_message() {
+                                    draft.set(edit.previous_draft);
+                                    attachments.set(edit.previous_attachments);
+                                    editing_message.set(None);
+                                    composer_error.set(None);
+                                    focus_ai_composer();
+                                }
+                            },
                         }
                         if drag_active() {
                             div { class: "pointer-events-none absolute inset-3 z-90 grid place-items-center rounded-2xl border-2 border-dashed border-primary bg-primary/10 text-sm font-medium text-primary backdrop-blur-sm",

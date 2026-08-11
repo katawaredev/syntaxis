@@ -23,8 +23,10 @@ pub(crate) fn AgentComposer(
     draft_key: String,
     commands: Vec<PiCommand>,
     accepts_images: bool,
+    editing_message: bool,
     on_send: EventHandler<ComposerSubmission>,
     on_abort: EventHandler<()>,
+    on_cancel_edit: EventHandler<()>,
 ) -> Element {
     let speech_active = use_speech_bridge(draft, composer_error);
     use_paste_bridge(attachments, composer_error);
@@ -42,6 +44,20 @@ pub(crate) fn AgentComposer(
             div { class: "relative mx-auto max-w-3xl",
                 SlashCommandMenu { commands, draft }
                 div { class: "overflow-hidden rounded-2xl border border-input bg-card shadow-[0_8px_30px_#0002] transition-[border,box-shadow] focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/20",
+                    if editing_message {
+                        div { class: "flex items-center justify-between gap-3 border-b border-border bg-secondary/45 px-3 py-2 text-[11px]",
+                            span { class: "min-w-0 text-muted-foreground",
+                                strong { class: "font-medium text-foreground", "Editing message" }
+                                " · Sending will branch the conversation from here."
+                            }
+                            button {
+                                class: "shrink-0 rounded-md px-2 py-1 font-medium text-foreground transition-colors hover:bg-accent",
+                                r#type: "button",
+                                onclick: move |_| on_cancel_edit.call(()),
+                                "Cancel"
+                            }
+                        }
+                    }
                     if !images.is_empty() {
                         ComposerAttachments {
                             images: images.clone(),
@@ -67,7 +83,10 @@ pub(crate) fn AgentComposer(
                                 composer_error.set(None);
                             },
                             onkeydown: move |event: KeyboardEvent| {
-                                if event.key() == Key::Enter && !event.modifiers().contains(Modifiers::SHIFT) {
+                                if editing_message && event.key() == Key::Escape {
+                                    event.prevent_default();
+                                    on_cancel_edit.call(());
+                                } else if event.key() == Key::Enter && !event.modifiers().contains(Modifiers::SHIFT) {
                                     event.prevent_default();
                                     if let Some(command) = first_command.as_ref() {
                                         draft.set(format!("/{} ", command.name));
