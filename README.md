@@ -1,357 +1,127 @@
 # Syntaxis
 
-Syntaxis is a mobile-first development workspace built with Dioxus. Its workspace includes files,
-a code editor, terminal sessions, Git tools, and a focused chat interface for the
-[Pi coding agent](https://pi.dev/).
+**A mobile-first, self-hosted development workspace for projects on your server.**
 
-## Code intelligence
+Syntaxis gives you a code editor, terminals, Git, and application previews in one browser interface
+that is designed to work on a phone. Install it on a VPS, home server, or development machine and
+open the same projects from mobile, tablet, or desktop.
 
-The editor supports Mise-managed language servers for Rust, JavaScript and
-TypeScript (using the latest TypeScript native LSP, or Deno's built-in LSP for
-Deno projects), Python, Go, HTML, CSS/SCSS, JSON, YAML, TOML, shell scripts,
-Terraform, PHP, Ruby, Vue, Svelte, and Astro. Tailwind projects additionally
-use the Tailwind CSS language server alongside the file's primary server. Open
-a supported file and enable **Code Intelligence** from the editor menu to
-receive diagnostics and semantic completions.
+Your code stays in ordinary folders on your machine. Syntaxis does not provide compute, copy your
+repositories into a hosted workspace, or replace your existing command-line tools.
 
-When a project has no Mise configuration, **Bootstrap** infers both its
-toolchain and suitable language servers, installs them, and records them in the
-checkout-local `mise.local.toml`. Existing Mise configurations remain
-authoritative: Bootstrap trusts and installs their declared tools without
-modifying the configuration. Add any desired language-server tool to that
-configuration when it is not already declared.
+<!-- Add screenshots here: workspace, editor, Git diff, terminal, and preview. -->
 
-Mise-provided language servers are resolved with `mise which`, and all servers
-are launched with `mise exec` inside the workspace. For Node-based servers,
-Syntaxis first uses a compatible
-executable already installed in the project root's `node_modules/.bin`, while
-still applying the Mise runtime environment. Yarn Plug'n'Play and nested
-package-local installations currently fall back to the Mise tool. Syntaxis
-never accepts an executable or arguments from the browser. Connections and
-messages are bounded, and the additional browser module is loaded only while
-Code Intelligence is enabled. Syntaxis starts no more than one primary server
-and one project-specific supplementary server for the active document;
-Tailwind is not started for projects where it was not detected.
+## Is this for you?
 
-## Pi coding agent
+Syntaxis is for developers who:
 
-The AI workspace uses Pi directly through its native RPC mode. Install and authenticate Pi on the
-machine running the Syntaxis server before opening the AI tab:
+- keep projects on an always-on Linux machine;
+- want more than an SSH terminal from their phone;
+- find desktop IDEs awkward in a mobile browser;
+- want to keep their own filesystem, tools, credentials, and server;
+- are comfortable managing Docker, HTTPS, and backups.
 
-```bash
-curl -fsSL https://pi.dev/install.sh | sh
-pi
-```
+It is not a good fit if you need:
 
-Use Pi's `/login` flow or configure one of its supported provider API keys. Each chat has its own
-long-lived `pi --mode rpc` process, so multiple chats and projects can work in parallel even after
-you leave the AI screen. The sidebar is rebuilt from Pi's own persisted sessions after a Syntaxis
-server restart; selecting a saved chat resumes its transcript with Pi directly.
+- the full extension, debugging, and refactoring support of a desktop IDE;
+- a general SSH client for many unrelated servers;
+- hosted compute with no server administration;
+- multiple users, roles, isolated workspaces, quotas, or audit logs;
+- a safe environment for running untrusted projects.
 
-The host treats `agent_settled` as Pi's authoritative idle boundary, preserves steering and
-follow-up queue counts, and batches streaming deltas to at most roughly 30 UI updates per second.
-RPC records, structured tool details, extension dialog queues, stderr, tool output, and rendered
-transcript rows are explicitly bounded. Up to three settled background chats remain warm per
-workspace; older settled processes are stopped and lazily resumed from Pi's session file. Chats
-that are still working are never stopped by this limit.
+## What it includes
 
-Completed tool output is rendered as safe Markdown and may expose bounded structured arguments and
-details. Displayable extension custom messages are retained in the timeline, while blocking
-extension dialogs are shown in arrival order. Commands requiring Pi's terminal-only interactive UI
-are labeled and rejected with an explanation instead of being submitted as model prompts.
+### Files and editor
 
-Deleting a chat stops its process and permanently deletes the Pi JSONL session. There is no
-application trash or recovery step.
+Browse and search the project, open multiple files, find and replace text, view images, inspect diffs,
+and edit with syntax highlighting.
 
-If `pi` is not on the server's `PATH`, set `SYNTAXIS_PI_COMMAND` to the executable path. Syntaxis does
-not embed a model provider, store API keys, or route the AI section through ACP or another agent SDK.
-The optional All time, Trending, and Hot skills.sh leaderboards require a
-`VERCEL_OIDC_TOKEN`; Syntaxis leaves those controls disabled when the token is
-not present.
+Optional language-server support adds diagnostics and semantic completions for Rust, JavaScript,
+TypeScript, Deno, Python, Go, HTML, CSS, JSON, YAML, TOML, shell, Terraform, PHP, Ruby, Vue, Svelte,
+Astro, and Tailwind projects.
 
-## Storage cleanup
+Syntaxis uses [Mise](https://mise.jdx.dev/) to find and run development tools. For projects without a
+Mise configuration, it can infer a starting toolchain and language-server setup.
 
-**Cleanup files** permanently removes only the selected Git-ignored entries in one project. It uses
-Git's ignored-file cleanup rules and excludes common local configuration such as `.env`, `.envrc`,
-`.direnv`, and `*.local` files. It does not clean Git history or anything outside that project.
+### Terminal
 
-Removing a workspace closes its terminals and Pi processes, revokes its preview, and removes its
-Syntaxis-owned session, notes, preview-target, and terminal-command metadata. Choosing to delete the
-project files also permanently removes the project directory. Pi chat history remains available
-when a project is merely unregistered; deleting an individual chat permanently deletes that
-session.
+Create and reconnect to real shell sessions running on the server. The terminal includes touch
+scrolling, mobile control keys, and links from recognized source locations back to the editor.
 
-**Prune unused tools** asks Mise to remove inactive installed tool versions. **Remove all tools**
-uninstalls every Mise-managed tool and clears the Mise download cache.
+Sessions belong to the server rather than the current browser page, so changing sections does not
+close them.
 
-**Clear runtime caches** is the aggressive space-recovery action for the complete runtime. It
-permanently removes the runtime user's `~/.cache` tree plus npm downloads and logs, Bun's install
-cache, Cargo registry and Git dependency caches, Rustup and Mise download leftovers, Gradle caches
-and distributions, NuGet packages, and Go build and module caches. This also clears the development
-Cargo named-volume contents because those volumes are mounted below the runtime user's Cargo home.
-Installed tools, project files, lockfiles, credentials, and Pi sessions are preserved. Stop active
-package installs and builds first; subsequent work may need to download and extract every
-dependency again.
+### Git
 
-## Docker
+Review staged and unstaged diffs, stage or discard files, commit, manage branches and tags, inspect
+history, work with remotes, pull, push, and handle common merge workflows.
 
-The repository provides separate development and production targets in one multi-stage
-`Dockerfile`. Both variants expose the host's projects at `/Projects`, mount SSH configuration
-read-only, and mount GnuPG configuration read-write so Git operations behave like the local setup.
+The supplied container can use SSH and GnuPG configuration deliberately mounted from the host.
 
-### Authentication
+### Preview
 
-Syntaxis requires a single-user password on every fullstack server. Generate an Argon2id password
-hash (the password input is hidden), then place the printed PHC string in your shell or Compose
-`.env` file:
+Start an HTTP development server from Terminal and open it through Syntaxis. On Linux, Syntaxis can
+detect listening processes associated with the current project.
 
-```bash
-just auth-password
-SYNTAXIS_PASSWORD_HASH='$argon2id$v=19$...'
-```
+The preview gateway supports HTTP and WebSockets, so common hot-reload setups continue to work.
+Previews are private by default and can optionally receive a separate revocable share link.
 
-The web app exchanges that password for a random, 30-day, HTTP-only session cookie. Sessions are
-kept in memory and are intentionally invalidated whenever the server restarts. Production cookies
-are `Secure` and `SameSite=Strict`; local HTTP development sets `SYNTAXIS_INSECURE_COOKIE=true` in
-Compose.
+### Projects
 
-`just web` and `just serve` skip authentication automatically when they bind to a loopback address.
-This bypass is accepted only by debug builds. Authentication remains mandatory for release builds
-and for `just serve-local`, which exposes the development server to the network.
+Open an existing server folder, clone a Git repository, or scaffold a new project in a live terminal.
+Projects remain normal directories and continue to work outside Syntaxis.
 
-Native clients can authenticate independently with an optional bearer token:
+### Optional coding agent
 
-```bash
-SYNTAXIS_API_TOKEN="$(openssl rand -base64 32)"
-curl -H "Authorization: Bearer $SYNTAXIS_API_TOKEN" https://code.example.com/api/runtime
-```
+Syntaxis includes an optional interface for the [Pi coding agent](https://pi.dev/). It uses Pi's
+native RPC mode and Pi's existing provider configuration, sessions, prompts, skills, and extensions.
+None of the editor, terminal, Git, project, or preview features require it.
 
-Store the token in the platform keychain on desktop/mobile, never in source or ordinary app
-preferences. Changing `SYNTAXIS_API_TOKEN` revokes all native clients on the next server restart.
-The token is optional until a native client is used and must contain at least 32 characters when
-set.
-
-### Application previews
-
-The Preview module connects to an HTTP development server from the selected runtime. For a
-runtime-port target, Syntaxis tries IPv4 loopback (`127.0.0.1`) first and then IPv6 loopback
-(`::1`). Start the project in Terminal and bind it to either loopback address or a wildcard
-interface. For example, Vite can be pinned to IPv4 loopback with:
-
-```bash
-npm run dev -- --host 127.0.0.1
-```
-
-On Linux runtimes, Syntaxis finds listening HTTP processes whose working directory is inside the
-selected workspace, probes them over both loopback families, and offers reachable ports as Preview
-suggestions; manual port entry remains available.
-
-Use the explicit HTTP(S) URL target for an existing remote app or a Docker service reachable from
-the Syntaxis runtime, such as `http://frontend:3000`. Only origins are accepted: credentials, paths,
-queries, fragments, and non-HTTP schemes are rejected. Syntaxis probes and proxies the target from
-the runtime, not from the browser. The selected target is saved per workspace.
-
-The supplied Compose files map `host.docker.internal` to the Docker host. Use
-`http://host.docker.internal:<published-port>` for a server published by another local container.
-Production services on the configured shared `DOCKER_NETWORK` can instead use their Compose service
-name directly.
-
-Syntaxis exposes either target through an authenticated HTTP and WebSocket gateway, so framework hot
-reload continues to work without publishing the development port. Preview automatically connects a
-reachable saved target, or the only detected workspace server when there is no saved target.
-
-The active preview is kept in runtime memory and restored when the operator returns to Preview or
-reloads Syntaxis. If the upstream server becomes unreachable during an HTTP request, Syntaxis
-removes the complete preview session; its private and shared URLs remain invalid even if a server
-later starts on the same port. Runtime restarts also clear active previews, while retaining saved
-targets for automatic reconnection.
-
-Local development opened through `http://localhost` or a loopback IP uses an automatically
-generated `p-<private-token>.localhost` hostname. A production installation must set a base preview
-origin:
-
-```bash
-SYNTAXIS_PREVIEW_ORIGIN=https://preview.example.com
-```
-
-DNS and TLS are separate requirements. Create an explicit wildcard DNS record at the exact preview
-suffix; do not rely on a broader wildcard higher in the zone:
+## How it runs
 
 ```text
-*.preview.example.com.  A      203.0.113.10
+phone, tablet, or desktop browser
+                |
+              HTTPS
+                |
+         Syntaxis server
+          /      |      \
+    projects   tools   terminals
 ```
 
-A CNAME pointing to the public Syntaxis hostname is also valid. Wildcard certificates require
-DNS-01 validation. The certificate client needs a module for the authoritative DNS provider and a
-credential with permission to read the zone and create and remove its temporary TXT records. A
-reverse-proxy route does not create the DNS record.
+The supported production deployment is a container on Linux. Project directories are mounted into
+the container, and a persistent home stores installed tools and optional Pi data.
 
-Wildcard DNS and TLS for `*.preview.example.com` must route to the same Syntaxis listener. For
-example, after wildcard certificate provisioning has been configured, the Caddy route is:
+Syntaxis performs file operations and starts terminals, Git, language servers, project commands, and
+other tools with the runtime user's permissions. It is not an SSH gateway or a security boundary
+between projects.
 
-```caddyfile
-*.preview.example.com {
- reverse_proxy syntaxis:8080
-}
+Syntaxis is currently single-user. Anyone who can log in effectively has development-shell access to
+the runtime. Read the [security model](docs/security.md) before exposing it to a network.
+
+## Get started
+
+You need:
+
+- a Linux machine with Docker Compose;
+- a domain served through HTTPS;
+- a directory of projects the container may read and write.
+
+Follow the [getting started guide](docs/getting-started.md) to configure the password, project mount,
+reverse proxy, and first workspace.
+
+The production image is published at:
+
+```text
+ghcr.io/katawaredev/syntaxis
 ```
 
-Verify DNS, TLS, and routing before creating a real preview:
+## Documentation
 
-```bash
-dig +short test.preview.example.com
-curl -I https://test.preview.example.com
-```
-
-An HTTP `401 Unauthorized` for that made-up label is expected: it confirms that DNS, TLS, Caddy,
-and the Syntaxis preview gateway are reachable, while Syntaxis correctly rejects an invalid preview
-credential.
-
-The unguessable private hostname is the owner's bearer credential; no gateway cookie or query token
-is required. The main Syntaxis session cookie remains host-only and is not sent to the project
-development server. Explicit URL targets should still be treated as trusted operator configuration:
-an authenticated user who already has runtime Terminal access can use them to reach HTTP services
-visible to that runtime.
-
-Previews are private by default. **Share** creates one random bearer link that anyone can open
-without a Syntaxis account, using a separate `s-<share-token>` hostname. **Revoke** immediately
-invalidates that hostname without interrupting the private preview. Creating a new preview also
-invalidates the previous session and its share. Sharing beyond the local machine requires a
-publicly reachable `SYNTAXIS_PREVIEW_ORIGIN` with wildcard DNS and TLS as described above.
-
-### Development
-
-The default Compose file mounts the entire host `${HOME}/Projects` directory and starts the Dioxus
-development server from `/Projects/syntaxis`:
-
-```bash
-SYNTAXIS_PASSWORD_HASH='$argon2id$v=19$...' docker compose up --build
-```
-
-Open <http://localhost:8080>. Changes made on the host are visible immediately in the container.
-The container home is persisted under `./data/dev-home`; Cargo downloads use named volumes.
-Authenticate the bundled Pi CLI once with `docker compose exec syntaxis pi`; its credentials and
-sessions remain in the persisted container home.
-
-Pi itself is installed under `/home/dev/.local`, so the **Update everything** button can update Pi
-and all installed Pi packages without root access. Packages can contain extensions, skills, prompts,
-and themes. Skills installed directly from skills.sh are also refreshed when their recorded source
-is available.
-
-The defaults assume UID/GID `1000`. Override paths, IDs, or ports without editing Compose:
-
-```bash
-PUID="$(id -u)" PGID="$(id -g)" \
-HOST_HOME="$HOME" HOST_PROJECTS="$HOME/Projects" \
-SYNTAXIS_DEV_PORT=8080 docker compose up --build
-```
-
-### Production
-
-The production target compiles an optimized Dioxus fullstack server and contains only its runtime,
-Node.js, Pi, and the command-line tools used by Syntaxis:
-
-```bash
-docker compose -f docker-compose.prod.yml build
-docker compose -f docker-compose.prod.yml up -d
-```
-
-Production Compose works without an existing proxy network and publishes the app on
-`${SYNTAXIS_BIND:-127.0.0.1}:${SYNTAXIS_PORT:-8080}`. Its persistent home defaults to
-`${DATA:-./data}/syntaxis/home`. Run `pi` once inside the container to authenticate; the resulting
-state and user-updated Pi installation survive image upgrades:
-
-```bash
-docker exec -it syntaxis pi
-```
-
-An external deployment can use the published
-`${SYNTAXIS_IMAGE:-ghcr.io/katawaredev/syntaxis:latest}` image and keep the `/Projects`, SSH, and
-GnuPG mounts. Set `HOST_PROJECTS` to the server's projects directory.
-
-To connect a Caddy container through an existing network, add the optional Compose override:
-
-```bash
-docker compose \
-  -f docker-compose.prod.yml \
-  -f docker-compose.caddy.yml \
-  up -d
-```
-
-The network defaults to `caddy_net`; override it with `DOCKER_NETWORK`. Caddy can then proxy the
-public hostname to `syntaxis:8080`.
-
-### Publishing
-
-The `Release` GitHub Actions workflow uses Conventional Commits to maintain a release pull request.
-Merging that pull request updates `Cargo.toml`, `Cargo.lock`, and `CHANGELOG.md`, creates the matching
-`v<version>` GitHub release, and publishes `ghcr.io/katawaredev/syntaxis:<version>` and
-`ghcr.io/katawaredev/syntaxis:latest`. The reusable `Publish container` workflow can also be run
-manually with a version and matching Git ref to recover a failed publication.
-
-# Development
-
-Install and activate [Mise](https://mise.jdx.dev/), then bootstrap the pinned
-project toolchain and dependencies:
-
-```bash
-mise trust
-mise install
-mise run setup
-```
-
-The committed `mise.toml` installs the Rust components and WebAssembly target,
-Node, Bun, Dioxus CLI, Just, the Cargo quality tools, Lefthook, and the language
-servers used by this repository. It matches `rust-toolchain.toml` and the
-tool-version arguments in `Dockerfile`; keep those declarations aligned when
-upgrading Rust, Node, Bun, or Dioxus. Checkout-specific overrides belong in
-ignored `mise.local.toml`.
-
-Common commands remain available through the Justfile. Mise also exposes the
-main entry points as `mise run serve`, `mise run qa`, and `mise run qa:server`. See
-[`docs/maintenance.md`](docs/maintenance.md) for tooling boundaries, CI policy, dependency updates,
-and production networking.
-
-The repository intentionally keeps Mise available inside Syntaxis containers: workspaces opened by
-Syntaxis may declare any Mise-supported language or toolchain. Syntaxis containers include the
-standard native build toolchain and Clang, which the project's WebAssembly C shim requires. On a
-non-container host, install an equivalent C/C++ toolchain and Clang before building the project.
-
-For day-to-day work, use the stable Just interface rather than invoking Cargo or Dioxus commands
-manually:
-
-```bash
-mise run serve       # web development server
-mise run qa          # apply safe fixes, then validate the web build
-mise run qa:server   # apply safe fixes, then validate the server build
-```
-
-`just check web` and `just check server` provide non-mutating checks when an already activated native
-toolchain is preferred. The pre-commit hook only refreshes generated assets and checks formatting;
-compilation and tests remain explicit locally and run for pull requests in GitHub Actions.
-
-## Lighthouse
-
-Run a complete local audit with:
-
-```bash
-just lighthouse
-```
-
-This command installs the pinned Lighthouse CI tool when needed, creates an optimized Dioxus
-fullstack web build, starts its release server on `127.0.0.1:4173`, and runs Lighthouse three times
-with mobile emulation. The server is stopped automatically. The median run is checked against
-performance, accessibility, best-practice, SEO, and key loading/responsiveness thresholds.
-
-The terminal output summarizes enforced failures and warning-level improvement targets. Full HTML
-and JSON reports are written to `lighthouse-reports/`; open the most recent collected report with:
-
-```bash
-just lighthouse-open
-```
-
-The audit uses `target/dx/syntaxis/release/web/server`, not the hot-reloading development server or a
-standalone static server. The release server provides the server-rendered HTML and hydration data
-that the Dioxus fullstack client expects. Debug builds do not represent production asset size or
-runtime performance. Local Lighthouse numbers still vary with CPU load, Chrome version, and
-hardware, so compare repeated runs on the same machine and treat field data from a deployed site as
-the final measure of user experience.
+- [Getting started](docs/getting-started.md)
+- [Features and limitations](docs/features.md)
+- [Deployment](docs/deployment.md)
+- [Security model](docs/security.md)
+- [Pi integration](docs/pi-management.md)
+- [Development and maintenance](docs/development.md)
+- [Changelog](CHANGELOG.md)
