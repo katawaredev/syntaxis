@@ -194,6 +194,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
     let mut pending_location = use_signal(|| None::<FilesQuery>);
     let mut session_ready = use_signal(|| false);
     let mut session_revision = use_signal(|| 0_u64);
+    let mut revalidated_document = use_signal(|| None::<(String, String)>);
     let has_initial_location = query.path.is_some();
 
     use_effect(move || session.activate(activate_workspace_id.clone()));
@@ -516,14 +517,15 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
         if revision == 0 || revision <= *processed_event_revision.peek() {
             return;
         }
+        let Some(workspace) = workspace() else {
+            return;
+        };
+        let changes = event_state.take_pending(&workspace.id.0);
         processed_event_revision.set(revision);
-        let Some(batch) = (event_state.latest)() else {
+        if changes.is_empty() {
             return;
-        };
-        let Some(workspace) = workspace.peek().clone() else {
-            return;
-        };
-        for change in batch.changes {
+        }
+        for change in changes {
             let path = change.path.as_str().to_owned();
             let is_open_text = documents.peek().iter().any(
                 |document| matches!(document, OpenDocument::Text(buffer) if buffer.path == path),
@@ -533,6 +535,34 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
             }
         }
         refresh.with_mut(|revision| *revision += 1);
+    });
+
+    // Revalidate a tab when it becomes active. This closes the remaining gap if
+    // the host watcher was temporarily unavailable while the Files route was unmounted.
+    use_effect(move || {
+        let Some(workspace) = workspace() else {
+            return;
+        };
+        let Some(path) = active_path() else {
+            return;
+        };
+        let key = (workspace.id.0.clone(), path.clone());
+        if revalidated_document.peek().as_ref() == Some(&key) {
+            return;
+        }
+        revalidated_document.set(Some(key));
+        let is_open_text = documents.peek().iter().any(
+            |document| matches!(document, OpenDocument::Text(buffer) if buffer.path == path),
+        );
+        if is_open_text {
+            reconcile_workspace_change(
+                workspace,
+                path,
+                ChangeKind::Modified,
+                documents,
+                toast,
+            );
+        }
     });
 
     let active_document = active_path().and_then(|path| {

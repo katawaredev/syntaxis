@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use dioxus::prelude::*;
 use dioxus_primitives::popover::{PopoverContent, PopoverRoot, PopoverTrigger};
 use syntaxis_ui::prelude::{AppIcon, Icon, StatusBadge, Tone};
@@ -22,7 +24,7 @@ pub fn WorkspaceShell() -> Element {
     let active_workspace = use_active_workspace();
     use_context_provider(|| active_workspace);
     let event_state = WorkspaceEventState {
-        latest: use_signal(|| None),
+        pending: use_signal(BTreeMap::new),
         revision: use_signal(|| 0),
     };
     use_context_provider(|| event_state);
@@ -58,6 +60,10 @@ pub fn WorkspaceShell() -> Element {
         else {
             return;
         };
+        if active_workspace.current().as_ref().map(|active| &active.id) != Some(&workspace.id) {
+            event_state.reset();
+            files_session.activate(workspace.id.0.clone());
+        }
         active_workspace.set_base(workspace);
     }));
     let touch_slug = slug.clone();
