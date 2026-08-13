@@ -961,11 +961,14 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                     icon: AppIcon::Close,
                                     label: "Close All",
                                     disabled: documents.read().is_empty(),
-                                    onclick: move |()| request_close_many(
-                                        documents.read().iter().map(|document| document.path().to_owned()).collect(),
-                                        documents,
-                                        close_request,
-                                    ),
+                                    onclick: move |()| {
+                                        let paths = documents
+                                            .read()
+                                            .iter()
+                                            .map(|document| document.path().to_owned())
+                                            .collect();
+                                        request_close_many(paths, documents, close_request);
+                                    },
                                 }
                                 EditorMenuItem {
                                     index: 9,
@@ -974,16 +977,13 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                     disabled: active_path().is_none(),
                                     onclick: move |()| {
                                         if let Some(active) = active_path() {
-                                            request_close_many(
-                                                documents
-                                                    .read()
-                                                    .iter()
-                                                    .filter(|document| document.path() != active)
-                                                    .map(|document| document.path().to_owned())
-                                                    .collect(),
-                                                documents,
-                                                close_request,
-                                            );
+                                            let paths = documents
+                                                .read()
+                                                .iter()
+                                                .filter(|document| document.path() != active)
+                                                .map(|document| document.path().to_owned())
+                                                .collect();
+                                            request_close_many(paths, documents, close_request);
                                         }
                                     },
                                 }

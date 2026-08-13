@@ -410,17 +410,16 @@ pub(super) fn request_close_many(
     if paths.is_empty() {
         return;
     }
-    if paths.iter().any(|path| {
-        documents
-            .read()
-            .iter()
-            .any(|document| document.path() == path && document.is_dirty())
-    }) {
+    let paths_to_close = paths.iter().map(String::as_str).collect::<BTreeSet<_>>();
+    let has_dirty_document = documents.read().iter().any(|document| {
+        paths_to_close.contains(document.path()) && document.is_dirty()
+    });
+    if has_dirty_document {
         close_request.set(Some(CloseRequest { paths }));
     } else {
         documents
             .write()
-            .retain(|document| !paths.iter().any(|path| path == document.path()));
+            .retain(|document| !paths_to_close.contains(document.path()));
     }
 }
 
@@ -429,9 +428,10 @@ pub(super) fn close_documents(
     mut documents: Signal<Vec<OpenDocument>>,
     mut active_path: Signal<Option<String>>,
 ) {
+    let paths_to_close = paths.iter().map(String::as_str).collect::<BTreeSet<_>>();
     documents
         .write()
-        .retain(|document| !paths.iter().any(|path| path == document.path()));
+        .retain(|document| !paths_to_close.contains(document.path()));
     if active_path()
         .as_ref()
         .is_some_and(|active| paths.contains(active))
@@ -456,11 +456,14 @@ pub(super) fn save_and_close(
     let Some(workspace) = workspace else {
         return;
     };
+    let paths_to_close = paths.iter().map(String::as_str).collect::<BTreeSet<_>>();
     let snapshots = documents
         .read()
         .iter()
         .filter_map(|document| match document {
-            OpenDocument::Text(buffer) if paths.contains(&buffer.path) && buffer.is_dirty() => {
+            OpenDocument::Text(buffer)
+                if paths_to_close.contains(buffer.path.as_str()) && buffer.is_dirty() =>
+            {
                 Some((
                     buffer.path.clone(),
                     buffer.contents.clone(),
