@@ -199,11 +199,18 @@ fn AgentTimelineItem(
             status,
             ..
         } => {
+            let has_thinking = !thinking.trim().is_empty();
+            if !has_thinking
+                && text.is_empty()
+                && !matches!(status, ItemStatus::Failed | ItemStatus::Stopped)
+            {
+                return rsx! {};
+            }
             let rendered = render_markdown(&text);
             let copy_text = text.clone();
             rsx! {
                 article { class: "group/message max-w-full py-1 pr-2",
-                    if !thinking.trim().is_empty() {
+                    if has_thinking {
                         details { class: "mb-2 rounded-lg border border-border bg-background/60 text-[11px] text-muted-foreground",
                             summary { class: "cursor-pointer px-3 py-2 select-none", "Reasoning" }
                             div {
@@ -213,9 +220,7 @@ fn AgentTimelineItem(
                             }
                         }
                     }
-                    if text.is_empty() && status == ItemStatus::Streaming {
-                        div { class: "h-4 w-32 animate-pulse rounded bg-muted" }
-                    } else {
+                    if !text.is_empty() {
                         div {
                             class: "ai-markdown",
                             dir: "auto",
