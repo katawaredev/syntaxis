@@ -641,9 +641,10 @@ impl HostAgentSession {
     }
     async fn shutdown(&self) -> Result<(), AgentError> {
         let (completed, wait) = oneshot::channel();
-        self.shutdown.send(completed).await.map_err(|_| {
-            AgentError::new(AgentErrorCode::Unavailable, "The Pi process is not running")
-        })?;
+        if self.shutdown.send(completed).await.is_err() {
+            // Shutdown is idempotent: a closed receiver means the process task has already ended.
+            return Ok(());
+        }
         wait.await.map_err(|_| {
             AgentError::new(
                 AgentErrorCode::Unavailable,
@@ -2144,6 +2145,32 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 mod tests {
     use super::*;
     use syntaxis_workspace::{WorkspaceAvailability, WorkspaceIcon, WorkspaceIconSymbol};
+
+    #[tokio::test]
+    async fn shutdown_succeeds_when_pi_has_already_stopped() {
+        let (commands, _command_rx) = mpsc::channel(COMMAND_CAPACITY);
+        let (shutdown, shutdown_rx) = mpsc::channel(1);
+        drop(shutdown_rx);
+        let (events, _) = broadcast::channel(EVENT_CAPACITY);
+        let (event_input, _event_rx) = mpsc::unbounded_channel();
+        let session = HostAgentSession {
+            commands,
+            shutdown,
+            events,
+            event_input,
+            state: Arc::new(Mutex::new(RuntimeState {
+                snapshot: AgentSnapshot::default(),
+                session_file: None,
+                current_assistant: None,
+                accept_initial_history: true,
+                fork_messages: Vec::new(),
+                extension_requests: VecDeque::new(),
+            })),
+        };
+
+        assert!(session.shutdown().await.is_ok());
+    }
+
     #[test]
     #[allow(
         clippy::panic_in_result_fn,
