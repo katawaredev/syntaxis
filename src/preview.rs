@@ -657,39 +657,10 @@ fn set_preview_error(mut toast: Signal<Option<(String, Tone)>>, message: impl In
 }
 
 fn copy_preview_link(value: String, mut toast: Signal<Option<(String, Tone)>>) {
-    let eval = document::eval(
-        r#"
-        const text = await dioxus.recv();
-        try {
-            if (globalThis.navigator?.clipboard?.writeText) {
-                await globalThis.navigator.clipboard.writeText(text);
-            } else {
-                const input = document.createElement("textarea");
-                input.value = text;
-                input.style.position = "fixed";
-                input.style.opacity = "0";
-                document.body.appendChild(input);
-                input.select();
-                const copied = document.execCommand("copy");
-                input.remove();
-                if (!copied) throw new Error("The browser rejected the copy command.");
-            }
-            return null;
-        } catch (error) {
-            return error instanceof Error ? error.message : String(error);
-        }
-        "#,
-    );
-    let _ = eval.send(value);
     spawn(async move {
-        match eval.join::<Option<String>>().await {
-            Ok(None) => toast.set(Some(("Share link copied".into(), Tone::Success))),
-            Ok(Some(message)) => {
-                set_preview_error(toast, format!("Could not copy link: {message}"));
-            }
-            Err(problem) => {
-                set_preview_error(toast, format!("Could not copy link: {problem}"));
-            }
+        match crate::clipboard::copy_text(value).await {
+            Ok(()) => toast.set(Some(("Share link copied".into(), Tone::Success))),
+            Err(error) => set_preview_error(toast, format!("Could not copy link: {error}")),
         }
     });
 }

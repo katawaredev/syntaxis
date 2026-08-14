@@ -3,15 +3,16 @@
     reason = "Dioxus expands the parent glob for RSX hot-reload analysis"
 )]
 use super::{
-    ActionCallback, AnyStorage, AppIcon, ChangeKind, CommitInfo, ConflictChoice, ConflictFile,
-    DiffHunk, DiffKind, DiffLayout, Element, EventHandler, FileChange, FileIcon, GitChangeBadge,
-    GlobalAttributesExtension, HasAttributes, History, HunkAction, Icon, InputExtension, Language,
-    LinkExtension, Mutation, OptionExtension, Props, ReadableExt, ReadableHashMapExt,
-    ReadableHashSetExt, ReadableOptionExt, ReadableResultExt, ReadableStrExt, ReadableVecExt,
-    RepositoryStatus, Result, SelectExtension, SelectedChange, ServerFnError, SidebarView, Signal,
-    Storage, StyleExtension, SvgAttributesExtension, TrackExtension, UnifiedDiff, UnifiedDiffView,
-    WritableExt, component, diff_line_class, dioxus_core, dioxus_elements, dioxus_signals,
-    language_slug_for_path, parse_diff_hunks, rsx, use_signal,
+    component, diff_line_class, dioxus_core, dioxus_elements, dioxus_signals,
+    language_slug_for_path, parse_diff_hunks, rsx, use_signal, ActionCallback, AnyStorage, AppIcon,
+    ChangeKind, CommitInfo, ConflictChoice, ConflictFile, ControlSize, DiffHunk, DiffKind,
+    DiffLayout, DropdownMenu, DropdownMenuItem, Element, EventHandler, FileChange, FileIcon,
+    GitChangeBadge, GlobalAttributesExtension, HasAttributes, History, HistoryAction, HunkAction,
+    Icon, InputExtension, Language, LinkExtension, MenuContent, MenuTrigger, Mutation,
+    OptionExtension, Props, ReadableExt, ReadableHashMapExt, ReadableHashSetExt, ReadableOptionExt,
+    ReadableResultExt, ReadableStrExt, ReadableVecExt, RepositoryStatus, Result, SelectExtension,
+    SelectedChange, ServerFnError, SidebarView, Signal, Storage, StyleExtension,
+    SvgAttributesExtension, TrackExtension, UnifiedDiff, UnifiedDiffView, WritableExt,
 };
 
 const DIFF_TITLEBAR_CLASS: &str = "sticky top-0 z-10 flex min-h-14 min-w-165 items-center justify-between gap-3 border-b border-border bg-background/95 p-3 font-sans backdrop-blur-sm max-md:min-h-13 max-md:min-w-0 max-md:gap-1.5 max-md:px-2 max-md:py-2";
@@ -27,6 +28,7 @@ pub(super) fn GitSidebar(
     selected: Signal<Option<SelectedChange>>,
     pending: bool,
     on_select: EventHandler<()>,
+    on_history_action: EventHandler<(HistoryAction, String)>,
     on_mutation: EventHandler<Mutation>,
 ) -> Element {
     let conflicts = repository
@@ -128,26 +130,128 @@ pub(super) fn GitSidebar(
                         }
                     } else {
                         for commit in commits {
-                            button {
-                                class: if selected_commit().as_deref() == Some(commit.oid.as_str()) { "flex w-full min-w-0 gap-2 rounded-md bg-muted p-2 text-left text-foreground" } else { "flex w-full min-w-0 gap-2 rounded-md p-2 text-left text-muted-foreground hover:bg-muted/60 hover:text-foreground" },
-                                onclick: {
-                                    let oid = commit.oid.clone();
-                                    move |_| {
-                                        selected_commit.set(Some(oid.clone()));
-                                        on_select.call(());
-                                    }
+                            HistoryRow {
+                                key: "{commit.oid}",
+                                selected: selected_commit().as_deref() == Some(commit.oid.as_str()),
+                                commit,
+                                pending,
+                                on_select: move |oid| {
+                                    selected_commit.set(Some(oid));
+                                    on_select.call(());
                                 },
-                                span { class: "mt-1.5 size-2 shrink-0 rounded-full border-2 border-primary" }
-                                span { class: "min-w-0",
-                                    strong { class: "block truncate text-xs font-medium",
-                                        "{commit.subject}"
-                                    }
-                                    small { class: "mt-1 block truncate font-mono text-[10px] text-muted-foreground",
-                                        "{commit.short_oid} · {commit.author_name}"
-                                    }
-                                }
+                                on_action: on_history_action,
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn HistoryRow(
+    commit: CommitInfo,
+    selected: bool,
+    pending: bool,
+    on_select: EventHandler<String>,
+    on_action: EventHandler<(HistoryAction, String)>,
+) -> Element {
+    let mut open = use_signal(|| false);
+    rsx! {
+        DropdownMenu {
+            open: open(),
+            on_open_change: move |next: bool| open.set(next),
+            div {
+                class: if selected { "relative flex w-full min-w-0 items-center rounded-md bg-muted text-foreground" } else { "relative flex w-full min-w-0 items-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground" },
+                button {
+                    class: "flex min-w-0 flex-1 gap-2 p-2 text-left",
+                    onclick: {
+                        let oid = commit.oid.clone();
+                        move |_| on_select.call(oid.clone())
+                    },
+                    span { class: "mt-1.5 size-2 shrink-0 rounded-full border-2 border-primary" }
+                    span { class: "min-w-0",
+                        strong { class: "block truncate text-xs font-medium", "{commit.subject}" }
+                        small { class: "mt-1 block truncate font-mono text-[10px] text-muted-foreground",
+                            "{commit.short_oid} · {commit.author_name}"
+                        }
+                    }
+                }
+                MenuTrigger {
+                    class: "mr-1 shrink-0",
+                    label: "Actions for commit {commit.short_oid}",
+                    icon: AppIcon::MoreVertical,
+                    open: open(),
+                    size: ControlSize::Small,
+                    on_toggle: move |()| open.toggle(),
+                }
+                MenuContent { class: "right-0 w-52",
+                    DropdownMenuItem::<HistoryAction> {
+                        value: HistoryAction::Checkout,
+                        index: 0_usize,
+                        disabled: pending,
+                        on_select: {
+                            let oid = commit.oid.clone();
+                            move |_| {
+                                open.set(false);
+                                on_action.call((HistoryAction::Checkout, oid.clone()));
+                            }
+                        },
+                        "Checkout commit…"
+                    }
+                    DropdownMenuItem::<HistoryAction> {
+                        value: HistoryAction::CreateBranch,
+                        index: 1_usize,
+                        disabled: pending,
+                        on_select: {
+                            let oid = commit.oid.clone();
+                            move |_| {
+                                open.set(false);
+                                on_action.call((HistoryAction::CreateBranch, oid.clone()));
+                            }
+                        },
+                        "Create branch from commit…"
+                    }
+                    DropdownMenuItem::<HistoryAction> {
+                        value: HistoryAction::CreateTag,
+                        index: 2_usize,
+                        disabled: pending,
+                        on_select: {
+                            let oid = commit.oid.clone();
+                            move |_| {
+                                open.set(false);
+                                on_action.call((HistoryAction::CreateTag, oid.clone()));
+                            }
+                        },
+                        "Create tag here…"
+                    }
+                    DropdownMenuItem::<HistoryAction> {
+                        value: HistoryAction::CopyHash,
+                        index: 3_usize,
+                        on_select: {
+                            let oid = commit.oid.clone();
+                            move |_| {
+                                open.set(false);
+                                on_action.call((HistoryAction::CopyHash, oid.clone()));
+                            }
+                        },
+                        "Copy commit hash"
+                    }
+                    hr {}
+                    DropdownMenuItem::<HistoryAction> {
+                        class: "!text-destructive",
+                        value: HistoryAction::Revert,
+                        index: 4_usize,
+                        disabled: pending,
+                        on_select: {
+                            let oid = commit.oid.clone();
+                            move |_| {
+                                open.set(false);
+                                on_action.call((HistoryAction::Revert, oid.clone()));
+                            }
+                        },
+                        "Revert commit…"
                     }
                 }
             }

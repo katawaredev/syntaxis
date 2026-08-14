@@ -16,7 +16,7 @@ use super::{
     ReadableResultExt, ReadableStrExt, ReadableVecExt, SelectExtension, Signal, Storage,
     SvgAttributesExtension, TextInput, TextInputType, TextareaExtension, ToastState,
     TrackExtension, UnifiedDiff, VideoExtension, WorkspaceRecord, WritableExt, WritableStringExt,
-    WritableVecExt, component, dioxus_core, dioxus_elements, dioxus_signals, document, file_glyph,
+    WritableVecExt, component, dioxus_core, dioxus_elements, dioxus_signals, file_glyph,
     language_slug_for_path, request_close, rsx, save_path, set_error, set_success, spawn, use_drop,
 };
 use regex::RegexBuilder;
@@ -158,34 +158,9 @@ pub(super) fn format_editor_reference(
 }
 
 pub(super) fn copy_editor_reference(reference: String, toast: Signal<Option<ToastState>>) {
-    let eval = document::eval(
-        r#"
-        const text = await dioxus.recv();
-        try {
-            if (globalThis.navigator?.clipboard?.writeText) {
-                await globalThis.navigator.clipboard.writeText(text);
-            } else {
-                const input = document.createElement("textarea");
-                input.value = text;
-                input.style.position = "fixed";
-                input.style.opacity = "0";
-                document.body.appendChild(input);
-                input.select();
-                const copied = document.execCommand("copy");
-                input.remove();
-                if (!copied) throw new Error("The browser rejected the copy command.");
-            }
-            return null;
-        } catch (error) {
-            return error instanceof Error ? error.message : String(error);
-        }
-        "#,
-    );
-    let _ = eval.send(reference);
     spawn(async move {
-        match eval.join::<Option<String>>().await {
-            Ok(None) => set_success(toast, "Copied file reference"),
-            Ok(Some(message)) => set_error(toast, format!("Could not copy reference: {message}")),
+        match crate::clipboard::copy_text(reference).await {
+            Ok(()) => set_success(toast, "Copied file reference"),
             Err(error) => set_error(toast, format!("Could not copy reference: {error}")),
         }
     });

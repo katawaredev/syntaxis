@@ -68,6 +68,15 @@ enum SidebarView {
     History,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum HistoryAction {
+    Checkout,
+    CreateBranch,
+    CreateTag,
+    Revert,
+    CopyHash,
+}
+
 #[component]
 pub fn Git(slug: String) -> Element {
     let _ = slug;
@@ -288,6 +297,25 @@ fn WorkspaceGit(slug: String) -> Element {
         });
     };
 
+    let on_history_action = EventHandler::new(move |(action, oid): (HistoryAction, String)| {
+        selected_commit.set(Some(oid.clone()));
+        operation_error.set(None);
+        match action {
+            HistoryAction::Checkout => dialog.set(GitDialog::CheckoutCommit),
+            HistoryAction::CreateBranch => {
+                branch_dialog_target.set(None);
+                branch_start_point.set(Some(oid));
+                dialog.set(GitDialog::CreateBranch);
+            }
+            HistoryAction::CreateTag => {
+                tag_target.set(Some(oid));
+                dialog.set(GitDialog::Tags);
+            }
+            HistoryAction::Revert => dialog.set(GitDialog::RevertCommit),
+            HistoryAction::CopyHash => copy_commit_hash(oid, toast),
+        }
+    });
+
     let signing_slug = slug.clone();
     let on_signing_retry = move |passphrase: String| {
         let Some(mut request) = retry_commit() else {
@@ -436,6 +464,7 @@ fn WorkspaceGit(slug: String) -> Element {
                             selected,
                             pending: pending(),
                             on_select: move |()| {},
+                            on_history_action,
                             on_mutation,
                         }
                     }
@@ -829,6 +858,7 @@ fn WorkspaceGit(slug: String) -> Element {
                             selected,
                             pending: pending(),
                             on_select: move |()| drawer.set(false),
+                            on_history_action,
                             on_mutation,
                         }
                     }
@@ -1106,6 +1136,18 @@ fn server_error_message(error: ServerFnError) -> String {
         ServerFnError::ServerError { message, .. } => message,
         other => other.to_string(),
     }
+}
+
+fn copy_commit_hash(value: String, mut toast: Signal<Option<(String, Tone)>>) {
+    spawn(async move {
+        match crate::clipboard::copy_text(value).await {
+            Ok(()) => toast.set(Some(("Commit hash copied".into(), Tone::Success))),
+            Err(error) => toast.set(Some((
+                format!("Could not copy commit hash: {error}"),
+                Tone::Destructive,
+            ))),
+        }
+    });
 }
 
 #[component]

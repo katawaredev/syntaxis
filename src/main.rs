@@ -2,6 +2,7 @@ mod ai;
 mod app;
 #[cfg(feature = "server")]
 mod auth;
+mod clipboard;
 mod files;
 mod git;
 mod lsp;
