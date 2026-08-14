@@ -161,8 +161,7 @@ mod tests {
 
     #[test]
     fn frontmatter_fields_are_read_without_losing_the_body() {
-        let source =
-            "---\nname: \"review\"\ndescription: Review changes\nargument-hint: \"<path>\"\n---\n\nDo it.";
+        let source = "---\nname: \"review\"\ndescription: Review changes\nargument-hint: \"<path>\"\n---\n\nDo it.";
         let (metadata, body) = split_frontmatter(source);
         assert_eq!(metadata_value(metadata, "name").as_deref(), Some("review"));
         assert_eq!(

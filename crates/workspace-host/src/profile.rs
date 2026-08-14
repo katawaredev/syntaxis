@@ -361,18 +361,24 @@ mod tests {
 
         let profile = detect_workspace_profile(root.path());
 
-        assert!(profile
-            .languages
-            .iter()
-            .any(|language| language.name == "Rust"));
-        assert!(profile
-            .languages
-            .iter()
-            .any(|language| language.name == "TypeScript"));
-        assert!(!profile
-            .languages
-            .iter()
-            .any(|language| language.name == "JavaScript"));
+        assert!(
+            profile
+                .languages
+                .iter()
+                .any(|language| language.name == "Rust")
+        );
+        assert!(
+            profile
+                .languages
+                .iter()
+                .any(|language| language.name == "TypeScript")
+        );
+        assert!(
+            !profile
+                .languages
+                .iter()
+                .any(|language| language.name == "JavaScript")
+        );
     }
 
     #[test]

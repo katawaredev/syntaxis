@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 
-use crate::{field::FieldContext, ControlSize};
+use crate::{ControlSize, field::FieldContext};
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub enum TextAreaResize {

@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use dioxus::fullstack::{CborEncoding, Encoding, WebSocketOptions, Websocket};
 use dioxus::prelude::*;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use syntaxis_agent::{ClientMessage, ConversationSearchResult, ServerMessage};
 use syntaxis_notifications::{NotificationClientMessage, NotificationServerMessage};
 

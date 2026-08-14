@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use dioxus::prelude::*;
 use dioxus_code::Language;
 use dioxus_code_editor::{
@@ -9,9 +9,9 @@ use dioxus_code_editor::{
 };
 use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
 use syntaxis_editor::{
+    BufferStatus, EditorBuffer, EditorConfigSource, ExplorerTree, ExternalChange, IndentStyle,
     apply_editor_config, language_label_for_path, language_servers_for_language,
-    language_slug_for_path, lsp_language_id_for_path, resolve_editor_config, BufferStatus,
-    EditorBuffer, EditorConfigSource, ExplorerTree, ExternalChange, IndentStyle,
+    language_slug_for_path, lsp_language_id_for_path, resolve_editor_config,
 };
 use syntaxis_git::{ChangeKind as GitChangeKind, DiffKind, RepositoryStatus, UnifiedDiff};
 use syntaxis_ui::prelude::{
@@ -32,7 +32,7 @@ use super::state::{
 use super::workspace::load_initial;
 use crate::{
     git::api as git_api,
-    workspace::{client as workspace_client, WorkspaceEventState},
+    workspace::{WorkspaceEventState, client as workspace_client},
 };
 
 #[path = "dialogs.rs"]
@@ -61,19 +61,20 @@ use documents::{
     save_and_close, save_path,
 };
 use editor_ui::{
+    EditorMenuItem, EditorShortcutState, MobileTabs, SearchOptions, SearchPanel,
     copy_editor_reference, find_matches, format_editor_reference, handle_editor_shortcut,
     issue_command, language_for_path, render_tab, replace_all_search_matches, replace_search_match,
-    text_document_contents, EditorMenuItem, MobileTabs, SearchOptions, SearchPanel,
+    text_document_contents,
 };
-use explorer::{expand_directory, Explorer, ExplorerView};
+use explorer::{Explorer, ExplorerView, expand_directory};
 use git_actions::{
-    discard_git_change, revert_active, run_file_action, show_diff, toggle_diff, toggle_stage,
-    GitDiscardContext,
+    GitDiscardContext, discard_git_change, revert_active, run_file_action, show_diff, toggle_diff,
+    toggle_stage,
 };
 use location::location_command;
 use preview::{
-    file_glyph, file_label, image_mime, is_csv, is_markdown, is_svg, CsvPreview, EditorStatus,
-    EmptyEditor, ImagePreview, MarkdownPreview, SafeSvgPreview, UnsupportedPreview,
+    CsvPreview, EditorStatus, EmptyEditor, ImagePreview, MarkdownPreview, SafeSvgPreview,
+    UnsupportedPreview, file_glyph, file_label, image_mime, is_csv, is_markdown, is_svg,
 };
 use search::WorkspaceSearchResult;
 
@@ -552,17 +553,12 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
             return;
         }
         revalidated_document.set(Some(key));
-        let is_open_text = documents.peek().iter().any(
-            |document| matches!(document, OpenDocument::Text(buffer) if buffer.path == path),
-        );
+        let is_open_text = documents
+            .peek()
+            .iter()
+            .any(|document| matches!(document, OpenDocument::Text(buffer) if buffer.path == path));
         if is_open_text {
-            reconcile_workspace_change(
-                workspace,
-                path,
-                ChangeKind::Modified,
-                documents,
-                toast,
-            );
+            reconcile_workspace_change(workspace, path, ChangeKind::Modified, documents, toast);
         }
     });
 
@@ -1277,9 +1273,11 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                             path.clone(),
                                             documents,
                                             toast,
-                                            search_panel,
-                                            search_input,
-                                            go_to_line,
+                                            EditorShortcutState {
+                                                search_panel,
+                                                search_input,
+                                                go_to_line,
+                                            },
                                         ),
                                     }
                                 }

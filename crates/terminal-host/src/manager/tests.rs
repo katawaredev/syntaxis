@@ -143,10 +143,12 @@ fn detached_sessions_are_cleaned_after_the_configured_timeout() {
     );
     drop(attachment);
     manager.cleanup().unwrap();
-    assert!(manager
-        .list(&WorkspaceId::new("workspace"))
-        .unwrap()
-        .is_empty());
+    assert!(
+        manager
+            .list(&WorkspaceId::new("workspace"))
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[test]
@@ -217,11 +219,13 @@ fn detached_foreground_command_pauses_and_then_restarts_expiry() {
         manager.list(&workspace.id).unwrap().is_empty(),
         "active={command_active} attached={attached} detached_for={detached_for:?}"
     );
-    assert!(!notifications()
-        .snapshot()
-        .iter()
-        .any(|notification| notification.workspace_id == workspace.id.0
-            && notification.target == target));
+    assert!(
+        !notifications()
+            .snapshot()
+            .iter()
+            .any(|notification| notification.workspace_id == workspace.id.0
+                && notification.target == target)
+    );
 }
 
 #[test]

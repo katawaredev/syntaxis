@@ -1,13 +1,13 @@
 use crate::replay::{ReplayBuffer, ReplayChunk};
-use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
+use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use std::{
     collections::HashMap,
     env, fs,
     io::{Read, Write},
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc, Mutex, MutexGuard, Weak,
+        atomic::{AtomicUsize, Ordering},
     },
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -15,8 +15,8 @@ use std::{
 use syntaxis_notifications::{AppNotification, NotificationKind, NotificationTarget};
 use syntaxis_notifications_host::notifications;
 use syntaxis_terminal::{
-    Lifecycle, SessionId, SessionSummary, TerminalError, TerminalErrorCode, TerminalSize,
-    MAX_INPUT_BYTES,
+    Lifecycle, MAX_INPUT_BYTES, SessionId, SessionSummary, TerminalError, TerminalErrorCode,
+    TerminalSize,
 };
 use syntaxis_workspace::{WorkspaceId, WorkspaceRecord};
 use tokio::sync::broadcast;
@@ -523,10 +523,10 @@ impl Session {
                 if !completed {
                     return;
                 }
-                if self.attached.load(Ordering::Relaxed) == 0 {
-                    if let Ok(mut detached) = lock(&self.last_detached) {
-                        *detached = Instant::now();
-                    }
+                if self.attached.load(Ordering::Relaxed) == 0
+                    && let Ok(mut detached) = lock(&self.last_detached)
+                {
+                    *detached = Instant::now();
                 }
                 let (kind, message) = if exit_code == 0 {
                     (
@@ -665,21 +665,23 @@ fn spawn_reader(
 fn spawn_exit_monitor(session: Arc<Session>) -> Result<(), TerminalError> {
     thread::Builder::new()
         .name(format!("terminal-wait-{}", session.id.0))
-        .spawn(move || loop {
-            let status = lock(&session.child).and_then(|mut child| {
-                child
-                    .try_wait()
-                    .map_err(|_| unavailable("Failed to inspect terminal process"))
-            });
-            match status {
-                Ok(Some(status)) => {
-                    session.mark_exited(Some(status.exit_code()), !status.success());
-                    break;
-                }
-                Ok(None) => thread::sleep(Duration::from_millis(100)),
-                Err(_) => {
-                    session.mark_exited(None, true);
-                    break;
+        .spawn(move || {
+            loop {
+                let status = lock(&session.child).and_then(|mut child| {
+                    child
+                        .try_wait()
+                        .map_err(|_| unavailable("Failed to inspect terminal process"))
+                });
+                match status {
+                    Ok(Some(status)) => {
+                        session.mark_exited(Some(status.exit_code()), !status.success());
+                        break;
+                    }
+                    Ok(None) => thread::sleep(Duration::from_millis(100)),
+                    Err(_) => {
+                        session.mark_exited(None, true);
+                        break;
+                    }
                 }
             }
         })
@@ -689,20 +691,22 @@ fn spawn_exit_monitor(session: Arc<Session>) -> Result<(), TerminalError> {
 fn spawn_cleanup_worker(manager: Weak<ManagerInner>) {
     thread::Builder::new()
         .name("terminal-cleanup".into())
-        .spawn(move || loop {
-            let Some(inner) = manager.upgrade() else {
-                break;
-            };
-            let interval = inner
-                .config
-                .cleanup_interval
-                .max(Duration::from_millis(100));
-            drop(inner);
-            thread::sleep(interval);
-            let Some(inner) = manager.upgrade() else {
-                break;
-            };
-            let _ = HostTerminalManager { inner }.cleanup();
+        .spawn(move || {
+            loop {
+                let Some(inner) = manager.upgrade() else {
+                    break;
+                };
+                let interval = inner
+                    .config
+                    .cleanup_interval
+                    .max(Duration::from_millis(100));
+                drop(inner);
+                thread::sleep(interval);
+                let Some(inner) = manager.upgrade() else {
+                    break;
+                };
+                let _ = HostTerminalManager { inner }.cleanup();
+            }
         })
         .expect("failed to start terminal cleanup thread");
 }

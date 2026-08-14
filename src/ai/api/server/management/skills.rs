@@ -456,7 +456,7 @@ fn cleanup_stale_skill_artifacts(root: &Path) -> Result<(), ServerFnError> {
             return Err(server_error(format!(
                 "Could not inspect {} for stale skill updates: {error}",
                 root.display()
-            )))
+            )));
         }
     };
     for entry in entries.flatten() {

@@ -1,8 +1,8 @@
 use dioxus::prelude::*;
-use futures_util::{future::FutureExt, StreamExt};
+use futures_util::{StreamExt, future::FutureExt};
 use syntaxis_agent::{
     AgentSessionSummary, AgentSnapshot, ClientMessage, ExtensionUiRequest, ImageAttachment,
-    PromptDelivery, ServerMessage, PROTOCOL_VERSION,
+    PROTOCOL_VERSION, PromptDelivery, ServerMessage,
 };
 use syntaxis_workspace::WorkspaceId;
 
@@ -271,7 +271,9 @@ pub(super) fn use_agent_runtime(
                                             )
                                         };
                                         if let Some(request) = request {
-                                            if let ClientMessage::SelectSession { session_id } = &request {
+                                            if let ClientMessage::SelectSession { session_id } =
+                                                &request
+                                            {
                                                 pending_selection.set(Some(session_id.clone()));
                                                 pending_history.set(
                                                     available
@@ -316,7 +318,9 @@ pub(super) fn use_agent_runtime(
                                         if let Some(request) =
                                             initial_session_request(available, None, false)
                                         {
-                                            if let ClientMessage::SelectSession { session_id } = &request {
+                                            if let ClientMessage::SelectSession { session_id } =
+                                                &request
+                                            {
                                                 pending_selection.set(Some(session_id.clone()));
                                                 pending_history.set(
                                                     available
@@ -346,9 +350,9 @@ pub(super) fn use_agent_runtime(
                                             !creating_session()
                                                 && selected_id().as_ref().is_some_and(|selected| {
                                                     selected != session_id
-                                                        && sessions().iter().any(|session| {
-                                                            session.id == *selected
-                                                        })
+                                                        && sessions()
+                                                            .iter()
+                                                            .any(|session| session.id == *selected)
                                                 })
                                         }
                                     }
@@ -366,7 +370,10 @@ pub(super) fn use_agent_runtime(
                                 };
                                 let loaded_history_id = match &message {
                                     ServerMessage::SessionEvent { session_id, event }
-                                        if matches!(event.as_ref(), ServerMessage::Snapshot { .. }) =>
+                                        if matches!(
+                                            event.as_ref(),
+                                            ServerMessage::Snapshot { .. }
+                                        ) =>
                                     {
                                         Some(session_id.clone())
                                     }
@@ -381,10 +388,10 @@ pub(super) fn use_agent_runtime(
                                     &mut error,
                                     &mut extension_request,
                                 );
-                                if let Some(session_id) = loaded_history_id
-                                    && pending_history().as_deref() == Some(session_id.as_str())
-                                    && selected_id().as_deref() == Some(session_id.as_str())
-                                {
+                                if loaded_history_id.as_ref().is_some_and(|session_id| {
+                                    pending_history().as_deref() == Some(session_id.as_str())
+                                        && selected_id().as_deref() == Some(session_id.as_str())
+                                }) {
                                     pending_history.set(None);
                                     session_loading.set(false);
                                 } else if let Some(session_id) = selected_session_id {

@@ -2,12 +2,12 @@ use std::{ffi::OsString, path::Path};
 
 use async_trait::async_trait;
 use syntaxis_git::{
-    parse_conflict_file, parse_diff_hunks, resolve_conflict_block, BranchComparison, BranchInfo,
-    BranchRequest, CloneMode, ClonePhase, CloneProgress, CloneRequest, CloneResult, CommitDetail,
-    CommitInfo, CommitOutcome, CommitRequest, CommitResult, ConflictFile, ConflictRequest,
-    DiffKind, GitError, GitErrorCode, GitOperations, GitResult, HunkAction, HunkRequest,
-    MergeOutcome, PushOutcome, RemoteInfo, RemoteRequest, RemoteResult, RepositoryStatus, TagInfo,
-    TagRequest, UnifiedDiff,
+    BranchComparison, BranchInfo, BranchRequest, CloneMode, ClonePhase, CloneProgress,
+    CloneRequest, CloneResult, CommitDetail, CommitInfo, CommitOutcome, CommitRequest,
+    CommitResult, ConflictFile, ConflictRequest, DiffKind, GitError, GitErrorCode, GitOperations,
+    GitResult, HunkAction, HunkRequest, MergeOutcome, PushOutcome, RemoteInfo, RemoteRequest,
+    RemoteResult, RepositoryStatus, TagInfo, TagRequest, UnifiedDiff, parse_conflict_file,
+    parse_diff_hunks, resolve_conflict_block,
 };
 use syntaxis_workspace::{
     ErrorCode as WorkspaceErrorCode, RelativePath, WorkspaceFiles, WorkspaceRecord,
@@ -17,7 +17,7 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use zeroize::Zeroizing;
 
-use crate::runner::{validated_root, HostGit};
+use crate::runner::{HostGit, validated_root};
 
 const MAX_COMMIT_MESSAGE_BYTES: usize = 256 * 1024;
 const MAX_TAG_MESSAGE_BYTES: usize = 256 * 1024;
@@ -905,8 +905,8 @@ impl GitOperations for HostGit {
             Err(error)
                 if error.code == GitErrorCode::CommandFailed
                     && self.status(workspace).await.is_ok_and(|status| {
-                    status.branch.ahead > 0 && status.branch.behind > 0
-                }) =>
+                        status.branch.ahead > 0 && status.branch.behind > 0
+                    }) =>
             {
                 Err(GitError::new(
                     GitErrorCode::Conflict,

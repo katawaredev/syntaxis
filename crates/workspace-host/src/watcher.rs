@@ -84,7 +84,7 @@ impl WorkspaceWatcher {
                 Ok(Ok(event)) => events.push(event),
                 Ok(Err(_)) => return Err(WorkspaceError::internal()),
                 Err(mpsc::RecvTimeoutError::Timeout | mpsc::RecvTimeoutError::Disconnected) => {
-                    break
+                    break;
                 }
             }
         }

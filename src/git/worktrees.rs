@@ -8,7 +8,7 @@ use syntaxis_ui::prelude::{
 
 use crate::{
     files::FilesSessionState,
-    workspace::{client, ActiveWorkspace, WorkspaceEventState},
+    workspace::{ActiveWorkspace, WorkspaceEventState, client},
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]

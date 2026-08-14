@@ -1,9 +1,7 @@
 use std::{collections::BTreeMap, time::Duration};
 
 use dioxus::prelude::*;
-use syntaxis_workspace::{
-    EventBatch, ExecutionLocation, WorkspaceChange, WorkspaceRecord,
-};
+use syntaxis_workspace::{EventBatch, ExecutionLocation, WorkspaceChange, WorkspaceRecord};
 
 type PendingWorkspaceChanges = BTreeMap<(String, String), WorkspaceChange>;
 
@@ -98,9 +96,7 @@ fn RemoteWorkspaceEvents(workspace_id: String, state: WorkspaceEventState) -> El
                     }
                 }
                 dioxus_sdk_time::sleep(retry_delay).await;
-                retry_delay = retry_delay
-                    .saturating_mul(2)
-                    .min(Duration::from_secs(30));
+                retry_delay = retry_delay.saturating_mul(2).min(Duration::from_secs(30));
             }
         }
     });
@@ -125,9 +121,7 @@ fn HostWorkspaceEvents(workspace: WorkspaceRecord, mut state: WorkspaceEventStat
                 );
                 let Ok(watcher) = watcher else {
                     dioxus_sdk_time::sleep(retry_delay).await;
-                    retry_delay = retry_delay
-                        .saturating_mul(2)
-                        .min(Duration::from_secs(30));
+                    retry_delay = retry_delay.saturating_mul(2).min(Duration::from_secs(30));
                     continue;
                 };
                 retry_delay = Duration::from_secs(1);

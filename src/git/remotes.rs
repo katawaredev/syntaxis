@@ -3,7 +3,6 @@
     reason = "Dioxus expands the parent glob for RSX hot-reload analysis"
 )]
 use super::{
-    component, dioxus_core, dioxus_elements, dioxus_signals, display_remote_url, rsx, use_signal,
     ActionCallback, AnyStorage, AppIcon, ButtonExtension, DetailsExtension, DialogExtension,
     DropdownMenu, Element, EventHandler, FieldsetExtension, FormExtension,
     GlobalAttributesExtension, HasAttributes, History, Icon, IframeExtension, ImgExtension,
@@ -11,7 +10,8 @@ use super::{
     ObjectExtension, OutputExtension, ParamExtension, Props, ReadableExt, ReadableHashMapExt,
     ReadableHashSetExt, ReadableOptionExt, ReadableResultExt, ReadableStrExt, ReadableVecExt,
     RemoteInfo, SelectExtension, SlotExtension, Storage, StyleExtension, SvgAttributesExtension,
-    TextareaExtension, TrackExtension, WritableExt,
+    TextareaExtension, TrackExtension, WritableExt, component, dioxus_core, dioxus_elements,
+    dioxus_signals, display_remote_url, rsx, use_signal,
 };
 
 #[component]

@@ -179,9 +179,10 @@ mod tests {
         let ignored = BTreeSet::from(["target".to_owned()]);
 
         assert!(tree.flattened("", None, &ignored, false).is_empty());
-        assert!(tree
-            .flattened("", None, &ignored, true)
-            .iter()
-            .all(|node| node.ignored));
+        assert!(
+            tree.flattened("", None, &ignored, true)
+                .iter()
+                .all(|node| node.ignored)
+        );
     }
 }

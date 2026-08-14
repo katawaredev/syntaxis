@@ -3,22 +3,21 @@
     reason = "Dioxus expands the parent glob for RSX hot-reload analysis"
 )]
 use super::{
-    component, dioxus_core, dioxus_elements, dioxus_signals, document, file_glyph, use_drop,
-    language_slug_for_path, request_close, rsx, save_path, set_error, set_success, spawn,
     ActionCallback, AnyStorage, AppIcon, ButtonExtension, CanvasExtension, CloseRequest,
     ControlSize, DataExtension, DetailsExtension, DialogExtension, DropdownMenu, DropdownMenuItem,
     EditorCommand, EditorCommandKind, EditorSelection, Element, EmbedExtension, EventHandler,
     FieldsetExtension, FormEvent, GlobalAttributesExtension, HasAttributes, HasFormData,
     HasKeyboardData, HasPointerData, History, Icon, IframeExtension, ImgExtension, InputExtension,
     Key, KeyboardEvent, Language, LiExtension, LinkExtension, MenuButtonTrigger, MenuContent,
-    MountedData,
-    MeterExtension, Modifiers, ModifiersInteraction, MpaddedExtension, MspaceExtension,
-    ObjectExtension, OlExtension, OpenDocument, OpenTab, OptgroupExtension, OptionExtension,
-    PanelTab, PanelTabIndicator, PanelTabWidth, ParamExtension, ProgressExtension, Props,
-    ReadableExt, ReadableHashMapExt, ReadableHashSetExt, ReadableOptionExt, ReadableResultExt,
-    ReadableStrExt, ReadableVecExt, SelectExtension, Signal, Storage, SvgAttributesExtension,
-    TextInput, TextInputType, TextareaExtension, ToastState, TrackExtension, UnifiedDiff,
-    VideoExtension, WorkspaceRecord, WritableExt, WritableStringExt, WritableVecExt,
+    MeterExtension, Modifiers, ModifiersInteraction, MountedData, MpaddedExtension,
+    MspaceExtension, ObjectExtension, OlExtension, OpenDocument, OpenTab, OptgroupExtension,
+    OptionExtension, PanelTab, PanelTabIndicator, PanelTabWidth, ParamExtension, ProgressExtension,
+    Props, ReadableExt, ReadableHashMapExt, ReadableHashSetExt, ReadableOptionExt,
+    ReadableResultExt, ReadableStrExt, ReadableVecExt, SelectExtension, Signal, Storage,
+    SvgAttributesExtension, TextInput, TextInputType, TextareaExtension, ToastState,
+    TrackExtension, UnifiedDiff, VideoExtension, WorkspaceRecord, WritableExt, WritableStringExt,
+    WritableVecExt, component, dioxus_core, dioxus_elements, dioxus_signals, document, file_glyph,
+    language_slug_for_path, request_close, rsx, save_path, set_error, set_success, spawn, use_drop,
 };
 use regex::RegexBuilder;
 use std::rc::Rc;
@@ -221,15 +220,20 @@ fn line_column_at(source: &str, offset: usize) -> (usize, usize) {
     (line, column)
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct EditorShortcutState {
+    pub(super) search_panel: Signal<bool>,
+    pub(super) search_input: Signal<Option<Rc<MountedData>>>,
+    pub(super) go_to_line: Signal<bool>,
+}
+
 pub(super) fn handle_editor_shortcut(
     event: &KeyboardEvent,
     workspace: Option<WorkspaceRecord>,
     path: String,
     documents: Signal<Vec<OpenDocument>>,
     toast: Signal<Option<ToastState>>,
-    mut search_panel: Signal<bool>,
-    search_input: Signal<Option<Rc<MountedData>>>,
-    mut go_to_line: Signal<bool>,
+    mut state: EditorShortcutState,
 ) {
     let modifiers = event.modifiers();
     let command = modifiers.contains(Modifiers::CONTROL) || modifiers.contains(Modifiers::META);
@@ -243,12 +247,12 @@ pub(super) fn handle_editor_shortcut(
         }
         Key::Character(value) if value.eq_ignore_ascii_case("f") => {
             event.prevent_default();
-            search_panel.set(true);
-            focus_file_search(search_input);
+            state.search_panel.set(true);
+            focus_file_search(state.search_input);
         }
         Key::Character(value) if value.eq_ignore_ascii_case("g") => {
             event.prevent_default();
-            go_to_line.set(true);
+            state.go_to_line.set(true);
         }
         _ => {}
     }
@@ -317,7 +321,7 @@ pub(super) fn SearchPanel(
                         "aria-invalid": error.is_some(),
                         onmounted: move |event| {
                             let input = event.data();
-                            search_input.set(Some(input.clone()));
+                            search_input.set(Some(Rc::clone(&input)));
                             spawn(async move {
                                 let _ = input.set_focus(true).await;
                             });
@@ -617,8 +621,8 @@ pub(super) fn language_for_path(path: &str) -> Language {
 
 #[cfg(test)]
 mod tests {
-    use super::format_editor_reference;
     use super::EditorSelection;
+    use super::format_editor_reference;
 
     #[test]
     fn file_reference_formats_cursor_and_single_line_selection() {

@@ -123,8 +123,10 @@ mod tests {
             vec![registered.clone()]
         );
         block_on(registry.remove(&registered.id)).expect("mock workspace should be removed");
-        assert!(block_on(registry.list())
-            .expect("mock workspaces should list")
-            .is_empty());
+        assert!(
+            block_on(registry.list())
+                .expect("mock workspaces should list")
+                .is_empty()
+        );
     }
 }

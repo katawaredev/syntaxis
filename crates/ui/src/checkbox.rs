@@ -3,7 +3,7 @@ use dioxus_primitives::checkbox::{
     Checkbox as PrimitiveCheckbox, CheckboxIndicator, CheckboxState,
 };
 
-use crate::{field::FieldContext, AppIcon, Icon};
+use crate::{AppIcon, Icon, field::FieldContext};
 
 #[component]
 pub fn Checkbox(

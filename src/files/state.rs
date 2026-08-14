@@ -210,7 +210,7 @@ impl FilesSessionState {
         self.processed_event_revision.set(0);
     }
 
-    pub(super) fn activate(mut self, workspace_id: String) {
+    pub(crate) fn activate(mut self, workspace_id: String) {
         if self.workspace_id.peek().as_deref() == Some(&workspace_id) {
             return;
         }

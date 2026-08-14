@@ -262,7 +262,7 @@ fn stale_conflict() -> GitError {
 mod tests {
     use syntaxis_workspace::RelativePath;
 
-    use super::{parse_conflict_file, resolve_conflict_block, ConflictChoice};
+    use super::{ConflictChoice, parse_conflict_file, resolve_conflict_block};
 
     #[test]
     fn resolves_blocks_independently_and_preserves_surrounding_text() {

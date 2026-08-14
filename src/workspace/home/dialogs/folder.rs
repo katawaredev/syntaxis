@@ -3,7 +3,7 @@ use syntaxis_ui::prelude::{
     AppIcon, Button, ButtonKind, DialogActions, DialogForm, Field, Icon, Modal, TextInput,
 };
 
-use super::{mock_request_delay, RequestState};
+use super::{RequestState, mock_request_delay};
 use crate::workspace::client::{browse_workspace_directories, register_workspace};
 use crate::workspace::home::{HomeDialog, RuntimePresentation};
 

@@ -12,7 +12,7 @@ use syntaxis_workspace::{WorkspaceAvailability, WorkspaceId, WorkspaceRecord};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use crate::{runner::validated_root, HostGit};
+use crate::{HostGit, runner::validated_root};
 
 #[derive(Debug)]
 struct PorcelainWorktree {

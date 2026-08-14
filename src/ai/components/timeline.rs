@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 use syntaxis_agent::{AgentStatus, ChatItem, ImageAttachment, ItemStatus};
-use syntaxis_ui::prelude::{AppIcon, Icon, IconButton, Modal};
+use syntaxis_ui::prelude::{AppIcon, IconButton, Modal};
 
 use crate::files::preview::render_markdown;
 

@@ -7,9 +7,9 @@ use std::{
 };
 
 use dioxus::prelude::ServerFnError;
-use futures_util::{stream, StreamExt};
+use futures_util::{StreamExt, stream};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use syntaxis_workspace::WorkspaceId;
 
 use crate::ai::{
@@ -18,7 +18,7 @@ use crate::ai::{
         PiSettingsSnapshot, PiSkill, PromptTemplate, SkillCatalogView, SkillSearchPage,
         SkillSearchResult,
     },
-    generated_settings::{PiSettingKind, PI_SETTINGS_SCHEMA_VERSION, PI_SETTING_DEFINITIONS},
+    generated_settings::{PI_SETTING_DEFINITIONS, PI_SETTINGS_SCHEMA_VERSION, PiSettingKind},
 };
 
 mod auth;

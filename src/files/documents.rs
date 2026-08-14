@@ -81,7 +81,7 @@ pub(super) fn restore_documents(
     mut active_path: Signal<Option<String>>,
     mut session_ready: Signal<bool>,
 ) {
-    use futures_util::{stream, StreamExt};
+    use futures_util::{StreamExt, stream};
 
     spawn(async move {
         let active = session
@@ -89,13 +89,13 @@ pub(super) fn restore_documents(
             .clone()
             .filter(|active| session.tabs.contains(active));
         let mut loaded = std::collections::HashMap::<String, OpenDocument>::new();
-        if let Some(path) = active.as_ref() {
-            if let Some(document) = load_restored_document(&workspace, &configs, path).await {
-                loaded.insert(path.clone(), document.clone());
-                if documents.peek().is_empty() {
-                    documents.set(vec![document]);
-                    active_path.set(Some(path.clone()));
-                }
+        if let Some(path) = active.as_ref()
+            && let Some(document) = load_restored_document(&workspace, &configs, path).await
+        {
+            loaded.insert(path.clone(), document.clone());
+            if documents.peek().is_empty() {
+                documents.set(vec![document]);
+                active_path.set(Some(path.clone()));
             }
         }
 
@@ -411,9 +411,10 @@ pub(super) fn request_close_many(
         return;
     }
     let paths_to_close = paths.iter().map(String::as_str).collect::<BTreeSet<_>>();
-    let has_dirty_document = documents.read().iter().any(|document| {
-        paths_to_close.contains(document.path()) && document.is_dirty()
-    });
+    let has_dirty_document = documents
+        .read()
+        .iter()
+        .any(|document| paths_to_close.contains(document.path()) && document.is_dirty());
     if has_dirty_document {
         close_request.set(Some(CloseRequest { paths }));
     } else {

@@ -4,10 +4,10 @@ use dioxus_code_editor::{DiffLayout, UnifiedDiffView};
 use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
 use syntaxis_editor::language_slug_for_path;
 use syntaxis_git::{
-    parse_diff_hunks, BranchComparison, BranchInfo, BranchRequest, ChangeKind, CommitDetail,
-    CommitInfo, CommitOutcome, CommitRequest, ConflictChoice, ConflictFile, DiffHunk, DiffKind,
-    FileChange, HunkAction, RemoteInfo, RemoteRequest, RepositoryState, RepositoryStatus, TagInfo,
-    TagRequest, UnifiedDiff,
+    BranchComparison, BranchInfo, BranchRequest, ChangeKind, CommitDetail, CommitInfo,
+    CommitOutcome, CommitRequest, ConflictChoice, ConflictFile, DiffHunk, DiffKind, FileChange,
+    HunkAction, RemoteInfo, RemoteRequest, RepositoryState, RepositoryStatus, TagInfo, TagRequest,
+    UnifiedDiff, parse_diff_hunks,
 };
 use syntaxis_ui::prelude::{
     AppIcon, Button, ButtonKind, Checkbox, ControlSize, DialogActions, DialogForm, Drawer, Field,
@@ -36,9 +36,9 @@ use self::remotes::RemoteManager;
 use self::worktrees::{BranchWorktreeAction, BranchWorktreeMenu};
 use super::api;
 use super::operations::{
-    run_mutation, run_repository_action, Mutation, RepositoryAction, RepositoryActionSuccess,
+    Mutation, RepositoryAction, RepositoryActionSuccess, run_mutation, run_repository_action,
 };
-use super::repository::{use_repository_resources, RepositoryResources, SelectedChange};
+use super::repository::{RepositoryResources, SelectedChange, use_repository_resources};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum GitDialog {
@@ -106,13 +106,7 @@ fn WorkspaceGit(slug: String) -> Element {
         diff,
         conflict,
         commit_detail,
-    } = use_repository_resources(
-        &slug,
-        refresh_key,
-        selected,
-        expanded_diff,
-        selected_commit,
-    );
+    } = use_repository_resources(&slug, refresh_key, selected, expanded_diff, selected_commit);
     let mut drawer = use_signal(|| false);
     let mut sidebar_open = use_signal(|| true);
     let mut branch_dialog_target = use_signal(|| None::<String>);
@@ -142,10 +136,10 @@ fn WorkspaceGit(slug: String) -> Element {
     });
 
     use_effect(move || {
-        if dialog() == GitDialog::None {
-            if let Some(error) = operation_error() {
-                toast.set(Some((error, Tone::Destructive)));
-            }
+        if dialog() == GitDialog::None
+            && let Some(error) = operation_error()
+        {
+            toast.set(Some((error, Tone::Destructive)));
         }
     });
 
@@ -1169,10 +1163,10 @@ fn display_remote_url(url: &str) -> String {
             .map_or(remainder, |(_, visible)| visible);
         return format!("{scheme}://{visible}");
     }
-    if let Some((credentials, visible)) = url.split_once('@') {
-        if !credentials.contains('/') {
-            return visible.to_owned();
-        }
+    if let Some((credentials, visible)) = url.split_once('@')
+        && !credentials.contains('/')
+    {
+        return visible.to_owned();
     }
     url.to_owned()
 }

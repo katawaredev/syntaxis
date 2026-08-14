@@ -1,8 +1,8 @@
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use dioxus::prelude::*;
 use serde::Deserialize;
 use syntaxis_agent::{
-    ImageAttachment, PiCommand, MAX_IMAGE_BYTES, MAX_PROMPT_IMAGES, MAX_TOTAL_IMAGE_BYTES,
+    ImageAttachment, MAX_IMAGE_BYTES, MAX_PROMPT_IMAGES, MAX_TOTAL_IMAGE_BYTES, PiCommand,
 };
 use syntaxis_ui::prelude::{AppIcon, Icon, IconButton};
 
@@ -86,7 +86,9 @@ pub(crate) fn AgentComposer(
                                 if editing_message && event.key() == Key::Escape {
                                     event.prevent_default();
                                     on_cancel_edit.call(());
-                                } else if event.key() == Key::Enter && !event.modifiers().contains(Modifiers::SHIFT) {
+                                } else if event.key() == Key::Enter
+                                    && !event.modifiers().contains(Modifiers::SHIFT)
+                                {
                                     event.prevent_default();
                                     if let Some(command) = first_command.as_ref() {
                                         draft.set(format!("/{} ", command.name));

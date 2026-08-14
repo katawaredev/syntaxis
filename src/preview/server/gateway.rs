@@ -4,15 +4,15 @@ use dioxus::{
     fullstack::HeaderMap,
     prelude::ServerFnError,
     server::axum::{
-        body::{to_bytes, Body},
-        extract::{ws::Message as AxumMessage, FromRequest, Request, WebSocketUpgrade},
+        body::{Body, to_bytes},
+        extract::{FromRequest, Request, WebSocketUpgrade, ws::Message as AxumMessage},
         http::{
+            HeaderName, HeaderValue, StatusCode,
             header::{
                 CONNECTION, CONTENT_LENGTH, HOST, LOCATION, ORIGIN, PROXY_AUTHENTICATE,
                 PROXY_AUTHORIZATION, SET_COOKIE, TE, TRAILER, TRANSFER_ENCODING, UPGRADE,
             },
             uri::Authority,
-            HeaderName, HeaderValue, StatusCode,
         },
         middleware::Next,
         response::{IntoResponse, Response},
@@ -21,14 +21,14 @@ use dioxus::{
 use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::{
     connect_async,
-    tungstenite::{client::IntoClientRequest, Message as TungsteniteMessage},
+    tungstenite::{Message as TungsteniteMessage, client::IntoClientRequest},
 };
 use url::Url;
 
 use super::{
     authority, origin, request_error,
-    state::{invalidate_lease, leases, Lease},
-    target::{http_client, target_label, TARGET_PROBE_TIMEOUT},
+    state::{Lease, invalidate_lease, leases},
+    target::{TARGET_PROBE_TIMEOUT, http_client, target_label},
 };
 
 const MAX_REQUEST_BODY_BYTES: usize = 32 * 1024 * 1024;
@@ -825,20 +825,24 @@ mod tests {
         );
 
         leases.get_mut(OWNER_ID).unwrap().share_token = None;
-        assert!(resolve_access(
-            &leases,
-            &PreviewAccess::Share {
-                token: SHARE_ID.into(),
-            }
-        )
-        .is_none());
-        assert!(resolve_access(
-            &leases,
-            &PreviewAccess::Owner {
-                lease_id: OWNER_ID.into(),
-            }
-        )
-        .is_some());
+        assert!(
+            resolve_access(
+                &leases,
+                &PreviewAccess::Share {
+                    token: SHARE_ID.into(),
+                }
+            )
+            .is_none()
+        );
+        assert!(
+            resolve_access(
+                &leases,
+                &PreviewAccess::Owner {
+                    lease_id: OWNER_ID.into(),
+                }
+            )
+            .is_some()
+        );
     }
 
     #[test]
@@ -880,11 +884,13 @@ mod tests {
                 "https://p-{OWNER_ID}.preview.example.test/settings"
             ))
         );
-        assert!(rewrite_location(
-            &HeaderValue::from_static("https://accounts.example.test/login"),
-            &lease,
-        )
-        .is_none());
+        assert!(
+            rewrite_location(
+                &HeaderValue::from_static("https://accounts.example.test/login"),
+                &lease,
+            )
+            .is_none()
+        );
     }
 
     #[test]
@@ -902,11 +908,13 @@ mod tests {
             .as_deref(),
             Some("https://app.example.test/dashboard?q=1")
         );
-        assert!(rewrite_referer(
-            &HeaderValue::from_static("https://unrelated.example.test/"),
-            &lease,
-        )
-        .is_none());
+        assert!(
+            rewrite_referer(
+                &HeaderValue::from_static("https://unrelated.example.test/"),
+                &lease,
+            )
+            .is_none()
+        );
     }
 
     #[test]

@@ -225,14 +225,13 @@ pub async fn resolve_language_server(
     {
         return Err("The language-server definition is invalid".into());
     }
-    if let Some(package) = project_package {
-        if let Some(executable) =
+    if let Some(package) = project_package
+        && let Some(executable) =
             project_local_language_server(root, package, executable, minimum_project_major).await
-        {
-            return Ok(Some(ResolvedLanguageServer(
-                ResolvedLanguageServerSource::ProjectLocal(executable),
-            )));
-        }
+    {
+        return Ok(Some(ResolvedLanguageServer(
+            ResolvedLanguageServerSource::ProjectLocal(executable),
+        )));
     }
     let available = Command::new("mise")
         .args(["which", executable])

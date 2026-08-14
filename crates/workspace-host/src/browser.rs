@@ -5,7 +5,7 @@ use syntaxis_workspace::{
     BrowseDirectory, BrowseRoot, ErrorCode, WorkspaceBrowser, WorkspaceError, WorkspaceResult,
 };
 
-use crate::{error::map_io_error, RegistrationPolicy};
+use crate::{RegistrationPolicy, error::map_io_error};
 
 #[derive(Clone, Debug)]
 pub struct HostWorkspaceBrowser {

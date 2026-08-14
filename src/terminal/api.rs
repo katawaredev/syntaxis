@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use dioxus::fullstack::{CborEncoding, Encoding, WebSocketOptions, Websocket};
 use dioxus::prelude::*;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use syntaxis_terminal::{ClientMessage, ServerMessage};
 
 const MAX_TERMINAL_MESSAGE_BYTES: usize = 128 * 1024;

@@ -107,12 +107,14 @@ fn workspace_notes_are_kept_beside_the_session() {
 fn cleanup_lists_ignored_directories_once_and_removes_only_the_selection() {
     let data = tempdir().unwrap();
     let project = tempdir().unwrap();
-    assert!(Command::new("git")
-        .args(["init", "-q"])
-        .current_dir(project.path())
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(project.path())
+            .status()
+            .unwrap()
+            .success()
+    );
     fs::write(
         project.path().join(".gitignore"),
         "target/\nnode_modules/\n",
@@ -131,12 +133,16 @@ fn cleanup_lists_ignored_directories_once_and_removes_only_the_selection() {
     let registered =
         futures_lite::future::block_on(store.register(project.path().to_str().unwrap())).unwrap();
     let entries = store.cleanup_entries(&registered.id).unwrap();
-    assert!(entries
-        .iter()
-        .any(|entry| entry.path == "target" && entry.directory));
-    assert!(entries
-        .iter()
-        .any(|entry| entry.path == "node_modules" && entry.directory));
+    assert!(
+        entries
+            .iter()
+            .any(|entry| entry.path == "target" && entry.directory)
+    );
+    assert!(
+        entries
+            .iter()
+            .any(|entry| entry.path == "node_modules" && entry.directory)
+    );
 
     assert_eq!(
         store
@@ -160,11 +166,13 @@ fn refreshing_a_workspace_recomputes_and_persists_its_profile() {
 
     fs::write(project.path().join("main.rs"), "fn main() {}\n").unwrap();
     let refreshed = store.refresh_profile(&registered.id).unwrap();
-    assert!(refreshed
-        .profile
-        .languages
-        .iter()
-        .any(|language| language.name == "Rust"));
+    assert!(
+        refreshed
+            .profile
+            .languages
+            .iter()
+            .any(|language| language.name == "Rust")
+    );
     drop(store);
 
     let reopened =
@@ -215,9 +223,11 @@ fn allowlisted_registry_hides_rows_created_by_an_unrestricted_runtime() {
     )
     .unwrap();
 
-    assert!(futures_lite::future::block_on(remote.list())
-        .unwrap()
-        .is_empty());
+    assert!(
+        futures_lite::future::block_on(remote.list())
+            .unwrap()
+            .is_empty()
+    );
     let error = futures_lite::future::block_on(remote.get(&registered.id)).unwrap_err();
     assert_eq!(error.code, ErrorCode::OutsideAllowedRoot);
 }

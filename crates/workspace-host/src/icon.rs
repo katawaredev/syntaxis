@@ -1,6 +1,6 @@
 use std::{fs, path::Path};
 
-use base64::{engine::general_purpose::STANDARD, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD};
 use syntaxis_workspace::{WorkspaceIcon, WorkspaceIconSymbol};
 
 const IMAGE_CANDIDATES: &[&str] = &[

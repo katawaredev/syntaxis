@@ -11,10 +11,10 @@ use crate::{
 };
 use syntaxis_workspace::{ExecutionLocation, RuntimeState, WorkspaceSection};
 
+use super::ProjectIcon;
 use super::client::{list_workspaces, runtime_state, set_workspace_last_section, touch_workspace};
 use super::worktrees::use_active_workspace;
-use super::ProjectIcon;
-use super::{events::WorkspaceEventBridge, WorkspaceEventState};
+use super::{WorkspaceEventState, events::WorkspaceEventBridge};
 use crate::ai::notifications::NotificationMenu;
 
 #[component]

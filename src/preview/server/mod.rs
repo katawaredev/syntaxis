@@ -17,11 +17,11 @@ mod target;
 pub(crate) use gateway::dispatch;
 use gateway::{gateway_url, preview_base_url, request_origin};
 use state::{
-    configs, leases, normalize_config, replace_workspace_lease, workspace_lease_mut, Lease,
+    Lease, configs, leases, normalize_config, replace_workspace_lease, workspace_lease_mut,
 };
 use target::{
-    discover_workspace_listeners, http_client, probe_target, resolve_loopback_target, target_label,
-    validate_target, CONNECT_TIMEOUT, MAX_DISCOVERED_LISTENERS, TARGET_PROBE_TIMEOUT,
+    CONNECT_TIMEOUT, MAX_DISCOVERED_LISTENERS, TARGET_PROBE_TIMEOUT, discover_workspace_listeners,
+    http_client, probe_target, resolve_loopback_target, target_label, validate_target,
 };
 
 pub(crate) fn retire_workspace(workspace_id: &WorkspaceId) -> Result<(), ServerFnError> {

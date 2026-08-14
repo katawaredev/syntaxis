@@ -1,9 +1,9 @@
 use std::{ffi::OsString, fmt::Write as _, fs, path::Path, process::Command};
 
 use syntaxis_git::{
-    parse_diff_hunks, BranchRequest, ChangeKind, CloneMode, ClonePhase, CloneRequest,
-    CommitOutcome, CommitRequest, ConflictChoice, ConflictRequest, DiffKind, GitErrorCode,
-    GitOperations, HunkAction, HunkRequest, MergeOutcome, PushOutcome, TagRequest,
+    BranchRequest, ChangeKind, CloneMode, ClonePhase, CloneRequest, CommitOutcome, CommitRequest,
+    ConflictChoice, ConflictRequest, DiffKind, GitErrorCode, GitOperations, HunkAction,
+    HunkRequest, MergeOutcome, PushOutcome, TagRequest, parse_diff_hunks,
 };
 use syntaxis_workspace::{
     RelativePath, WorkspaceAvailability, WorkspaceIcon, WorkspaceId, WorkspaceRecord,
@@ -13,7 +13,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::HostGit;
 
-use super::{push_arguments, GITHUB_SSH_PUSH_REWRITE};
+use super::{GITHUB_SSH_PUSH_REWRITE, push_arguments};
 
 #[test]
 fn github_ssh_push_fallback_is_command_scoped() {
@@ -118,12 +118,13 @@ async fn hunk_actions_match_git_index_and_worktree_semantics() {
     )
     .await
     .unwrap();
-    assert!(host
-        .diff(&workspace, &path, DiffKind::Staged)
-        .await
-        .unwrap()
-        .patch
-        .is_empty());
+    assert!(
+        host.diff(&workspace, &path, DiffKind::Staged)
+            .await
+            .unwrap()
+            .patch
+            .is_empty()
+    );
 
     let worktree = host
         .diff(&workspace, &path, DiffKind::Worktree)
@@ -195,12 +196,13 @@ async fn branch_and_history_operations_use_real_repository_state() {
     )
     .await
     .unwrap();
-    assert!(host
-        .branches(&workspace)
-        .await
-        .unwrap()
-        .iter()
-        .any(|branch| branch.name == "feature/live-git" && branch.current));
+    assert!(
+        host.branches(&workspace)
+            .await
+            .unwrap()
+            .iter()
+            .any(|branch| branch.name == "feature/live-git" && branch.current)
+    );
     host.rename_branch(&workspace, "feature/renamed")
         .await
         .unwrap();
@@ -276,20 +278,23 @@ async fn tag_operations_preserve_lightweight_and_annotated_targets() {
     .unwrap();
 
     let tags = host.tags(&workspace).await.unwrap();
-    assert!(tags
-        .iter()
-        .any(|tag| { tag.name == "v1.0.0" && tag.target_oid == base_oid && !tag.annotated }));
+    assert!(
+        tags.iter()
+            .any(|tag| { tag.name == "v1.0.0" && tag.target_oid == base_oid && !tag.annotated })
+    );
     assert!(tags.iter().any(|tag| {
         tag.name == "release/annotated" && tag.target_oid == base_oid && tag.annotated
     }));
 
     host.delete_tag(&workspace, "v1.0.0").await.unwrap();
-    assert!(!host
-        .tags(&workspace)
-        .await
-        .unwrap()
-        .iter()
-        .any(|tag| tag.name == "v1.0.0"));
+    assert!(
+        !host
+            .tags(&workspace)
+            .await
+            .unwrap()
+            .iter()
+            .any(|tag| tag.name == "v1.0.0")
+    );
     let error = host
         .create_tag(
             &workspace,
@@ -337,8 +342,8 @@ async fn comparison_merge_conflict_abort_and_clean_merge_use_real_state() {
     assert_eq!(conflict.blocks.len(), 1);
     assert!(conflict.blocks[0].current.contains("main"));
     assert!(conflict.blocks[0].incoming.contains("feature"));
-    assert!(host
-        .resolve_conflict(
+    assert!(
+        host.resolve_conflict(
             &workspace,
             ConflictRequest {
                 path: path.clone(),
@@ -348,13 +353,16 @@ async fn comparison_merge_conflict_abort_and_clean_merge_use_real_state() {
             },
         )
         .await
-        .unwrap());
+        .unwrap()
+    );
     let resolved_status = host.status(&workspace).await.unwrap();
     assert_eq!(resolved_status.conflict_count(), 0);
-    assert!(resolved_status
-        .changes
-        .iter()
-        .any(|change| { change.path == path && change.index == Some(ChangeKind::Modified) }));
+    assert!(
+        resolved_status
+            .changes
+            .iter()
+            .any(|change| { change.path == path && change.index == Some(ChangeKind::Modified) })
+    );
     host.abort_merge(&workspace).await.unwrap();
     assert_eq!(host.status(&workspace).await.unwrap().conflict_count(), 0);
     assert_eq!(
@@ -411,34 +419,38 @@ async fn current_incoming_and_both_resolve_real_merge_blocks() {
     ));
     let first = host.conflict_file(&workspace, &path).await.unwrap();
     assert_eq!(first.blocks.len(), 3);
-    assert!(!host
-        .resolve_conflict(
-            &workspace,
-            ConflictRequest {
-                path: path.clone(),
-                block_index: 0,
-                expected_fingerprint: first.blocks[0].fingerprint,
-                choice: ConflictChoice::Current,
-            },
-        )
-        .await
-        .unwrap());
+    assert!(
+        !host
+            .resolve_conflict(
+                &workspace,
+                ConflictRequest {
+                    path: path.clone(),
+                    block_index: 0,
+                    expected_fingerprint: first.blocks[0].fingerprint,
+                    choice: ConflictChoice::Current,
+                },
+            )
+            .await
+            .unwrap()
+    );
     let second = host.conflict_file(&workspace, &path).await.unwrap();
-    assert!(!host
-        .resolve_conflict(
-            &workspace,
-            ConflictRequest {
-                path: path.clone(),
-                block_index: 0,
-                expected_fingerprint: second.blocks[0].fingerprint,
-                choice: ConflictChoice::Incoming,
-            },
-        )
-        .await
-        .unwrap());
+    assert!(
+        !host
+            .resolve_conflict(
+                &workspace,
+                ConflictRequest {
+                    path: path.clone(),
+                    block_index: 0,
+                    expected_fingerprint: second.blocks[0].fingerprint,
+                    choice: ConflictChoice::Incoming,
+                },
+            )
+            .await
+            .unwrap()
+    );
     let third = host.conflict_file(&workspace, &path).await.unwrap();
-    assert!(host
-        .resolve_conflict(
+    assert!(
+        host.resolve_conflict(
             &workspace,
             ConflictRequest {
                 path: path.clone(),
@@ -448,7 +460,8 @@ async fn current_incoming_and_both_resolve_real_merge_blocks() {
             },
         )
         .await
-        .unwrap());
+        .unwrap()
+    );
     let contents = fs::read_to_string(repository.path().join("blocks.txt")).unwrap();
     assert!(contents.contains("main 2\n"));
     assert!(!contents.contains("feature 2\n"));
@@ -716,13 +729,17 @@ async fn diff_stage_unstage_discard_and_commit_match_real_git_state() {
         .await
         .unwrap();
     assert!(!repository.path().join("temporary.txt").exists());
-    assert!(!host
-        .status(&workspace)
-        .await
-        .unwrap()
-        .changes
-        .iter()
-        .any(|change| change.path == temporary && change.worktree == Some(ChangeKind::Untracked)));
+    assert!(
+        !host
+            .status(&workspace)
+            .await
+            .unwrap()
+            .changes
+            .iter()
+            .any(
+                |change| change.path == temporary && change.worktree == Some(ChangeKind::Untracked)
+            )
+    );
 }
 
 #[cfg(unix)]

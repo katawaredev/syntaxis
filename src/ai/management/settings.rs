@@ -190,10 +190,10 @@ fn SettingRow(
                                 oninput: move |event| draft.set(event.value()),
                                 onblur: move |_| {
                                     let value = draft();
-                                    if value != current {
-                                        if let Some(value) = draft_setting_value(definition.kind, &value) {
-                                            save.call(value);
-                                        }
+                                    if value != current
+                                        && let Some(value) = draft_setting_value(definition.kind, &value)
+                                    {
+                                        save.call(value);
                                     }
                                 },
                             }
@@ -211,11 +211,13 @@ fn SettingRow(
 fn draft_setting_value(kind: PiSettingKind, value: &str) -> Option<Value> {
     match kind {
         PiSettingKind::Number => value.parse::<u64>().ok().map(|number| json!(number)),
-        PiSettingKind::StringArray => Some(json!(value
-            .split(',')
-            .map(str::trim)
-            .filter(|item| !item.is_empty())
-            .collect::<Vec<_>>())),
+        PiSettingKind::StringArray => Some(json!(
+            value
+                .split(',')
+                .map(str::trim)
+                .filter(|item| !item.is_empty())
+                .collect::<Vec<_>>()
+        )),
         PiSettingKind::Text => Some(json!(value)),
         PiSettingKind::Toggle | PiSettingKind::Select(_) => None,
     }

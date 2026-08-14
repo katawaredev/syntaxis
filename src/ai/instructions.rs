@@ -24,11 +24,11 @@ pub(super) fn GlobalInstructionsPanel(
     let mut saving = use_signal(|| false);
 
     use_effect(move || {
-        if saved().is_none() {
-            if let Some(Ok(content)) = instructions() {
-                draft.set(content.clone());
-                saved.set(Some(content));
-            }
+        if saved().is_none()
+            && let Some(Ok(content)) = instructions()
+        {
+            draft.set(content.clone());
+            saved.set(Some(content));
         }
     });
 

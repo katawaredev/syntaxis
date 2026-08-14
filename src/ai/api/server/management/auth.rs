@@ -3,8 +3,8 @@ use std::{
     path::Path,
     process::Stdio,
     sync::{
-        atomic::{AtomicU64, Ordering},
         Arc, OnceLock,
+        atomic::{AtomicU64, Ordering},
     },
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -22,7 +22,7 @@ use tokio::{
 use crate::ai::api::{PiAuthEvent, PiAuthFlow, PiAuthPrompt, PiAuthType, PiProviderAuth};
 
 use super::{
-    agent_dir, client_error, command_failure, pi_runtime_module, server_error, COMMAND_TIMEOUT,
+    COMMAND_TIMEOUT, agent_dir, client_error, command_failure, pi_runtime_module, server_error,
 };
 
 static AUTH_FLOWS: OnceLock<Mutex<BTreeMap<String, Arc<AuthFlowProcess>>>> = OnceLock::new();

@@ -223,29 +223,25 @@ pub(super) fn InteractiveCodeEditor(editor_props: CodeEditorProps) -> Element {
         }
     });
 
-    if last_configuration.borrow().as_ref() != Some(&configuration) {
-        if let Some(events) = event_bridge() {
-            if events
-                .send(EditorBridgeCommand::Configure {
-                    config: Box::new(configuration.clone()),
-                })
-                .is_ok()
-            {
-                *last_configuration.borrow_mut() = Some(configuration);
-            }
-        }
+    if last_configuration.borrow().as_ref() != Some(&configuration)
+        && let Some(events) = event_bridge()
+        && events
+            .send(EditorBridgeCommand::Configure {
+                config: Box::new(configuration.clone()),
+            })
+            .is_ok()
+    {
+        *last_configuration.borrow_mut() = Some(configuration);
     }
-    if last_search_configuration.borrow().as_ref() != Some(&search_configuration) {
-        if let Some(events) = event_bridge() {
-            if events
-                .send(EditorBridgeCommand::ConfigureSearch {
-                    query: search_configuration.clone(),
-                })
-                .is_ok()
-            {
-                *last_search_configuration.borrow_mut() = Some(search_configuration);
-            }
-        }
+    if last_search_configuration.borrow().as_ref() != Some(&search_configuration)
+        && let Some(events) = event_bridge()
+        && events
+            .send(EditorBridgeCommand::ConfigureSearch {
+                query: search_configuration.clone(),
+            })
+            .is_ok()
+    {
+        *last_search_configuration.borrow_mut() = Some(search_configuration);
     }
     let class = editor_class(
         props.theme,

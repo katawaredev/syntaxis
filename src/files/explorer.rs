@@ -3,29 +3,29 @@
     reason = "Dioxus expands the parent glob for RSX hot-reload analysis"
 )]
 use super::{
-    component, dioxus_core, dioxus_elements, dioxus_signals, rsx, set_error, spawn,
-    workspace_client, ActionCallback, AnyStorage, AppIcon, ButtonExtension, ControlSize,
-    DataExtension, DetailsExtension, DialogExtension, EditorConfigSource, Element, EntryKind,
-    EventHandler, ExplorerTree, FieldsetExtension, FileAction, FileEntry, FileIcon, FormEvent,
-    FormExtension, GitChangeBadge, GitChangeKind, GlobalAttributesExtension, HasFormData, History,
-    IconButton, IframeExtension, InputExtension, LiExtension, LinkExtension, MapExtension,
+    ActionCallback, AnyStorage, AppIcon, ButtonExtension, ControlSize, DataExtension,
+    DetailsExtension, DialogExtension, EditorConfigSource, Element, EntryKind, EventHandler,
+    ExplorerTree, FieldsetExtension, FileAction, FileEntry, FileIcon, FormEvent, FormExtension,
+    GitChangeBadge, GitChangeKind, GlobalAttributesExtension, HasFormData, History, IconButton,
+    IframeExtension, InputExtension, LiExtension, LinkExtension, MAX_TEXT_BYTES, MapExtension,
     MetaExtension, MeterExtension, MpaddedExtension, MspaceExtension, ObjectExtension,
     OptgroupExtension, OptionExtension, OutputExtension, ParamExtension, ProgressExtension, Props,
     ReadableExt, ReadableHashMapExt, ReadableHashSetExt, ReadableOptionExt, ReadableResultExt,
     ReadableStrExt, ReadableVecExt, RelativePath, RepositoryStatus, SelectExtension, Signal,
     SlotExtension, Storage, SvgAttributesExtension, TextInput, TextInputType, TextareaExtension,
     ToastState, TrackExtension, WorkspaceRecord, WritableExt, WritableStringExt, WritableVecExt,
-    MAX_TEXT_BYTES,
+    component, dioxus_core, dioxus_elements, dioxus_signals, rsx, set_error, spawn,
+    workspace_client,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
-use dioxus::prelude::{use_resource, use_signal, UseResourceState};
+use dioxus::prelude::{UseResourceState, use_resource, use_signal};
 use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
 use syntaxis_ui::prelude::{Icon, MenuContent, MenuTrigger};
 
 use super::search::{
-    search_workspace_files, SearchScope, WorkspaceSearchOptions, WorkspaceSearchResult,
-    WorkspaceSearchResults,
+    SearchScope, WorkspaceSearchOptions, WorkspaceSearchResult, WorkspaceSearchResults,
+    search_workspace_files,
 };
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -674,22 +674,21 @@ fn expand_loaded_directory(
                     .any(|entry| entry.name == ".editorconfig" && entry.kind == EntryKind::File)
                 {
                     let config_path = format!("{path}/.editorconfig");
-                    if let Ok(relative) = RelativePath::try_from(config_path) {
-                        if let Ok(file) =
+                    if let Ok(relative) = RelativePath::try_from(config_path)
+                        && let Ok(file) =
                             workspace_client::read_text(workspace, relative, MAX_TEXT_BYTES).await
+                    {
+                        let source = EditorConfigSource {
+                            directory: path.clone(),
+                            contents: file.content,
+                        };
+                        let mut configs = editor_configs.write();
+                        if let Some(current) =
+                            configs.iter_mut().find(|current| current.directory == path)
                         {
-                            let source = EditorConfigSource {
-                                directory: path.clone(),
-                                contents: file.content,
-                            };
-                            let mut configs = editor_configs.write();
-                            if let Some(current) =
-                                configs.iter_mut().find(|current| current.directory == path)
-                            {
-                                *current = source;
-                            } else {
-                                configs.push(source);
-                            }
+                            *current = source;
+                        } else {
+                            configs.push(source);
                         }
                     }
                 }

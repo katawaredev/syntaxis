@@ -5,12 +5,11 @@ use syntaxis_ui::prelude::{
 
 use syntaxis_workspace::WorkspaceRecord;
 
-use super::{mock_request_delay, RequestState};
+use super::{RequestState, mock_request_delay};
 use crate::workspace::client::remove_workspace;
 use crate::workspace::home::HomeDialog;
 
-const DELETE_FILES_ERROR: &str =
-    "The project folder is already missing, so its files could not be deleted. You can still remove the workspace entry.";
+const DELETE_FILES_ERROR: &str = "The project folder is already missing, so its files could not be deleted. You can still remove the workspace entry.";
 
 #[component]
 pub(super) fn DeleteWorkspaceDialog(

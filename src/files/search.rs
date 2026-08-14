@@ -5,11 +5,11 @@ use std::sync::Arc;
 use dioxus::prelude::*;
 use dioxus_code_editor::EditorRange;
 #[cfg(any(feature = "desktop", feature = "server"))]
-use futures_util::{stream, StreamExt};
+use futures_util::{StreamExt, stream};
 use serde::{Deserialize, Serialize};
 
 #[cfg(any(feature = "desktop", feature = "server"))]
-use super::{workspace_client, EntryKind, RelativePath, MAX_TEXT_BYTES};
+use super::{EntryKind, MAX_TEXT_BYTES, RelativePath, workspace_client};
 use super::{FileEntry, WorkspaceRecord};
 
 #[cfg(any(feature = "desktop", feature = "server"))]
@@ -362,17 +362,17 @@ fn fuzzy_content_matches(
                 range.start += offset;
                 range.end += offset;
             }
-            if result.occurrences.len() < MAX_OCCURRENCES_PER_FILE {
-                if let Some((first, last)) = line_ranges.first().zip(line_ranges.last()) {
-                    result.occurrences.push(SearchOccurrence {
-                        line: line_index + 1,
-                        preview: line.trim().to_owned(),
-                        target: EditorRange {
-                            start: first.start,
-                            end: last.end,
-                        },
-                    });
-                }
+            if result.occurrences.len() < MAX_OCCURRENCES_PER_FILE
+                && let Some((first, last)) = line_ranges.first().zip(line_ranges.last())
+            {
+                result.occurrences.push(SearchOccurrence {
+                    line: line_index + 1,
+                    preview: line.trim().to_owned(),
+                    target: EditorRange {
+                        start: first.start,
+                        end: last.end,
+                    },
+                });
             }
             let remaining = MAX_HIGHLIGHT_RANGES_PER_FILE.saturating_sub(result.ranges.len());
             result

@@ -3,12 +3,12 @@
     reason = "Dioxus expands the parent glob for RSX hot-reload analysis"
 )]
 use super::{
-    close_documents, git_api, set_error, set_success, spawn, workspace_client, AnyStorage,
-    DiffKind, FileAction, FileActionDialog, FormExtension, GlobalAttributesExtension,
-    MetaExtension, OpenDocument, ReadableExt, ReadableHashMapExt, ReadableHashSetExt,
-    ReadableOptionExt, ReadableResultExt, ReadableStrExt, ReadableVecExt, RelativePath, Signal,
-    SvgAttributesExtension, ToastState, UnifiedDiff, WorkspaceRecord, WritableExt, WritableVecExt,
-    MAX_TEXT_BYTES,
+    AnyStorage, DiffKind, FileAction, FileActionDialog, FormExtension, GlobalAttributesExtension,
+    MAX_TEXT_BYTES, MetaExtension, OpenDocument, ReadableExt, ReadableHashMapExt,
+    ReadableHashSetExt, ReadableOptionExt, ReadableResultExt, ReadableStrExt, ReadableVecExt,
+    RelativePath, Signal, SvgAttributesExtension, ToastState, UnifiedDiff, WorkspaceRecord,
+    WritableExt, WritableVecExt, close_documents, git_api, set_error, set_success, spawn,
+    workspace_client,
 };
 
 pub(super) fn toggle_diff(
@@ -94,11 +94,11 @@ pub(super) fn discard_git_change(
         return;
     };
     spawn(async move {
-        if revert_staged {
-            if let Err(error) = git_api::unstage_paths(slug.clone(), vec![path.clone()]).await {
-                set_error(context.toast, error.to_string());
-                return;
-            }
+        if revert_staged
+            && let Err(error) = git_api::unstage_paths(slug.clone(), vec![path.clone()]).await
+        {
+            set_error(context.toast, error.to_string());
+            return;
         }
         if let Err(error) = git_api::discard_paths(slug, vec![path.clone()]).await {
             set_error(context.toast, error.to_string());
@@ -282,9 +282,9 @@ pub(super) fn rename_documents(
             }
         }
     }
-    if let Some(active) = active_path() {
-        if active == source || active.starts_with(&format!("{source}/")) {
-            active_path.set(Some(format!("{destination}{}", &active[source.len()..])));
-        }
+    if let Some(active) = active_path()
+        && (active == source || active.starts_with(&format!("{source}/")))
+    {
+        active_path.set(Some(format!("{destination}{}", &active[source.len()..])));
     }
 }

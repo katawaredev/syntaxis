@@ -3,7 +3,7 @@
     reason = "Dioxus expands the parent glob for RSX hot-reload analysis"
 )]
 use super::*;
-use pulldown_cmark::{html, CowStr, Event, Options, Parser, Tag};
+use pulldown_cmark::{CowStr, Event, Options, Parser, Tag, html};
 
 const MARKDOWN_PREVIEW_CSS: Asset = asset!("/assets/files/markdown-preview.css");
 const CHECKERBOARD_STYLE: &str = "background-image: linear-gradient(45deg,#aaa 25%,transparent 25%),linear-gradient(-45deg,#aaa 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#aaa 75%),linear-gradient(-45deg,transparent 75%,#aaa 75%); background-size: 20px 20px; background-position: 0 0,0 10px,10px -10px,-10px 0";

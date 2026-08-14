@@ -4,7 +4,7 @@ use dioxus::{
     fullstack::{TypedWebsocket, WebSocketOptions, Websocket},
     prelude::ServerFnError,
 };
-use syntaxis_agent::{AgentError, AgentErrorCode, ClientMessage, ServerMessage, PROTOCOL_VERSION};
+use syntaxis_agent::{AgentError, AgentErrorCode, ClientMessage, PROTOCOL_VERSION, ServerMessage};
 use syntaxis_agent_host::HostAgentManager;
 use syntaxis_notifications::{
     NotificationClientMessage, NotificationServerMessage,

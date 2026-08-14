@@ -371,9 +371,11 @@ mod tests {
                 "{server_id} should support a project-local package"
             );
         }
-        assert!(language_server_by_id("rust-analyzer")
-            .unwrap()
-            .project_local
-            .is_none());
+        assert!(
+            language_server_by_id("rust-analyzer")
+                .unwrap()
+                .project_local
+                .is_none()
+        );
     }
 }

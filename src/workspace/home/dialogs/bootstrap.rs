@@ -2,8 +2,8 @@ use std::collections::{BTreeSet, HashSet};
 
 use dioxus::prelude::*;
 use syntaxis_editor::{
-    language_server_by_id, language_servers_for_language, language_slug_for_path,
-    profile_language_id, LanguageServerDefinition,
+    LanguageServerDefinition, language_server_by_id, language_servers_for_language,
+    language_slug_for_path, profile_language_id,
 };
 use syntaxis_ui::prelude::{
     Button, ButtonKind, DialogActions, Field, Modal, TextArea, TextAreaResize,
@@ -56,16 +56,16 @@ pub(super) fn BootstrapProjectDialog(
     let mut result = use_signal(|| None::<bool>);
 
     use_effect(move || {
-        if !initialized_command() {
-            if let Some(Ok(BootstrapPlan::Inferred(tools))) = plan() {
-                let mise_command = inferred_mise_command(&tools);
-                if tools.is_empty() {
-                    inferred_command.set(mise_command);
-                } else {
-                    selected_command.set(Some(inferred_bootstrap_command(&mise_command)));
-                }
-                initialized_command.set(true);
+        if !initialized_command()
+            && let Some(Ok(BootstrapPlan::Inferred(tools))) = plan()
+        {
+            let mise_command = inferred_mise_command(&tools);
+            if tools.is_empty() {
+                inferred_command.set(mise_command);
+            } else {
+                selected_command.set(Some(inferred_bootstrap_command(&mise_command)));
             }
+            initialized_command.set(true);
         }
     });
 
@@ -432,8 +432,8 @@ echo 'Project toolchain is ready.'"#,
 #[cfg(test)]
 mod tests {
     use super::{
-        infer_tools, inferred_bootstrap_command, inferred_mise_command,
-        CONFIGURED_BOOTSTRAP_COMMAND,
+        CONFIGURED_BOOTSTRAP_COMMAND, infer_tools, inferred_bootstrap_command,
+        inferred_mise_command,
     };
     use syntaxis_workspace::{
         EntryKind, FileEntry, RelativePath, WorkspaceLanguage, WorkspaceProfile,

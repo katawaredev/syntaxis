@@ -20,4 +20,4 @@ pub use icon::detect_workspace_icon;
 pub use policy::RegistrationPolicy;
 pub use profile::detect_workspace_profile;
 pub use registry::WorkspaceRegistryStore;
-pub use watcher::{is_ignored_path, WorkspaceWatcher};
+pub use watcher::{WorkspaceWatcher, is_ignored_path};

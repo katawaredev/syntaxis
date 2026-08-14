@@ -40,10 +40,11 @@ pub(crate) fn CommitDialog(
                                 spawn(async move {
                                     let previous_message =
                                         api::commit_message(slug, "HEAD".into()).await;
-                                    if let Ok(previous_message) = previous_message {
-                                        if amend() && message().trim().is_empty() {
-                                            message.set(previous_message);
-                                        }
+                                    if let Ok(previous_message) = previous_message
+                                        && amend()
+                                        && message().trim().is_empty()
+                                    {
+                                        message.set(previous_message);
                                     }
                                 });
                             }

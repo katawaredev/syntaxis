@@ -2,7 +2,7 @@
 name = "syntaxis"
 version = "0.7.0"
 authors = ["Nikolay Stoynov <arvigeus@gmail.com>"]
-edition = "2021"
+edition = "2024"
 license = "MIT"
 
 [workspace]

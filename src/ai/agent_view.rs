@@ -14,10 +14,10 @@ use super::extensions::ExtensionsPanel;
 use super::instructions::GlobalInstructionsPanel;
 use super::management::{AiPanel, AiSidebarTabs, SettingsPanel, SettingsSidebar};
 use super::resources::{PromptTemplatesPanel, SkillsPanel};
-use super::runtime::{use_agent_runtime, AgentRuntime};
+use super::runtime::{AgentRuntime, use_agent_runtime};
 use super::session::session_action;
-use super::worktree::{use_worktree_flow, IsolatedWorktreeDialog};
-use super::{components, notifications, AiQuery, AiSettingsSection};
+use super::worktree::{IsolatedWorktreeDialog, use_worktree_flow};
+use super::{AiQuery, AiSettingsSection, components, notifications};
 
 const AI_CHAT_CSS: Asset = asset!("/assets/ai/chat.css");
 
@@ -426,11 +426,14 @@ fn RemoteAgent(
                                         || (draft(), attachments()),
                                         |edit| (edit.previous_draft, edit.previous_attachments),
                                     );
-                                editing_message.set(Some(PendingMessageEdit {
-                                    entry_id,
-                                    previous_draft,
-                                    previous_attachments,
-                                }));
+                                editing_message
+                                    .set(
+                                        Some(PendingMessageEdit {
+                                            entry_id,
+                                            previous_draft,
+                                            previous_attachments,
+                                        }),
+                                    );
                                 draft.set(text);
                                 attachments.set(images);
                                 composer_error.set(None);

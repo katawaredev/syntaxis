@@ -3,13 +3,13 @@
     reason = "Dioxus expands the parent glob for RSX hot-reload analysis"
 )]
 use super::{
-    component, dioxus_core, dioxus_elements, dioxus_signals, rsx, ActionCallback, AnyStorage,
-    Button, ButtonExtension, ButtonKind, CommitDetail, ControlSize, Element, EventHandler,
-    FieldsetExtension, GlobalAttributesExtension, History, InputExtension, LinkExtension,
-    OptgroupExtension, OptionExtension, Props, RawPatch, ReadableExt, ReadableHashMapExt,
-    ReadableHashSetExt, ReadableOptionExt, ReadableResultExt, ReadableStrExt, ReadableVecExt,
-    Result, SelectExtension, ServerFnError, Storage, SvgAttributesExtension, TextareaExtension,
-    TrackExtension, WritableExt,
+    ActionCallback, AnyStorage, Button, ButtonExtension, ButtonKind, CommitDetail, ControlSize,
+    Element, EventHandler, FieldsetExtension, GlobalAttributesExtension, History, InputExtension,
+    LinkExtension, OptgroupExtension, OptionExtension, Props, RawPatch, ReadableExt,
+    ReadableHashMapExt, ReadableHashSetExt, ReadableOptionExt, ReadableResultExt, ReadableStrExt,
+    ReadableVecExt, Result, SelectExtension, ServerFnError, Storage, SvgAttributesExtension,
+    TextareaExtension, TrackExtension, WritableExt, component, dioxus_core, dioxus_elements,
+    dioxus_signals, rsx,
 };
 
 #[component]
@@ -48,7 +48,7 @@ pub(super) fn HistoryDetail(
                 div { class: "m-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive",
                     "Could not load commit: {error}"
                 }
-            }
+            };
         }
     };
     rsx! {

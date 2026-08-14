@@ -101,13 +101,7 @@ pub(super) fn use_repository_resources(
         diff,
         conflict,
         commit_detail,
-    } = use_selection_resources(
-        slug,
-        refresh_key,
-        selected,
-        expanded_diff,
-        selected_commit,
-    );
+    } = use_selection_resources(slug, refresh_key, selected, expanded_diff, selected_commit);
     RepositoryResources {
         status,
         branches,

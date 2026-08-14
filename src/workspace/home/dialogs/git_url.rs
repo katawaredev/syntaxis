@@ -1,11 +1,12 @@
 use dioxus::prelude::*;
 use futures_util::{
-    future::{select, Either},
-    pin_mut, FutureExt, StreamExt,
+    FutureExt, StreamExt,
+    future::{Either, select},
+    pin_mut,
 };
 use syntaxis_git::{
-    CloneClientMessage, CloneMode, ClonePhase, CloneProgress, CloneServerMessage,
-    CLONE_PROTOCOL_VERSION,
+    CLONE_PROTOCOL_VERSION, CloneClientMessage, CloneMode, ClonePhase, CloneProgress,
+    CloneServerMessage,
 };
 use syntaxis_ui::prelude::{
     Button, ButtonKind, DialogActions, DialogForm, Field, Modal, Select, TextInput, TextInputType,
@@ -127,10 +128,10 @@ pub(super) fn GitUrlDialog(
                             let value = event.value();
                             let was_pasted = paste_pending();
                             paste_pending.set(false);
-                            if was_pasted && matches!(destination().trim(), "" | "/") {
-                                if let Some(name) = repository_name_from_url(&value) {
-                                    destination.set(format!("/{name}"));
-                                }
+                            if was_pasted && matches!(destination().trim(), "" | "/")
+                                && let Some(name) = repository_name_from_url(&value)
+                            {
+                                destination.set(format!("/{name}"));
                             }
                             git_url.set(value);
                             request.set(RequestState::Idle);

@@ -24,19 +24,17 @@ pub(super) async fn load_initial(workspace: WorkspaceRecord) -> Result<InitialFi
     if entries
         .iter()
         .any(|entry| entry.name == ".editorconfig" && entry.kind == EntryKind::File)
-    {
-        if let Ok(config) = workspace_client::read_text(
+        && let Ok(config) = workspace_client::read_text(
             workspace.clone(),
             RelativePath::try_from(".editorconfig").map_err(|error| error.message)?,
             MAX_EDITOR_CONFIG_BYTES,
         )
         .await
-        {
-            editor_configs.push(EditorConfigSource {
-                directory: String::new(),
-                contents: config.content,
-            });
-        }
+    {
+        editor_configs.push(EditorConfigSource {
+            directory: String::new(),
+            contents: config.content,
+        });
     }
     let (git_status, ignored_paths, session) = futures_util::join!(
         git_api::repository_status(workspace.id.0.clone()),

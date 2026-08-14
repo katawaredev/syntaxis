@@ -3,7 +3,6 @@
     reason = "Dioxus expands the parent glob for RSX hot-reload analysis"
 )]
 use super::{
-    close_documents, component, dioxus_core, dioxus_signals, rsx, save_and_close, use_signal,
     ActionCallback, AnyStorage, Button, ButtonExtension, ButtonKind, CloseRequest, DangerNote,
     DataExtension, DialogActions, DialogForm, Element, EventHandler, Field, FieldsetExtension,
     FileAction, FileActionDialog, FormEvent, FormExtension, GlobalAttributesExtension, HasFormData,
@@ -12,7 +11,8 @@ use super::{
     ProgressExtension, Props, ReadableExt, ReadableHashMapExt, ReadableHashSetExt,
     ReadableOptionExt, ReadableResultExt, ReadableStrExt, ReadableVecExt, SelectExtension, Signal,
     Storage, StyleExtension, SvgAttributesExtension, TextInput, TextareaExtension, ToastState,
-    TrackExtension, WorkspaceRecord, WritableExt,
+    TrackExtension, WorkspaceRecord, WritableExt, close_documents, component, dioxus_core,
+    dioxus_signals, rsx, save_and_close, use_signal,
 };
 
 #[component]
@@ -236,10 +236,9 @@ pub(super) fn GoToLineDialog(
                         autofocus: true,
                         oninput: move |event: FormEvent| value.set(event.value()),
                         onkeydown: move |event: KeyboardEvent| {
-                            if event.key() == Key::Enter {
-                                if let Ok(line) = value().parse::<usize>() {
-                                    on_submit.call(line.max(1));
-                                }
+                            if event.key() == Key::Enter
+                                && let Ok(line) = value().parse::<usize>() {
+                                on_submit.call(line.max(1));
                             }
                         },
                     }

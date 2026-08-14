@@ -13,7 +13,7 @@ mod extension_dialog;
 mod session_sidebar;
 mod timeline;
 
-pub(super) use composer::{load_images, AgentComposer, ComposerSubmission};
+pub(super) use composer::{AgentComposer, ComposerSubmission, load_images};
 pub(super) use extension_dialog::ExtensionRequestDialog;
 pub(super) use session_sidebar::AgentSessionSidebar;
 pub(super) use timeline::AgentTimeline;

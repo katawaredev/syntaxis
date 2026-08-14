@@ -1,27 +1,28 @@
+use super::TerminalQuery;
 use super::api::{self, RunCommand};
 use super::renderer::{
     RendererAction, RendererActionResult, RendererCommand, RendererOutput, RendererOutputBatch,
     SourceLink, XtermRenderer,
 };
 use super::runtime::{
-    command_input, fail_pending_requests, push_renderer_output, reconnect_delay_ms,
-    send_renderer_action, server_error_message, ConnectionState, MAX_RECONNECT_ATTEMPTS,
+    ConnectionState, MAX_RECONNECT_ATTEMPTS, command_input, fail_pending_requests,
+    push_renderer_output, reconnect_delay_ms, send_renderer_action, server_error_message,
 };
 use super::session::{
     choose_active, duplicate_session_name_error, remove_session, update_session_size,
     upsert_session,
 };
-use super::TerminalQuery;
 use dioxus::prelude::*;
 use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
 use futures_util::{
-    future::{select, Either},
-    pin_mut, FutureExt, StreamExt,
+    FutureExt, StreamExt,
+    future::{Either, select},
+    pin_mut,
 };
 use syntaxis_notifications::NotificationTarget;
 use syntaxis_terminal::{
-    ClientMessage, Lifecycle, ServerMessage, SessionId, SessionSummary, TerminalErrorCode,
-    TerminalSize, PROTOCOL_VERSION,
+    ClientMessage, Lifecycle, PROTOCOL_VERSION, ServerMessage, SessionId, SessionSummary,
+    TerminalErrorCode, TerminalSize,
 };
 use syntaxis_ui::prelude::{
     AppIcon, Button, ButtonKind, ControlSize, DialogActions, DialogForm, Field, Icon, IconButton,
@@ -422,18 +423,16 @@ fn RemoteTerminal(
                                                 retry_attempt = 1;
                                                 continue 'connections;
                                             }
-                                        } else if let Some(session_id) = selected {
-                                            if socket
+                                        } else if let Some(session_id) = selected
+                                            && socket
                                                 .send(ClientMessage::Attach { session_id })
                                                 .await
                                                 .is_err()
-                                            {
-                                                last_error =
-                                                    "Could not reattach the terminal session"
-                                                        .into();
-                                                retry_attempt = 1;
-                                                continue 'connections;
-                                            }
+                                        {
+                                            last_error =
+                                                "Could not reattach the terminal session".into();
+                                            retry_attempt = 1;
+                                            continue 'connections;
                                         }
                                     }
                                     ServerMessage::Created { session } => {
@@ -520,20 +519,17 @@ fn RemoteTerminal(
                                         let was_active = active().as_ref() == Some(&session_id);
                                         remove_session(&mut sessions, &mut active, &session_id);
                                         output.set(None);
-                                        if was_active {
-                                            if let Some(session_id) = active() {
-                                                if socket
-                                                    .send(ClientMessage::Attach { session_id })
-                                                    .await
-                                                    .is_err()
-                                                {
-                                                    last_error =
-                                                    "Could not attach the next terminal session"
-                                                        .into();
-                                                    retry_attempt = 1;
-                                                    continue 'connections;
-                                                }
-                                            }
+                                        if was_active
+                                            && let Some(session_id) = active()
+                                            && socket
+                                                .send(ClientMessage::Attach { session_id })
+                                                .await
+                                                .is_err()
+                                        {
+                                            last_error =
+                                                "Could not attach the next terminal session".into();
+                                            retry_attempt = 1;
+                                            continue 'connections;
                                         }
                                     }
                                     ServerMessage::Detached { session_id } => {
@@ -543,20 +539,17 @@ fn RemoteTerminal(
                                         toast.set(Some(
                                             "Terminal detached; refresh to reattach".into(),
                                         ));
-                                        if was_active {
-                                            if let Some(session_id) = active() {
-                                                if socket
-                                                    .send(ClientMessage::Attach { session_id })
-                                                    .await
-                                                    .is_err()
-                                                {
-                                                    last_error =
-                                                    "Could not attach the next terminal session"
-                                                        .into();
-                                                    retry_attempt = 1;
-                                                    continue 'connections;
-                                                }
-                                            }
+                                        if was_active
+                                            && let Some(session_id) = active()
+                                            && socket
+                                                .send(ClientMessage::Attach { session_id })
+                                                .await
+                                                .is_err()
+                                        {
+                                            last_error =
+                                                "Could not attach the next terminal session".into();
+                                            retry_attempt = 1;
+                                            continue 'connections;
                                         }
                                     }
                                     ServerMessage::Error { error } => {

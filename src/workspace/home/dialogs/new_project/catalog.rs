@@ -168,9 +168,7 @@ pub(super) const TEMPLATES: [TemplateDefinition; 30] = [
         description: "Interactive framework picker",
         icon: ProjectTemplateIcon::Vite,
         category: TemplateCategory::Web,
-        command: Some(
-            "mise x node@lts -- npx --yes create-vite@latest . && mise use -y node@lts",
-        ),
+        command: Some("mise x node@lts -- npx --yes create-vite@latest . && mise use -y node@lts"),
     },
     TemplateDefinition {
         template: ProjectTemplate::VitePlus,
@@ -218,9 +216,7 @@ pub(super) const TEMPLATES: [TemplateDefinition; 30] = [
         description: "Interactive create-vue",
         icon: ProjectTemplateIcon::Vue,
         category: TemplateCategory::Web,
-        command: Some(
-            "mise x node@lts -- npx --yes create-vue@latest . && mise use -y node@lts",
-        ),
+        command: Some("mise x node@lts -- npx --yes create-vue@latest . && mise use -y node@lts"),
     },
     TemplateDefinition {
         template: ProjectTemplate::SvelteKit,
@@ -236,9 +232,7 @@ pub(super) const TEMPLATES: [TemplateDefinition; 30] = [
         description: "Interactive Solid app",
         icon: ProjectTemplateIcon::Solid,
         category: TemplateCategory::Web,
-        command: Some(
-            "mise x node@lts -- npx --yes create-solid@latest . && mise use -y node@lts",
-        ),
+        command: Some("mise x node@lts -- npx --yes create-solid@latest . && mise use -y node@lts"),
     },
     TemplateDefinition {
         template: ProjectTemplate::Nextjs,
@@ -256,9 +250,7 @@ pub(super) const TEMPLATES: [TemplateDefinition; 30] = [
         description: "Interactive create-astro",
         icon: ProjectTemplateIcon::Astro,
         category: TemplateCategory::Web,
-        command: Some(
-            "mise x node@lts -- npx --yes create-astro@latest . && mise use -y node@lts",
-        ),
+        command: Some("mise x node@lts -- npx --yes create-astro@latest . && mise use -y node@lts"),
     },
     TemplateDefinition {
         template: ProjectTemplate::Nuxt,
@@ -266,9 +258,7 @@ pub(super) const TEMPLATES: [TemplateDefinition; 30] = [
         description: "Interactive create-nuxt",
         icon: ProjectTemplateIcon::Nuxt,
         category: TemplateCategory::Web,
-        command: Some(
-            "mise x node@lts -- npx --yes create-nuxt@latest . && mise use -y node@lts",
-        ),
+        command: Some("mise x node@lts -- npx --yes create-nuxt@latest . && mise use -y node@lts"),
     },
     TemplateDefinition {
         template: ProjectTemplate::TanstackStart,
@@ -296,9 +286,7 @@ pub(super) const TEMPLATES: [TemplateDefinition; 30] = [
         description: "Interactive runtime picker",
         icon: ProjectTemplateIcon::Hono,
         category: TemplateCategory::Web,
-        command: Some(
-            "mise x node@lts -- npx --yes create-hono@latest . && mise use -y node@lts",
-        ),
+        command: Some("mise x node@lts -- npx --yes create-hono@latest . && mise use -y node@lts"),
     },
     TemplateDefinition {
         template: ProjectTemplate::Fresh,

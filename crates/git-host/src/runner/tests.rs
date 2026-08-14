@@ -5,7 +5,7 @@ use syntaxis_workspace::{WorkspaceAvailability, WorkspaceIcon, WorkspaceId, Work
 use tempfile::TempDir;
 use tokio_util::sync::CancellationToken;
 
-use super::{parse_clone_progress, HostGit, HostGitConfig};
+use super::{HostGit, HostGitConfig, parse_clone_progress};
 
 #[test]
 fn parses_carriage_return_git_clone_progress_without_forwarding_errors() {

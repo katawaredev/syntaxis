@@ -10,16 +10,16 @@ mod repository;
 mod status;
 
 pub use clone_progress::{
-    CloneClientMessage, ClonePhase, CloneProgress, CloneServerMessage, CLONE_PROTOCOL_VERSION,
+    CLONE_PROTOCOL_VERSION, CloneClientMessage, ClonePhase, CloneProgress, CloneServerMessage,
 };
 pub use commit::{
     CloneMode, CloneRequest, CloneResult, CommitOutcome, CommitRequest, CommitResult,
 };
 pub use conflict::{
-    parse_conflict_file, resolve_conflict_block, ConflictBlock, ConflictChoice, ConflictFile,
-    ConflictRequest, ResolvedConflict,
+    ConflictBlock, ConflictChoice, ConflictFile, ConflictRequest, ResolvedConflict,
+    parse_conflict_file, resolve_conflict_block,
 };
-pub use diff::{parse_diff_hunks, DiffHunk, DiffKind, HunkAction, HunkRequest, UnifiedDiff};
+pub use diff::{DiffHunk, DiffKind, HunkAction, HunkRequest, UnifiedDiff, parse_diff_hunks};
 pub use error::{GitError, GitErrorCode, GitResult};
 pub use operations::{GitOperations, WorktreeOperations};
 pub use repository::{

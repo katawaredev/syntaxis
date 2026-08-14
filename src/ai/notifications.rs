@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 use dioxus_primitives::popover::{PopoverContent, PopoverRoot, PopoverTrigger};
-use futures_util::{future::FutureExt, StreamExt};
+use futures_util::{StreamExt, future::FutureExt};
 use syntaxis_notifications::{
     AppNotification, NotificationClientMessage, NotificationKind, NotificationServerMessage,
     NotificationTarget, PROTOCOL_VERSION,

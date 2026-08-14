@@ -247,16 +247,20 @@ mod tests {
     #[test]
     fn terminal_size_rejects_zero_and_unbounded_dimensions() {
         assert!(TerminalSize::DEFAULT.is_valid());
-        assert!(!TerminalSize {
-            columns: 0,
-            ..TerminalSize::DEFAULT
-        }
-        .is_valid(),);
-        assert!(!TerminalSize {
-            rows: 1_001,
-            ..TerminalSize::DEFAULT
-        }
-        .is_valid(),);
+        assert!(
+            !TerminalSize {
+                columns: 0,
+                ..TerminalSize::DEFAULT
+            }
+            .is_valid(),
+        );
+        assert!(
+            !TerminalSize {
+                rows: 1_001,
+                ..TerminalSize::DEFAULT
+            }
+            .is_valid(),
+        );
     }
     #[test]
     fn protocol_messages_use_stable_tagged_json() {

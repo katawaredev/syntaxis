@@ -6,21 +6,20 @@ use std::{
 };
 
 use argon2::{
-    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
+    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
 };
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use dioxus::server::axum::{
-    self,
+    self, Router,
     extract::{DefaultBodyLimit, Form, Request, State},
     http::{
-        header::{AUTHORIZATION, COOKIE, HOST, ORIGIN, SET_COOKIE},
         HeaderMap, HeaderValue, Method, StatusCode,
+        header::{AUTHORIZATION, COOKIE, HOST, ORIGIN, SET_COOKIE},
     },
     middleware::Next,
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
-    Router,
 };
 use rand_core::OsRng;
 use serde::Deserialize;

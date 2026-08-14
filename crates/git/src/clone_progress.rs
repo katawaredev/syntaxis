@@ -48,7 +48,7 @@ pub enum CloneServerMessage {
 
 #[cfg(test)]
 mod tests {
-    use super::{CloneClientMessage, CloneMode, CLONE_PROTOCOL_VERSION};
+    use super::{CLONE_PROTOCOL_VERSION, CloneClientMessage, CloneMode};
 
     #[test]
     fn clone_start_carries_an_explicit_protocol_version() {

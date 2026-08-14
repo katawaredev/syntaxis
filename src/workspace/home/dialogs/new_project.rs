@@ -15,7 +15,7 @@ const PROJECT_PATH_ERROR: &str =
 
 mod catalog;
 
-use catalog::{ProjectTemplate, TemplateCategory, TemplateDefinition, CATEGORIES, TEMPLATES};
+use catalog::{CATEGORIES, ProjectTemplate, TEMPLATES, TemplateCategory, TemplateDefinition};
 
 #[component]
 pub(super) fn NewProjectDialog(
@@ -316,7 +316,7 @@ fn project_error_message(error: &ServerFnError) -> &'static str {
 mod tests {
     use std::collections::HashSet;
 
-    use super::{template_definition, validate_project_path, ProjectTemplate, TEMPLATES};
+    use super::{ProjectTemplate, TEMPLATES, template_definition, validate_project_path};
 
     #[test]
     fn project_names_accept_subpaths_but_not_escape_components() {

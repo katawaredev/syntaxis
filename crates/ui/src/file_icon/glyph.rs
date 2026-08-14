@@ -175,7 +175,7 @@ fn extension_glyph(extension: Option<&str>) -> Option<FileIconGlyph> {
 
 #[cfg(test)]
 mod tests {
-    use super::{file_icon_glyph, FileIconGlyph};
+    use super::{FileIconGlyph, file_icon_glyph};
 
     #[test]
     fn branded_configs_win_over_generic_data_extensions() {

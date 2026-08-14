@@ -69,7 +69,7 @@ pub trait WorkspaceFiles: Send + Sync {
     ) -> WorkspaceResult<()>;
 
     async fn delete(&self, workspace: &WorkspaceRecord, path: &RelativePath)
-        -> WorkspaceResult<()>;
+    -> WorkspaceResult<()>;
 
     async fn write_text(
         &self,

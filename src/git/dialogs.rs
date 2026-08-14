@@ -3,19 +3,19 @@
     reason = "Dioxus expands the parent glob for RSX hot-reload analysis"
 )]
 use super::{
-    api, component, dioxus_core, dioxus_elements, dioxus_signals, display_remote_url,
-    remote_request, rsx, short_oid, spawn, use_signal, AExtension, ActionCallback, AnyStorage,
-    AreaExtension, BaseExtension, BranchComparison, BranchInfo, Button, ButtonExtension,
-    ButtonKind, Checkbox, CommitInfo, CommitRequest, ControlSize, DataExtension, DialogActions,
-    DialogForm, Element, EventHandler, Field, FieldsetExtension, FormEvent, FormExtension,
-    GitDialog, GlobalAttributesExtension, HasFormData, HasKeyboardData, History, IframeExtension,
-    InputExtension, Key, KeyboardEvent, LiExtension, LinkExtension, MapExtension, MetaExtension,
-    MeterExtension, Modal, ObjectExtension, OptgroupExtension, OptionExtension, OutputExtension,
-    ParamExtension, ProgressExtension, Props, RawPatch, ReadableExt, ReadableHashMapExt,
-    ReadableHashSetExt, ReadableOptionExt, ReadableResultExt, ReadableStrExt, ReadableVecExt,
-    RemoteInfo, RemoteRequest, SelectExtension, SlotExtension, Storage, StyleExtension,
-    SvgAttributesExtension, TagInfo, TagRequest, TextArea, TextInput, TextInputType,
-    TextareaExtension, TrackExtension, WritableExt,
+    AExtension, ActionCallback, AnyStorage, AreaExtension, BaseExtension, BranchComparison,
+    BranchInfo, Button, ButtonExtension, ButtonKind, Checkbox, CommitInfo, CommitRequest,
+    ControlSize, DataExtension, DialogActions, DialogForm, Element, EventHandler, Field,
+    FieldsetExtension, FormEvent, FormExtension, GitDialog, GlobalAttributesExtension, HasFormData,
+    HasKeyboardData, History, IframeExtension, InputExtension, Key, KeyboardEvent, LiExtension,
+    LinkExtension, MapExtension, MetaExtension, MeterExtension, Modal, ObjectExtension,
+    OptgroupExtension, OptionExtension, OutputExtension, ParamExtension, ProgressExtension, Props,
+    RawPatch, ReadableExt, ReadableHashMapExt, ReadableHashSetExt, ReadableOptionExt,
+    ReadableResultExt, ReadableStrExt, ReadableVecExt, RemoteInfo, RemoteRequest, SelectExtension,
+    SlotExtension, Storage, StyleExtension, SvgAttributesExtension, TagInfo, TagRequest, TextArea,
+    TextInput, TextInputType, TextareaExtension, TrackExtension, WritableExt, api, component,
+    dioxus_core, dioxus_elements, dioxus_signals, display_remote_url, remote_request, rsx,
+    short_oid, spawn, use_signal,
 };
 
 #[path = "dialogs/commit.rs"]

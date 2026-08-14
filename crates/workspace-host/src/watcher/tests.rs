@@ -3,7 +3,7 @@ use std::{fs, path::Path, time::Duration};
 use syntaxis_workspace::WorkspaceId;
 use tempfile::tempdir;
 
-use super::{is_ignored_path, WorkspaceWatcher};
+use super::{WorkspaceWatcher, is_ignored_path};
 
 #[test]
 fn generated_and_vcs_trees_are_ignored_by_component() {
@@ -28,10 +28,12 @@ fn watcher_batches_workspace_relative_changes() {
     fs::write(directory.path().join("new-file.txt"), "content").unwrap();
 
     let batch = watcher.receive_batch(Duration::from_secs(3)).unwrap();
-    assert!(batch
-        .changes
-        .iter()
-        .any(|change| change.path.as_str() == "new-file.txt"));
+    assert!(
+        batch
+            .changes
+            .iter()
+            .any(|change| change.path.as_str() == "new-file.txt")
+    );
 }
 
 #[test]

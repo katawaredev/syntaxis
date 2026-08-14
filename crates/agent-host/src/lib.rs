@@ -1,7 +1,7 @@
 //! Host-side Pi RPC process management.
 #![cfg(not(target_arch = "wasm32"))]
 mod session_store;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{
     collections::{HashMap, VecDeque},
     env,
@@ -17,13 +17,13 @@ use syntaxis_agent::{
     TokenUsage,
 };
 use syntaxis_notifications::{AppNotification, NotificationKind, NotificationTarget};
-use syntaxis_notifications_host::{notifications as global_notifications, HostNotificationHub};
+use syntaxis_notifications_host::{HostNotificationHub, notifications as global_notifications};
 use syntaxis_workspace::{WorkspaceId, WorkspaceRecord};
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
     process::Command,
-    sync::{broadcast, mpsc, oneshot, Mutex as AsyncMutex},
-    time::{interval, MissedTickBehavior},
+    sync::{Mutex as AsyncMutex, broadcast, mpsc, oneshot},
+    time::{MissedTickBehavior, interval},
 };
 use uuid::Uuid;
 const EVENT_CAPACITY: usize = 512;
@@ -332,22 +332,20 @@ impl HostAgentWorkspace {
                             session_id: Some(next_id),
                             ..
                         } = &event
+                            && *next_id != active_id
+                            && workspace.rekey_forked_session(&active_id, next_id)
                         {
-                            if *next_id != active_id
-                                && workspace.rekey_forked_session(&active_id, next_id)
+                            active_id.clone_from(next_id);
+                            workspace.emit_sessions();
+                            if let Some(snapshot) = lock(&workspace.sessions)
+                                .get(&active_id)
+                                .and_then(|session| session.process.as_ref())
+                                .map(HostAgentSession::snapshot)
                             {
-                                active_id.clone_from(next_id);
-                                workspace.emit_sessions();
-                                if let Some(snapshot) = lock(&workspace.sessions)
-                                    .get(&active_id)
-                                    .and_then(|session| session.process.as_ref())
-                                    .map(HostAgentSession::snapshot)
-                                {
-                                    let _ = workspace.events.send(ServerMessage::SelectedSession {
-                                        session_id: active_id.clone(),
-                                        snapshot,
-                                    });
-                                }
+                                let _ = workspace.events.send(ServerMessage::SelectedSession {
+                                    session_id: active_id.clone(),
+                                    snapshot,
+                                });
                             }
                         }
                         workspace.update_summary(&active_id, &event);
@@ -1190,10 +1188,10 @@ fn handle_pi_response(
         "get_messages" => handle_messages_response(data, state, events),
         "get_fork_messages" => handle_fork_messages_response(data, state, events),
         "fork" => {
-            if data.get("cancelled").and_then(Value::as_bool) != Some(true) {
-                if let Some(text) = string_field(data, "text") {
-                    let _ = events.send(ServerMessage::ComposerText { text });
-                }
+            if data.get("cancelled").and_then(Value::as_bool) != Some(true)
+                && let Some(text) = string_field(data, "text")
+            {
+                let _ = events.send(ServerMessage::ComposerText { text });
             }
         }
         "get_available_models" => {
@@ -1836,10 +1834,10 @@ fn map_history(messages: &[Value]) -> Vec<ChatItem> {
                     },
                     format!("history-assistant-{index}"),
                 );
-                if let ChatItem::Assistant { text, thinking, .. } = &item {
-                    if !text.is_empty() || !thinking.is_empty() {
-                        push_item(&mut items, item);
-                    }
+                if let ChatItem::Assistant { text, thinking, .. } = &item
+                    && (!text.is_empty() || !thinking.is_empty())
+                {
+                    push_item(&mut items, item);
                 }
                 if let Some(content) = message.get("content").and_then(Value::as_array) {
                     for part in content {
@@ -2303,8 +2301,8 @@ mod tests {
         clippy::panic_in_result_fn,
         reason = "the test uses Result for fallible setup and assertions for behavior"
     )]
-    fn completion_and_attention_notifications_replace_and_clear(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn completion_and_attention_notifications_replace_and_clear()
+    -> Result<(), Box<dyn std::error::Error>> {
         let temp = tempfile::tempdir()?;
         let record = WorkspaceRecord {
             id: WorkspaceId::new("workspace-1"),

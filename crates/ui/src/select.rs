@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 
-use crate::{field::FieldContext, ControlSize};
+use crate::{ControlSize, field::FieldContext};
 
 #[component]
 pub fn Select(

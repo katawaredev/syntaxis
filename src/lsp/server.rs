@@ -6,19 +6,19 @@ use std::{
 
 use axum::{
     extract::{
-        ws::{Message, WebSocket, WebSocketUpgrade},
         Query,
+        ws::{Message, WebSocket, WebSocketUpgrade},
     },
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use dioxus::prelude::ServerFnError;
 use futures_util::{SinkExt, StreamExt};
 use rand_core::{OsRng, RngCore};
 use serde::Deserialize;
 use syntaxis_editor::language_server_by_id;
-use syntaxis_lsp_host::{resolve_language_server, LanguageServer};
+use syntaxis_lsp_host::{LanguageServer, resolve_language_server};
 use syntaxis_workspace::WorkspaceId;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 

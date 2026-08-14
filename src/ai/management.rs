@@ -1,13 +1,13 @@
 use dioxus::prelude::*;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use syntaxis_ui::prelude::{
     AppIcon, Button, ButtonKind, DialogActions, DialogForm, IconButton, Modal, Tone,
 };
 
 use super::{
-    api::{self, PiAuthFlow, PiAuthPrompt, PiAuthType, PiSettingsSnapshot},
-    generated_settings::{PiSettingDefinition, PiSettingKind, PI_SETTING_DEFINITIONS},
     AiSettingsSection,
+    api::{self, PiAuthFlow, PiAuthPrompt, PiAuthType, PiSettingsSnapshot},
+    generated_settings::{PI_SETTING_DEFINITIONS, PiSettingDefinition, PiSettingKind},
 };
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

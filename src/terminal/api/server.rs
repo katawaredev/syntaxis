@@ -4,7 +4,7 @@ use dioxus::{
 };
 use std::{collections::HashMap, sync::OnceLock};
 use syntaxis_terminal::{
-    ClientMessage, ServerMessage, SessionId, TerminalError, TerminalErrorCode, PROTOCOL_VERSION,
+    ClientMessage, PROTOCOL_VERSION, ServerMessage, SessionId, TerminalError, TerminalErrorCode,
 };
 use syntaxis_terminal_host::{
     HostTerminalEvent, HostTerminalManager, SessionAttachment, TerminalHostConfig,
@@ -12,7 +12,7 @@ use syntaxis_terminal_host::{
 use syntaxis_workspace::{WorkspaceId, WorkspaceRecord};
 use tokio::{sync::mpsc, task::JoinHandle};
 
-use super::{commands, RunCommand, TerminalEncoding};
+use super::{RunCommand, TerminalEncoding, commands};
 
 const HANDSHAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 static TERMINALS: OnceLock<HostTerminalManager> = OnceLock::new();
