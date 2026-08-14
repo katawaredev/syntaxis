@@ -3,12 +3,20 @@ pre-commit:
     check:
       glob:
         - "**/*.rs"
+        - "**/*.js"
+        - "**/*.mjs"
+        - "**/*.cjs"
+        - "**/*.css"
+        - "**/*.json"
+        - "**/*.jsonc"
         - "Cargo.toml"
         - "**/Cargo.toml"
         - "Cargo.lock"
+        - "bun.lock"
         - "clippy.toml"
         - "Dioxus.toml"
-        - "assets/**"
+        - "Justfile"
+        - "lefthook.yml"
       run: >-
         if command -v just >/dev/null 2>&1 && command -v cc >/dev/null 2>&1;
         then just pre-commit;

@@ -1,8 +1,4 @@
-import {
-  LSPClient,
-  serverCompletion,
-  serverDiagnostics,
-} from "@codemirror/lsp-client";
+import { LSPClient, serverCompletion, serverDiagnostics } from "@codemirror/lsp-client";
 
 const REGISTRY_KEY = Symbol.for("syntaxis.codeMirror.languageServices");
 const IDLE_DISCONNECT_MS = 2 * 60 * 1000;
@@ -15,7 +11,7 @@ const registry = () => {
   return globalThis[REGISTRY_KEY];
 };
 
-const sanitizeHTML = html => {
+const sanitizeHTML = (html) => {
   const template = document.createElement("template");
   template.innerHTML = html;
   for (const element of template.content.querySelectorAll(
@@ -43,13 +39,13 @@ const sanitizeHTML = html => {
   return template.innerHTML;
 };
 
-const socketUrl = endpoint => {
+const socketUrl = (endpoint) => {
   const url = new URL(endpoint, globalThis.location.href);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   return url.href;
 };
 
-const openTransport = endpoint =>
+const openTransport = (endpoint) =>
   new Promise((resolve, reject) => {
     const handlers = new Set();
     const socket = new WebSocket(socketUrl(endpoint));
@@ -77,7 +73,7 @@ const openTransport = endpoint =>
       },
       { once: true },
     );
-    socket.addEventListener("message", event => {
+    socket.addEventListener("message", (event) => {
       if (typeof event.data !== "string") return;
       for (const handler of handlers) handler(event.data);
     });
@@ -88,7 +84,7 @@ const openTransport = endpoint =>
     );
   });
 
-const createSession = async config => {
+const createSession = async (config) => {
   const connection = await openTransport(config.endpoint);
   const session = {
     client: null,
@@ -131,18 +127,15 @@ const createSession = async config => {
   client.connect(connection.transport);
   client.initializing.then(
     () => updateStatus("ready"),
-    error => {
-      updateStatus(
-        "unavailable",
-        error instanceof Error ? error.message : String(error),
-      );
+    (error) => {
+      updateStatus("unavailable", error instanceof Error ? error.message : String(error));
       connection.socket.close();
     },
   );
   return session;
 };
 
-const acquireSession = async config => {
+const acquireSession = async (config) => {
   let session = registry().get(config.sessionKey);
   if (!session || session.closed) {
     session = await createSession(config);
@@ -176,13 +169,13 @@ const releaseSession = (sessionKey, session, listener) => {
 const documentUri = (rootUri, filename) => {
   const relative = filename
     .split("/")
-    .filter(segment => segment && segment !== ".")
+    .filter((segment) => segment && segment !== ".")
     .map(encodeURIComponent)
     .join("/");
   return new URL(relative, rootUri).href;
 };
 
-export const connectLanguageService = async config => {
+export const connectLanguageService = async (config) => {
   const session = await acquireSession(config);
   return {
     extension: session.client.plugin(

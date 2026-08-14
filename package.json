@@ -4,7 +4,11 @@
   "scripts": {
     "build:editor": "bun scripts/build-code-editor.mjs",
     "build:terminal": "bun scripts/build-terminal.mjs",
+    "format:web": "oxfmt --write \"*.{js,mjs,cjs,css,json,jsonc}\" \"**/*.{js,mjs,cjs,css,json,jsonc}\"",
+    "format:web:check": "oxfmt --check \"*.{js,mjs,cjs,css,json,jsonc}\" \"**/*.{js,mjs,cjs,css,json,jsonc}\"",
     "generate:pi-settings": "bun scripts/generate-pi-settings.mjs",
+    "lint:web": "oxlint --deny-warnings .",
+    "lint:web:fix": "oxlint --fix --deny-warnings .",
     "test:terminal": "bun test assets/terminal/source-links.test.js",
     "lighthouse": "rm -rf target/dx/syntaxis/release/web/public && dx build --platform web --release --locked --debug-symbols false && lhci autorun",
     "lighthouse:open": "lhci open"
@@ -24,11 +28,13 @@
     "@xterm/xterm": "^6.0.0",
     "esbuild": "^0.28.2"
   },
-  "overrides": {
-    "@codemirror/view": "6.43.8"
-  },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "0.84.1",
-    "@lhci/cli": "0.15.1"
+    "@lhci/cli": "0.15.1",
+    "oxfmt": "^0.63.0",
+    "oxlint": "^1.78.0"
+  },
+  "overrides": {
+    "@codemirror/view": "6.43.8"
   }
 }

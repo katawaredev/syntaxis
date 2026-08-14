@@ -25,14 +25,14 @@
     const margin = 8;
     const gap = 6;
     const triggerRect = trigger.getBoundingClientRect();
-    const fullWidth = overlay.classList.contains("left-2")
-      && overlay.classList.contains("right-2");
+    const fullWidth = overlay.classList.contains("left-2") && overlay.classList.contains("right-2");
     const availableWidth = viewportWidth - margin * 2;
     let overlayWidth = fullWidth ? availableWidth : Math.min(overlay.offsetWidth, availableWidth);
     overlay.style.setProperty("width", `${overlayWidth}px`, "important");
     overlay.style.setProperty("max-width", `${availableWidth}px`, "important");
 
-    const alignLeft = overlay.classList.contains("left-0") && !overlay.classList.contains("right-0");
+    const alignLeft =
+      overlay.classList.contains("left-0") && !overlay.classList.contains("right-0");
     const idealLeft = fullWidth
       ? viewportLeft + margin
       : alignLeft
@@ -52,9 +52,7 @@
     const placeBelow = below >= Math.min(desiredHeight, 220) || below >= above;
     const availableHeight = Math.max(80, placeBelow ? below : above);
     const overlayHeight = Math.min(desiredHeight, availableHeight);
-    const top = placeBelow
-      ? triggerRect.bottom + gap
-      : triggerRect.top - gap - overlayHeight;
+    const top = placeBelow ? triggerRect.bottom + gap : triggerRect.top - gap - overlayHeight;
     overlay.style.setProperty("top", `${Math.round(top)}px`, "important");
     overlay.style.setProperty("max-height", `${Math.round(availableHeight)}px`, "important");
     overlay.dataset.touchPositioned = "true";
@@ -88,9 +86,15 @@
   coarsePointer.addEventListener?.("change", syncViewport);
   window.addEventListener("orientationchange", syncViewport, { passive: true });
   new MutationObserver((records) => {
-    if (records.some(record => [...record.addedNodes].some(node =>
-      node instanceof Element && (node.matches(overlaySelector) || node.querySelector(overlaySelector))
-    ))) {
+    if (
+      records.some((record) =>
+        [...record.addedNodes].some(
+          (node) =>
+            node instanceof Element &&
+            (node.matches(overlaySelector) || node.querySelector(overlaySelector)),
+        ),
+      )
+    ) {
       requestAnimationFrame(positionTouchOverlays);
     }
   }).observe(document.documentElement, { childList: true, subtree: true });
@@ -100,44 +104,54 @@
   // WebKit consequently drops both compatibility clicks and native scrolling.
   // Recreate those touch semantics, and provide the same pan fallback for the
   // two drawer lists that WebKit can otherwise strand inside a modal dialog.
-  const webkitTouch = navigator.maxTouchPoints > 0
-    && CSS.supports?.("-webkit-touch-callout", "none");
+  const webkitTouch =
+    navigator.maxTouchPoints > 0 && CSS.supports?.("-webkit-touch-callout", "none");
   let touchPan = null;
   let suppressTouchClick = null;
-  document.addEventListener("pointerdown", (event) => {
-    if (event.pointerType !== "touch") return;
-    const menu = event.target.closest?.(".syntaxis-menu-content");
-    const scrollRegion = event.target.closest?.(".touch-scroll-region");
-    const container = menu instanceof HTMLElement
-      ? menu
-      : webkitTouch && scrollRegion instanceof HTMLElement
-        ? scrollRegion
-        : null;
-    if (!container) return;
-    const action = menu instanceof HTMLElement
-      ? event.target.closest?.("[role='option'], button, a[href]")
-      : null;
-    touchPan = {
-      container,
-      action: action instanceof HTMLElement && menu.contains(action) ? action : null,
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      lastY: event.clientY,
-      moved: false,
-      scrollable: container.scrollHeight > container.clientHeight,
-    };
-  }, true);
-  document.addEventListener("pointermove", (event) => {
-    if (!touchPan || event.pointerId !== touchPan.pointerId || !touchPan.scrollable) return;
-    const distanceX = Math.abs(event.clientX - touchPan.startX);
-    const distanceY = Math.abs(event.clientY - touchPan.startY);
-    if (!touchPan.moved && (distanceY < 6 || distanceY <= distanceX)) return;
-    touchPan.moved = true;
-    touchPan.container.scrollTop += touchPan.lastY - event.clientY;
-    touchPan.lastY = event.clientY;
-    event.preventDefault();
-  }, true);
+  document.addEventListener(
+    "pointerdown",
+    (event) => {
+      if (event.pointerType !== "touch") return;
+      const menu = event.target.closest?.(".syntaxis-menu-content");
+      const scrollRegion = event.target.closest?.(".touch-scroll-region");
+      const container =
+        menu instanceof HTMLElement
+          ? menu
+          : webkitTouch && scrollRegion instanceof HTMLElement
+            ? scrollRegion
+            : null;
+      if (!container) return;
+      const action =
+        menu instanceof HTMLElement
+          ? event.target.closest?.("[role='option'], button, a[href]")
+          : null;
+      touchPan = {
+        container,
+        action: action instanceof HTMLElement && menu.contains(action) ? action : null,
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        lastY: event.clientY,
+        moved: false,
+        scrollable: container.scrollHeight > container.clientHeight,
+      };
+    },
+    true,
+  );
+  document.addEventListener(
+    "pointermove",
+    (event) => {
+      if (!touchPan || event.pointerId !== touchPan.pointerId || !touchPan.scrollable) return;
+      const distanceX = Math.abs(event.clientX - touchPan.startX);
+      const distanceY = Math.abs(event.clientY - touchPan.startY);
+      if (!touchPan.moved && (distanceY < 6 || distanceY <= distanceX)) return;
+      touchPan.moved = true;
+      touchPan.container.scrollTop += touchPan.lastY - event.clientY;
+      touchPan.lastY = event.clientY;
+      event.preventDefault();
+    },
+    true,
+  );
   const finishTouchPan = (event) => {
     if (!touchPan || event.pointerId !== touchPan.pointerId) return;
     if (touchPan.moved) {
@@ -147,10 +161,10 @@
         if (suppressTouchClick === container) suppressTouchClick = null;
       }, 500);
     } else if (
-      event.type === "pointerup"
-      && touchPan.action
-      && !touchPan.action.hasAttribute("disabled")
-      && touchPan.action.dataset.disabled !== "true"
+      event.type === "pointerup" &&
+      touchPan.action &&
+      !touchPan.action.hasAttribute("disabled") &&
+      touchPan.action.dataset.disabled !== "true"
     ) {
       // HTMLElement.click() produces the click the dropdown's prevented
       // pointerdown suppresses on iOS. Prevent pointerup from adding a second.
@@ -162,17 +176,25 @@
   };
   document.addEventListener("pointerup", finishTouchPan, true);
   document.addEventListener("pointercancel", finishTouchPan, true);
-  document.addEventListener("click", (event) => {
-    if (!suppressTouchClick) return;
-    if (suppressTouchClick.contains(event.target)) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-    }
-    suppressTouchClick = null;
-  }, true);
+  document.addEventListener(
+    "click",
+    (event) => {
+      if (!suppressTouchClick) return;
+      if (suppressTouchClick.contains(event.target)) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+      suppressTouchClick = null;
+    },
+    true,
+  );
 
   const isFocusable = (element) => {
-    if (!(element instanceof HTMLElement) || element.tabIndex < 0 || element.hasAttribute("disabled")) {
+    if (
+      !(element instanceof HTMLElement) ||
+      element.tabIndex < 0 ||
+      element.hasAttribute("disabled")
+    ) {
       return false;
     }
     if (element instanceof HTMLAnchorElement) return Boolean(element.href);
@@ -208,5 +230,4 @@
   }
 
   window.createFocusTrap = (container) => new FocusTrap(container);
-
 })();

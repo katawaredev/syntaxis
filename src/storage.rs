@@ -3,14 +3,14 @@ use dioxus::prelude::document;
 /// Reads a value from persistent UI storage.
 pub(crate) async fn get(key: String) -> Result<Option<String>, String> {
     let eval = document::eval(
-        r#"
+        r"
         const key = await dioxus.recv();
         try {
             return globalThis.localStorage?.getItem(key) ?? null;
         } catch (error) {
             throw new Error(error instanceof Error ? error.message : String(error));
         }
-        "#,
+        ",
     );
     eval.send(key).map_err(|error| error.to_string())?;
     eval.join::<Option<String>>()
@@ -21,7 +21,7 @@ pub(crate) async fn get(key: String) -> Result<Option<String>, String> {
 /// Writes a value to persistent UI storage.
 pub(crate) async fn set(key: String, value: String) -> Result<(), String> {
     run_mutation(
-        r#"
+        r"
         const [key, value] = await dioxus.recv();
         try {
             globalThis.localStorage?.setItem(key, value);
@@ -29,7 +29,7 @@ pub(crate) async fn set(key: String, value: String) -> Result<(), String> {
         } catch (error) {
             return error instanceof Error ? error.message : String(error);
         }
-        "#,
+        ",
         (key, value),
     )
     .await
@@ -38,7 +38,7 @@ pub(crate) async fn set(key: String, value: String) -> Result<(), String> {
 /// Removes a value from persistent UI storage.
 pub(crate) async fn remove(key: String) -> Result<(), String> {
     run_mutation(
-        r#"
+        r"
         const key = await dioxus.recv();
         try {
             globalThis.localStorage?.removeItem(key);
@@ -46,7 +46,7 @@ pub(crate) async fn remove(key: String) -> Result<(), String> {
         } catch (error) {
             return error instanceof Error ? error.message : String(error);
         }
-        "#,
+        ",
         key,
     )
     .await

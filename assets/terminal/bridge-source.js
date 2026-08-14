@@ -56,7 +56,8 @@ function touchById(touches, id) {
 }
 
 function installTouchScrolling(term, container) {
-  const touchDevice = navigator.maxTouchPoints > 0 || window.matchMedia("(pointer: coarse)").matches;
+  const touchDevice =
+    navigator.maxTouchPoints > 0 || window.matchMedia("(pointer: coarse)").matches;
   const element = container.querySelector(".xterm");
   if (!touchDevice || !element) return { dispose() {} };
 
@@ -77,10 +78,11 @@ function installTouchScrolling(term, container) {
     dragging = false;
   };
   const cellHeight = () => {
-    const screenHeight = element.querySelector(".xterm-screen")?.getBoundingClientRect().height ?? 0;
+    const screenHeight =
+      element.querySelector(".xterm-screen")?.getBoundingClientRect().height ?? 0;
     return screenHeight > 0 && term.rows > 0 ? screenHeight / term.rows : 16.8;
   };
-  const onTouchStart = event => {
+  const onTouchStart = (event) => {
     if (event.touches.length !== 1) {
       reset();
       return;
@@ -92,7 +94,7 @@ function installTouchScrolling(term, container) {
     pendingPixels = 0;
     dragging = false;
   };
-  const onTouchMove = event => {
+  const onTouchMove = (event) => {
     if (touchId === null || event.touches.length !== 1) return;
     const touch = touchById(event.touches, touchId);
     if (!touch) return;
@@ -103,16 +105,17 @@ function installTouchScrolling(term, container) {
     lastY = touch.clientY;
 
     const rowHeight = cellHeight();
-    const lines = pendingPixels < 0
-      ? Math.ceil(pendingPixels / rowHeight)
-      : Math.floor(pendingPixels / rowHeight);
+    const lines =
+      pendingPixels < 0
+        ? Math.ceil(pendingPixels / rowHeight)
+        : Math.floor(pendingPixels / rowHeight);
     if (lines !== 0) {
       term.scrollLines(lines);
       pendingPixels -= lines * rowHeight;
     }
     event.preventDefault();
   };
-  const onTouchEnd = event => {
+  const onTouchEnd = (event) => {
     if (touchId === null || touchById(event.changedTouches, touchId) === null) return;
     if (dragging) event.preventDefault();
     reset();
@@ -171,7 +174,7 @@ async function mount(id) {
   term.loadAddon(fitAddon);
   term.open(container);
   const touchScrolling = installTouchScrolling(term, container);
-  const dataSubscription = term.onData(data => emit("input", id, { data }));
+  const dataSubscription = term.onData((data) => emit("input", id, { data }));
   const resizeSubscription = term.onResize(({ cols, rows }) => {
     const rect = container.getBoundingClientRect();
     emit("resize", id, {
@@ -232,13 +235,15 @@ async function action(id, name) {
       case "copy": {
         const selection = term.getSelection();
         if (!selection) throw new Error("Select terminal text before copying");
-        if (!navigator.clipboard?.writeText) throw new Error("Clipboard write access is unavailable");
+        if (!navigator.clipboard?.writeText)
+          throw new Error("Clipboard write access is unavailable");
         await navigator.clipboard.writeText(selection);
         emit("action_result", id, { action: name, ok: true, message: "Selection copied" });
         break;
       }
       case "copy_all": {
-        if (!navigator.clipboard?.writeText) throw new Error("Clipboard write access is unavailable");
+        if (!navigator.clipboard?.writeText)
+          throw new Error("Clipboard write access is unavailable");
         term.selectAll();
         const contents = term.getSelection();
         term.clearSelection();

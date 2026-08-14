@@ -12,21 +12,20 @@ describe("parseSourceLocations", () => {
     ["src/main.ts(12,5): error TS2322", "src/main.ts", 12, 5, null, null],
     ["./cmd/server.go:19:4: warning", "./cmd/server.go", 19, 4, null, null],
   ])("parses %s", (text, path, line, column, endLine, endColumn) => {
-    expect(parseSourceLocations(text)).toMatchObject([
-      { path, line, column, endLine, endColumn },
-    ]);
+    expect(parseSourceLocations(text)).toMatchObject([{ path, line, column, endLine, endColumn }]);
   });
 
   test("finds multiple locations in output order", () => {
-    expect(parseSourceLocations("src/a.rs:1:2 and src/b.rs:3:4").map(link => link.path))
-      .toEqual(["src/a.rs", "src/b.rs"]);
+    expect(parseSourceLocations("src/a.rs:1:2 and src/b.rs:3:4").map((link) => link.path)).toEqual([
+      "src/a.rs",
+      "src/b.rs",
+    ]);
   });
 
-  test.each([
-    "https://example.com/file.js:5:2",
-    "typescript@5.0.0",
-    "ordinary terminal output",
-  ])("does not link %s", text => {
-    expect(parseSourceLocations(text)).toEqual([]);
-  });
+  test.each(["https://example.com/file.js:5:2", "typescript@5.0.0", "ordinary terminal output"])(
+    "does not link %s",
+    (text) => {
+      expect(parseSourceLocations(text)).toEqual([]);
+    },
+  );
 });

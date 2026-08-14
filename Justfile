@@ -475,15 +475,17 @@ dx-check platform=default_platform: build-assets
             ;;
     esac
 
-# Format Rust and RSX source.
+# Format Rust, RSX, JavaScript, CSS, and JSON source.
 format:
     cargo fmt --all
     dx fmt
+    bun run format:web
 
 # Check formatting without modifying files.
 format-check:
     cargo fmt --all -- --check
     dx fmt --check
+    bun run format:web:check
 
 # Preview and remove ignored build artifacts while preserving local configuration.
 clean:
@@ -530,8 +532,12 @@ clippy platform=default_platform: build-assets
         --features "{{ platform }}" \
         -- -D warnings
 
-# Backwards-compatible name for the Clippy quality gate.
-lint platform=default_platform: (clippy platform)
+# Lint authored JavaScript with Oxlint.
+lint-web:
+    bun run lint:web
+
+# Run all language-specific lint gates.
+lint platform=default_platform: (clippy platform) lint-web
 
 # Run tests using cargo-nextest. The filter remains the first argument for convenience.
 test filter="" platform=default_platform: build-assets
@@ -643,15 +649,20 @@ qa platform=default_platform: build-assets (fix platform) (test-doc platform)
     @echo
     @echo "All code quality gates passed."
 
-# Keep commits responsive: generated assets and formatting only. CI owns compilation and tests.
+# Keep commits responsive: generated assets, formatting, and JavaScript linting only.
+# CI owns Rust compilation, Clippy, and tests.
 pre-commit: build-assets
     cargo fmt --all -- --check
     dx fmt --check
+    bun run format:web:check
+    bun run lint:web
 
-# Apply formatting, then perform the fast validation workflow.
+# Apply formatting and safe lint fixes, then perform the fast validation workflow.
 fix platform=default_platform: build-assets
     cargo fmt --all
     dx fmt
+    bun run format:web
+    bun run lint:web:fix
     cargo clippy \
         --workspace \
         --all-targets \

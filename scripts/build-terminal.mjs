@@ -53,12 +53,15 @@ if (
 const cssInjection =
   `(()=>{if(typeof document!=="undefined"&&!document.getElementById("xterm-css")){` +
   `const s=document.createElement("style");s.id="xterm-css";` +
-  `s.textContent=${JSON.stringify(css + `
+  `s.textContent=${JSON.stringify(
+    css +
+      `
 .xterm-host .xterm .xterm-rows span[style*="text-decoration: underline"] {
   text-decoration-color: var(--primary) !important;
   text-underline-offset: 2px;
 }
-`)};document.head.appendChild(s);` +
+`,
+  )};document.head.appendChild(s);` +
   `}})();\n`;
 
 const { default: esbuild } = await import("esbuild");
@@ -84,4 +87,6 @@ if (result.errors.length > 0) {
 }
 
 writeFileSync(stampDest, `${cacheKey}\n`);
-console.log(`Built terminal bundle with @xterm/xterm ${versions["@xterm/xterm"]} (${cacheKey.slice(0, 12)})`);
+console.log(
+  `Built terminal bundle with @xterm/xterm ${versions["@xterm/xterm"]} (${cacheKey.slice(0, 12)})`,
+);

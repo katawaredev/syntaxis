@@ -3,16 +3,16 @@
     reason = "Dioxus expands the parent glob for RSX hot-reload analysis"
 )]
 use super::{
-    component, diff_line_class, dioxus_core, dioxus_elements, dioxus_signals,
-    language_slug_for_path, parse_diff_hunks, rsx, use_signal, ActionCallback, AnyStorage, AppIcon,
-    ChangeKind, CommitInfo, ConflictChoice, ConflictFile, ControlSize, DiffHunk, DiffKind,
-    DiffLayout, DropdownMenu, DropdownMenuItem, Element, EventHandler, FileChange, FileIcon,
-    GitChangeBadge, GlobalAttributesExtension, HasAttributes, History, HistoryAction, HunkAction,
-    Icon, InputExtension, Language, LinkExtension, MenuContent, MenuTrigger, Mutation,
-    OptionExtension, Props, ReadableExt, ReadableHashMapExt, ReadableHashSetExt, ReadableOptionExt,
-    ReadableResultExt, ReadableStrExt, ReadableVecExt, RepositoryStatus, Result, SelectExtension,
-    SelectedChange, ServerFnError, SidebarView, Signal, Storage, StyleExtension,
-    SvgAttributesExtension, TrackExtension, UnifiedDiff, UnifiedDiffView, WritableExt,
+    ActionCallback, AnyStorage, AppIcon, ChangeKind, CommitInfo, ConflictChoice, ConflictFile,
+    ControlSize, DiffHunk, DiffKind, DiffLayout, DropdownMenu, DropdownMenuItem, Element,
+    EventHandler, FileChange, FileIcon, GitChangeBadge, GlobalAttributesExtension, HasAttributes,
+    History, HistoryAction, HunkAction, Icon, InputExtension, Language, LinkExtension, MenuContent,
+    MenuTrigger, Mutation, OptionExtension, Props, ReadableExt, ReadableHashMapExt,
+    ReadableHashSetExt, ReadableOptionExt, ReadableResultExt, ReadableStrExt, ReadableVecExt,
+    RepositoryStatus, Result, SelectExtension, SelectedChange, ServerFnError, SidebarView, Signal,
+    Storage, StyleExtension, SvgAttributesExtension, TrackExtension, UnifiedDiff, UnifiedDiffView,
+    WritableExt, component, diff_line_class, dioxus_core, dioxus_elements, dioxus_signals,
+    language_slug_for_path, parse_diff_hunks, rsx, use_signal,
 };
 
 const DIFF_TITLEBAR_CLASS: &str = "sticky top-0 z-10 flex min-h-14 min-w-165 items-center justify-between gap-3 border-b border-border bg-background/95 p-3 font-sans backdrop-blur-sm max-md:min-h-13 max-md:min-w-0 max-md:gap-1.5 max-md:px-2 max-md:py-2";
@@ -159,11 +159,8 @@ fn HistoryRow(
 ) -> Element {
     let mut open = use_signal(|| false);
     rsx! {
-        DropdownMenu {
-            open: open(),
-            on_open_change: move |next: bool| open.set(next),
-            div {
-                class: if selected { "relative flex w-full min-w-0 items-center rounded-md bg-muted text-foreground" } else { "relative flex w-full min-w-0 items-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground" },
+        DropdownMenu { open: open(), on_open_change: move |next: bool| open.set(next),
+            div { class: if selected { "relative flex w-full min-w-0 items-center rounded-md bg-muted text-foreground" } else { "relative flex w-full min-w-0 items-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground" },
                 button {
                     class: "flex min-w-0 flex-1 gap-2 p-2 text-left",
                     onclick: {

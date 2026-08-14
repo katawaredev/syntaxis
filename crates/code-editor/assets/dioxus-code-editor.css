@@ -1,473 +1,438 @@
 .dxc-editor.dxc-editor {
-    --dxc-editor-font-size: 14px;
-    --dxc-editor-line-height: 21px;
-    --dxc-editor-font-family: ui-monospace, SFMono-Regular, Menlo, Monaco,
-        Consolas, monospace;
-    --dxc-editor-background: var(--card);
-    --dxc-editor-gutter-background: var(--background);
-    --dxc-editor-foreground: var(--foreground);
-    --dxc-editor-muted-foreground: var(--muted-foreground);
-    --dxc-editor-added: var(--success);
-    --dxc-editor-deleted: var(--destructive);
-    --dxc-editor-selection: color-mix(
-        in oklch,
-        var(--primary) 32%,
-        transparent
-    );
-    box-sizing: border-box;
-    display: grid;
-    grid-template-columns: max-content minmax(0, 1fr);
-    min-height: 100%;
-    min-width: 100%;
-    overflow: auto;
-    overscroll-behavior: contain;
-    -webkit-overflow-scrolling: touch;
-    background: var(--dxc-editor-background);
-    color: var(--dxc-editor-foreground);
-    font-family: var(--dxc-editor-font-family);
-    font-size: var(--dxc-editor-font-size);
-    line-height: var(--dxc-editor-line-height);
-    tab-size: var(--dxc-editor-tab-width, 4);
+  --dxc-editor-font-size: 14px;
+  --dxc-editor-line-height: 21px;
+  --dxc-editor-font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --dxc-editor-background: var(--card);
+  --dxc-editor-gutter-background: var(--background);
+  --dxc-editor-foreground: var(--foreground);
+  --dxc-editor-muted-foreground: var(--muted-foreground);
+  --dxc-editor-added: var(--success);
+  --dxc-editor-deleted: var(--destructive);
+  --dxc-editor-selection: color-mix(in oklch, var(--primary) 32%, transparent);
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  min-height: 100%;
+  min-width: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  background: var(--dxc-editor-background);
+  color: var(--dxc-editor-foreground);
+  font-family: var(--dxc-editor-font-family);
+  font-size: var(--dxc-editor-font-size);
+  line-height: var(--dxc-editor-line-height);
+  tab-size: var(--dxc-editor-tab-width, 4);
 }
 
 .dxc-editor *,
 .dxc-editor *::before,
 .dxc-editor *::after {
-    box-sizing: border-box;
+  box-sizing: border-box;
 }
 .dxc-editor-viewport {
-    position: relative;
-    height: max-content;
-    min-height: 100%;
-    min-width: 100%;
-    width: max-content;
+  position: relative;
+  height: max-content;
+  min-height: 100%;
+  min-width: 100%;
+  width: max-content;
 }
 .dxc-editor-gutter,
 .dxc-editor-highlight,
 .dxc-editor-range-overlay,
 .dxc-editor-input {
-    min-height: 100%;
+  min-height: 100%;
 }
 .dxc-editor-highlight,
 .dxc-editor-range-overlay,
 .dxc-editor-input {
-    padding: 14px 22px 80px 0;
-    white-space: pre;
-    line-height: var(--dxc-editor-line-height);
-    tab-size: inherit;
+  padding: 14px 22px 80px 0;
+  white-space: pre;
+  line-height: var(--dxc-editor-line-height);
+  tab-size: inherit;
 }
 .dxc-editor-gutter {
-    position: sticky;
-    left: 0;
-    z-index: 2;
-    height: max-content;
-    padding: 14px 0;
-    border-right: 1px solid var(--border);
-    background: var(--dxc-editor-gutter-background);
-    color: var(--dxc-editor-muted-foreground);
-    pointer-events: none;
-    user-select: none;
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  height: max-content;
+  padding: 14px 0;
+  border-right: 1px solid var(--border);
+  background: var(--dxc-editor-gutter-background);
+  color: var(--dxc-editor-muted-foreground);
+  pointer-events: none;
+  user-select: none;
 }
 .dxc-editor-gutter-line {
-    min-width: 52px;
-    height: var(--dxc-editor-line-height);
-    padding: 0 13px;
-    text-align: right;
-    line-height: var(--dxc-editor-line-height);
+  min-width: 52px;
+  height: var(--dxc-editor-line-height);
+  padding: 0 13px;
+  text-align: right;
+  line-height: var(--dxc-editor-line-height);
 }
 .dxc-editor-highlight {
-    min-width: 100%;
-    pointer-events: none;
+  min-width: 100%;
+  pointer-events: none;
 }
 .dxc-editor-range-overlay {
-    position: absolute;
-    inset: 0;
-    z-index: 1;
-    min-width: 100%;
-    overflow: hidden;
-    color: transparent;
-    pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  min-width: 100%;
+  overflow: hidden;
+  color: transparent;
+  pointer-events: none;
 }
 .dxc-editor-range-overlay mark {
-    color: transparent;
+  color: transparent;
 }
 .dxc-editor-search-match {
-    border-radius: 2px;
-    background: color-mix(in oklch, var(--warning) 32%, transparent);
-    box-shadow: inset 0 0 0 1px
-        color-mix(in oklch, var(--warning) 58%, transparent);
+  border-radius: 2px;
+  background: color-mix(in oklch, var(--warning) 32%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--warning) 58%, transparent);
 }
 .dxc-editor-search-match.dxc-editor-range-active {
-    background: color-mix(in oklch, var(--primary) 42%, transparent);
-    box-shadow: inset 0 0 0 1px
-        color-mix(in oklch, var(--primary) 72%, transparent);
+  background: color-mix(in oklch, var(--primary) 42%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--primary) 72%, transparent);
 }
 .dxc-editor-multi-selection {
-    border-radius: 2px;
-    background: var(--dxc-editor-selection);
+  border-radius: 2px;
+  background: var(--dxc-editor-selection);
 }
 .dxc-editor-multi-selection[data-caret="true"] {
-    position: relative;
-    border-radius: 0;
-    background: transparent;
+  position: relative;
+  border-radius: 0;
+  background: transparent;
 }
 .dxc-editor-multi-selection[data-caret="true"]::after {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 1px;
-    height: var(--dxc-editor-line-height);
-    background: var(--dxc-editor-foreground);
-    content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: var(--dxc-editor-line-height);
+  background: var(--dxc-editor-foreground);
+  content: "";
 }
 .dxc-editor-multi-selection.dxc-editor-range-active[data-caret="true"]::after {
-    display: none;
+  display: none;
 }
 .dxc-editor-line {
-    min-height: var(--dxc-editor-line-height);
-    line-height: var(--dxc-editor-line-height);
+  min-height: var(--dxc-editor-line-height);
+  line-height: var(--dxc-editor-line-height);
 }
 .dxc-editor-highlight span {
-    font-style: normal !important;
+  font-style: normal !important;
 }
 .dxc-editor-input {
-    position: absolute;
-    inset: 0;
-    z-index: 2;
-    display: block;
-    width: 100%;
-    margin: 0;
-    overflow: clip;
-    resize: none;
-    border: 0;
-    outline: none;
-    background: transparent;
-    color: transparent;
-    caret-color: var(--dxc-editor-foreground);
-    font: inherit;
-    letter-spacing: 0;
-    touch-action: auto;
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: block;
+  width: 100%;
+  margin: 0;
+  overflow: clip;
+  resize: none;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--dxc-editor-foreground);
+  font: inherit;
+  letter-spacing: 0;
+  touch-action: auto;
 }
 .dxc-editor-input::selection {
-    background: var(--dxc-editor-selection);
-    color: transparent;
+  background: var(--dxc-editor-selection);
+  color: transparent;
 }
 .dxc-editor-input::placeholder {
-    color: var(--dxc-editor-muted-foreground);
+  color: var(--dxc-editor-muted-foreground);
 }
 .dxc-editor-no-gutter {
-    grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
 }
 .dxc-editor-no-gutter .dxc-editor-highlight,
 .dxc-editor-no-gutter .dxc-editor-range-overlay,
 .dxc-editor-no-gutter .dxc-editor-input {
-    padding-left: 20px;
+  padding-left: 20px;
 }
 .dxc-editor-wrap .dxc-editor-viewport {
-    width: 100%;
+  width: 100%;
 }
 .dxc-editor-wrap .dxc-editor-highlight,
 .dxc-editor-wrap .dxc-editor-range-overlay,
 .dxc-editor-wrap .dxc-editor-input,
 .dxc-editor-wrap .dxc-editor-line {
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .dxc-editor:focus-within {
-    box-shadow: inset 0 0 0 1px
-        color-mix(in oklch, var(--primary) 38%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--primary) 38%, transparent);
 }
 
 .dxc-editor.dxc-codemirror {
-    display: block;
-    height: 100%;
-    overflow: hidden;
+  display: block;
+  height: 100%;
+  overflow: hidden;
 }
 .dxc-codemirror > .cm-editor {
-    min-width: 0;
+  min-width: 0;
 }
 .dxc-codemirror .dxc-cm-search-match {
-    border-radius: 2px;
-    background: color-mix(in oklch, var(--warning) 32%, transparent);
-    box-shadow: inset 0 0 0 1px
-        color-mix(in oklch, var(--warning) 58%, transparent);
+  border-radius: 2px;
+  background: color-mix(in oklch, var(--warning) 32%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--warning) 58%, transparent);
 }
 .dxc-codemirror .dxc-cm-search-active {
-    background: color-mix(in oklch, var(--primary) 42%, transparent);
-    box-shadow: inset 0 0 0 1px
-        color-mix(in oklch, var(--primary) 72%, transparent);
+  background: color-mix(in oklch, var(--primary) 42%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--primary) 72%, transparent);
 }
 .dxc-codemirror .cm-searchMatch {
-    border-radius: 2px;
-    background: color-mix(in oklch, var(--warning) 32%, transparent);
-    box-shadow: inset 0 0 0 1px
-        color-mix(in oklch, var(--warning) 58%, transparent);
+  border-radius: 2px;
+  background: color-mix(in oklch, var(--warning) 32%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--warning) 58%, transparent);
 }
 .dxc-codemirror .cm-searchMatch-selected {
-    background: color-mix(in oklch, var(--primary) 42%, transparent);
-    box-shadow: inset 0 0 0 1px
-        color-mix(in oklch, var(--primary) 72%, transparent);
+  background: color-mix(in oklch, var(--primary) 42%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--primary) 72%, transparent);
 }
 .dxc-codemirror .cm-tooltip-autocomplete {
-    overflow: hidden;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--popover);
-    color: var(--popover-foreground);
-    box-shadow: 0 12px 32px color-mix(in oklch, black 30%, transparent);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: 0 12px 32px color-mix(in oklch, black 30%, transparent);
 }
 .dxc-codemirror .cm-tooltip-autocomplete > ul {
-    max-height: min(320px, 45dvh);
-    font-family: var(--dxc-editor-font-family);
+  max-height: min(320px, 45dvh);
+  font-family: var(--dxc-editor-font-family);
 }
 .dxc-codemirror .cm-tooltip-autocomplete > ul > li {
-    min-height: 28px;
-    padding: 5px 8px;
+  min-height: 28px;
+  padding: 5px 8px;
 }
 .dxc-codemirror .cm-tooltip-autocomplete > ul > li[aria-selected] {
-    background: var(--accent);
-    color: var(--accent-foreground);
+  background: var(--accent);
+  color: var(--accent-foreground);
 }
 .dxc-codemirror .cm-completionLabel {
-    font-size: 12px;
+  font-size: 12px;
 }
 .dxc-codemirror .cm-completionDetail {
-    color: var(--muted-foreground);
-    font-size: 10px;
+  color: var(--muted-foreground);
+  font-size: 10px;
 }
 .dxc-codemirror-diff .cm-changedLine,
 .dxc-codemirror-diff .cm-inlineChangedLine {
-    background: color-mix(
-        in lab,
-        var(--dxc-editor-background) 80%,
-        var(--dxc-editor-added)
-    );
+  background: color-mix(in lab, var(--dxc-editor-background) 80%, var(--dxc-editor-added));
 }
 .dxc-codemirror-diff .cm-deletedChunk {
-    padding-left: 6px;
-    background: color-mix(
-        in lab,
-        var(--dxc-editor-background) 80%,
-        var(--dxc-editor-deleted)
-    );
+  padding-left: 6px;
+  background: color-mix(in lab, var(--dxc-editor-background) 80%, var(--dxc-editor-deleted));
 }
 .dxc-codemirror-diff .cm-changedText {
-    background: linear-gradient(
-            color-mix(in srgb, var(--dxc-editor-added) 55%, transparent),
-            color-mix(in srgb, var(--dxc-editor-added) 55%, transparent)
-        )
-        bottom/100% 2px no-repeat;
+  background: linear-gradient(
+      color-mix(in srgb, var(--dxc-editor-added) 55%, transparent),
+      color-mix(in srgb, var(--dxc-editor-added) 55%, transparent)
+    )
+    bottom/100% 2px no-repeat;
 }
 .dxc-codemirror-diff .cm-deletedChunk .cm-deletedText {
-    background: linear-gradient(
-            color-mix(in srgb, var(--dxc-editor-deleted) 55%, transparent),
-            color-mix(in srgb, var(--dxc-editor-deleted) 55%, transparent)
-        )
-        bottom/100% 2px no-repeat;
+  background: linear-gradient(
+      color-mix(in srgb, var(--dxc-editor-deleted) 55%, transparent),
+      color-mix(in srgb, var(--dxc-editor-deleted) 55%, transparent)
+    )
+    bottom/100% 2px no-repeat;
 }
 .dxc-codemirror-diff .cm-changedLineGutter,
 .dxc-codemirror-diff .cm-inlineChangedLineGutter {
-    background: var(--dxc-editor-added);
+  background: var(--dxc-editor-added);
 }
 .dxc-codemirror-diff .cm-deletedLineGutter {
-    background: var(--dxc-editor-deleted);
+  background: var(--dxc-editor-deleted);
 }
 .dxc-codemirror-diff .cm-collapsedLines {
-    color: var(--dxc-editor-muted-foreground);
-    background: linear-gradient(
-        to bottom,
-        transparent,
-        color-mix(in oklch, var(--primary) 9%, var(--dxc-editor-background)) 30%,
-        color-mix(in oklch, var(--primary) 9%, var(--dxc-editor-background)) 70%,
-        transparent
-    );
+  color: var(--dxc-editor-muted-foreground);
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    color-mix(in oklch, var(--primary) 9%, var(--dxc-editor-background)) 30%,
+    color-mix(in oklch, var(--primary) 9%, var(--dxc-editor-background)) 70%,
+    transparent
+  );
 }
 
 .dxc-diff-editor.dxc-diff-editor {
-    display: block;
-    min-height: 100%;
-    overflow: auto;
-    padding: 14px 0;
+  display: grid;
+  grid-template-columns: minmax(100%, max-content);
+  min-height: 100%;
+  overflow: auto;
+  padding: 14px 0;
 }
 .dxc-diff-editor.dxc-diff-layout-embedded {
-    min-height: 0;
-    padding: 0;
+  min-height: 0;
+  padding: 0;
 }
 .dxc-diff-editor.dxc-diff-layout-full-file {
-    overflow: visible;
-    overscroll-behavior: auto;
-    padding-top: 8px;
+  overflow: visible;
+  overscroll-behavior: auto;
+  padding-top: 8px;
 }
 .dxc-diff-row,
 .dxc-diff-fold {
-    display: grid;
-    grid-template-columns: 128px minmax(0, 1fr);
-    width: max-content;
-    min-width: 100%;
-    min-height: var(--dxc-editor-line-height);
-    line-height: var(--dxc-editor-line-height);
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr);
+  width: 100%;
+  min-width: 100%;
+  min-height: var(--dxc-editor-line-height);
+  line-height: var(--dxc-editor-line-height);
 }
 .dxc-diff-meta,
 .dxc-diff-fold-meta {
-    position: sticky;
-    left: 0;
-    z-index: 2;
-    display: grid;
-    grid-template-columns: 24px 52px 52px;
-    border-right: 1px solid var(--border);
-    background: var(--dxc-editor-gutter-background);
-    color: var(--dxc-editor-muted-foreground);
-    text-align: right;
-    user-select: none;
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 24px 52px 52px;
+  border-right: 1px solid var(--border);
+  background: var(--dxc-editor-gutter-background);
+  color: var(--dxc-editor-muted-foreground);
+  text-align: right;
+  user-select: none;
 }
 .dxc-diff-marker {
-    text-align: center;
+  text-align: center;
 }
 .dxc-diff-old-line,
 .dxc-diff-new-line {
-    padding: 0 10px;
+  padding: 0 10px;
 }
 .dxc-diff-old-line {
-    border-left: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
+  border-left: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
 }
 .dxc-diff-new-line {
-    border-left: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
+  border-left: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
 }
 .dxc-diff-code {
-    position: relative;
-    min-width: max-content;
-    padding: 0 22px 0 12px;
-    color: inherit;
-    font: inherit;
-    white-space: pre;
+  position: relative;
+  min-width: max-content;
+  padding: 0 22px 0 12px;
+  color: inherit;
+  font: inherit;
+  white-space: pre;
 }
 .dxc-diff-syntax {
-    color: var(--dxc-editor-foreground);
+  color: var(--dxc-editor-foreground);
 }
 .dxc-diff-inline-overlay {
-    position: absolute;
-    inset: 0 22px 0 12px;
-    color: transparent;
-    pointer-events: none;
-    white-space: pre;
+  position: absolute;
+  inset: 0 22px 0 12px;
+  color: transparent;
+  pointer-events: none;
+  white-space: pre;
 }
 .dxc-diff-delete {
-    background: color-mix(
-        in lab,
-        var(--dxc-editor-background) 80%,
-        var(--dxc-editor-deleted)
-    );
+  background: color-mix(in lab, var(--dxc-editor-background) 80%, var(--dxc-editor-deleted));
 }
 .dxc-diff-delete .dxc-diff-meta {
-    color: var(--dxc-editor-deleted);
-    background: color-mix(
-        in lab,
-        var(--dxc-editor-gutter-background) 85%,
-        var(--dxc-editor-deleted)
-    );
+  color: var(--dxc-editor-deleted);
+  background: color-mix(in lab, var(--dxc-editor-gutter-background) 85%, var(--dxc-editor-deleted));
 }
 .dxc-diff-insert {
-    background: color-mix(
-        in lab,
-        var(--dxc-editor-background) 80%,
-        var(--dxc-editor-added)
-    );
+  background: color-mix(in lab, var(--dxc-editor-background) 80%, var(--dxc-editor-added));
 }
 .dxc-diff-insert .dxc-diff-meta {
-    color: var(--dxc-editor-added);
-    background: color-mix(
-        in lab,
-        var(--dxc-editor-gutter-background) 85%,
-        var(--dxc-editor-added)
-    );
+  color: var(--dxc-editor-added);
+  background: color-mix(in lab, var(--dxc-editor-gutter-background) 85%, var(--dxc-editor-added));
 }
 .dxc-diff-inline {
-    border-radius: 2px;
-    color: transparent;
+  border-radius: 2px;
+  color: transparent;
 }
 .dxc-diff-delete .dxc-diff-inline {
-    background: color-mix(in srgb, var(--dxc-editor-deleted) 20%, transparent);
+  background: color-mix(in srgb, var(--dxc-editor-deleted) 20%, transparent);
 }
 .dxc-diff-insert .dxc-diff-inline {
-    background: color-mix(in srgb, var(--dxc-editor-added) 20%, transparent);
+  background: color-mix(in srgb, var(--dxc-editor-added) 20%, transparent);
 }
 .dxc-diff-fold {
-    border: 0;
-    background: color-mix(in oklch, var(--primary) 7%, var(--dxc-editor-background));
-    color: var(--dxc-editor-muted-foreground);
-    font: inherit;
-    text-align: left;
+  border: 0;
+  background: color-mix(in oklch, var(--primary) 7%, var(--dxc-editor-background));
+  color: var(--dxc-editor-muted-foreground);
+  font: inherit;
+  text-align: left;
 }
 .dxc-diff-fold:hover {
-    color: var(--dxc-editor-foreground);
-    background: color-mix(in oklch, var(--primary) 12%, var(--dxc-editor-background));
+  color: var(--dxc-editor-foreground);
+  background: color-mix(in oklch, var(--primary) 12%, var(--dxc-editor-background));
 }
 
 @media (pointer: coarse) and (max-width: 768px) {
-    .dxc-editor.dxc-editor {
-        --dxc-editor-font-size: 14px;
-        --dxc-editor-line-height: 21px;
-    }
+  .dxc-editor.dxc-editor {
+    --dxc-editor-font-size: 14px;
+    --dxc-editor-line-height: 21px;
+  }
 
-    .dxc-editor-highlight,
-    .dxc-editor-range-overlay,
-    .dxc-editor-input {
-        padding-right: 14px;
-        padding-bottom: max(96px, env(safe-area-inset-bottom));
-    }
+  .dxc-editor-highlight,
+  .dxc-editor-range-overlay,
+  .dxc-editor-input {
+    padding-right: 14px;
+    padding-bottom: max(96px, env(safe-area-inset-bottom));
+  }
 
-    .dxc-editor-gutter-line {
-        min-width: 44px;
-        padding-inline: 9px;
-    }
+  .dxc-editor-gutter-line {
+    min-width: 44px;
+    padding-inline: 9px;
+  }
 }
 
 @media (pointer: coarse) and (max-width: 390px) {
-    .dxc-editor.dxc-editor {
-        --dxc-editor-font-size: 12px;
-        --dxc-editor-line-height: 18px;
-    }
+  .dxc-editor.dxc-editor {
+    --dxc-editor-font-size: 12px;
+    --dxc-editor-line-height: 18px;
+  }
 }
 
 .dxc-diff-fold-meta {
-    display: block;
-    padding-right: 13px;
-    color: var(--primary);
+  display: block;
+  padding-right: 13px;
+  color: var(--primary);
 }
 .dxc-diff-fold-label {
-    padding-left: 12px;
-    font-family: ui-sans-serif, system-ui, sans-serif;
-    font-size: 11px;
+  padding-left: 12px;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 11px;
 }
 .dxc-diff-empty {
-    display: grid;
-    min-height: 180px;
-    place-items: center;
-    color: var(--dxc-editor-muted-foreground);
-    font-family: ui-sans-serif, system-ui, sans-serif;
-    font-size: 12px;
+  display: grid;
+  min-height: 180px;
+  place-items: center;
+  color: var(--dxc-editor-muted-foreground);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 12px;
 }
 .dxc-diff-editor.dxc-editor-no-gutter .dxc-diff-row,
 .dxc-diff-editor.dxc-editor-no-gutter .dxc-diff-fold {
-    grid-template-columns: 24px minmax(0, 1fr);
+  grid-template-columns: 24px minmax(0, 1fr);
 }
 .dxc-diff-editor.dxc-editor-no-gutter .dxc-diff-meta {
-    grid-template-columns: 24px;
+  grid-template-columns: 24px;
 }
 .dxc-diff-editor.dxc-editor-no-gutter .dxc-diff-old-line,
 .dxc-diff-editor.dxc-editor-no-gutter .dxc-diff-new-line {
-    display: none;
+  display: none;
 }
 .dxc-diff-editor.dxc-editor-wrap .dxc-diff-row,
 .dxc-diff-editor.dxc-editor-wrap .dxc-diff-fold {
-    width: 100%;
+  width: 100%;
 }
 .dxc-diff-editor.dxc-editor-wrap .dxc-diff-code {
-    min-width: 0;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .dxc-diff-editor.dxc-editor-wrap .dxc-diff-inline-overlay {
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
