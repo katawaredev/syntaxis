@@ -5,16 +5,16 @@
     "": {
       "name": "syntaxis",
       "dependencies": {
-        "@codemirror/autocomplete": "6.20.3",
+        "@codemirror/autocomplete": "^6.20.3",
         "@codemirror/commands": "^6.10.0",
-        "@codemirror/language": "6.12.4",
+        "@codemirror/language": "^6.12.4",
         "@codemirror/language-data": "^6.5.2",
-        "@codemirror/lint": "6.9.7",
-        "@codemirror/lsp-client": "6.2.5",
+        "@codemirror/lint": "^6.9.7",
+        "@codemirror/lsp-client": "^6.2.5",
         "@codemirror/merge": "^6.10.0",
         "@codemirror/search": "^6.5.11",
-        "@codemirror/state": "6.7.1",
-        "@codemirror/view": "^6.43.8",
+        "@codemirror/state": "^6.7.1",
+        "@codemirror/view": "6.43.8",
         "@xterm/addon-fit": "^0.11.0",
         "@xterm/xterm": "^6.0.0",
         "esbuild": "^0.28.2",
@@ -24,6 +24,9 @@
         "@lhci/cli": "0.15.1",
       },
     },
+  },
+  "overrides": {
+    "@codemirror/view": "6.43.8",
   },
   "packages": {
     "@anthropic-ai/sdk": ["@anthropic-ai/sdk@0.91.1", "https://registry.npmjs.com/@anthropic-ai/sdk/-/sdk-0.91.1.tgz", { "dependencies": { "json-schema-to-ts": "^3.1.1" }, "peerDependencies": { "zod": "^3.25.0 || ^4.0.0" }, "optionalPeers": ["zod"], "bin": { "anthropic-ai-sdk": "bin/cli" } }, "sha512-LAmu761tSN9r66ixvmciswUj/ZC+1Q4iAfpedTfSVLeswRwnY3n2Nb6Tsk+cLPP28aLOPWeMgIuTuCcMC6W/iw=="],
@@ -951,32 +954,6 @@
     "@aws-sdk/credential-provider-sso/@aws-sdk/token-providers": ["@aws-sdk/token-providers@3.1088.0", "https://registry.npmjs.com/@aws-sdk/token-providers/-/token-providers-3.1088.0.tgz", { "dependencies": { "@aws-sdk/core": "^3.975.3", "@aws-sdk/nested-clients": "^3.997.33", "@aws-sdk/types": "^3.974.2", "@smithy/core": "^3.29.4", "@smithy/types": "^4.16.1", "tslib": "^2.6.2" } }, "sha512-4ObatWt2qpJg5FBk4LOOKrTQYzaqeewAtdO3r9ZO8lH9YqLtpTzLyIdy0mJ+nVdfYOnqISkKNfmzP22bNDhwyw=="],
 
     "@aws-sdk/nested-clients/@smithy/node-http-handler": ["@smithy/node-http-handler@4.9.7", "https://registry.npmjs.com/@smithy/node-http-handler/-/node-http-handler-4.9.7.tgz", { "dependencies": { "@smithy/core": "^3.29.5", "@smithy/types": "^4.16.1", "tslib": "^2.6.2" } }, "sha512-wCU8HCLjAtAVqxxe0j2xff9LcEPw3yjBbg5IdQDIYFnxnPxbxcSLc7rgex7kqm9L/WYOnJEgaWQlfDkZleozMA=="],
-
-    "@codemirror/autocomplete/@codemirror/view": ["@codemirror/view@6.43.6", "https://registry.npmjs.com/@codemirror/view/-/view-6.43.6.tgz", { "dependencies": { "@codemirror/state": "^6.7.0", "crelt": "^1.0.6", "style-mod": "^4.1.0", "w3c-keyname": "^2.2.4" } }, "sha512-EVunGSYN1wz1p75WY1s3Xg7t3i8Yol0kGZGizNdX9BUFgMFILYVe8/u6EVpo7Ff5PwbZuILb4QAq7IZoKzIEQA=="],
-
-    "@codemirror/commands/@codemirror/view": ["@codemirror/view@6.43.6", "https://registry.npmjs.com/@codemirror/view/-/view-6.43.6.tgz", { "dependencies": { "@codemirror/state": "^6.7.0", "crelt": "^1.0.6", "style-mod": "^4.1.0", "w3c-keyname": "^2.2.4" } }, "sha512-EVunGSYN1wz1p75WY1s3Xg7t3i8Yol0kGZGizNdX9BUFgMFILYVe8/u6EVpo7Ff5PwbZuILb4QAq7IZoKzIEQA=="],
-
-    "@codemirror/lang-html/@codemirror/view": ["@codemirror/view@6.43.6", "https://registry.npmjs.com/@codemirror/view/-/view-6.43.6.tgz", { "dependencies": { "@codemirror/state": "^6.7.0", "crelt": "^1.0.6", "style-mod": "^4.1.0", "w3c-keyname": "^2.2.4" } }, "sha512-EVunGSYN1wz1p75WY1s3Xg7t3i8Yol0kGZGizNdX9BUFgMFILYVe8/u6EVpo7Ff5PwbZuILb4QAq7IZoKzIEQA=="],
-
-    "@codemirror/lang-javascript/@codemirror/view": ["@codemirror/view@6.43.6", "https://registry.npmjs.com/@codemirror/view/-/view-6.43.6.tgz", { "dependencies": { "@codemirror/state": "^6.7.0", "crelt": "^1.0.6", "style-mod": "^4.1.0", "w3c-keyname": "^2.2.4" } }, "sha512-EVunGSYN1wz1p75WY1s3Xg7t3i8Yol0kGZGizNdX9BUFgMFILYVe8/u6EVpo7Ff5PwbZuILb4QAq7IZoKzIEQA=="],
-
-    "@codemirror/lang-jinja/@codemirror/view": ["@codemirror/view@6.43.6", "https://registry.npmjs.com/@codemirror/view/-/view-6.43.6.tgz", { "dependencies": { "@codemirror/state": "^6.7.0", "crelt": "^1.0.6", "style-mod": "^4.1.0", "w3c-keyname": "^2.2.4" } }, "sha512-EVunGSYN1wz1p75WY1s3Xg7t3i8Yol0kGZGizNdX9BUFgMFILYVe8/u6EVpo7Ff5PwbZuILb4QAq7IZoKzIEQA=="],
-
-    "@codemirror/lang-liquid/@codemirror/view": ["@codemirror/view@6.43.6", "https://registry.npmjs.com/@codemirror/view/-/view-6.43.6.tgz", { "dependencies": { "@codemirror/state": "^6.7.0", "crelt": "^1.0.6", "style-mod": "^4.1.0", "w3c-keyname": "^2.2.4" } }, "sha512-EVunGSYN1wz1p75WY1s3Xg7t3i8Yol0kGZGizNdX9BUFgMFILYVe8/u6EVpo7Ff5PwbZuILb4QAq7IZoKzIEQA=="],
-
-    "@codemirror/lang-markdown/@codemirror/view": ["@codemirror/view@6.43.6", "https://registry.npmjs.com/@codemirror/view/-/view-6.43.6.tgz", { "dependencies": { "@codemirror/state": "^6.7.0", "crelt": "^1.0.6", "style-mod": "^4.1.0", "w3c-keyname": "^2.2.4" } }, "sha512-EVunGSYN1wz1p75WY1s3Xg7t3i8Yol0kGZGizNdX9BUFgMFILYVe8/u6EVpo7Ff5PwbZuILb4QAq7IZoKzIEQA=="],
-
-    "@codemirror/lang-xml/@codemirror/view": ["@codemirror/view@6.43.6", "https://registry.npmjs.com/@codemirror/view/-/view-6.43.6.tgz", { "dependencies": { "@codemirror/state": "^6.7.0", "crelt": "^1.0.6", "style-mod": "^4.1.0", "w3c-keyname": "^2.2.4" } }, "sha512-EVunGSYN1wz1p75WY1s3Xg7t3i8Yol0kGZGizNdX9BUFgMFILYVe8/u6EVpo7Ff5PwbZuILb4QAq7IZoKzIEQA=="],
-
-    "@codemirror/language/@codemirror/view": ["@codemirror/view@6.43.6", "https://registry.npmjs.com/@codemirror/view/-/view-6.43.6.tgz", { "dependencies": { "@codemirror/state": "^6.7.0", "crelt": "^1.0.6", "style-mod": "^4.1.0", "w3c-keyname": "^2.2.4" } }, "sha512-EVunGSYN1wz1p75WY1s3Xg7t3i8Yol0kGZGizNdX9BUFgMFILYVe8/u6EVpo7Ff5PwbZuILb4QAq7IZoKzIEQA=="],
-
-    "@codemirror/lint/@codemirror/view": ["@codemirror/view@6.43.6", "https://registry.npmjs.com/@codemirror/view/-/view-6.43.6.tgz", { "dependencies": { "@codemirror/state": "^6.7.0", "crelt": "^1.0.6", "style-mod": "^4.1.0", "w3c-keyname": "^2.2.4" } }, "sha512-EVunGSYN1wz1p75WY1s3Xg7t3i8Yol0kGZGizNdX9BUFgMFILYVe8/u6EVpo7Ff5PwbZuILb4QAq7IZoKzIEQA=="],
-
-    "@codemirror/lsp-client/@codemirror/view": ["@codemirror/view@6.43.6", "https://registry.npmjs.com/@codemirror/view/-/view-6.43.6.tgz", { "dependencies": { "@codemirror/state": "^6.7.0", "crelt": "^1.0.6", "style-mod": "^4.1.0", "w3c-keyname": "^2.2.4" } }, "sha512-EVunGSYN1wz1p75WY1s3Xg7t3i8Yol0kGZGizNdX9BUFgMFILYVe8/u6EVpo7Ff5PwbZuILb4QAq7IZoKzIEQA=="],
-
-    "@codemirror/merge/@codemirror/view": ["@codemirror/view@6.43.6", "https://registry.npmjs.com/@codemirror/view/-/view-6.43.6.tgz", { "dependencies": { "@codemirror/state": "^6.7.0", "crelt": "^1.0.6", "style-mod": "^4.1.0", "w3c-keyname": "^2.2.4" } }, "sha512-EVunGSYN1wz1p75WY1s3Xg7t3i8Yol0kGZGizNdX9BUFgMFILYVe8/u6EVpo7Ff5PwbZuILb4QAq7IZoKzIEQA=="],
-
-    "@codemirror/search/@codemirror/view": ["@codemirror/view@6.43.6", "https://registry.npmjs.com/@codemirror/view/-/view-6.43.6.tgz", { "dependencies": { "@codemirror/state": "^6.7.0", "crelt": "^1.0.6", "style-mod": "^4.1.0", "w3c-keyname": "^2.2.4" } }, "sha512-EVunGSYN1wz1p75WY1s3Xg7t3i8Yol0kGZGizNdX9BUFgMFILYVe8/u6EVpo7Ff5PwbZuILb4QAq7IZoKzIEQA=="],
 
     "@earendil-works/pi-tui/marked": ["marked@18.0.5", "https://registry.npmjs.com/marked/-/marked-18.0.5.tgz", { "bin": { "marked": "bin/marked.js" } }, "sha512-S6GcvALHg6K4ohtu4E7x0a1AqhAjp6cV8KhLSyN9qVapnzJkusVBxZRcIU9AeYsbe6P1hKDusSbEOzGyyuce6w=="],
 
