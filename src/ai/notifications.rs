@@ -45,6 +45,16 @@ impl NotificationCenter {
             target,
         });
     }
+
+    fn clear_all(mut self) {
+        let notifications = std::mem::take(&mut *self.items.write());
+        for notification in notifications {
+            self.client.send(NotificationClientMessage::Clear {
+                workspace_id: notification.workspace_id,
+                target: notification.target,
+            });
+        }
+    }
 }
 
 #[expect(
@@ -186,7 +196,13 @@ pub(crate) fn NotificationMenu() -> Element {
                 div { class: "flex items-center justify-between border-b border-border px-3 py-2.5",
                     strong { class: "text-xs", "Notifications" }
                     if count > 0 {
-                        span { class: "text-[9px] text-muted-foreground", "{count} need attention" }
+                        button {
+                            class: "rounded-md px-2 py-1 text-[9px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground",
+                            r#type: "button",
+                            aria_label: "Clear all notifications",
+                            onclick: move |_| center.clear_all(),
+                            "Clear all"
+                        }
                     }
                 }
                 div { class: "max-h-[min(420px,70vh)] overflow-y-auto p-1.5",
