@@ -5,7 +5,7 @@ use dioxus_code::advanced::{Buffer, CodeThemeStyles, TokenSpan};
 use dioxus_code::{CodeTheme, Language};
 use similar::{ChangeTag, TextDiff};
 
-use super::{CODE_EDITOR_CSS, editor_class, shared_code_theme};
+use super::{editor_class, shared_code_theme, CODE_EDITOR_CSS};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum DiffLayout {
@@ -88,32 +88,34 @@ pub fn UnifiedDiffView(
             style: "--dxc-editor-tab-width: {tab_width.max(1)}",
             role: "region",
             "aria-label": "Inline file changes",
-            if rows.is_empty() {
-                div { class: "dxc-diff-empty", "No changes" }
-            }
-            for row in rows {
-                match row {
-                    DiffRow::Line(line) => rsx! {
-                        DiffLineView { line }
-                    },
-                    DiffRow::Fold { id, lines } => {
-                        if expanded.read().contains(&id) {
-                            rsx! {
-                                for line in lines {
-                                    DiffLineView { line }
+            div { class: "dxc-diff-canvas",
+                if rows.is_empty() {
+                    div { class: "dxc-diff-empty", "No changes" }
+                }
+                for row in rows {
+                    match row {
+                        DiffRow::Line(line) => rsx! {
+                            DiffLineView { line }
+                        },
+                        DiffRow::Fold { id, lines } => {
+                            if expanded.read().contains(&id) {
+                                rsx! {
+                                    for line in lines {
+                                        DiffLineView { line }
+                                    }
                                 }
-                            }
-                        } else {
-                            let hidden_count = lines.len();
-                            rsx! {
-                                button {
-                                    class: "dxc-diff-fold",
-                                    "aria-label": "Expand {hidden_count} unchanged lines",
-                                    onclick: move |_| {
-                                        expanded.write().insert(id);
-                                    },
-                                    span { class: "dxc-diff-fold-meta", "⋯" }
-                                    span { class: "dxc-diff-fold-label", "Expand {hidden_count} unchanged lines" }
+                            } else {
+                                let hidden_count = lines.len();
+                                rsx! {
+                                    button {
+                                        class: "dxc-diff-fold",
+                                        "aria-label": "Expand {hidden_count} unchanged lines",
+                                        onclick: move |_| {
+                                            expanded.write().insert(id);
+                                        },
+                                        span { class: "dxc-diff-fold-meta", "⋯" }
+                                        span { class: "dxc-diff-fold-label", "Expand {hidden_count} unchanged lines" }
+                                    }
                                 }
                             }
                         }
@@ -355,16 +357,12 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        assert!(
-            lines
-                .iter()
-                .any(|line| line.kind == DiffLineKind::Delete && line.old_line == Some(10))
-        );
-        assert!(
-            lines
-                .iter()
-                .any(|line| line.kind == DiffLineKind::Insert && line.new_line == Some(20))
-        );
+        assert!(lines
+            .iter()
+            .any(|line| line.kind == DiffLineKind::Delete && line.old_line == Some(10)));
+        assert!(lines
+            .iter()
+            .any(|line| line.kind == DiffLineKind::Insert && line.new_line == Some(20)));
     }
 
     #[test]
@@ -377,13 +375,11 @@ mod tests {
         let rows = unified_diff_rows(&original, &current, Language::Rust, 0, 0, true);
 
         assert!(rows.iter().any(|row| matches!(row, DiffRow::Fold { .. })));
-        assert!(
-            rows.iter()
-                .any(|row| matches!(row, DiffRow::Line(line) if line.kind == DiffLineKind::Delete))
-        );
-        assert!(
-            rows.iter()
-                .any(|row| matches!(row, DiffRow::Line(line) if line.kind == DiffLineKind::Insert))
-        );
+        assert!(rows
+            .iter()
+            .any(|row| matches!(row, DiffRow::Line(line) if line.kind == DiffLineKind::Delete)));
+        assert!(rows
+            .iter()
+            .any(|row| matches!(row, DiffRow::Line(line) if line.kind == DiffLineKind::Insert)));
     }
 }

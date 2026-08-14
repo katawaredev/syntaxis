@@ -264,11 +264,15 @@
 }
 
 .dxc-diff-editor.dxc-diff-editor {
-  display: grid;
-  grid-template-columns: minmax(100%, max-content);
+  display: block;
   min-height: 100%;
   overflow: auto;
   padding: 14px 0;
+}
+.dxc-diff-canvas {
+  width: max-content;
+  min-width: 100%;
+  min-height: 100%;
 }
 .dxc-diff-editor.dxc-diff-layout-embedded {
   min-height: 0;
