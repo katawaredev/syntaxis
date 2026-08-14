@@ -1,7 +1,6 @@
 (() => {
 	const mounted = new WeakSet();
 	const mountedEditors = new WeakSet();
-	const draftKeys = new WeakMap();
 	const recognitions = new Map();
 
 	const mount = (container) => {
@@ -39,7 +38,6 @@
 
 	const mountEditor = (input) => {
 		if (mountedEditors.has(input)) {
-			input.syntaxisSyncDraft?.();
 			input.syntaxisSyncHeight?.();
 			return;
 		}
@@ -54,34 +52,8 @@
 			editor.style.height = `${height}px`;
 		};
 
-		const syncDraft = () => {
-			const key = input.dataset.draftKey;
-			if (!key || draftKeys.get(input) === key) return;
-			draftKeys.set(input, key);
-			try {
-				const saved = window.localStorage?.getItem(key) ?? "";
-				if (input.value !== saved) {
-					input.value = saved;
-					input.dispatchEvent(new Event("input", { bubbles: true }));
-				}
-			} catch {
-				// Storage can be unavailable in private or locked-down browsers.
-			}
-		};
-
 		input.syntaxisSyncHeight = sync;
-		input.syntaxisSyncDraft = syncDraft;
-		input.addEventListener("input", () => {
-			sync();
-			const key = input.dataset.draftKey;
-			if (!key) return;
-			try {
-				if (input.value) window.localStorage?.setItem(key, input.value);
-				else window.localStorage?.removeItem(key);
-			} catch {
-				// Draft persistence is a convenience, never a reason to block typing.
-			}
-		});
+		input.addEventListener("input", sync);
 		input.addEventListener("keydown", (event) => {
 			// Software keyboards have no practical Shift+Enter gesture. Keep Return
 			// available for multiline prompts; the adjacent Send button submits.
@@ -146,15 +118,12 @@
 				}
 			}
 		});
-		syncDraft();
 		requestAnimationFrame(sync);
 	};
 
 	new MutationObserver(discover).observe(document.documentElement, {
 		childList: true,
 		subtree: true,
-		attributes: true,
-		attributeFilter: ["data-draft-key"],
 	});
 	discover();
 

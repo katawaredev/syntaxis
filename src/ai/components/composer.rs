@@ -29,6 +29,7 @@ pub(crate) fn AgentComposer(
     on_cancel_edit: EventHandler<()>,
 ) -> Element {
     let speech_active = use_speech_bridge(draft, composer_error);
+    let mut draft_dirty = use_persisted_draft(draft, draft_key.clone());
     use_paste_bridge(attachments, composer_error);
     let images = attachments();
     let can_send = connected
@@ -77,8 +78,8 @@ pub(crate) fn AgentComposer(
                             placeholder: if working { "Steer the agent while it works…" } else { "Ask agent to change or inspect this project…" },
                             aria_label: "Message agent",
                             "data-images-enabled": accepts_images && connected,
-                            "data-draft-key": draft_key.clone(),
                             oninput: move |event| {
+                                draft_dirty.set(true);
                                 draft.set(event.value());
                                 composer_error.set(None);
                             },
@@ -214,13 +215,61 @@ fn submit_composer(
 }
 
 fn clear_saved_draft(draft_key: &str) {
-    let eval = document::eval(
-        r"
-        const key = await dioxus.recv();
-        try { window.localStorage?.removeItem(key); } catch {}
-        ",
-    );
-    let _ = eval.send(draft_key);
+    let draft_key = draft_key.to_owned();
+    spawn(async move {
+        let _ = crate::storage::remove(draft_key).await;
+    });
+}
+
+fn use_persisted_draft(draft: Signal<String>, draft_key: String) -> Signal<bool> {
+    let mut requested_key = use_signal(String::new);
+    let mut loaded_key = use_signal(|| None::<String>);
+    let mut dirty = use_signal(|| false);
+    let mut save_revision = use_signal(|| 0_u64);
+
+    use_effect(use_reactive((&draft_key,), move |(key,)| {
+        requested_key.set(key.clone());
+        loaded_key.set(None);
+        dirty.set(false);
+        let mut draft = draft;
+        draft.set(String::new());
+        spawn(async move {
+            let stored = crate::storage::get(key.clone())
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or_default();
+            if requested_key.peek().as_str() != key {
+                return;
+            }
+            if !*dirty.peek() {
+                draft.set(stored);
+            }
+            loaded_key.set(Some(key));
+        });
+    }));
+
+    use_effect(move || {
+        let value = draft();
+        let Some(key) = loaded_key() else {
+            return;
+        };
+        *save_revision.write() += 1;
+        let revision = save_revision();
+        spawn(async move {
+            dioxus_sdk_time::sleep(std::time::Duration::from_millis(150)).await;
+            if save_revision() != revision {
+                return;
+            }
+            if value.is_empty() {
+                let _ = crate::storage::remove(key).await;
+            } else {
+                let _ = crate::storage::set(key, value).await;
+            }
+        });
+    });
+
+    dirty
 }
 
 #[component]

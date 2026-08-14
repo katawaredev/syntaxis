@@ -231,14 +231,7 @@ fn RemoteTerminal(
             }
             let storage_key = storage_key.clone();
             spawn(async move {
-                let eval = document::eval(
-                    r"
-                    const key = await dioxus.recv();
-                    return window.localStorage?.getItem(key) ?? null;
-                    ",
-                );
-                let _ = eval.send(storage_key);
-                let stored = eval.join::<Option<String>>().fuse();
+                let stored = crate::storage::get(storage_key).fuse();
                 let timeout = dioxus_sdk_time::sleep(std::time::Duration::from_secs(2)).fuse();
                 pin_mut!(stored, timeout);
                 if let Either::Left((Ok(Some(id)), _)) = select(stored, timeout).await {
@@ -257,13 +250,10 @@ fn RemoteTerminal(
             let Some(id) = active() else {
                 return;
             };
-            let eval = document::eval(
-                r"
-                const [key, value] = await dioxus.recv();
-                window.localStorage?.setItem(key, value);
-                ",
-            );
-            let _ = eval.send((storage_key.clone(), id.0));
+            let storage_key = storage_key.clone();
+            spawn(async move {
+                let _ = crate::storage::set(storage_key, id.0).await;
+            });
         }
     });
     let mut client = use_coroutine({

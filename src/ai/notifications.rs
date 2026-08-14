@@ -7,7 +7,10 @@ use syntaxis_notifications::{
 };
 use syntaxis_ui::prelude::{AppIcon, Icon};
 
-use crate::app::Route;
+use crate::{
+    app::Route,
+    notification::{self, SystemNotification},
+};
 
 #[derive(Clone, Copy)]
 pub(crate) struct NotificationCenter {
@@ -138,7 +141,7 @@ pub(crate) fn use_notification_center() -> NotificationCenter {
                                         .await;
                                 } else {
                                     upsert(&mut items, notification.clone());
-                                    show_browser_notification(&notification);
+                                    show_system_notification(&notification);
                                 }
                             }
                             NotificationServerMessage::Removed {
@@ -291,7 +294,7 @@ fn upsert(items: &mut Signal<Vec<AppNotification>>, notification: AppNotificatio
     items.sort_by_key(|notification| std::cmp::Reverse(notification.created_at_ms));
 }
 
-fn show_browser_notification(notification: &AppNotification) {
+fn show_system_notification(notification: &AppNotification) {
     let path = notification_route(notification).to_string();
     let title = match notification.kind {
         NotificationKind::Completed => format!("{} finished", notification.title),
@@ -300,28 +303,16 @@ fn show_browser_notification(notification: &AppNotification) {
         }
         NotificationKind::Failed => format!("{} failed", notification.title),
     };
-    let eval = document::eval(
-        r#"
-        const [title, body, path, tag] = await dioxus.recv();
-        if (!("Notification" in globalThis) || Notification.permission !== "granted") return;
-        const alert = new Notification(title, { body, tag });
-        alert.onclick = () => {
-            globalThis.focus();
-            globalThis.location.href = path;
-            alert.close();
-        };
-        "#,
-    );
-    let _ = eval.send((
+    notification::show(SystemNotification {
         title,
-        format!("{} · {}", notification.workspace_name, notification.message),
-        path,
-        format!(
+        body: format!("{} · {}", notification.workspace_name, notification.message),
+        route: path,
+        tag: format!(
             "syntaxis-{}-{}",
             notification.workspace_id,
             notification.target.session_id()
         ),
-    ));
+    });
 }
 
 fn notification_route(notification: &AppNotification) -> Route {
