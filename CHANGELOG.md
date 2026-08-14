@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.8.0](https://github.com/katawaredev/syntaxis/compare/v0.7.0...v0.8.0) (2026-08-14)
+
+
+### Features
+
+* **ai:** allow cancelling editing messages ([efba1a7](https://github.com/katawaredev/syntaxis/commit/efba1a742fd299f1791dfbfe3b59b04b6f37d028))
+* **git:** make sections collapsible ([e01f651](https://github.com/katawaredev/syntaxis/commit/e01f651d8daa665b79b89e0650897f7dc79742c4))
+* **notifications:** dismiss all notifications ([ac812e7](https://github.com/katawaredev/syntaxis/commit/ac812e7a60b8d8fc962971430e75486e3d5e487c))
+
+
+### Bug Fixes
+
+* **ai:** identity crisis ([d27d678](https://github.com/katawaredev/syntaxis/commit/d27d67895aab1372db0eefc6a0a0d5cdb56db399))
+* **editor:** auto focus search panel ([7dbfe03](https://github.com/katawaredev/syntaxis/commit/7dbfe03ba779f7560d0ac66ba5169b080275af14))
+* **editor:** close tabs hanging ui ([34b5402](https://github.com/katawaredev/syntaxis/commit/34b5402a011dabb398aa3e123799b198b4782048))
+* **editor:** per file scroll restore ([affc2ad](https://github.com/katawaredev/syntaxis/commit/affc2ad060be0a0c899b3b36cb6a2e184451f22e))
+* **editor:** refresh opened stale files ([d32d7f8](https://github.com/katawaredev/syntaxis/commit/d32d7f82a523a3953d309b4e4611bd9bb90a3775))
+* **git:** revert expand behaviour ([fc139bc](https://github.com/katawaredev/syntaxis/commit/fc139bcce1ee1f88f95bc11ab77e47e074366f68))
+* **ui:** disable auto zoom ([36b6d2b](https://github.com/katawaredev/syntaxis/commit/36b6d2bdc7e58080d22804498a9c97251146350e))
+
 ## [0.7.0](https://github.com/katawaredev/syntaxis/compare/v0.6.2...v0.7.0) (2026-08-08)
 
 
