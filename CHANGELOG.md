@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.9.0](https://github.com/katawaredev/syntaxis/compare/v0.8.0...v0.9.0) (2026-08-15)
+
+
+### Features
+
+* **ai:** more pi features ([7d7548c](https://github.com/katawaredev/syntaxis/commit/7d7548c6d0429770edf70d774a13ffca91ead8a9))
+* **editor:** rework menu items ([9b44035](https://github.com/katawaredev/syntaxis/commit/9b44035cfee4c3b3ecf3171ce783bc6a501730b5))
+* **git:** add history actions ([aca9a0d](https://github.com/katawaredev/syntaxis/commit/aca9a0dab1cbe84944def53024780edabddc451c))
+* perf improvement ([79c9655](https://github.com/katawaredev/syntaxis/commit/79c965506d43084cd3e4c9f40e9c8845a99e0658))
+
+
+### Bug Fixes
+
+* **ai:** allow patch/minor version drift for pi without triggering warnings ([1519fd4](https://github.com/katawaredev/syntaxis/commit/1519fd49411edc10aaedda3ea9512b802c3ac3a5))
+* **ai:** allows deleting empty sessions ([ca1f290](https://github.com/katawaredev/syntaxis/commit/ca1f29012de03f0f67ce66482cb3e9dbfd905708))
+* **editor:** pin @codemirror/view ([5a663cf](https://github.com/katawaredev/syntaxis/commit/5a663cfed52a8afac171acd62b110d61755a7544))
+* **git:** expand view ([c295592](https://github.com/katawaredev/syntaxis/commit/c29559282d928ef4bd065dfe4316fa37eede0242))
+* **ui:** visual glitches ([ea9632e](https://github.com/katawaredev/syntaxis/commit/ea9632ecad8d70a5d5f41f5bcd3b358f61f735d7))
+
 ## [0.8.0](https://github.com/katawaredev/syntaxis/compare/v0.7.0...v0.8.0) (2026-08-14)
 
 
