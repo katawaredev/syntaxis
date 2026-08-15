@@ -139,16 +139,20 @@ fn RemoteAgent(
     let mut rename_value = use_signal(String::new);
     let mut delete_target = use_signal(|| None::<AgentSessionSummary>);
     let mut editing_message = use_signal(|| None::<PendingMessageEdit>);
+    let mut compact_dialog = use_signal(|| false);
+    let mut compact_instructions = use_signal(String::new);
     let mut session_toast = use_signal(|| None::<(String, Tone)>);
     let worktree_flow = use_worktree_flow(active_workspace, session_toast);
     let drawer_blocked = worktree_flow.is_dialog_open()
         || rename_target().is_some()
         || delete_target().is_some()
+        || compact_dialog()
         || extension_request().is_some();
     use_effect(move || {
         if worktree_flow.is_dialog_open()
             || rename_target().is_some()
             || delete_target().is_some()
+            || compact_dialog()
             || extension_request().is_some()
         {
             drawer.set(false);
@@ -251,6 +255,14 @@ fn RemoteAgent(
         && pending_new_prompt().is_none();
     rsx! {
         document::Stylesheet { href: AI_CHAT_CSS }
+        document::Title {
+            {
+                current
+                    .extension_title
+                    .clone()
+                    .unwrap_or_else(|| format!("{session_title} · Syntaxis"))
+            }
+        }
         div { class: if sidebar_open() { "grid size-full min-h-0 min-w-0 grid-cols-[260px_minmax(0,1fr)] overflow-hidden max-md:block" } else { "grid size-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] overflow-hidden max-md:block" },
             if sidebar_open() {
                 aside { class: "flex min-h-0 min-w-0 flex-col border-r border-border bg-sidebar max-md:hidden",
@@ -387,6 +399,35 @@ fn RemoteAgent(
                                     level,
                                 });
                         },
+                        on_compact: move |()| {
+                            compact_instructions.set(String::new());
+                            compact_dialog.set(true);
+                        },
+                        on_branch: move |(entry_id, text): (String, String)| {
+                            let (previous_draft, previous_attachments) = editing_message()
+                                .map_or_else(
+                                    || (draft(), attachments()),
+                                    |edit| (edit.previous_draft, edit.previous_attachments),
+                                );
+                            editing_message
+                                .set(
+                                    Some(PendingMessageEdit {
+                                        entry_id,
+                                        previous_draft,
+                                        previous_attachments,
+                                    }),
+                                );
+                            draft.set(text);
+                            attachments.set(Vec::new());
+                            composer_error.set(None);
+                            focus_ai_composer();
+                        },
+                        on_clone: move |()| {
+                            runtime.send_to_selected(ClientMessage::CloneSession);
+                        },
+                        on_export: move |()| {
+                            runtime.send_to_selected(ClientMessage::ExportHtml);
+                        },
                     }
                     if let Some(message) = connection.read().banner() {
                         div { class: "border-b border-warning/25 bg-warning/8 px-3 py-2 text-center text-[11px] text-warning",
@@ -419,6 +460,7 @@ fn RemoteAgent(
                             on_suggestion: move |text: String| {
                                 draft.set(text);
                                 composer_error.set(None);
+                                focus_ai_composer();
                             },
                             on_edit: move |(entry_id, text, images): (String, String, Vec<ImageAttachment>)| {
                                 let (previous_draft, previous_attachments) = editing_message()
@@ -448,10 +490,19 @@ fn RemoteAgent(
                             connected: composer_connected,
                             working: is_working,
                             pending_messages: current.pending_messages,
+                            steering_queue: current.steering_queue.clone(),
+                            follow_up_queue: current.follow_up_queue.clone(),
+                            extension_statuses: current.extension_statuses.clone(),
+                            extension_widgets: current.extension_widgets.clone(),
                             draft_key,
                             commands: current.commands.clone(),
                             accepts_images,
                             editing_message: editing_message().is_some(),
+                            workspace: active_workspace
+                                .current()
+                                .expect("active workspace is available in the agent route"),
+                            active_file: files_session.active_path(),
+                            active_reference: files_session.active_reference(),
                             on_send: send_prompt,
                             on_abort: move |()| runtime.send_to_selected(ClientMessage::Abort),
                             on_cancel_edit: move |()| {
@@ -524,6 +575,47 @@ fn RemoteAgent(
             active_workspace,
             files_session,
             event_state,
+        }
+        if compact_dialog() {
+            Modal {
+                title: "Compact context",
+                description: "Pi will summarize older conversation context while keeping the current task active.",
+                on_close: move |()| compact_dialog.set(false),
+                div { class: "flex flex-col gap-2.5 px-5 pt-3 pb-5",
+                    label {
+                        class: "text-xs font-medium",
+                        r#for: "compact-instructions",
+                        "Optional instructions"
+                    }
+                    textarea {
+                        id: "compact-instructions",
+                        class: "min-h-24 w-full resize-y rounded-md border border-input bg-background p-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20",
+                        value: compact_instructions(),
+                        autofocus: true,
+                        placeholder: "For example: preserve test failures and changed files",
+                        oninput: move |event| compact_instructions.set(event.value()),
+                    }
+                    DialogActions {
+                        Button {
+                            label: "Cancel",
+                            kind: ButtonKind::Ghost,
+                            onclick: move |_| compact_dialog.set(false),
+                        }
+                        Button {
+                            label: "Compact context",
+                            kind: ButtonKind::Primary,
+                            onclick: move |_| {
+                                let instructions = compact_instructions().trim().to_owned();
+                                runtime
+                                    .send_to_selected(ClientMessage::Compact {
+                                        custom_instructions: (!instructions.is_empty()).then_some(instructions),
+                                    });
+                                compact_dialog.set(false);
+                            },
+                        }
+                    }
+                }
+            }
         }
         if let Some(session) = rename_target() {
             Modal {
@@ -637,7 +729,7 @@ fn RemoteAgent(
     }
 }
 
-fn focus_ai_composer() {
+pub(crate) fn focus_ai_composer() {
     let _ = document::eval(
         r#"
         requestAnimationFrame(() => {

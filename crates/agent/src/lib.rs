@@ -1,6 +1,6 @@
 //! Shared, Pi-specific chat protocol used between the Syntaxis client and host.
 use serde::{Deserialize, Serialize};
-pub const PROTOCOL_VERSION: u16 = 7;
+pub const PROTOCOL_VERSION: u16 = 8;
 pub const MAX_PROMPT_BYTES: usize = 128 * 1024;
 pub const MAX_SESSION_NAME_CHARS: usize = 80;
 pub const MAX_PROMPT_IMAGES: usize = 5;
@@ -226,11 +226,17 @@ pub struct AgentSnapshot {
     pub model: Option<ModelSummary>,
     pub thinking_level: ThinkingLevel,
     pub pending_messages: usize,
+    pub steering_queue: Vec<String>,
+    pub follow_up_queue: Vec<String>,
+    pub fork_points: Vec<(String, String)>,
     pub items: Vec<ChatItem>,
     pub models: Vec<ModelSummary>,
     pub commands: Vec<PiCommand>,
     pub session_stats: Option<SessionStats>,
     pub pending_extension_request: Option<ExtensionUiRequest>,
+    pub extension_title: Option<String>,
+    pub extension_statuses: Vec<(String, String)>,
+    pub extension_widgets: Vec<ExtensionWidget>,
 }
 impl Default for AgentSnapshot {
     fn default() -> Self {
@@ -242,11 +248,17 @@ impl Default for AgentSnapshot {
             model: None,
             thinking_level: ThinkingLevel::Medium,
             pending_messages: 0,
+            steering_queue: Vec::new(),
+            follow_up_queue: Vec::new(),
+            fork_points: Vec::new(),
             items: Vec::new(),
             models: Vec::new(),
             commands: Vec::new(),
             session_stats: None,
             pending_extension_request: None,
+            extension_title: None,
+            extension_statuses: Vec::new(),
+            extension_widgets: Vec::new(),
         }
     }
 }
@@ -259,6 +271,12 @@ pub struct ExtensionUiRequest {
     pub options: Vec<String>,
     pub placeholder: Option<String>,
     pub prefill: Option<String>,
+}
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ExtensionWidget {
+    pub key: String,
+    pub lines: Vec<String>,
+    pub placement: String,
 }
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -289,6 +307,11 @@ pub enum ClientMessage {
     ForkMessage {
         entry_id: String,
     },
+    Compact {
+        custom_instructions: Option<String>,
+    },
+    CloneSession,
+    ExportHtml,
     Abort,
     SetModel {
         provider: String,
@@ -381,6 +404,9 @@ impl ClientMessage {
                     action.as_ref(),
                     Self::Prompt { .. }
                         | Self::ForkMessage { .. }
+                        | Self::Compact { .. }
+                        | Self::CloneSession
+                        | Self::ExportHtml
                         | Self::Abort
                         | Self::SetModel { .. }
                         | Self::SetThinkingLevel { .. }
@@ -401,6 +427,9 @@ impl ClientMessage {
             | Self::RenameSession { .. }
             | Self::Prompt { .. }
             | Self::ForkMessage { .. }
+            | Self::Compact { .. }
+            | Self::CloneSession
+            | Self::ExportHtml
             | Self::Abort
             | Self::SetModel { .. }
             | Self::SetThinkingLevel { .. }
@@ -423,6 +452,9 @@ impl ClientMessage {
             | Self::RenameSession { .. }
             | Self::Prompt { .. }
             | Self::ForkMessage { .. }
+            | Self::Compact { .. }
+            | Self::CloneSession
+            | Self::ExportHtml
             | Self::Abort
             | Self::SetModel { .. }
             | Self::SetThinkingLevel { .. }
@@ -472,6 +504,10 @@ pub enum ServerMessage {
         message: String,
         pending_messages: usize,
     },
+    QueueChanged {
+        steering: Vec<String>,
+        follow_up: Vec<String>,
+    },
     SessionChanged {
         session_id: Option<String>,
         session_name: Option<String>,
@@ -492,8 +528,17 @@ pub enum ServerMessage {
     ExtensionUiRequest {
         request: ExtensionUiRequest,
     },
+    ExtensionSurfaces {
+        title: Option<String>,
+        statuses: Vec<(String, String)>,
+        widgets: Vec<ExtensionWidget>,
+    },
     ComposerText {
         text: String,
+    },
+    ExportReady {
+        filename: String,
+        data_base64: String,
     },
     Error {
         error: AgentError,

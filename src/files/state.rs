@@ -1,4 +1,5 @@
 use dioxus::prelude::*;
+use dioxus_code_editor::EditorSelection;
 use syntaxis_editor::{BufferStatus, EditorBuffer, EditorConfig};
 use syntaxis_git::{DiffKind, UnifiedDiff};
 use syntaxis_ui::prelude::Tone;
@@ -186,6 +187,7 @@ pub(crate) struct FilesSessionState {
     pub(super) workspace_id: Signal<Option<String>>,
     pub(super) documents: Signal<Vec<OpenDocument>>,
     pub(super) active_path: Signal<Option<String>>,
+    pub(super) editor_selection: Signal<EditorSelection>,
     pub(super) processed_event_revision: Signal<u64>,
 }
 
@@ -194,11 +196,28 @@ pub(crate) fn use_files_session() -> FilesSessionState {
         workspace_id: use_signal(|| None),
         documents: use_signal(Vec::new),
         active_path: use_signal(|| None),
+        editor_selection: use_signal(EditorSelection::default),
         processed_event_revision: use_signal(|| 0),
     }
 }
 
 impl FilesSessionState {
+    pub(crate) fn active_path(self) -> Option<String> {
+        (self.active_path)()
+    }
+
+    pub(crate) fn active_reference(self) -> Option<String> {
+        let path = (self.active_path)()?;
+        let documents = self.documents.read();
+        let OpenDocument::Text(buffer) =
+            documents.iter().find(|document| document.path() == path)?
+        else {
+            return None;
+        };
+        let selection = (self.editor_selection)();
+        Some(format_reference(&path, &buffer.contents, &selection))
+    }
+
     pub(crate) fn has_dirty(self) -> bool {
         self.documents.read().iter().any(OpenDocument::is_dirty)
     }
@@ -207,6 +226,7 @@ impl FilesSessionState {
         self.workspace_id.set(None);
         self.documents.set(Vec::new());
         self.active_path.set(None);
+        self.editor_selection.set(EditorSelection::default());
         self.processed_event_revision.set(0);
     }
 
@@ -217,6 +237,68 @@ impl FilesSessionState {
         self.workspace_id.set(Some(workspace_id));
         self.documents.set(Vec::new());
         self.active_path.set(None);
+        self.editor_selection.set(EditorSelection::default());
         self.processed_event_revision.set(0);
+    }
+}
+
+fn format_reference(path: &str, source: &str, selection: &EditorSelection) -> String {
+    let start = char_boundary_at_or_before(source, selection.start.min(source.len()));
+    let end = char_boundary_at_or_before(source, selection.end.min(source.len()));
+    let (start, end) = if start <= end {
+        (start, end)
+    } else {
+        (end, start)
+    };
+    let (start_line, start_column) = line_column_at(source, start);
+    if start == end {
+        return format!("{path}:{start_line}:{start_column}");
+    }
+    let (end_line, end_column) = line_column_at(source, end);
+    if start_line == end_line {
+        format!("{path}:{start_line}:{start_column}-{end_column}")
+    } else {
+        format!("{path}:{start_line}:{start_column}-{end_line}:{end_column}")
+    }
+}
+
+fn char_boundary_at_or_before(source: &str, mut offset: usize) -> usize {
+    while offset > 0 && !source.is_char_boundary(offset) {
+        offset -= 1;
+    }
+    offset
+}
+
+fn line_column_at(source: &str, offset: usize) -> (usize, usize) {
+    let prefix = &source[..offset.min(source.len())];
+    let line = prefix.bytes().filter(|byte| *byte == b'\n').count() + 1;
+    let column = prefix
+        .rsplit_once('\n')
+        .map_or(prefix, |(_, tail)| tail)
+        .chars()
+        .count()
+        + 1;
+    (line, column)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_reference;
+    use dioxus_code_editor::EditorSelection;
+
+    #[test]
+    fn active_reference_includes_multiline_selection() {
+        assert_eq!(
+            format_reference(
+                "src/main.rs",
+                "one\ntwø\nthree",
+                &EditorSelection {
+                    start: 4,
+                    end: 9,
+                    ..EditorSelection::default()
+                },
+            ),
+            "src/main.rs:2:1-3:1"
+        );
     }
 }

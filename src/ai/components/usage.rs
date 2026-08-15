@@ -1,7 +1,11 @@
 use super::*;
 
 #[component]
-pub(super) fn UsageMenu(stats: Option<SessionStats>) -> Element {
+pub(super) fn UsageMenu(
+    stats: Option<SessionStats>,
+    compact_disabled: bool,
+    on_compact: EventHandler<()>,
+) -> Element {
     let mut open = use_signal(|| false);
     let percent = stats.as_ref().map_or(0, context_percent);
     let remaining = 100_u8.saturating_sub(percent);
@@ -48,14 +52,25 @@ pub(super) fn UsageMenu(stats: Option<SessionStats>) -> Element {
                 }
             }
             PopoverContent { class: "touch-popover absolute top-[calc(100%+6px)] right-0 z-80 w-76 rounded-xl border border-border bg-popover p-3 shadow-2xl",
-                UsagePopover { stats }
+                UsagePopover {
+                    stats,
+                    compact_disabled,
+                    on_compact: move |()| {
+                        open.set(false);
+                        on_compact.call(());
+                    },
+                }
             }
         }
     }
 }
 
 #[component]
-fn UsagePopover(stats: Option<SessionStats>) -> Element {
+fn UsagePopover(
+    stats: Option<SessionStats>,
+    compact_disabled: bool,
+    on_compact: EventHandler<()>,
+) -> Element {
     rsx! {
         div { class: "mb-3 flex items-center gap-2",
             div { class: "grid size-7 place-items-center rounded-lg bg-primary/10 text-primary",
@@ -79,6 +94,14 @@ fn UsagePopover(stats: Option<SessionStats>) -> Element {
                     value: stats.total_messages.to_string(),
                 }
                 UsageStat { label: "Tool calls", value: stats.tool_calls.to_string() }
+            }
+            button {
+                class: "mt-2 flex min-h-9 w-full items-center justify-center gap-2 rounded-lg border border-input bg-background px-3 text-[10px] font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40",
+                disabled: compact_disabled,
+                title: "Summarize older context while preserving the current task",
+                onclick: move |_| on_compact.call(()),
+                Icon { icon: AppIcon::Cleanup, size: 13 }
+                "Compact context"
             }
         } else {
             p { class: "rounded-lg bg-background/60 px-3 py-5 text-center text-[10px] text-muted-foreground",

@@ -122,6 +122,7 @@ impl AgentRuntime {
         let prompt = ComposerSubmission {
             text,
             images: submission.images,
+            delivery: submission.delivery,
         };
         if let Some(session_id) = (self.selected_id)() {
             self.client.send(session_action(
@@ -130,7 +131,7 @@ impl AgentRuntime {
                     text: prompt.text,
                     images: prompt.images,
                     delivery: if working {
-                        PromptDelivery::Steer
+                        prompt.delivery
                     } else {
                         PromptDelivery::Prompt
                     },

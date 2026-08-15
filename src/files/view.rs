@@ -77,6 +77,7 @@ use preview::{
     UnsupportedPreview, file_glyph, file_label, image_mime, is_csv, is_markdown, is_svg,
 };
 use search::WorkspaceSearchResult;
+pub(crate) use search::{SearchScope, WorkspaceSearchOptions, search_workspace_files};
 
 const MAX_TEXT_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_PREVIEW_BYTES: u64 = 4 * 1024 * 1024;
@@ -163,7 +164,15 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
     let replace_query = use_signal(String::new);
     let replace_open = use_signal(|| false);
     let mut go_to_line = use_signal(|| false);
-    let mut editor_selection = use_signal(EditorSelection::default);
+    let mut editor_selection = session.editor_selection;
+    let mut selection_path = use_signal(|| None::<String>);
+    use_effect(move || {
+        let path = active_path();
+        if selection_path() != path {
+            selection_path.set(path);
+            editor_selection.set(EditorSelection::default());
+        }
+    });
     let editor_command = use_signal(|| None::<EditorCommand>);
     let command_revision = use_signal(|| 0_u64);
     let mut autocomplete_enabled = use_signal(|| false);

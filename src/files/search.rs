@@ -20,7 +20,7 @@ const MAX_OCCURRENCES_PER_FILE: usize = 5;
 const MAX_HIGHLIGHT_RANGES_PER_FILE: usize = 100;
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-pub(super) enum SearchScope {
+pub(crate) enum SearchScope {
     FileNames,
     Contents,
     #[default]
@@ -48,10 +48,10 @@ impl SearchScope {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub(super) struct WorkspaceSearchOptions {
-    pub(super) fuzzy: bool,
-    pub(super) case_sensitive: bool,
-    pub(super) scope: SearchScope,
+pub(crate) struct WorkspaceSearchOptions {
+    pub(crate) fuzzy: bool,
+    pub(crate) case_sensitive: bool,
+    pub(crate) scope: SearchScope,
 }
 
 impl Default for WorkspaceSearchOptions {
@@ -95,8 +95,8 @@ impl PreparedQuery {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub(super) struct WorkspaceSearchResult {
-    pub(super) entry: FileEntry,
+pub(crate) struct WorkspaceSearchResult {
+    pub(crate) entry: FileEntry,
     pub(super) matches: Vec<EditorRange>,
     pub(super) target: Option<EditorRange>,
     pub(super) occurrences: Vec<SearchOccurrence>,
@@ -112,12 +112,12 @@ pub(super) struct SearchOccurrence {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-pub(super) struct WorkspaceSearchResults {
-    pub(super) items: Vec<WorkspaceSearchResult>,
+pub(crate) struct WorkspaceSearchResults {
+    pub(crate) items: Vec<WorkspaceSearchResult>,
     pub(super) truncated: bool,
 }
 
-pub(super) async fn search_workspace_files(
+pub(crate) async fn search_workspace_files(
     workspace: WorkspaceRecord,
     query: String,
     options: WorkspaceSearchOptions,

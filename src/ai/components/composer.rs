@@ -2,14 +2,19 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use dioxus::prelude::*;
 use serde::Deserialize;
 use syntaxis_agent::{
-    ImageAttachment, MAX_IMAGE_BYTES, MAX_PROMPT_IMAGES, MAX_TOTAL_IMAGE_BYTES, PiCommand,
+    ExtensionWidget, ImageAttachment, MAX_IMAGE_BYTES, MAX_PROMPT_IMAGES, MAX_TOTAL_IMAGE_BYTES,
+    PiCommand, PromptDelivery,
 };
 use syntaxis_ui::prelude::{AppIcon, Icon, IconButton};
+use syntaxis_workspace::{EntryKind, WorkspaceRecord};
+
+use crate::files::{SearchScope, WorkspaceSearchOptions, search_workspace_files};
 
 #[derive(Clone)]
 pub(crate) struct ComposerSubmission {
     pub(crate) text: String,
     pub(crate) images: Vec<ImageAttachment>,
+    pub(crate) delivery: PromptDelivery,
 }
 
 #[component]
@@ -20,30 +25,151 @@ pub(crate) fn AgentComposer(
     connected: bool,
     working: bool,
     pending_messages: usize,
+    steering_queue: Vec<String>,
+    follow_up_queue: Vec<String>,
+    extension_statuses: Vec<(String, String)>,
+    extension_widgets: Vec<ExtensionWidget>,
     draft_key: String,
     commands: Vec<PiCommand>,
     accepts_images: bool,
     editing_message: bool,
+    workspace: WorkspaceRecord,
+    active_file: Option<String>,
+    active_reference: Option<String>,
     on_send: EventHandler<ComposerSubmission>,
     on_abort: EventHandler<()>,
     on_cancel_edit: EventHandler<()>,
 ) -> Element {
     let speech_active = use_speech_bridge(draft, composer_error);
+    let mut touch_input = use_signal(|| false);
     let mut draft_dirty = use_persisted_draft(draft, &draft_key);
     use_paste_bridge(attachments, composer_error);
     let images = attachments();
     let can_send = connected
         && (!draft().trim().is_empty() || !images.is_empty())
         && (images.is_empty() || accepts_images);
-    let first_command = matching_commands(&commands, &draft()).first().cloned();
+    let matched_commands = matching_commands(&commands, &draft());
+    let mut command_index = use_signal(|| 0_usize);
+    let command_key = draft().strip_prefix('/').map(str::to_owned);
+    use_effect(use_reactive((&command_key,), move |_| command_index.set(0)));
+    let selected_command = matched_commands
+        .get(command_index().min(matched_commands.len().saturating_sub(1)))
+        .cloned();
+    let mention = mention_query(&draft());
+    let bootstrap_workspace = workspace.clone();
+    let mention_bootstrap = use_resource(move || {
+        let workspace = bootstrap_workspace.clone();
+        async move { crate::workspace::client::workspace_files_bootstrap(workspace).await }
+    });
+    let mention_workspace = workspace.clone();
+    let mention_results = use_resource(move || {
+        let workspace = mention_workspace.clone();
+        let query = mention_query(&draft()).map(|mention| mention.query);
+        let bootstrap = mention_bootstrap().and_then(Result::ok);
+        let root_candidates = bootstrap
+            .as_ref()
+            .map(|bootstrap| {
+                bootstrap
+                    .entries
+                    .iter()
+                    .filter(|entry| entry.kind != EntryKind::Symlink)
+                    .filter(|entry| {
+                        entry.kind == EntryKind::File
+                            || !entry.path.as_str().chars().any(char::is_whitespace)
+                    })
+                    .take(12)
+                    .map(|entry| {
+                        let mut path = entry.path.as_str().to_owned();
+                        if entry.kind == EntryKind::Directory {
+                            path.push('/');
+                        }
+                        path
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let ignored_paths = bootstrap.map(|bootstrap| bootstrap.ignored_paths);
+        async move {
+            let Some(query) = query else {
+                return Vec::new();
+            };
+            if query.is_empty() {
+                return root_candidates;
+            }
+            let Some(ignored_paths) = ignored_paths else {
+                return Vec::new();
+            };
+            dioxus_sdk_time::sleep(std::time::Duration::from_millis(120)).await;
+            search_workspace_files(
+                workspace,
+                query,
+                WorkspaceSearchOptions {
+                    fuzzy: true,
+                    case_sensitive: false,
+                    scope: SearchScope::FileNames,
+                },
+                ignored_paths.into_iter().collect(),
+                false,
+            )
+            .await
+            .map(|results| {
+                results
+                    .items
+                    .into_iter()
+                    .take(12)
+                    .map(|item| item.entry.path.as_str().to_owned())
+                    .collect()
+            })
+            .unwrap_or_default()
+        }
+    });
+    let mentioned_files = mention_results().unwrap_or_default();
+    let mention_status = mention.as_ref().and_then(|mention| {
+        if mention_bootstrap().is_none() || mention_results().is_none() {
+            Some("Searching project files…".to_owned())
+        } else if mention_bootstrap().is_some_and(|result| result.is_err()) {
+            Some("Project file search is unavailable.".to_owned())
+        } else if !mention.query.is_empty() && mentioned_files.is_empty() {
+            Some("No project files match.".to_owned())
+        } else if mentioned_files.is_empty() {
+            Some("No project files yet.".to_owned())
+        } else {
+            None
+        }
+    });
+    let first_mentioned_file = mentioned_files.first().cloned();
+    let mut mention_index = use_signal(|| 0_usize);
+    let mention_key = mention.as_ref().map(|mention| mention.query.clone());
+    use_effect(use_reactive((&mention_key,), move |_| mention_index.set(0)));
+    let selected_mentioned_file = mentioned_files
+        .get(mention_index().min(mentioned_files.len().saturating_sub(1)))
+        .cloned()
+        .or(first_mentioned_file);
     let keyboard_commands = commands.clone();
     let button_commands = commands.clone();
+    let follow_up_commands = commands.clone();
     let keyboard_draft_key = draft_key.clone();
     let button_draft_key = draft_key.clone();
+    let follow_up_draft_key = draft_key.clone();
     rsx! {
         footer { class: "bg-card px-2.5 pt-1 pb-[max(0.65rem,env(safe-area-inset-bottom))]",
             div { class: "relative mx-auto max-w-3xl",
-                SlashCommandMenu { commands, draft }
+                SlashCommandMenu {
+                    commands: matched_commands.clone(),
+                    draft,
+                    selected: command_index(),
+                }
+                FileMentionMenu {
+                    paths: mentioned_files.clone(),
+                    draft,
+                    mention: mention.clone(),
+                    selected: mention_index(),
+                    status: mention_status,
+                }
+                ExtensionWidgets {
+                    widgets: extension_widgets.clone(),
+                    placement: "aboveEditor",
+                }
                 div { class: "overflow-hidden rounded-2xl border border-input bg-card shadow-[0_8px_30px_#0002] transition-[border,box-shadow] focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/20",
                     if editing_message {
                         div { class: "flex items-center justify-between gap-3 border-b border-border bg-secondary/45 px-3 py-2 text-[11px]",
@@ -68,6 +194,7 @@ pub(crate) fn AgentComposer(
                             },
                         }
                     }
+                    QueuePreview { steering: steering_queue, follow_up: follow_up_queue }
                     div { class: "ai-composer-editor",
                         textarea {
                             id: "syntaxis-ai-composer",
@@ -78,6 +205,7 @@ pub(crate) fn AgentComposer(
                             placeholder: if working { "Steer the agent while it works…" } else { "Ask agent to change or inspect this project…" },
                             aria_label: "Message agent",
                             "data-images-enabled": accepts_images && connected,
+                            ontouchstart: move |_| touch_input.set(true),
                             oninput: move |event| {
                                 draft_dirty.set(true);
                                 draft.set(event.value());
@@ -87,12 +215,65 @@ pub(crate) fn AgentComposer(
                                 if editing_message && event.key() == Key::Escape {
                                     event.prevent_default();
                                     on_cancel_edit.call(());
-                                } else if event.key() == Key::Enter
-                                    && !event.modifiers().contains(Modifiers::SHIFT)
+                                } else if mention.is_some() && !mentioned_files.is_empty()
+                                    && matches!(event.key(), Key::ArrowDown | Key::ArrowUp)
                                 {
                                     event.prevent_default();
-                                    if let Some(command) = first_command.as_ref() {
+                                    let length = mentioned_files.len();
+                                    if event.key() == Key::ArrowDown {
+                                        mention_index.set((mention_index() + 1) % length);
+                                    } else {
+                                        mention_index.set((mention_index() + length - 1) % length);
+                                    }
+                                } else if mention.is_some() && event.key() == Key::Escape {
+                                    event.prevent_default();
+                                    draft
+                                        .set(
+                                            format!(
+                                                "{}@",
+                                                &draft()[..mention.as_ref().map_or(0, |value| value.start)],
+                                            ),
+                                        );
+                                } else if mention.is_some() && event.key() == Key::Tab {
+                                    event.prevent_default();
+                                    if let (Some(mention), Some(path)) = (
+                                        mention.as_ref(),
+                                        selected_mentioned_file.as_ref(),
+                                    ) {
+                                        insert_file_mention(draft, mention, path);
+                                    }
+                                } else if command_key.is_some() && !matched_commands.is_empty()
+                                    && matches!(event.key(), Key::ArrowDown | Key::ArrowUp)
+                                {
+                                    event.prevent_default();
+                                    let length = matched_commands.len();
+                                    if event.key() == Key::ArrowDown {
+                                        command_index.set((command_index() + 1) % length);
+                                    } else {
+                                        command_index.set((command_index() + length - 1) % length);
+                                    }
+                                } else if command_key.is_some()
+                                    && (event.key() == Key::Tab || (event.key() == Key::Enter && !touch_input()))
+                                    && selected_command.is_some()
+                                {
+                                    event.prevent_default();
+                                    if let Some(command) = selected_command.as_ref() {
                                         draft.set(format!("/{} ", command.name));
+                                    }
+                                } else if command_key.is_some() && !matched_commands.is_empty()
+                                    && event.key() == Key::Escape
+                                {
+                                    event.prevent_default();
+                                    draft.set(String::new());
+                                } else if event.key() == Key::Enter
+                                    && !event.modifiers().contains(Modifiers::SHIFT) && !touch_input()
+                                {
+                                    event.prevent_default();
+                                    if let (Some(mention), Some(path)) = (
+                                        mention.as_ref(),
+                                        selected_mentioned_file.as_ref(),
+                                    ) {
+                                        insert_file_mention(draft, mention, path);
                                     } else {
                                         submit_composer(
                                             can_send,
@@ -101,6 +282,7 @@ pub(crate) fn AgentComposer(
                                             composer_error,
                                             &keyboard_commands,
                                             &keyboard_draft_key,
+                                            if working { PromptDelivery::Steer } else { PromptDelivery::Prompt },
                                             on_send,
                                         );
                                     }
@@ -124,6 +306,31 @@ pub(crate) fn AgentComposer(
                                 },
                             }
                             Icon { icon: AppIcon::Attachment, size: 15 }
+                        }
+                        if let Some(active_file) = active_file.clone() {
+                            button {
+                                class: "grid size-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+                                r#type: "button",
+                                aria_label: "Reference active file",
+                                title: "Reference {active_file}",
+                                onclick: move |_| append_file_reference(draft, &active_file),
+                                Icon { icon: AppIcon::Code, size: 15 }
+                            }
+                        }
+                        if let Some(active_reference) = active_reference
+                            .clone()
+                            .filter(|reference| {
+                                active_file.as_ref().is_none_or(|path| reference != path)
+                            })
+                        {
+                            button {
+                                class: "grid size-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+                                r#type: "button",
+                                aria_label: "Reference editor location or selection",
+                                title: "Reference {active_reference}",
+                                onclick: move |_| append_text_reference(draft, &active_reference),
+                                Icon { icon: AppIcon::LineNumbers, size: 15 }
+                            }
                         }
                         IconButton {
                             label: if speech_active() { "Stop dictation" } else { "Dictate message" },
@@ -167,11 +374,43 @@ pub(crate) fn AgentComposer(
                                         composer_error,
                                         &button_commands,
                                         &button_draft_key,
+                                        if working { PromptDelivery::Steer } else { PromptDelivery::Prompt },
                                         on_send,
                                     );
                                 },
                                 Icon { icon: AppIcon::Send, size: 15 }
                             }
+                            if working {
+                                button {
+                                    class: "grid size-8.5 place-items-center rounded-lg border border-input bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-35",
+                                    disabled: !can_send,
+                                    aria_label: "Send after agent finishes",
+                                    title: "Follow up after the current task finishes",
+                                    onclick: move |_| {
+                                        submit_composer(
+                                            can_send,
+                                            draft,
+                                            attachments,
+                                            composer_error,
+                                            &follow_up_commands,
+                                            &follow_up_draft_key,
+                                            PromptDelivery::FollowUp,
+                                            on_send,
+                                        );
+                                    },
+                                    Icon { icon: AppIcon::Next, size: 15 }
+                                }
+                            }
+                        }
+                    }
+                }
+                ExtensionWidgets { widgets: extension_widgets, placement: "belowEditor" }
+                if !extension_statuses.is_empty() {
+                    div {
+                        class: "flex flex-wrap gap-x-3 gap-y-1 px-2.5 pt-1.5 text-[9px] text-muted-foreground",
+                        role: "status",
+                        for (key, text) in extension_statuses {
+                            span { key: "{key}", title: "{key}", "{text}" }
                         }
                     }
                 }
@@ -185,6 +424,165 @@ pub(crate) fn AgentComposer(
     }
 }
 
+#[component]
+fn ExtensionWidgets(widgets: Vec<ExtensionWidget>, placement: String) -> Element {
+    rsx! {
+        for widget in widgets.into_iter().filter(|widget| widget.placement == placement) {
+            div {
+                key: "{widget.key}",
+                class: "mb-1 max-h-36 overflow-auto rounded-lg border border-border bg-secondary/35 px-3 py-2 font-mono text-[10px] leading-relaxed text-muted-foreground",
+                for line in widget.lines {
+                    div { "{line}" }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn QueuePreview(steering: Vec<String>, follow_up: Vec<String>) -> Element {
+    if steering.is_empty() && follow_up.is_empty() {
+        return rsx! {};
+    }
+    rsx! {
+        div {
+            class: "grid max-h-28 gap-1 overflow-y-auto border-b border-border/70 bg-secondary/25 px-3 py-2 text-[10px]",
+            role: "status",
+            "aria-live": "polite",
+            for message in steering {
+                div { class: "flex min-w-0 items-center gap-2",
+                    span { class: "shrink-0 rounded bg-primary/10 px-1.5 py-0.5 font-medium text-primary",
+                        "Next turn"
+                    }
+                    span { class: "truncate text-muted-foreground", "{message}" }
+                }
+            }
+            for message in follow_up {
+                div { class: "flex min-w-0 items-center gap-2",
+                    span { class: "shrink-0 rounded bg-secondary px-1.5 py-0.5 font-medium text-foreground",
+                        "After task"
+                    }
+                    span { class: "truncate text-muted-foreground", "{message}" }
+                }
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct FileMention {
+    start: usize,
+    query: String,
+}
+
+fn mention_query(text: &str) -> Option<FileMention> {
+    let start = text
+        .rfind(|character: char| character.is_whitespace())
+        .map_or(0, |index| index + 1);
+    let token = &text[start..];
+    token.strip_prefix('@').map(|query| FileMention {
+        start,
+        query: query.to_owned(),
+    })
+}
+
+fn insert_file_mention(mut draft: Signal<String>, mention: &FileMention, path: &str) {
+    let current = draft();
+    let mut updated = current[..mention.start].to_owned();
+    updated.push('@');
+    if path.chars().any(char::is_whitespace) {
+        updated.push('"');
+        updated.push_str(path);
+        updated.push('"');
+    } else {
+        updated.push_str(path);
+    }
+    if !path.ends_with('/') {
+        updated.push(' ');
+    }
+    draft.set(updated);
+    crate::ai::agent_view::focus_ai_composer();
+}
+
+fn append_file_reference(mut draft: Signal<String>, path: &str) {
+    let mut value = draft();
+    if !value.is_empty() && !value.ends_with(char::is_whitespace) {
+        value.push(' ');
+    }
+    value.push('@');
+    if path.chars().any(char::is_whitespace) {
+        value.push('"');
+        value.push_str(path);
+        value.push('"');
+    } else {
+        value.push_str(path);
+    }
+    value.push(' ');
+    draft.set(value);
+    crate::ai::agent_view::focus_ai_composer();
+}
+
+fn append_text_reference(mut draft: Signal<String>, reference: &str) {
+    let mut value = draft();
+    if !value.is_empty() && !value.ends_with(char::is_whitespace) {
+        value.push(' ');
+    }
+    value.push_str(reference);
+    value.push(' ');
+    draft.set(value);
+    crate::ai::agent_view::focus_ai_composer();
+}
+
+#[component]
+fn FileMentionMenu(
+    paths: Vec<String>,
+    mut draft: Signal<String>,
+    mention: Option<FileMention>,
+    selected: usize,
+    status: Option<String>,
+) -> Element {
+    rsx! {
+        if let Some(mention) = mention {
+            if !paths.is_empty() || status.is_some() {
+                div { class: "absolute right-0 bottom-[calc(100%+7px)] left-0 z-60 overflow-hidden rounded-xl border border-border bg-popover shadow-2xl",
+                    div { class: "flex items-center gap-2 border-b border-border px-3 py-2 text-[10px] text-muted-foreground",
+                        Icon { icon: AppIcon::Code, size: 13 }
+                        "Project files"
+                        span { class: "ml-auto max-[520px]:hidden", "Enter to reference" }
+                        span { class: "ml-auto hidden max-[520px]:inline", "Tap to reference" }
+                    }
+                    div { class: "max-h-[min(16rem,35dvh)] overflow-y-auto p-1.5",
+                        if let Some(status) = status {
+                            p {
+                                class: "px-2.5 py-4 text-center text-[10px] text-muted-foreground",
+                                role: "status",
+                                "{status}"
+                            }
+                        }
+                        for (index, path) in paths.into_iter().enumerate() {
+                            button {
+                                key: "{path}",
+                                class: if index == selected { "flex min-h-9 w-full items-center gap-2 rounded-lg bg-accent px-2.5 py-2 text-left max-[520px]:min-h-11" } else { "flex min-h-9 w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left hover:bg-accent max-[520px]:min-h-11" },
+                                onclick: {
+                                    let mention = mention.clone();
+                                    let path = path.clone();
+                                    move |_| insert_file_mention(draft, &mention, &path)
+                                },
+                                Icon { icon: AppIcon::Code, size: 13 }
+                                span { class: "truncate font-mono text-[10px]", "{path}" }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "composer submission intentionally receives its independent reactive inputs explicitly"
+)]
 fn submit_composer(
     can_send: bool,
     draft: Signal<String>,
@@ -192,6 +590,7 @@ fn submit_composer(
     mut composer_error: Signal<Option<String>>,
     commands: &[PiCommand],
     draft_key: &str,
+    delivery: PromptDelivery,
     on_send: EventHandler<ComposerSubmission>,
 ) {
     if !can_send {
@@ -209,6 +608,7 @@ fn submit_composer(
     on_send.call(ComposerSubmission {
         text: draft(),
         images: attachments(),
+        delivery,
     });
     clear_saved_draft(draft_key);
     attachments.set(Vec::new());
@@ -274,19 +674,24 @@ fn use_persisted_draft(draft: Signal<String>, draft_key: &str) -> Signal<bool> {
 }
 
 #[component]
-fn SlashCommandMenu(commands: Vec<PiCommand>, draft: Signal<String>) -> Element {
-    let matches = matching_commands(&commands, &draft());
+fn SlashCommandMenu(commands: Vec<PiCommand>, draft: Signal<String>, selected: usize) -> Element {
     rsx! {
-        if !matches.is_empty() {
+        if !commands.is_empty() {
             div { class: "absolute right-0 bottom-[calc(100%+7px)] left-0 z-60 overflow-hidden rounded-xl border border-border bg-popover shadow-2xl",
                 div { class: "flex items-center gap-2 border-b border-border px-3 py-2 text-[10px] text-muted-foreground",
                     Icon { icon: AppIcon::Command, size: 13 }
                     "Agent commands"
-                    span { class: "ml-auto", "Enter to insert" }
+                    span { class: "ml-auto max-[520px]:hidden", "Enter to insert" }
+                    span { class: "ml-auto hidden max-[520px]:inline", "Tap to insert" }
                 }
-                div { class: "max-h-64 overflow-y-auto p-1.5",
-                    for command in matches {
-                        SlashCommandRow { key: "{command.name}", command, draft }
+                div { class: "max-h-[min(16rem,35dvh)] overflow-y-auto p-1.5",
+                    for (index, command) in commands.into_iter().enumerate() {
+                        SlashCommandRow {
+                            key: "{command.name}",
+                            command,
+                            draft,
+                            active: index == selected,
+                        }
                     }
                 }
             }
@@ -295,12 +700,15 @@ fn SlashCommandMenu(commands: Vec<PiCommand>, draft: Signal<String>) -> Element 
 }
 
 #[component]
-fn SlashCommandRow(command: PiCommand, mut draft: Signal<String>) -> Element {
+fn SlashCommandRow(command: PiCommand, mut draft: Signal<String>, active: bool) -> Element {
     let insertion = format!("/{} ", command.name);
     rsx! {
         button {
-            class: "flex min-h-10 w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left hover:bg-accent",
-            onclick: move |_| draft.set(insertion.clone()),
+            class: if active { "flex min-h-10 w-full items-center gap-3 rounded-lg bg-accent px-2.5 py-2 text-left max-[520px]:min-h-11" } else { "flex min-h-10 w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left hover:bg-accent max-[520px]:min-h-11" },
+            onclick: move |_| {
+                draft.set(insertion.clone());
+                crate::ai::agent_view::focus_ai_composer();
+            },
             span { class: "grid size-6 shrink-0 place-items-center rounded-md bg-secondary font-mono text-[10px] text-primary",
                 "/"
             }
@@ -397,6 +805,35 @@ pub(crate) async fn load_images(
             }),
             Err(_) => error.set(Some(format!("Could not read {}.", file.name()))),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FileMention, mention_query};
+
+    #[test]
+    fn mention_query_uses_the_final_token() {
+        assert_eq!(
+            mention_query("@"),
+            Some(FileMention {
+                start: 0,
+                query: String::new(),
+            })
+        );
+        assert_eq!(
+            mention_query("Review @src/com"),
+            Some(FileMention {
+                start: 7,
+                query: "src/com".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn mention_query_ignores_completed_references() {
+        assert_eq!(mention_query("Review @src/main.rs please"), None);
+        assert_eq!(mention_query("plain text"), None);
     }
 }
 

@@ -31,6 +31,10 @@ pub(super) fn apply_server_message(
     }
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "keeping server event projection exhaustive in one match makes client state updates auditable"
+)]
 fn apply_agent_event(
     message: ServerMessage,
     snapshot: &mut Signal<AgentSnapshot>,
@@ -87,6 +91,19 @@ fn apply_agent_event(
             state.status = status;
             state.status_message = message;
             state.pending_messages = pending_messages;
+            if pending_messages == 0 {
+                state.steering_queue.clear();
+                state.follow_up_queue.clear();
+            }
+        }
+        ServerMessage::QueueChanged {
+            steering,
+            follow_up,
+        } => {
+            let mut state = snapshot.write();
+            state.pending_messages = steering.len().saturating_add(follow_up.len());
+            state.steering_queue = steering;
+            state.follow_up_queue = follow_up;
         }
         ServerMessage::SessionChanged {
             session_id,
@@ -108,7 +125,21 @@ fn apply_agent_event(
         ServerMessage::Commands { commands } => snapshot.write().commands = commands,
         ServerMessage::SessionStats { stats } => snapshot.write().session_stats = Some(stats),
         ServerMessage::ExtensionUiRequest { request } => extension_request.set(Some(request)),
+        ServerMessage::ExtensionSurfaces {
+            title,
+            statuses,
+            widgets,
+        } => {
+            let mut state = snapshot.write();
+            state.extension_title = title;
+            state.extension_statuses = statuses;
+            state.extension_widgets = widgets;
+        }
         ServerMessage::ComposerText { text } => draft.set(text),
+        ServerMessage::ExportReady {
+            filename,
+            data_base64,
+        } => download_export(filename, data_base64),
         ServerMessage::Error { error: agent_error } => error.set(Some(agent_error.message)),
         ServerMessage::Hello { .. }
         | ServerMessage::Sessions { .. }
@@ -116,6 +147,31 @@ fn apply_agent_event(
         | ServerMessage::SessionEvent { .. }
         | ServerMessage::Pong { .. } => {}
     }
+}
+
+fn download_export(filename: String, data_base64: String) {
+    spawn(async move {
+        let script = document::eval(
+            r#"
+            const filename = await dioxus.recv();
+            const encoded = await dioxus.recv();
+            const binary = atob(encoded);
+            const bytes = new Uint8Array(binary.length);
+            for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+            const url = URL.createObjectURL(new Blob([bytes], { type: "text/html" }));
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = filename;
+            link.style.display = "none";
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            "#,
+        );
+        let _ = script.send(filename);
+        let _ = script.send(data_base64);
+    });
 }
 
 pub(super) fn session_action(session_id: String, action: ClientMessage) -> ClientMessage {

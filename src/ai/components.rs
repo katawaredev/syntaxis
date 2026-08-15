@@ -39,6 +39,10 @@ pub(super) fn AgentHeader(
     on_new_worktree: EventHandler<()>,
     on_model: EventHandler<(String, String)>,
     on_thinking: EventHandler<ThinkingLevel>,
+    on_compact: EventHandler<()>,
+    on_branch: EventHandler<(String, String)>,
+    on_clone: EventHandler<()>,
+    on_export: EventHandler<()>,
 ) -> Element {
     let connection_ready = connection == "Pi connected";
     let workspace_locked_reason = if !connection_ready {
@@ -108,7 +112,91 @@ pub(super) fn AgentHeader(
                         on_select: on_thinking,
                     }
                 }
-                UsageMenu { stats: snapshot.session_stats.clone() }
+                UsageMenu {
+                    stats: snapshot.session_stats.clone(),
+                    compact_disabled: controls_disabled || snapshot.session_stats.is_none(),
+                    on_compact,
+                }
+                BranchPicker {
+                    points: snapshot.fork_points.clone(),
+                    disabled: controls_disabled,
+                    on_select: on_branch,
+                    on_clone,
+                    on_export,
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn BranchPicker(
+    points: Vec<(String, String)>,
+    disabled: bool,
+    on_select: EventHandler<(String, String)>,
+    on_clone: EventHandler<()>,
+    on_export: EventHandler<()>,
+) -> Element {
+    let mut open = use_signal(|| false);
+    let has_branch_points = !points.is_empty();
+    rsx! {
+        PopoverRoot {
+            class: "relative shrink-0",
+            is_modal: false,
+            open: open(),
+            on_open_change: move |next| open.set(next),
+            PopoverTrigger {
+                class: "grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 max-[520px]:size-10",
+                disabled,
+                aria_label: "Conversation actions",
+                title: "Branch, clone, or export this conversation",
+                Icon { icon: AppIcon::GitBranch, size: 13 }
+            }
+            PopoverContent { class: "touch-popover absolute top-[calc(100%+6px)] right-0 z-80 w-[min(20rem,calc(100vw-1rem))] rounded-xl border border-border bg-popover p-1.5 shadow-2xl",
+                div { class: "grid grid-cols-2 gap-1 border-b border-border pb-1.5",
+                    button {
+                        class: "flex min-h-11 items-center justify-center gap-2 rounded-lg text-[10px] font-medium hover:bg-accent",
+                        disabled: !has_branch_points,
+                        title: if has_branch_points { "Clone the current conversation branch" } else { "Send a message before cloning this chat" },
+                        onclick: move |_| {
+                            open.set(false);
+                            on_clone.call(());
+                        },
+                        Icon { icon: AppIcon::Copy, size: 12 }
+                        "Clone branch"
+                    }
+                    button {
+                        class: "flex min-h-11 items-center justify-center gap-2 rounded-lg text-[10px] font-medium hover:bg-accent",
+                        onclick: move |_| {
+                            open.set(false);
+                            on_export.call(());
+                        },
+                        Icon { icon: AppIcon::Share, size: 12 }
+                        "Export HTML"
+                    }
+                }
+                div { class: "px-2 py-1.5 text-[9px] font-semibold tracking-wider text-muted-foreground uppercase",
+                    "Branch from prompt"
+                }
+                div { class: "max-h-72 overflow-y-auto",
+                    if points.is_empty() {
+                        p { class: "px-2.5 py-4 text-center text-[10px] text-muted-foreground",
+                            "Send a message to create a branch point."
+                        }
+                    } else {
+                        for (entry_id, text) in points.into_iter().rev() {
+                            button {
+                                key: "{entry_id}",
+                                class: "block min-h-11 w-full rounded-lg px-2.5 py-2 text-left text-[10px] leading-relaxed hover:bg-accent",
+                                onclick: move |_| {
+                                    open.set(false);
+                                    on_select.call((entry_id.clone(), text.clone()));
+                                },
+                                span { class: "line-clamp-2", "{text}" }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

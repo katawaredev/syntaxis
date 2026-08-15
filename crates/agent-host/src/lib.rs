@@ -1,6 +1,7 @@
 //! Host-side Pi RPC process management.
 #![cfg(not(target_arch = "wasm32"))]
 mod session_store;
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use serde_json::{Value, json};
 use std::{
     collections::{HashMap, VecDeque},
@@ -12,9 +13,9 @@ use std::{
 };
 use syntaxis_agent::{
     AgentError, AgentErrorCode, AgentSessionSummary, AgentSnapshot, AgentStatus, ChatItem,
-    ClientMessage, ConversationSearchResult, ExtensionUiRequest, ImageAttachment, ItemStatus,
-    ModelCost, ModelSummary, PiCommand, PromptDelivery, ServerMessage, SessionStats, ThinkingLevel,
-    TokenUsage,
+    ClientMessage, ConversationSearchResult, ExtensionUiRequest, ExtensionWidget, ImageAttachment,
+    ItemStatus, ModelCost, ModelSummary, PiCommand, PromptDelivery, ServerMessage, SessionStats,
+    ThinkingLevel, TokenUsage,
 };
 use syntaxis_notifications::{AppNotification, NotificationKind, NotificationTarget};
 use syntaxis_notifications_host::{HostNotificationHub, notifications as global_notifications};
@@ -718,6 +719,39 @@ impl HostAgentSession {
                 }
                 Ok(())
             }
+            ClientMessage::Compact {
+                custom_instructions,
+            } => {
+                let mut command = json!({ "type": "compact" });
+                if let Some(instructions) = custom_instructions
+                    .map(|value| value.trim().to_owned())
+                    .filter(|value| !value.is_empty())
+                {
+                    command["customInstructions"] = Value::String(instructions);
+                }
+                self.send(command).await
+            }
+            ClientMessage::CloneSession => {
+                self.send(json!({ "type": "clone" })).await?;
+                for command in [
+                    "get_state",
+                    "get_messages",
+                    "get_fork_messages",
+                    "get_session_stats",
+                ] {
+                    self.send(json!({ "type": command })).await?;
+                }
+                Ok(())
+            }
+            ClientMessage::ExportHtml => {
+                let output_path =
+                    std::env::temp_dir().join(format!("syntaxis-session-{}.html", Uuid::new_v4()));
+                self.send(json!({
+                    "type": "export_html",
+                    "outputPath": output_path.to_string_lossy(),
+                }))
+                .await
+            }
             ClientMessage::Abort => self.send(json!({ "type" : "abort" })).await,
             ClientMessage::SetModel { provider, model_id } => {
                 self.send(json!(
@@ -1049,6 +1083,10 @@ async fn capture_stderr(stderr: tokio::process::ChildStderr, buffer: Arc<Mutex<S
         }
     }
 }
+#[allow(
+    clippy::too_many_lines,
+    reason = "keeping Pi event dispatch in one exhaustive match makes protocol coverage auditable"
+)]
 fn handle_pi_record(
     record: &Value,
     state: &Arc<Mutex<RuntimeState>>,
@@ -1078,6 +1116,8 @@ fn handle_pi_record(
             let mut guard = lock(state);
             let finalized = finalize_current_assistant(&mut guard, ItemStatus::Complete);
             guard.snapshot.pending_messages = 0;
+            guard.snapshot.steering_queue.clear();
+            guard.snapshot.follow_up_queue.clear();
             guard.snapshot.status = AgentStatus::Ready;
             guard.snapshot.status_message = "Ready".into();
             drop(guard);
@@ -1096,16 +1136,20 @@ fn handle_pi_record(
             }
         }
         "queue_update" => {
-            let pending_messages = ["steering", "followUp"]
-                .iter()
-                .filter_map(|field| record.get(*field).and_then(Value::as_array))
-                .map(Vec::len)
-                .sum();
+            let steering = queue_messages(record.get("steering"));
+            let follow_up = queue_messages(record.get("followUp"));
+            let pending_messages = steering.len().saturating_add(follow_up.len());
             let mut guard = lock(state);
             guard.snapshot.pending_messages = pending_messages;
+            guard.snapshot.steering_queue.clone_from(&steering);
+            guard.snapshot.follow_up_queue.clone_from(&follow_up);
             let status = guard.snapshot.status;
             let message = guard.snapshot.status_message.clone();
             drop(guard);
+            let _ = events.send(ServerMessage::QueueChanged {
+                steering,
+                follow_up,
+            });
             let _ = events.send(ServerMessage::Status {
                 status,
                 message,
@@ -1133,7 +1177,33 @@ fn handle_pi_record(
             None,
         ),
         "auto_retry_start" => {
-            set_status(state, events, AgentStatus::Working, "Pi is retrying…", None);
+            let attempt = record.get("attempt").and_then(Value::as_u64).unwrap_or(1);
+            let maximum = record
+                .get("maxAttempts")
+                .and_then(Value::as_u64)
+                .unwrap_or(attempt);
+            let delay_ms = record.get("delayMs").and_then(Value::as_u64).unwrap_or(0);
+            let delay = if delay_ms >= 1_000 {
+                format!(" in {}s", delay_ms.div_ceil(1_000))
+            } else {
+                String::new()
+            };
+            set_status(
+                state,
+                events,
+                AgentStatus::Working,
+                &format!("Retrying{delay} · attempt {attempt} of {maximum}"),
+                None,
+            );
+        }
+        "auto_retry_end" => {
+            if record.get("success").and_then(Value::as_bool) == Some(false) {
+                let message = string_field(record, "finalError")
+                    .unwrap_or_else(|| "Pi exhausted its automatic retries".into());
+                let _ = events.send(ServerMessage::Error {
+                    error: AgentError::new(AgentErrorCode::Unavailable, message),
+                });
+            }
         }
         "extension_ui_request" => handle_extension_request(record, state, events),
         "extension_error" => {
@@ -1147,6 +1217,23 @@ fn handle_pi_record(
         _ => {}
     }
 }
+
+fn queue_messages(value: Option<&Value>) -> Vec<String> {
+    value
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|item| {
+            item.as_str()
+                .map(str::to_owned)
+                .or_else(|| string_field(item, "message"))
+        })
+        .collect()
+}
+#[allow(
+    clippy::too_many_lines,
+    reason = "keeping Pi response dispatch in one exhaustive match makes protocol coverage auditable"
+)]
 fn handle_pi_response(
     response: &Value,
     state: &Arc<Mutex<RuntimeState>>,
@@ -1193,6 +1280,47 @@ fn handle_pi_response(
                 && let Some(text) = string_field(data, "text")
             {
                 let _ = events.send(ServerMessage::ComposerText { text });
+            }
+        }
+        "export_html" => {
+            const MAX_EXPORT_BYTES: u64 = 8 * 1024 * 1024;
+            if let Some(path) = string_field(data, "path").map(PathBuf::from) {
+                let is_syntaxis_export = path.parent() == Some(std::env::temp_dir().as_path())
+                    && path
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .is_some_and(|name| {
+                            name.starts_with("syntaxis-session-")
+                                && Path::new(name)
+                                    .extension()
+                                    .is_some_and(|extension| extension.eq_ignore_ascii_case("html"))
+                        });
+                let contents = is_syntaxis_export
+                    .then(|| std::fs::metadata(&path).ok())
+                    .flatten()
+                    .filter(|metadata| metadata.len() <= MAX_EXPORT_BYTES)
+                    .and_then(|_| std::fs::read(&path).ok());
+                let _ = std::fs::remove_file(&path);
+                if let Some(contents) = contents {
+                    let _ = events.send(ServerMessage::ExportReady {
+                        filename: "pi-session.html".into(),
+                        data_base64: BASE64.encode(contents),
+                    });
+                } else {
+                    let _ = events.send(ServerMessage::Error {
+                        error: AgentError::new(
+                            AgentErrorCode::Unavailable,
+                            "The exported session could not be downloaded or exceeded 8 MiB",
+                        ),
+                    });
+                }
+            } else {
+                let _ = events.send(ServerMessage::Error {
+                    error: AgentError::new(
+                        AgentErrorCode::Unavailable,
+                        "Pi completed the export without returning a download path",
+                    ),
+                });
             }
         }
         "get_available_models" => {
@@ -1289,6 +1417,7 @@ fn handle_fork_messages_response(
     let mut guard = lock(state);
     guard.fork_messages = fork_messages;
     let messages = guard.fork_messages.clone();
+    guard.snapshot.fork_points.clone_from(&messages);
     apply_fork_message_ids(&mut guard.snapshot.items, &messages);
     let snapshot = guard.snapshot.clone();
     drop(guard);
@@ -1515,6 +1644,10 @@ fn handle_tool_update(
     drop(guard);
     let _ = events.send(ServerMessage::ItemUpdated { item });
 }
+#[allow(
+    clippy::too_many_lines,
+    reason = "extension UI methods share validation and queueing state best kept in one dispatcher"
+)]
 fn handle_extension_request(
     record: &Value,
     state: &Arc<Mutex<RuntimeState>>,
@@ -1543,6 +1676,68 @@ fn handle_extension_request(
             push_item(&mut lock(state).snapshot.items, item.clone());
             let _ = events.send(ServerMessage::ItemAdded { item });
         }
+        return;
+    }
+    if matches!(method.as_str(), "setStatus" | "setWidget" | "setTitle") {
+        let mut guard = lock(state);
+        match method.as_str() {
+            "setStatus" => {
+                let key = string_field(record, "statusKey").unwrap_or_else(|| "extension".into());
+                guard
+                    .snapshot
+                    .extension_statuses
+                    .retain(|(existing, _)| existing != &key);
+                if let Some(text) =
+                    string_field(record, "statusText").filter(|text| !text.is_empty())
+                {
+                    guard
+                        .snapshot
+                        .extension_statuses
+                        .push((key, truncate_chars(text, 240)));
+                }
+            }
+            "setWidget" => {
+                let key = string_field(record, "widgetKey").unwrap_or_else(|| "extension".into());
+                guard
+                    .snapshot
+                    .extension_widgets
+                    .retain(|widget| widget.key != key);
+                let lines = record
+                    .get("widgetLines")
+                    .and_then(Value::as_array)
+                    .map(|lines| {
+                        lines
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .take(20)
+                            .map(|line| truncate_chars(line.to_owned(), 500))
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                if !lines.is_empty() {
+                    let placement = match record.get("widgetPlacement").and_then(Value::as_str) {
+                        Some("belowEditor") => "belowEditor",
+                        _ => "aboveEditor",
+                    };
+                    guard.snapshot.extension_widgets.push(ExtensionWidget {
+                        key,
+                        lines,
+                        placement: placement.into(),
+                    });
+                }
+            }
+            "setTitle" => {
+                guard.snapshot.extension_title = string_field(record, "title")
+                    .filter(|title| !title.is_empty())
+                    .map(|title| truncate_chars(title, 120));
+            }
+            _ => {}
+        }
+        let _ = events.send(ServerMessage::ExtensionSurfaces {
+            title: guard.snapshot.extension_title.clone(),
+            statuses: guard.snapshot.extension_statuses.clone(),
+            widgets: guard.snapshot.extension_widgets.clone(),
+        });
         return;
     }
     if !matches!(method.as_str(), "select" | "confirm" | "input" | "editor") {
@@ -2322,6 +2517,8 @@ mod tests {
             &commands,
         );
         assert_eq!(lock(&state).snapshot.pending_messages, 3);
+        assert_eq!(lock(&state).snapshot.steering_queue, ["one"]);
+        assert_eq!(lock(&state).snapshot.follow_up_queue, ["two", "three"]);
     }
     #[test]
     #[allow(

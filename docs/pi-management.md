@@ -49,8 +49,16 @@ The interface supports:
 
 - creating, renaming, and resuming chats;
 - message editing, steering, and follow-ups;
+- separate steering and after-task queues with visible pending messages;
+- `@` file-reference autocomplete for project files;
+- one-click references for the active editor file, cursor, or selection;
+- branching from any earlier user prompt, including compacted history;
+- cloning the current conversation branch into a new chat;
+- downloading a bounded HTML export of the current session;
+- extension-provided dialogs, statuses, titles, and text widgets;
 - image attachments;
 - model selection and available usage information;
+- manual context compaction from the usage menu;
 - rendered tool output and structured tool details;
 - queued extension messages and dialogs.
 

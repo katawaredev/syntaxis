@@ -6441,6 +6441,7 @@ dependencies = [
 name = "syntaxis-agent-host"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.1",
  "regex",
  "serde_json",
  "syntaxis-agent",
