@@ -48,10 +48,10 @@ pub(super) fn gateway_url(base: &Url, label: &str) -> Result<Url, ServerFnError>
 }
 
 pub(super) fn preview_base_url(parent_origin: &str) -> Result<Url, ServerFnError> {
-    if let Ok(configured) = std::env::var("SYNTAXIS_PREVIEW_ORIGIN") {
-        if !configured.trim().is_empty() {
-            return validate_preview_origin(&configured);
-        }
+    if let Ok(configured) = std::env::var("SYNTAXIS_PREVIEW_ORIGIN")
+        && !configured.trim().is_empty()
+    {
+        return validate_preview_origin(&configured);
     }
     local_preview_base_url(parent_origin, dioxus_backend_port())
 }
@@ -246,10 +246,8 @@ async fn proxy_websocket(request: Request, lease: Lease) -> Response {
             .headers_mut()
             .insert("sec-websocket-protocol", subprotocol);
     }
-    if rewrite_origin {
-        if let Ok(origin) = HeaderValue::from_str(&target_label(&lease.upstream)) {
-            upstream_request.headers_mut().insert(ORIGIN, origin);
-        }
+    if rewrite_origin && let Ok(origin) = HeaderValue::from_str(&target_label(&lease.upstream)) {
+        upstream_request.headers_mut().insert(ORIGIN, origin);
     }
     if let Some(referer) = referer {
         upstream_request.headers_mut().insert("referer", referer);
@@ -405,11 +403,11 @@ fn copy_response_headers(source: &HeaderMap, target: &mut HeaderMap, lease: &Lea
             }
             continue;
         }
-        if *name == LOCATION {
-            if let Some(rewritten) = rewrite_location(value, lease) {
-                target.append(name.clone(), rewritten);
-                continue;
-            }
+        if *name == LOCATION
+            && let Some(rewritten) = rewrite_location(value, lease)
+        {
+            target.append(name.clone(), rewritten);
+            continue;
         }
         target.append(name.clone(), value.clone());
     }
@@ -486,12 +484,11 @@ fn harden_gateway_response(response: &mut Response, lease: &Lease) {
         "x-content-type-options",
         HeaderValue::from_static("nosniff"),
     );
-    if !headers.contains_key("content-security-policy") {
-        if let Ok(value) =
+    if !headers.contains_key("content-security-policy")
+        && let Ok(value) =
             HeaderValue::from_str(&format!("frame-ancestors {}", lease.parent_origin))
-        {
-            headers.insert("content-security-policy", value);
-        }
+    {
+        headers.insert("content-security-policy", value);
     }
     if let Ok(value) =
         HeaderValue::from_str(&format!("{} {}", lease.workspace_id.0, lease.target_label))

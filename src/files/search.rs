@@ -8,6 +8,8 @@ use dioxus_code_editor::EditorRange;
 use futures_util::{StreamExt, stream};
 use serde::{Deserialize, Serialize};
 
+use crate::client_error::server_error_message;
+
 #[cfg(any(feature = "desktop", feature = "server"))]
 use super::{EntryKind, MAX_TEXT_BYTES, RelativePath, workspace_client};
 use super::{FileEntry, WorkspaceRecord};
@@ -191,13 +193,13 @@ async fn search_workspace_files_local(
                     .then(|| match_score(entry.path.as_str(), &query))
                     .flatten();
                 let mut content_result = ContentSearchResult::default();
-                if options.scope.searches_contents() && entry.size <= MAX_TEXT_BYTES {
-                    if let Ok(file) =
+                if options.scope.searches_contents()
+                    && entry.size <= MAX_TEXT_BYTES
+                    && let Ok(file) =
                         workspace_client::read_text(workspace, entry.path.clone(), MAX_TEXT_BYTES)
                             .await
-                    {
-                        content_result = content_matches_async(file.content, query).await;
-                    }
+                {
+                    content_result = content_matches_async(file.content, query).await;
                 }
                 if name_score.is_none() && content_result.ranges.is_empty() {
                     return None;
@@ -233,13 +235,6 @@ async fn search_workspace_files_local(
         items: results,
         truncated,
     })
-}
-
-fn server_error_message(error: ServerFnError) -> String {
-    match error {
-        ServerFnError::ServerError { message, .. } => message,
-        other => other.to_string(),
-    }
 }
 
 #[cfg(any(feature = "desktop", feature = "server"))]

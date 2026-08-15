@@ -1,36 +1,36 @@
 use super::TerminalQuery;
 use super::api::{self, RunCommand};
 use super::renderer::{
-    RendererAction, RendererActionResult, RendererCommand, RendererOutput, RendererOutputBatch,
-    SourceLink, XtermRenderer,
+    RendererAction, RendererActionResult, RendererCommand, RendererOutputBatch, SourceLink,
+    XtermRenderer,
 };
-use super::runtime::{
-    ConnectionState, MAX_RECONNECT_ATTEMPTS, command_input, fail_pending_requests,
-    push_renderer_output, reconnect_delay_ms, send_renderer_action, server_error_message,
-};
-use super::session::{
-    choose_active, duplicate_session_name_error, remove_session, update_session_size,
-    upsert_session,
-};
+use super::runtime::{ConnectionState, MAX_RECONNECT_ATTEMPTS, send_renderer_action};
+use super::session::{duplicate_session_name_error, update_session_size};
+mod components;
+mod connection;
+mod dialogs;
+mod menus;
+mod mobile;
+
+use crate::client_error::server_error_message;
+use connection::{TerminalConnectionOptions, TerminalConnectionState, use_terminal_connection};
+use dialogs::{AddCommandDialog, NewTerminalDialog};
 use dioxus::prelude::*;
 use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
 use futures_util::{
-    FutureExt, StreamExt,
+    FutureExt,
     future::{Either, select},
     pin_mut,
 };
+use menus::terminal_actions_menu;
+use mobile::{MobileTerminalKeys, ctrl_modified_byte};
 use syntaxis_notifications::NotificationTarget;
-use syntaxis_terminal::{
-    ClientMessage, Lifecycle, PROTOCOL_VERSION, ServerMessage, SessionId, SessionSummary,
-    TerminalErrorCode, TerminalSize,
-};
+use syntaxis_terminal::{ClientMessage, Lifecycle, SessionId, SessionSummary, TerminalSize};
 use syntaxis_ui::prelude::{
-    AppIcon, Button, ButtonKind, ControlSize, DialogActions, DialogForm, Field, Icon, IconButton,
-    MenuButtonTrigger, MenuContent, MenuTrigger, Modal, PanelHeader, PanelTab, PanelTabIndicator,
-    PanelTabList, PanelTabWidth, TextInput, Toast, Tone,
+    AppIcon, Button, ButtonKind, ControlSize, Icon, IconButton, MenuButtonTrigger, MenuContent,
+    MenuTrigger, PanelHeader, PanelTab, PanelTabIndicator, PanelTabList, PanelTabWidth, Toast,
+    Tone,
 };
-const HEARTBEAT_INTERVAL_SECONDS: u64 = 10;
-const HEARTBEAT_TIMEOUT_SECONDS: u64 = 30;
 const TERMINAL_SCRIPT: Asset = asset!("/assets/terminal/terminal.bundle.js");
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -53,64 +53,6 @@ enum RunMenuAction {
     Refresh,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct MobileTerminalKey {
-    label: &'static str,
-    accessible_label: &'static str,
-    input: &'static str,
-    wide: bool,
-}
-
-const MOBILE_TERMINAL_KEYS: [MobileTerminalKey; 8] = [
-    MobileTerminalKey {
-        label: "Esc",
-        accessible_label: "Escape",
-        input: "\u{1b}",
-        wide: false,
-    },
-    MobileTerminalKey {
-        label: "Tab",
-        accessible_label: "Tab",
-        input: "\t",
-        wide: false,
-    },
-    MobileTerminalKey {
-        label: "←",
-        accessible_label: "Left arrow",
-        input: "\u{1b}[D",
-        wide: false,
-    },
-    MobileTerminalKey {
-        label: "↑",
-        accessible_label: "Up arrow",
-        input: "\u{1b}[A",
-        wide: false,
-    },
-    MobileTerminalKey {
-        label: "↓",
-        accessible_label: "Down arrow",
-        input: "\u{1b}[B",
-        wide: false,
-    },
-    MobileTerminalKey {
-        label: "→",
-        accessible_label: "Right arrow",
-        input: "\u{1b}[C",
-        wide: false,
-    },
-    MobileTerminalKey {
-        label: "Space",
-        accessible_label: "Space",
-        input: " ",
-        wide: true,
-    },
-    MobileTerminalKey {
-        label: "↵",
-        accessible_label: "Enter",
-        input: "\r",
-        wide: false,
-    },
-];
 #[component]
 pub fn Terminal(slug: String, query: TerminalQuery) -> Element {
     let active = use_context::<crate::workspace::ActiveWorkspace>();
@@ -169,17 +111,17 @@ fn RemoteTerminal(
     embedded: bool,
 ) -> Element {
     let notification_center = use_context::<crate::ai::notifications::NotificationCenter>();
-    let mut connection = use_signal(|| ConnectionState::Connecting);
+    let connection = use_signal(|| ConnectionState::Connecting);
     let mut sessions = use_signal(Vec::<SessionSummary>::new);
-    let mut sessions_loaded = use_signal(|| false);
+    let sessions_loaded = use_signal(|| false);
     let mut active = use_signal(|| None::<SessionId>);
     let mut remembered = use_signal(|| None::<SessionId>);
     let mut output = use_signal(|| None::<RendererOutputBatch>);
     let mut renderer_command = use_signal(|| None::<RendererCommand>);
     let mut renderer_command_sequence = use_signal(|| 0_u64);
     let mut pending_command = use_signal(|| initial_command.clone());
-    let mut initializer_started = use_signal(|| false);
-    let mut initializer_finished = use_signal(|| false);
+    let initializer_started = use_signal(|| false);
+    let initializer_finished = use_signal(|| false);
     let mut toast = use_signal(|| None::<String>);
     let mut new_dialog = use_signal(|| false);
     let mut new_name = use_signal(String::new);
@@ -254,376 +196,32 @@ fn RemoteTerminal(
             });
         }
     });
-    let mut client = use_coroutine({
-        let workspace_id = workspace_id.clone();
-        move |mut commands: UnboundedReceiver<ClientMessage>| {
-            let workspace_id = workspace_id.clone();
-            let requested_session_id = requested_session_id.clone();
-            let initializer_label = initializer_label.clone();
-            let on_initializer_finished = on_initializer_finished;
-            async move {
-                let mut retry_attempt = 0_u8;
-                let mut last_error = String::new();
-                'connections: loop {
-                    if retry_attempt > MAX_RECONNECT_ATTEMPTS {
-                        connection.set(ConnectionState::Failed(last_error));
-                        return;
-                    }
-                    if retry_attempt == 0 {
-                        connection.set(ConnectionState::Connecting);
-                    } else {
-                        let delay_ms = reconnect_delay_ms(retry_attempt);
-                        connection.set(ConnectionState::Reconnecting {
-                            attempt: retry_attempt,
-                            delay_ms,
-                            message: last_error.clone(),
-                        });
-                        dioxus_sdk_time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-                    }
-                    let connect = api::terminal_socket(
-                        workspace_id.clone(),
-                        dioxus::fullstack::WebSocketOptions::new(),
-                    )
-                    .fuse();
-                    let connect_timeout = dioxus_sdk_time::sleep(std::time::Duration::from_secs(
-                        HEARTBEAT_INTERVAL_SECONDS,
-                    ))
-                    .fuse();
-                    pin_mut!(connect, connect_timeout);
-                    let socket = match select(connect, connect_timeout).await {
-                        Either::Left((result, _)) => match result {
-                            Ok(socket) => socket,
-                            Err(error) => {
-                                last_error = error.to_string();
-                                retry_attempt = retry_attempt.saturating_add(1);
-                                continue;
-                            }
-                        },
-                        Either::Right(_) => {
-                            last_error = "Timed out while connecting to the terminal".into();
-                            retry_attempt = retry_attempt.saturating_add(1);
-                            continue;
-                        }
-                    };
-                    if socket
-                        .send(ClientMessage::Hello {
-                            version: PROTOCOL_VERSION,
-                        })
-                        .await
-                        .is_err()
-                    {
-                        last_error = "Could not start the terminal protocol".into();
-                        retry_attempt = retry_attempt.saturating_add(1).max(1);
-                        continue;
-                    }
-                    let connected_at = web_time::Instant::now();
-                    let mut last_received = connected_at;
-                    let mut handshake_complete = false;
-                    let mut heartbeat_nonce = 0_u64;
-                    let heartbeat_interval =
-                        std::time::Duration::from_secs(HEARTBEAT_INTERVAL_SECONDS);
-                    let mut heartbeat_due = connected_at + heartbeat_interval;
-                    loop {
-                        let outgoing = commands.next().fuse();
-                        let incoming = socket.recv().fuse();
-                        pin_mut!(outgoing, incoming);
-                        let traffic = select(outgoing, incoming).fuse();
-                        let heartbeat = dioxus_sdk_time::sleep(
-                            heartbeat_due.saturating_duration_since(web_time::Instant::now()),
-                        )
-                        .fuse();
-                        pin_mut!(traffic, heartbeat);
-                        let next = select(heartbeat, traffic).await;
-                        match next {
-                            Either::Right((Either::Left((Some(message), _)), _)) => {
-                                if socket.send(message).await.is_err() {
-                                    last_error = "Terminal connection was lost".into();
-                                    fail_pending_requests(
-                                        &mut creating_session,
-                                        &mut new_name_server_error,
-                                        &mut pending_command,
-                                        &mut toast,
-                                    );
-                                    retry_attempt = retry_attempt.saturating_add(1).max(1);
-                                    continue 'connections;
-                                }
-                            }
-                            Either::Right((Either::Left((None, _)), _)) => return,
-                            Either::Right((Either::Right((Ok(message), _)), _)) => {
-                                last_received = web_time::Instant::now();
-                                match message {
-                                    ServerMessage::Hello { version }
-                                        if version == PROTOCOL_VERSION =>
-                                    {
-                                        handshake_complete = true;
-                                        retry_attempt = 0;
-                                        connection.set(ConnectionState::Ready);
-                                        if socket.send(ClientMessage::List).await.is_err() {
-                                            last_error = "Could not load terminal sessions".into();
-                                            retry_attempt = 1;
-                                            continue 'connections;
-                                        }
-                                    }
-                                    ServerMessage::Hello { .. } => {
-                                        connection.set(ConnectionState::Failed(
-                                            "The server uses an incompatible terminal protocol"
-                                                .into(),
-                                        ));
-                                        return;
-                                    }
-                                    ServerMessage::Sessions {
-                                        sessions: available,
-                                    } => {
-                                        sessions_loaded.set(true);
-                                        let start_initializer = pending_command.read().is_some()
-                                            && !initializer_started();
-                                        let requested =
-                                            requested_session_id.as_ref().map(SessionId::new);
-                                        let selected = choose_active(
-                                            &available,
-                                            requested.as_ref(),
-                                            active().as_ref(),
-                                            remembered().as_ref(),
-                                        );
-                                        sessions.set(available);
-                                        active.set(selected.clone());
-                                        output.set(None);
-                                        if start_initializer {
-                                            initializer_started.set(true);
-                                            let name = initializer_label
-                                                .clone()
-                                                .unwrap_or_else(|| "Project setup".into());
-                                            if socket
-                                                .send(ClientMessage::Create {
-                                                    name: Some(name),
-                                                    size: TerminalSize::DEFAULT,
-                                                })
-                                                .await
-                                                .is_err()
-                                            {
-                                                initializer_started.set(false);
-                                                last_error =
-                                                    "Could not start the project initializer"
-                                                        .into();
-                                                retry_attempt = 1;
-                                                continue 'connections;
-                                            }
-                                        } else if let Some(session_id) = selected
-                                            && socket
-                                                .send(ClientMessage::Attach { session_id })
-                                                .await
-                                                .is_err()
-                                        {
-                                            last_error =
-                                                "Could not reattach the terminal session".into();
-                                            retry_attempt = 1;
-                                            continue 'connections;
-                                        }
-                                    }
-                                    ServerMessage::Created { session } => {
-                                        upsert_session(&mut sessions, session.clone());
-                                        output.set(None);
-                                        active.set(Some(session.id.clone()));
-                                        if creating_session() {
-                                            creating_session.set(false);
-                                            new_dialog.set(false);
-                                            new_name.set(String::new());
-                                            new_name_server_error.set(None);
-                                        }
-                                        let command = {
-                                            let mut pending = pending_command.write();
-                                            pending.take()
-                                        };
-                                        if let Some(command) = command {
-                                            let bytes = command_input(&command, embedded);
-                                            if socket
-                                                .send(ClientMessage::Write {
-                                                    session_id: session.id,
-                                                    data: bytes,
-                                                })
-                                                .await
-                                                .is_err()
-                                            {
-                                                pending_command.set(Some(command));
-                                                last_error =
-                                                    "Could not send the terminal command".into();
-                                                fail_pending_requests(
-                                                    &mut creating_session,
-                                                    &mut new_name_server_error,
-                                                    &mut pending_command,
-                                                    &mut toast,
-                                                );
-                                                retry_attempt = 1;
-                                                continue 'connections;
-                                            }
-                                        }
-                                    }
-                                    ServerMessage::Attached { session } => {
-                                        upsert_session(&mut sessions, session.clone());
-                                        output.set(None);
-                                        active.set(Some(session.id));
-                                    }
-                                    ServerMessage::Output {
-                                        session_id,
-                                        sequence,
-                                        data,
-                                        ..
-                                    } => {
-                                        if active().as_ref() == Some(&session_id) {
-                                            push_renderer_output(
-                                                &mut output,
-                                                RendererOutput {
-                                                    session_id,
-                                                    sequence,
-                                                    data,
-                                                },
-                                            );
-                                        }
-                                    }
-                                    ServerMessage::Lifecycle { session } => {
-                                        if embedded
-                                            && initializer_started()
-                                            && !initializer_finished()
-                                            && pending_command.read().is_none()
-                                            && matches!(
-                                                session.lifecycle,
-                                                Lifecycle::Exited | Lifecycle::Failed
-                                            )
-                                        {
-                                            initializer_finished.set(true);
-                                            if let Some(on_finished) = on_initializer_finished {
-                                                on_finished.call(
-                                                    session.lifecycle == Lifecycle::Exited
-                                                        && session.exit_code == Some(0),
-                                                );
-                                            }
-                                        }
-                                        upsert_session(&mut sessions, session);
-                                    }
-                                    ServerMessage::Closed { session_id } => {
-                                        let was_active = active().as_ref() == Some(&session_id);
-                                        remove_session(&mut sessions, &mut active, &session_id);
-                                        output.set(None);
-                                        if was_active
-                                            && let Some(session_id) = active()
-                                            && socket
-                                                .send(ClientMessage::Attach { session_id })
-                                                .await
-                                                .is_err()
-                                        {
-                                            last_error =
-                                                "Could not attach the next terminal session".into();
-                                            retry_attempt = 1;
-                                            continue 'connections;
-                                        }
-                                    }
-                                    ServerMessage::Detached { session_id } => {
-                                        let was_active = active().as_ref() == Some(&session_id);
-                                        remove_session(&mut sessions, &mut active, &session_id);
-                                        output.set(None);
-                                        toast.set(Some(
-                                            "Terminal detached; refresh to reattach".into(),
-                                        ));
-                                        if was_active
-                                            && let Some(session_id) = active()
-                                            && socket
-                                                .send(ClientMessage::Attach { session_id })
-                                                .await
-                                                .is_err()
-                                        {
-                                            last_error =
-                                                "Could not attach the next terminal session".into();
-                                            retry_attempt = 1;
-                                            continue 'connections;
-                                        }
-                                    }
-                                    ServerMessage::Error { error } => {
-                                        if error.code == TerminalErrorCode::OutputLagged {
-                                            last_error = error.message;
-                                            fail_pending_requests(
-                                                &mut creating_session,
-                                                &mut new_name_server_error,
-                                                &mut pending_command,
-                                                &mut toast,
-                                            );
-                                            retry_attempt = 1;
-                                            continue 'connections;
-                                        } else if creating_session()
-                                            && error.code == TerminalErrorCode::InvalidRequest
-                                        {
-                                            creating_session.set(false);
-                                            new_name_server_error.set(Some(error.message));
-                                        } else {
-                                            creating_session.set(false);
-                                            pending_command.set(None);
-                                            toast.set(Some(error.message));
-                                        }
-                                    }
-                                    ServerMessage::Pong { .. } => {}
-                                }
-                            }
-                            Either::Right((Either::Right((Err(error), _)), _)) => {
-                                last_error = error.to_string();
-                                fail_pending_requests(
-                                    &mut creating_session,
-                                    &mut new_name_server_error,
-                                    &mut pending_command,
-                                    &mut toast,
-                                );
-                                retry_attempt = retry_attempt.saturating_add(1).max(1);
-                                continue 'connections;
-                            }
-                            Either::Left(_) => {
-                                heartbeat_due = web_time::Instant::now() + heartbeat_interval;
-                                if !handshake_complete
-                                    && connected_at.elapsed()
-                                        >= std::time::Duration::from_secs(
-                                            HEARTBEAT_INTERVAL_SECONDS,
-                                        )
-                                {
-                                    last_error = "Terminal protocol handshake timed out".into();
-                                    retry_attempt = retry_attempt.saturating_add(1).max(1);
-                                    continue 'connections;
-                                }
-                                if last_received.elapsed()
-                                    >= std::time::Duration::from_secs(HEARTBEAT_TIMEOUT_SECONDS)
-                                {
-                                    last_error = "Terminal heartbeat timed out".into();
-                                    fail_pending_requests(
-                                        &mut creating_session,
-                                        &mut new_name_server_error,
-                                        &mut pending_command,
-                                        &mut toast,
-                                    );
-                                    retry_attempt = retry_attempt.saturating_add(1).max(1);
-                                    continue 'connections;
-                                }
-                                heartbeat_nonce = heartbeat_nonce.saturating_add(1);
-                                if socket
-                                    .send(ClientMessage::Ping {
-                                        nonce: heartbeat_nonce,
-                                    })
-                                    .await
-                                    .is_err()
-                                {
-                                    last_error = "Terminal heartbeat failed".into();
-                                    fail_pending_requests(
-                                        &mut creating_session,
-                                        &mut new_name_server_error,
-                                        &mut pending_command,
-                                        &mut toast,
-                                    );
-                                    retry_attempt = retry_attempt.saturating_add(1).max(1);
-                                    continue 'connections;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    });
-    let mut menu = use_signal(|| false);
+    let mut client = use_terminal_connection(
+        TerminalConnectionOptions {
+            workspace_id: workspace_id.clone(),
+            requested_session_id: requested_session_id.clone(),
+            initializer_label: initializer_label.clone(),
+            on_initializer_finished,
+            embedded,
+        },
+        &TerminalConnectionState {
+            connection,
+            sessions,
+            sessions_loaded,
+            active,
+            remembered,
+            output,
+            pending_command,
+            initializer_started,
+            initializer_finished,
+            toast,
+            new_dialog,
+            new_name,
+            new_name_server_error,
+            creating_session,
+        },
+    );
+    let menu = use_signal(|| false);
     let mut quick_menu = use_signal(|| false);
     let mut mobile_tabs_open = use_signal(|| false);
     let selected = active().and_then(|id| {
@@ -994,158 +592,16 @@ fn RemoteTerminal(
                             }
                         }
                     }
-                    DropdownMenu {
-                        class: "relative order-2 shrink-0",
-                        open: menu(),
-                        on_open_change: move |open: bool| menu.set(open),
-                        MenuTrigger {
-                            label: "Terminal actions",
-                            icon: AppIcon::Menu,
-                            open: menu(),
-                            on_toggle: move |()| menu.toggle(),
-                        }
-                        MenuContent { class: "right-0 w-53.75",
-                            TerminalMenuItem {
-                                action: TerminalAction::Copy,
-                                index: 0,
-                                label: "Copy selection",
-                                disabled: selected.is_none(),
-                                on_select: move |_| send_renderer_action(
-                                    &mut renderer_command,
-                                    &mut renderer_command_sequence,
-                                    RendererAction::Copy,
-                                ),
-                            }
-                            TerminalMenuItem {
-                                action: TerminalAction::CopyAll,
-                                index: 1,
-                                label: "Copy all",
-                                disabled: selected.is_none(),
-                                on_select: move |_| send_renderer_action(
-                                    &mut renderer_command,
-                                    &mut renderer_command_sequence,
-                                    RendererAction::CopyAll,
-                                ),
-                            }
-                            TerminalMenuItem {
-                                action: TerminalAction::Paste,
-                                index: 2,
-                                label: "Paste",
-                                disabled: selected.is_none(),
-                                on_select: move |_| send_renderer_action(
-                                    &mut renderer_command,
-                                    &mut renderer_command_sequence,
-                                    RendererAction::Paste,
-                                ),
-                            }
-                            TerminalMenuItem {
-                                action: TerminalAction::Clear,
-                                index: 3,
-                                label: "Clear terminal",
-                                disabled: selected.is_none(),
-                                on_select: move |_| send_renderer_action(
-                                    &mut renderer_command,
-                                    &mut renderer_command_sequence,
-                                    RendererAction::Clear,
-                                ),
-                            }
-                            TerminalMenuItem {
-                                action: TerminalAction::Restart,
-                                index: 4,
-                                label: "Restart terminal",
-                                disabled: selected.is_none(),
-                                on_select: {
-                                    let selected = selected.clone();
-                                    move |_| {
-                                        if let Some(session) = selected.as_ref() {
-                                            client
-                                                .send(ClientMessage::Close {
-                                                    session_id: session.id.clone(),
-                                                });
-                                            client
-                                                .send(ClientMessage::Create {
-                                                    name: Some(session.name.clone()),
-                                                    size: session.size,
-                                                });
-                                        }
-                                    }
-                                },
-                            }
-                            hr {}
-                            TerminalMenuItem {
-                                action: TerminalAction::Detach,
-                                index: 5,
-                                label: "Detach session",
-                                disabled: selected.is_none(),
-                                on_select: {
-                                    let selected = selected.clone();
-                                    move |_| {
-                                        if let Some(session) = selected.as_ref() {
-                                            client
-                                                .send(ClientMessage::Detach {
-                                                    session_id: session.id.clone(),
-                                                });
-                                        }
-                                    }
-                                },
-                            }
-                            TerminalMenuItem {
-                                action: TerminalAction::Refresh,
-                                index: 6,
-                                label: "Refresh sessions",
-                                disabled: !connection_ready,
-                                on_select: move |_| client.send(ClientMessage::List),
-                            }
-                            hr {}
-                            TerminalMenuItem {
-                                action: TerminalAction::Close,
-                                index: 7,
-                                label: "Close terminal",
-                                destructive: true,
-                                disabled: selected.is_none(),
-                                on_select: {
-                                    let selected = selected.clone();
-                                    move |_| {
-                                        if let Some(session) = selected.as_ref() {
-                                            client
-                                                .send(ClientMessage::Close {
-                                                    session_id: session.id.clone(),
-                                                });
-                                        }
-                                    }
-                                },
-                            }
-                            TerminalMenuItem {
-                                action: TerminalAction::CloseOthers,
-                                index: 8,
-                                label: "Close all others",
-                                destructive: true,
-                                disabled: selected.is_none() || sessions.read().len() < 2,
-                                on_select: {
-                                    let selected = selected.clone();
-                                    move |_| {
-                                        if let Some(selected) = selected.as_ref() {
-                                            for session in sessions() {
-                                                if session.id != selected.id {
-                                                    client
-                                                        .send(ClientMessage::Close {
-                                                            session_id: session.id,
-                                                        });
-                                                }
-                                            }
-                                        }
-                                    }
-                                },
-                            }
-                            TerminalMenuItem {
-                                action: TerminalAction::CloseAll,
-                                index: 9,
-                                label: "Close all terminals",
-                                destructive: true,
-                                disabled: sessions.read().is_empty(),
-                                on_select: move |_| client.send(ClientMessage::CloseAll),
-                            }
-                        }
+                    {
+                        terminal_actions_menu(
+                            menu,
+                            selected.as_ref(),
+                            sessions,
+                            connection_ready,
+                            renderer_command,
+                            renderer_command_sequence,
+                            client,
+                        )
                     }
                 }
             }
@@ -1263,117 +719,24 @@ fn RemoteTerminal(
             }
         }
         if new_dialog() {
-            Modal {
-                title: "New terminal",
-                description: "Start an interactive shell in the workspace directory.",
-                on_close: move |()| {
-                    if !creating_session() {
-                        new_dialog.set(false);
-                    }
-                },
-                DialogForm {
-                    Field {
-                        control_id: "terminal-name",
-                        label: "Session name",
-                        error: name_error,
-                        TextInput {
-                            placeholder: "shell",
-                            value: "{new_name}",
-                            autofocus: true,
-                            disabled: creating_session(),
-                            oninput: move |event: FormEvent| {
-                                new_name.set(event.value());
-                                new_name_server_error.set(None);
-                            },
-                            onkeydown: move |event: KeyboardEvent| {
-                                if event.key() == Key::Enter {
-                                    event.prevent_default();
-                                    submit_new_terminal.call(());
-                                }
-                            },
-                        }
-                    }
-                    Field { control_id: "terminal-command", label: "Shell",
-                        TextInput { value: "Server default shell", disabled: true }
-                    }
-                    DialogActions {
-                        Button {
-                            label: "Cancel",
-                            kind: ButtonKind::Ghost,
-                            disabled: creating_session(),
-                            onclick: move |_| new_dialog.set(false),
-                        }
-                        Button {
-                            label: if creating_session() { "Creating…" } else { "Create terminal" },
-                            kind: ButtonKind::Primary,
-                            disabled: create_disabled,
-                            onclick: move |_| submit_new_terminal.call(()),
-                        }
-                    }
-                }
+            NewTerminalDialog {
+                open: new_dialog,
+                name: new_name,
+                server_error: new_name_server_error,
+                creating: creating_session,
+                name_error,
+                create_disabled,
+                on_submit: submit_new_terminal,
             }
         }
         if add_command_dialog() {
-            Modal {
-                title: "Add command",
-                description: "Save a command for this project. It will remain available after the server restarts.",
-                on_close: move |()| {
-                    if !saving_command() {
-                        add_command_dialog.set(false);
-                    }
-                },
-                DialogForm {
-                    Field {
-                        control_id: "run-command-label",
-                        label: "Label",
-                        description: "Optional. The command itself is used when left blank.",
-                        TextInput {
-                            placeholder: "Development server",
-                            value: "{command_label}",
-                            disabled: saving_command(),
-                            oninput: move |event: FormEvent| {
-                                command_label.set(event.value());
-                                command_error.set(None);
-                            },
-                        }
-                    }
-                    Field {
-                        control_id: "run-command-text",
-                        label: "Command",
-                        required: true,
-                        error: command_error(),
-                        TextInput {
-                            placeholder: "npm run dev",
-                            value: "{command_text}",
-                            autofocus: true,
-                            disabled: saving_command(),
-                            oninput: move |event: FormEvent| {
-                                command_text.set(event.value());
-                                command_error.set(None);
-                            },
-                            onkeydown: move |event: KeyboardEvent| {
-                                if event.key() == Key::Enter {
-                                    event.prevent_default();
-                                    submit_command.call(());
-                                }
-                            },
-                        }
-                    }
-                    DialogActions {
-                        Button {
-                            label: "Cancel",
-                            kind: ButtonKind::Ghost,
-                            disabled: saving_command(),
-                            onclick: move |_| add_command_dialog.set(false),
-                        }
-                        Button {
-                            label: if saving_command() { "Saving…" } else { "Add command" },
-                            kind: ButtonKind::Primary,
-                            disabled: saving_command() || command_text().trim().is_empty(),
-                            onclick: move |_| submit_command.call(()),
-                        }
-                    }
-                }
+            AddCommandDialog {
+                open: add_command_dialog,
+                label: command_label,
+                command: command_text,
+                error: command_error,
+                saving: saving_command,
+                on_submit: submit_command,
             }
         }
         if let Some(message) = toast() {
@@ -1382,85 +745,6 @@ fn RemoteTerminal(
     }
 }
 
-#[component]
-fn MobileTerminalKeys(
-    mut ctrl: Signal<bool>,
-    on_input: EventHandler<Vec<u8>>,
-    on_focus: EventHandler<()>,
-) -> Element {
-    rsx! {
-        nav {
-            class: "terminal-mobile-keys min-h-11 shrink-0 items-center gap-1 overflow-x-auto border-t border-border bg-background px-1.5 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] [scrollbar-width:none]",
-            "aria-label": "Terminal keys",
-            button {
-                r#type: "button",
-                class: if ctrl() { "min-h-9 min-w-11 shrink-0 touch-manipulation rounded-md border border-primary bg-primary/15 px-2 font-mono text-xs font-semibold text-primary" } else { "min-h-9 min-w-11 shrink-0 touch-manipulation rounded-md border border-border bg-card px-2 font-mono text-xs font-medium text-foreground active:bg-accent" },
-                "aria-label": "Control modifier for the next key",
-                "aria-pressed": ctrl(),
-                onpointerdown: move |event| event.prevent_default(),
-                onclick: move |_| {
-                    ctrl.toggle();
-                    on_focus.call(());
-                },
-                "Ctrl"
-            }
-            for key in MOBILE_TERMINAL_KEYS {
-                button {
-                    r#type: "button",
-                    class: if key.wide { "min-h-9 min-w-15 shrink-0 touch-manipulation rounded-md border border-border bg-card px-2 font-mono text-xs font-medium text-foreground active:bg-accent" } else { "min-h-9 min-w-10 shrink-0 touch-manipulation rounded-md border border-border bg-card px-2 font-mono text-xs font-medium text-foreground active:bg-accent" },
-                    "aria-label": key.accessible_label,
-                    onpointerdown: move |event| event.prevent_default(),
-                    onclick: move |_| {
-                        on_input.call(key.input.as_bytes().to_vec());
-                        on_focus.call(());
-                    },
-                    {key.label}
-                }
-            }
-        }
-    }
-}
-#[component]
-fn TerminalMenuItem(
-    action: TerminalAction,
-    index: usize,
-    label: String,
-    #[props(default)] destructive: bool,
-    #[props(default)] disabled: bool,
-    on_select: EventHandler<TerminalAction>,
-) -> Element {
-    rsx! {
-        DropdownMenuItem::<TerminalAction> {
-            value: action,
-            index,
-            class: if destructive { "!text-destructive" },
-            disabled,
-            on_select,
-            "{label}"
-        }
-    }
-}
-#[component]
-fn TerminalUnavailable(message: String) -> Element {
-    rsx! {
-        div { class: "absolute inset-0 flex flex-col items-center justify-center gap-2 bg-card text-muted-foreground",
-            strong { class: "text-base text-destructive", "Terminal unavailable" }
-            p { class: "mb-2", "{message}" }
-        }
-    }
-}
-
-fn ctrl_modified_byte(data: &[u8]) -> Option<u8> {
-    let [byte] = data else {
-        return None;
-    };
-    match byte {
-        b' ' | b'@' => Some(0),
-        b'a'..=b'z' | b'A'..=b'Z' | b'['..=b'_' => Some(byte & 0x1f),
-        b'?' => Some(0x7f),
-        _ => None,
-    }
-}
 const fn lifecycle_tone(lifecycle: Lifecycle) -> Tone {
     match lifecycle {
         Lifecycle::Starting | Lifecycle::Closing => Tone::Warning,
@@ -1475,20 +759,5 @@ const fn lifecycle_dot_class(lifecycle: Lifecycle) -> &'static str {
         Lifecycle::Running => "size-1.75 shrink-0 rounded-full bg-success",
         Lifecycle::Exited => "size-1.75 shrink-0 rounded-full bg-muted-foreground",
         Lifecycle::Failed => "size-1.75 shrink-0 rounded-full bg-destructive",
-    }
-}
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn mobile_control_modifier_encodes_terminal_control_bytes() {
-        assert_eq!(ctrl_modified_byte(b"c"), Some(3));
-        assert_eq!(ctrl_modified_byte(b"D"), Some(4));
-        assert_eq!(ctrl_modified_byte(b"z"), Some(26));
-        assert_eq!(ctrl_modified_byte(b"["), Some(27));
-        assert_eq!(ctrl_modified_byte(b" "), Some(0));
-        assert_eq!(ctrl_modified_byte(b"?"), Some(127));
-        assert_eq!(ctrl_modified_byte(b"\x1b[A"), None);
-        assert_eq!(ctrl_modified_byte("é".as_bytes()), None);
     }
 }

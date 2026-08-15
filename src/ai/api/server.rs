@@ -109,12 +109,12 @@ pub(super) async fn agent_socket(
                             Ok(message) => {
                                 if let ServerMessage::SelectedSession { session_id, .. } = &message {
                                     selected_session_id = Some(session_id.clone());
-                                } else if let ServerMessage::Sessions { sessions } = &message {
-                                    if selected_session_id.as_ref().is_some_and(|selected| {
+                                } else if let ServerMessage::Sessions { sessions } = &message
+                                    && selected_session_id.as_ref().is_some_and(|selected| {
                                         !sessions.iter().any(|session| session.id == *selected)
-                                    }) {
-                                        selected_session_id = None;
-                                    }
+                                    })
+                                {
+                                    selected_session_id = None;
                                 }
                                 if socket.send(message).await.is_err() {
                                     break;

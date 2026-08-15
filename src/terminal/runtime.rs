@@ -85,13 +85,6 @@ pub(super) fn send_renderer_action(
     }));
 }
 
-pub(super) fn server_error_message(error: ServerFnError) -> String {
-    match error {
-        ServerFnError::ServerError { message, .. } => message,
-        other => other.to_string(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use syntaxis_terminal::SessionId;

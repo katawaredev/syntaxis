@@ -19,12 +19,27 @@ use zeroize::Zeroizing;
 
 use crate::runner::{HostGit, validated_root};
 
-const MAX_COMMIT_MESSAGE_BYTES: usize = 256 * 1024;
-const MAX_TAG_MESSAGE_BYTES: usize = 256 * 1024;
+mod network;
+mod parsing;
+mod refs_history;
+mod refs_tags;
+mod signing;
+mod validation;
+
+#[cfg(test)]
+use network::{GITHUB_SSH_PUSH_REWRITE, push_arguments};
+use parsing::{
+    apply_path_stats, apply_untracked_stats, parse_branches, parse_commit_record,
+    parse_comparison_counts, parse_error, parse_history, parse_numstat, parse_path_numstat,
+    parse_utf8, trim_ascii_end,
+};
+use signing::signing_wrapper;
+use validation::{
+    canonical_clone_parent, clone_directory_name, validate_clone_directory_name,
+    validate_clone_url, validate_commit_request, validate_remote_request, validate_revision,
+};
+
 const MAX_CONFLICT_FILE_BYTES: u64 = 8 * 1024 * 1024;
-const MAX_PASSPHRASE_BYTES: usize = 16 * 1024;
-const MAX_REMOTE_URL_BYTES: usize = 64 * 1024;
-const GITHUB_SSH_PUSH_REWRITE: &str = "url.ssh://git@github.com/.pushInsteadOf=https://github.com/";
 
 impl HostGit {
     /// Returns ignored, untracked paths using Git's complete exclude rules.
@@ -566,57 +581,15 @@ impl GitOperations for HostGit {
     }
 
     async fn tags(&self, workspace: &WorkspaceRecord) -> GitResult<Vec<TagInfo>> {
-        let root = validated_root(workspace)?;
-        let arguments = [
-            "for-each-ref".into(),
-            "--sort=-creatordate".into(),
-            "--format=%(refname:short)%00%(objecttype)%00%(objectname)%00%(*objectname)".into(),
-            "refs/tags".into(),
-        ];
-        let output = self.run_default(&root, &arguments).await?;
-        parse_tags(&output.stdout)
+        self.list_tags(workspace).await
     }
 
     async fn create_tag(&self, workspace: &WorkspaceRecord, request: TagRequest) -> GitResult<()> {
-        let root = validated_root(workspace)?;
-        self.validate_tag_name(&root, &request.name).await?;
-        if request
-            .message
-            .as_ref()
-            .is_some_and(|message| message.len() > MAX_TAG_MESSAGE_BYTES)
-        {
-            return Err(GitError::new(
-                GitErrorCode::OutputTooLarge,
-                "The tag message is too large.",
-            ));
-        }
-        if let Some(target) = request.target.as_deref() {
-            validate_revision(target)?;
-        }
-        let mut arguments = vec!["tag".into()];
-        if let Some(message) = request.message.filter(|message| !message.trim().is_empty()) {
-            arguments.extend([
-                "-a".into(),
-                request.name.into(),
-                "-m".into(),
-                message.into(),
-            ]);
-        } else {
-            arguments.push(request.name.into());
-        }
-        if let Some(target) = request.target {
-            arguments.push(target.into());
-        }
-        self.run_default(&root, &arguments).await?;
-        Ok(())
+        self.create_repository_tag(workspace, request).await
     }
 
     async fn delete_tag(&self, workspace: &WorkspaceRecord, name: &str) -> GitResult<()> {
-        let root = validated_root(workspace)?;
-        self.validate_tag_name(&root, name).await?;
-        let arguments = ["tag".into(), "-d".into(), "--".into(), name.into()];
-        self.run_default(&root, &arguments).await?;
-        Ok(())
+        self.delete_repository_tag(workspace, name).await
     }
 
     async fn compare(
@@ -762,17 +735,7 @@ impl GitOperations for HostGit {
     }
 
     async fn history(&self, workspace: &WorkspaceRecord, limit: u32) -> GitResult<Vec<CommitInfo>> {
-        let root = validated_root(workspace)?;
-        let limit = limit.clamp(1, 200);
-        let arguments = [
-            "log".into(),
-            "-z".into(),
-            "--no-show-signature".into(),
-            "--format=%H%x1f%h%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%s".into(),
-            format!("-n{limit}").into(),
-        ];
-        let output = self.run_default(&root, &arguments).await?;
-        parse_history(&output.stdout)
+        self.load_history(workspace, limit).await
     }
 
     async fn commit_message(
@@ -780,18 +743,7 @@ impl GitOperations for HostGit {
         workspace: &WorkspaceRecord,
         revision: &str,
     ) -> GitResult<String> {
-        validate_revision(revision)?;
-        let root = validated_root(workspace)?;
-        self.require_commit(&root, revision).await?;
-        let arguments = [
-            "show".into(),
-            "-s".into(),
-            "--no-show-signature".into(),
-            "--format=%B".into(),
-            revision.into(),
-        ];
-        let output = self.run_default(&root, &arguments).await?;
-        String::from_utf8(trim_ascii_end(&output.stdout).to_vec()).map_err(|_| parse_error())
+        self.load_commit_message(workspace, revision).await
     }
 
     async fn commit_detail(
@@ -799,35 +751,7 @@ impl GitOperations for HostGit {
         workspace: &WorkspaceRecord,
         revision: &str,
     ) -> GitResult<CommitDetail> {
-        validate_revision(revision)?;
-        let root = validated_root(workspace)?;
-        let commit = self.commit_info(&root, revision).await?;
-        let patch_arguments = [
-            "show".into(),
-            "--format=".into(),
-            "--no-ext-diff".into(),
-            "--no-color".into(),
-            "--binary".into(),
-            "--unified=3".into(),
-            revision.into(),
-        ];
-        let patch_output = self.run_default(&root, &patch_arguments).await?;
-        let patch = String::from_utf8(patch_output.stdout).map_err(|_| parse_error())?;
-        let stats_arguments = [
-            "show".into(),
-            "--format=".into(),
-            "--numstat".into(),
-            revision.into(),
-        ];
-        let stats_output = self.run_default(&root, &stats_arguments).await?;
-        let (files_changed, additions, deletions) = parse_numstat(&stats_output.stdout)?;
-        Ok(CommitDetail {
-            commit,
-            patch,
-            files_changed,
-            additions,
-            deletions,
-        })
+        self.load_commit_detail(workspace, revision).await
     }
 
     async fn checkout_commit(&self, workspace: &WorkspaceRecord, revision: &str) -> GitResult<()> {
@@ -869,52 +793,11 @@ impl GitOperations for HostGit {
     }
 
     async fn fetch(&self, workspace: &WorkspaceRecord) -> GitResult<RemoteResult> {
-        let root = validated_root(workspace)?;
-        let arguments = ["fetch".into(), "--prune".into()];
-        self.run(
-            &root,
-            &arguments,
-            None,
-            &[("GIT_TERMINAL_PROMPT", "0".into())],
-            &[0],
-            CancellationToken::new(),
-        )
-        .await?;
-        Ok(RemoteResult {
-            message: "Fetch completed.".into(),
-        })
+        self.fetch_all(workspace).await
     }
 
     async fn pull(&self, workspace: &WorkspaceRecord) -> GitResult<RemoteResult> {
-        let root = validated_root(workspace)?;
-        let arguments = ["pull".into(), "--ff-only".into(), "--prune".into()];
-        let result = self
-            .run(
-                &root,
-                &arguments,
-                None,
-                &[("GIT_TERMINAL_PROMPT", "0".into())],
-                &[0],
-                CancellationToken::new(),
-            )
-            .await;
-        match result {
-            Ok(_) => Ok(RemoteResult {
-                message: "Pull completed.".into(),
-            }),
-            Err(error)
-                if error.code == GitErrorCode::CommandFailed
-                    && self.status(workspace).await.is_ok_and(|status| {
-                        status.branch.ahead > 0 && status.branch.behind > 0
-                    }) =>
-            {
-                Err(GitError::new(
-                    GitErrorCode::Conflict,
-                    "The local and upstream branches have diverged. Rebase or merge them in the terminal before pulling.",
-                ))
-            }
-            Err(error) => Err(error),
-        }
+        self.pull_fast_forward(workspace).await
     }
 
     async fn push(
@@ -922,55 +805,7 @@ impl GitOperations for HostGit {
         workspace: &WorkspaceRecord,
         force_with_lease: bool,
     ) -> GitResult<PushOutcome> {
-        let root = validated_root(workspace)?;
-        let environment = [("GIT_TERMINAL_PROMPT", "0".into())];
-        let arguments = push_arguments(force_with_lease, false);
-        let mut result = self
-            .run(
-                &root,
-                &arguments,
-                None,
-                &environment,
-                &[0],
-                CancellationToken::new(),
-            )
-            .await;
-        if result
-            .as_ref()
-            .is_err_and(|error| error.code == GitErrorCode::Authentication)
-        {
-            // Public GitHub repositories are commonly cloned over HTTPS even when the
-            // developer authenticates with SSH. Retry using a command-scoped rewrite so
-            // the configured remote and the user's Git configuration remain untouched.
-            result = self
-                .run(
-                    &root,
-                    &push_arguments(force_with_lease, true),
-                    None,
-                    &environment,
-                    &[0],
-                    CancellationToken::new(),
-                )
-                .await;
-        }
-        match result {
-            Ok(_) => Ok(PushOutcome::Pushed {
-                result: RemoteResult {
-                    message: if force_with_lease {
-                        "Force-with-lease push completed."
-                    } else {
-                        "Push completed."
-                    }
-                    .into(),
-                },
-            }),
-            Err(error) if error.code == GitErrorCode::NonFastForward && !force_with_lease => {
-                Ok(PushOutcome::ForceWithLeaseRequired {
-                    message: error.message,
-                })
-            }
-            Err(error) => Err(error),
-        }
+        self.push_upstream(workspace, force_with_lease).await
     }
 }
 
@@ -1102,22 +937,6 @@ impl HostGit {
         self.run_default(root, &arguments).await.map_err(|error| {
             if error.code == GitErrorCode::CommandFailed {
                 GitError::new(GitErrorCode::Conflict, "Enter a valid Git branch name.")
-            } else {
-                error
-            }
-        })?;
-        Ok(())
-    }
-
-    async fn validate_tag_name(&self, root: &Path, name: &str) -> GitResult<()> {
-        validate_revision(name)?;
-        let arguments = [
-            "check-ref-format".into(),
-            format!("refs/tags/{name}").into(),
-        ];
-        self.run_default(root, &arguments).await.map_err(|error| {
-            if error.code == GitErrorCode::CommandFailed {
-                GitError::new(GitErrorCode::Conflict, "Enter a valid Git tag name.")
             } else {
                 error
             }
@@ -1271,90 +1090,11 @@ fn cleanup_clone_destination(destination: &Path) {
     }
 }
 
-fn validate_remote_request(request: &RemoteRequest) -> GitResult<()> {
-    if request.name.trim().is_empty() {
-        return Err(GitError::new(
-            GitErrorCode::Conflict,
-            "Remote name cannot be empty.",
-        ));
-    }
-    if request.fetch_url.trim().is_empty() {
-        return Err(GitError::new(
-            GitErrorCode::Conflict,
-            "Remote fetch URL cannot be empty.",
-        ));
-    }
-    if request.fetch_url.len() > MAX_REMOTE_URL_BYTES
-        || request
-            .push_url
-            .as_ref()
-            .is_some_and(|url| url.len() > MAX_REMOTE_URL_BYTES)
-    {
-        return Err(GitError::new(
-            GitErrorCode::OutputTooLarge,
-            "Remote URL is too large.",
-        ));
-    }
-    Ok(())
-}
-
-fn validate_commit_request(request: &CommitRequest) -> GitResult<()> {
-    if request.message.trim().is_empty() {
-        return Err(GitError::new(
-            GitErrorCode::Conflict,
-            "Enter a commit message.",
-        ));
-    }
-    if request.message.len() > MAX_COMMIT_MESSAGE_BYTES {
-        return Err(GitError::new(
-            GitErrorCode::OutputTooLarge,
-            "The commit message is too large.",
-        ));
-    }
-    if request
-        .signing_passphrase
-        .as_ref()
-        .is_some_and(|passphrase| passphrase.len() > MAX_PASSPHRASE_BYTES)
-    {
-        return Err(GitError::new(
-            GitErrorCode::OutputTooLarge,
-            "The signing passphrase is too large.",
-        ));
-    }
-    Ok(())
-}
-
 fn config_enabled(value: &str) -> bool {
     matches!(
         value.trim().to_ascii_lowercase().as_str(),
         "true" | "yes" | "on" | "1"
     )
-}
-
-fn parse_branches(output: &[u8]) -> GitResult<Vec<BranchInfo>> {
-    let branches = output
-        .split(|byte| *byte == b'\n')
-        .filter(|record| !record.is_empty())
-        .map(|record| {
-            let fields = record.split(|byte| *byte == 0).collect::<Vec<_>>();
-            if fields.len() != 4 {
-                return Err(parse_error());
-            }
-            Ok(BranchInfo {
-                name: parse_utf8(fields[0])?.to_owned(),
-                current: fields[1] == b"*",
-                upstream: match parse_utf8(fields[2])? {
-                    "" => None,
-                    upstream => Some(upstream.to_owned()),
-                },
-                remote: fields[3].starts_with(b"refs/remotes/"),
-            })
-        })
-        .collect::<GitResult<Vec<_>>>()?;
-    Ok(branches
-        .into_iter()
-        .filter(|branch| !branch.remote || branch.name.contains('/'))
-        .collect())
 }
 
 async fn repository_diff_with_context(
@@ -1501,353 +1241,6 @@ async fn git_revision_contents(
         return Ok(Some(String::new()));
     }
     Ok(String::from_utf8(output.stdout).ok())
-}
-
-fn parse_path_numstat(output: &[u8]) -> GitResult<Vec<(RelativePath, u64, u64)>> {
-    let records = output.split(|byte| *byte == 0).collect::<Vec<_>>();
-    let mut stats = Vec::new();
-    let mut index = 0;
-    while index < records.len() {
-        let record = records[index];
-        index += 1;
-        if record.is_empty() {
-            continue;
-        }
-        let mut fields = record.splitn(3, |byte| *byte == b'\t');
-        let additions = fields.next().ok_or_else(parse_error)?;
-        let deletions = fields.next().ok_or_else(parse_error)?;
-        let inline_path = fields.next().ok_or_else(parse_error)?;
-        let path = if inline_path.is_empty() {
-            index += 1;
-            let renamed_path = records.get(index).ok_or_else(parse_error)?;
-            index += 1;
-            *renamed_path
-        } else {
-            inline_path
-        };
-        let additions = if additions == b"-" {
-            0
-        } else {
-            parse_utf8(additions)?.parse().map_err(|_| parse_error())?
-        };
-        let deletions = if deletions == b"-" {
-            0
-        } else {
-            parse_utf8(deletions)?.parse().map_err(|_| parse_error())?
-        };
-        stats.push((
-            RelativePath::try_from(parse_utf8(path)?).map_err(|_| parse_error())?,
-            additions,
-            deletions,
-        ));
-    }
-    Ok(stats)
-}
-
-fn apply_path_stats(
-    status: &mut RepositoryStatus,
-    path_stats: &[(RelativePath, u64, u64)],
-    staged: bool,
-) {
-    for (path, additions, deletions) in path_stats {
-        let Some(change) = status
-            .changes
-            .iter_mut()
-            .find(|change| change.path == *path || change.original_path.as_ref() == Some(path))
-        else {
-            continue;
-        };
-        if staged {
-            change.staged_additions = change.staged_additions.saturating_add(*additions);
-            change.staged_deletions = change.staged_deletions.saturating_add(*deletions);
-        } else {
-            change.unstaged_additions = change.unstaged_additions.saturating_add(*additions);
-            change.unstaged_deletions = change.unstaged_deletions.saturating_add(*deletions);
-        }
-    }
-}
-
-fn apply_untracked_stats(root: &Path, status: &mut RepositoryStatus, max_bytes: usize) {
-    for change in &mut status.changes {
-        if change.worktree != Some(syntaxis_git::ChangeKind::Untracked) {
-            continue;
-        }
-        let path = root.join(change.path.as_str());
-        let Ok(metadata) = path.symlink_metadata() else {
-            continue;
-        };
-        if !metadata.is_file() || metadata.len() > u64::try_from(max_bytes).unwrap_or(u64::MAX) {
-            continue;
-        }
-        let Ok(contents) = std::fs::read(path) else {
-            continue;
-        };
-        if contents.contains(&0) {
-            continue;
-        }
-        let lines = contents
-            .split(|byte| *byte == b'\n')
-            .count()
-            .saturating_sub(usize::from(contents.last() == Some(&b'\n')));
-        change.unstaged_additions = lines.try_into().unwrap_or(u64::MAX);
-    }
-}
-
-fn parse_tags(output: &[u8]) -> GitResult<Vec<TagInfo>> {
-    output
-        .split(|byte| *byte == b'\n')
-        .filter(|record| !record.is_empty())
-        .map(|record| {
-            let fields = record.split(|byte| *byte == 0).collect::<Vec<_>>();
-            if fields.len() != 4 {
-                return Err(parse_error());
-            }
-            let annotated = fields[1] == b"tag";
-            let target = if annotated { fields[3] } else { fields[2] };
-            if target.is_empty() {
-                return Err(parse_error());
-            }
-            Ok(TagInfo {
-                name: parse_utf8(fields[0])?.to_owned(),
-                target_oid: parse_utf8(target)?.to_owned(),
-                annotated,
-            })
-        })
-        .collect()
-}
-
-fn parse_history(output: &[u8]) -> GitResult<Vec<CommitInfo>> {
-    output
-        .split(|byte| *byte == 0)
-        .map(trim_ascii_end)
-        .filter(|record| !record.is_empty())
-        .map(parse_commit_record)
-        .collect()
-}
-
-fn parse_commit_record(record: &[u8]) -> GitResult<CommitInfo> {
-    let fields = record.split(|byte| *byte == 0x1f).collect::<Vec<_>>();
-    if fields.len() != 7 {
-        return Err(parse_error());
-    }
-    Ok(CommitInfo {
-        oid: parse_utf8(fields[0])?.to_owned(),
-        short_oid: parse_utf8(fields[1])?.to_owned(),
-        parents: parse_utf8(fields[2])?
-            .split_ascii_whitespace()
-            .map(ToOwned::to_owned)
-            .collect(),
-        author_name: parse_utf8(fields[3])?.to_owned(),
-        author_email: parse_utf8(fields[4])?.to_owned(),
-        authored_unix_seconds: parse_utf8(fields[5])?.parse().map_err(|_| parse_error())?,
-        subject: parse_utf8(fields[6])?.to_owned(),
-    })
-}
-
-fn parse_numstat(output: &[u8]) -> GitResult<(u32, u64, u64)> {
-    let text = parse_utf8(output)?;
-    let mut files = 0_u32;
-    let mut additions = 0_u64;
-    let mut deletions = 0_u64;
-    for line in text.lines().filter(|line| !line.is_empty()) {
-        let mut fields = line.splitn(3, '\t');
-        let added = fields.next().ok_or_else(parse_error)?;
-        let deleted = fields.next().ok_or_else(parse_error)?;
-        fields.next().ok_or_else(parse_error)?;
-        files = files.saturating_add(1);
-        if added != "-" {
-            additions = additions.saturating_add(added.parse().map_err(|_| parse_error())?);
-        }
-        if deleted != "-" {
-            deletions = deletions.saturating_add(deleted.parse().map_err(|_| parse_error())?);
-        }
-    }
-    Ok((files, additions, deletions))
-}
-
-fn parse_comparison_counts(output: &[u8]) -> GitResult<(u32, u32)> {
-    let mut fields = parse_utf8(output)?.split_ascii_whitespace();
-    let base_only = fields
-        .next()
-        .ok_or_else(parse_error)?
-        .parse()
-        .map_err(|_| parse_error())?;
-    let head_only = fields
-        .next()
-        .ok_or_else(parse_error)?
-        .parse()
-        .map_err(|_| parse_error())?;
-    if fields.next().is_some() {
-        return Err(parse_error());
-    }
-    Ok((base_only, head_only))
-}
-
-fn push_arguments(force_with_lease: bool, github_ssh_fallback: bool) -> Vec<OsString> {
-    let mut arguments = Vec::with_capacity(usize::from(github_ssh_fallback) * 2 + 2);
-    if github_ssh_fallback {
-        arguments.extend(["-c".into(), GITHUB_SSH_PUSH_REWRITE.into()]);
-    }
-    arguments.push("push".into());
-    if force_with_lease {
-        arguments.push("--force-with-lease".into());
-    }
-    arguments
-}
-
-fn validate_revision(value: &str) -> GitResult<()> {
-    if value.is_empty()
-        || value.starts_with('-')
-        || value.len() > 1024
-        || value.chars().any(char::is_control)
-    {
-        Err(GitError::new(
-            GitErrorCode::Conflict,
-            "Enter a valid Git revision or branch name.",
-        ))
-    } else {
-        Ok(())
-    }
-}
-
-fn parse_utf8(value: &[u8]) -> GitResult<&str> {
-    std::str::from_utf8(value).map_err(|_| parse_error())
-}
-
-fn trim_ascii_end(mut value: &[u8]) -> &[u8] {
-    while value.last().is_some_and(u8::is_ascii_whitespace) {
-        value = &value[..value.len() - 1];
-    }
-    value
-}
-
-fn parse_error() -> GitError {
-    GitError::new(
-        GitErrorCode::Parse,
-        "Git returned data in an unexpected format.",
-    )
-}
-
-fn validate_clone_url(url: &str) -> GitResult<()> {
-    let url = url.trim();
-    let supported = url.starts_with("https://")
-        || url.starts_with("http://")
-        || url.starts_with("ssh://")
-        || url.starts_with("git://")
-        || (url.starts_with("git@") && url.contains(':'));
-    if !supported || url.chars().any(char::is_control) || url.len() > 16 * 1024 {
-        return Err(GitError::new(
-            GitErrorCode::Conflict,
-            "Enter a supported HTTPS, SSH, or Git repository URL.",
-        ));
-    }
-    Ok(())
-}
-
-fn canonical_clone_parent(value: &str) -> GitResult<std::path::PathBuf> {
-    let parent = std::path::PathBuf::from(value);
-    if !parent.is_absolute() {
-        return Err(GitError::new(
-            GitErrorCode::InvalidWorkspace,
-            "The clone destination must be an absolute runtime path.",
-        ));
-    }
-    let canonical = parent.canonicalize().map_err(|_| {
-        GitError::new(
-            GitErrorCode::InvalidWorkspace,
-            "The clone destination is unavailable.",
-        )
-    })?;
-    if canonical != parent || !canonical.is_dir() {
-        return Err(GitError::new(
-            GitErrorCode::InvalidWorkspace,
-            "The clone destination is unavailable or has changed.",
-        ));
-    }
-    Ok(canonical)
-}
-
-fn clone_directory_name(url: &str) -> GitResult<String> {
-    let name = url
-        .trim_end_matches('/')
-        .rsplit(['/', ':'])
-        .next()
-        .unwrap_or_default()
-        .strip_suffix(".git")
-        .unwrap_or_else(|| {
-            url.trim_end_matches('/')
-                .rsplit(['/', ':'])
-                .next()
-                .unwrap_or_default()
-        })
-        .to_owned();
-    validate_clone_directory_name(&name)?;
-    Ok(name)
-}
-
-fn validate_clone_directory_name(name: &str) -> GitResult<()> {
-    if name.is_empty()
-        || name == "."
-        || name == ".."
-        || name.len() > 255
-        || name.contains(['/', '\\'])
-        || name.chars().any(char::is_control)
-    {
-        return Err(GitError::new(
-            GitErrorCode::Conflict,
-            "The repository URL does not provide a safe destination name.",
-        ));
-    }
-    Ok(())
-}
-
-#[cfg(unix)]
-fn signing_wrapper(
-    passphrase: &[u8],
-) -> GitResult<(tempfile::TempDir, std::path::PathBuf, std::path::PathBuf)> {
-    use std::{fs::OpenOptions, io::Write, os::unix::fs::OpenOptionsExt};
-
-    let directory = tempfile::Builder::new()
-        .prefix("syntaxis-gpg-")
-        .tempdir()
-        .map_err(|_| internal_error())?;
-    let path = directory.path().join("gpg-loopback");
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o700)
-        .open(&path)
-        .map_err(|_| internal_error())?;
-    file.write_all(
-        b"#!/bin/sh\nprogram=${SYNTAXIS_GPG_PROGRAM:-gpg}\nif [ \"$program\" = \"$0\" ]; then program=gpg; fi\nexec 3<\"$SYNTAXIS_GPG_PASSPHRASE_FILE\"\nexec \"$program\" --batch --pinentry-mode loopback --passphrase-fd 3 \"$@\"\n",
-    )
-    .map_err(|_| internal_error())?;
-    drop(file);
-
-    let passphrase_path = directory.path().join("passphrase");
-    let mut passphrase_file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(&passphrase_path)
-        .map_err(|_| internal_error())?;
-    passphrase_file
-        .write_all(passphrase)
-        .and_then(|()| passphrase_file.write_all(b"\n"))
-        .map_err(|_| internal_error())?;
-    drop(passphrase_file);
-
-    Ok((directory, path, passphrase_path))
-}
-
-#[cfg(not(unix))]
-fn signing_wrapper(
-    _passphrase: &[u8],
-) -> GitResult<(tempfile::TempDir, std::path::PathBuf, std::path::PathBuf)> {
-    Err(GitError::new(
-        GitErrorCode::Unavailable,
-        "In-app signing passphrase retry is not available on this server platform.",
-    ))
 }
 
 fn internal_error() -> GitError {

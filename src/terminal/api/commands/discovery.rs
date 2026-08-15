@@ -178,28 +178,25 @@ fn add_toml_table_tasks(
 fn discover_json_tasks(root: &Path, commands: &mut Vec<RunCommand>, seen: &mut HashSet<String>) {
     if let Some(contents) =
         read_file(&root.join("deno.json")).or_else(|| read_file(&root.join("deno.jsonc")))
+        && let Ok(config) = serde_json::from_str::<serde_json::Value>(&contents)
+        && let Some(tasks) = config.get("tasks").and_then(serde_json::Value::as_object)
     {
-        if let Ok(config) = serde_json::from_str::<serde_json::Value>(&contents) {
-            if let Some(tasks) = config.get("tasks").and_then(serde_json::Value::as_object) {
-                for name in tasks.keys() {
-                    add_detected(commands, seen, "deno", name, format!("deno task {name}"));
-                }
-            }
+        for name in tasks.keys() {
+            add_detected(commands, seen, "deno", name, format!("deno task {name}"));
         }
     }
-    if let Some(contents) = read_file(&root.join("composer.json")) {
-        if let Ok(config) = serde_json::from_str::<serde_json::Value>(&contents) {
-            if let Some(scripts) = config.get("scripts").and_then(serde_json::Value::as_object) {
-                for name in scripts.keys() {
-                    add_detected(
-                        commands,
-                        seen,
-                        "composer",
-                        name,
-                        format!("composer run-script {name}"),
-                    );
-                }
-            }
+    if let Some(contents) = read_file(&root.join("composer.json"))
+        && let Ok(config) = serde_json::from_str::<serde_json::Value>(&contents)
+        && let Some(scripts) = config.get("scripts").and_then(serde_json::Value::as_object)
+    {
+        for name in scripts.keys() {
+            add_detected(
+                commands,
+                seen,
+                "composer",
+                name,
+                format!("composer run-script {name}"),
+            );
         }
     }
 }

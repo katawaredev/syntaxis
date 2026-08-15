@@ -1,4 +1,5 @@
 use super::*;
+use std::path::Path;
 
 #[test]
 fn command_markers_are_removed_across_chunk_boundaries() {

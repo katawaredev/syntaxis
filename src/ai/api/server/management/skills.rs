@@ -485,10 +485,11 @@ fn cleanup_stale_skill_artifacts(root: &Path) -> Result<(), ServerFnError> {
 fn skill_artifact(name: &str) -> Option<(&str, bool)> {
     let name = name.strip_prefix('.')?;
     for (marker, backup) in [(".syntaxis-update-", false), (".syntaxis-backup-", true)] {
-        if let Some((destination, nonce)) = name.split_once(marker) {
-            if !destination.is_empty() && !nonce.is_empty() {
-                return Some((destination, backup));
-            }
+        if let Some((destination, nonce)) = name.split_once(marker)
+            && !destination.is_empty()
+            && !nonce.is_empty()
+        {
+            return Some((destination, backup));
         }
     }
     None

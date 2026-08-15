@@ -42,6 +42,7 @@ impl OpenDocument {
     }
 }
 
+#[derive(Clone, PartialEq)]
 pub(super) enum ActiveDocumentView {
     Text {
         path: String,

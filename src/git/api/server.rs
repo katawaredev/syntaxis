@@ -106,13 +106,12 @@ async fn handle_clone_socket(mut socket: TypedWebsocket<CloneClientMessage, Clon
                 return;
             }
             progress = progress_rx.recv() => {
-                if let Some(progress) = progress {
-                    if socket.send(CloneServerMessage::Progress { progress }).await.is_err() {
+                if let Some(progress) = progress
+                    && socket.send(CloneServerMessage::Progress { progress }).await.is_err() {
                         cancellation.cancel();
                         let _ = (&mut clone).await;
                         return;
                     }
-                }
             }
             incoming = socket.recv() => {
                 match incoming {

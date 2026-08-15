@@ -1,10 +1,14 @@
+mod command_markers;
+mod shell;
+
 use crate::replay::{ReplayBuffer, ReplayChunk};
-use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
+use command_markers::{CommandMarker, CommandMarkerParser};
+use portable_pty::{Child, MasterPty, PtySize, native_pty_system};
+use shell::{ShellRc, controlled_shell_command};
 use std::{
     collections::HashMap,
-    env, fs,
     io::{Read, Write},
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{
         Arc, Mutex, MutexGuard, Weak,
         atomic::{AtomicUsize, Ordering},
@@ -21,9 +25,6 @@ use syntaxis_terminal::{
 use syntaxis_workspace::{WorkspaceId, WorkspaceRecord};
 use tokio::sync::broadcast;
 const READ_CHUNK_BYTES: usize = 32 * 1024;
-const COMMAND_MARKER_PREFIX: &[u8] = b"\x1b]777;syntaxis;";
-const COMMAND_MARKER_END: u8 = 0x07;
-const MAX_COMMAND_MARKER_BYTES: usize = 128;
 #[derive(Clone, Debug)]
 pub struct TerminalHostConfig {
     pub replay_bytes: usize,
@@ -103,18 +104,6 @@ struct SessionState {
     command_active: bool,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum CommandMarker {
-    Started,
-    Finished(i32),
-}
-
-#[derive(Default)]
-struct CommandMarkerParser {
-    pending: Vec<u8>,
-}
-
-struct ShellRc(PathBuf);
 impl HostTerminalManager {
     pub fn new(config: TerminalHostConfig) -> Self {
         let inner = Arc::new(ManagerInner {
@@ -580,70 +569,6 @@ impl Session {
     }
 }
 
-impl Drop for ShellRc {
-    fn drop(&mut self) {
-        let _ = fs::remove_file(&self.0);
-    }
-}
-
-impl CommandMarkerParser {
-    fn push(&mut self, data: &[u8]) -> (Vec<u8>, Vec<CommandMarker>) {
-        self.pending.extend_from_slice(data);
-        let mut visible = Vec::new();
-        let mut markers = Vec::new();
-        loop {
-            let Some(start) = find_bytes(&self.pending, COMMAND_MARKER_PREFIX) else {
-                let keep = partial_prefix_len(&self.pending, COMMAND_MARKER_PREFIX);
-                let emit = self.pending.len().saturating_sub(keep);
-                visible.extend(self.pending.drain(..emit));
-                break;
-            };
-            visible.extend(self.pending.drain(..start));
-            let Some(end_offset) = self.pending[COMMAND_MARKER_PREFIX.len()..]
-                .iter()
-                .position(|byte| *byte == COMMAND_MARKER_END)
-            else {
-                if self.pending.len() > MAX_COMMAND_MARKER_BYTES {
-                    visible.extend(self.pending.drain(..1));
-                    continue;
-                }
-                break;
-            };
-            let content_start = COMMAND_MARKER_PREFIX.len();
-            let content_end = content_start + end_offset;
-            if let Some(marker) = parse_command_marker(&self.pending[content_start..content_end]) {
-                markers.push(marker);
-            }
-            self.pending.drain(..=content_end);
-        }
-        (visible, markers)
-    }
-}
-
-fn parse_command_marker(content: &[u8]) -> Option<CommandMarker> {
-    if content == b"command-start" {
-        return Some(CommandMarker::Started);
-    }
-    std::str::from_utf8(content)
-        .ok()?
-        .strip_prefix("command-end;")?
-        .parse::<i32>()
-        .ok()
-        .map(CommandMarker::Finished)
-}
-
-fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    haystack
-        .windows(needle.len())
-        .position(|candidate| candidate == needle)
-}
-
-fn partial_prefix_len(data: &[u8], prefix: &[u8]) -> usize {
-    (1..prefix.len().min(data.len()))
-        .rev()
-        .find(|length| data.ends_with(&prefix[..*length]))
-        .unwrap_or(0)
-}
 fn spawn_reader(
     session: Arc<Session>,
     mut reader: Box<dyn Read + Send>,
@@ -709,82 +634,6 @@ fn spawn_cleanup_worker(manager: Weak<ManagerInner>) {
             }
         })
         .expect("failed to start terminal cleanup thread");
-}
-fn controlled_shell_command(root: &Path) -> Result<(CommandBuilder, ShellRc), TerminalError> {
-    let shell = env::var_os("SHELL")
-        .map(PathBuf::from)
-        .filter(|path| {
-            path.is_absolute()
-                && path.is_file()
-                && path.file_name().is_some_and(|name| name == "bash")
-        })
-        .or_else(|| {
-            Path::new("/bin/bash")
-                .is_file()
-                .then(|| PathBuf::from("/bin/bash"))
-        })
-        .ok_or_else(|| unavailable("Bash is unavailable"))?;
-    let shell_rc = create_shell_rc()?;
-    let mut command = CommandBuilder::new(shell);
-    command.env_clear();
-    for key in [
-        "HOME",
-        "USER",
-        "LOGNAME",
-        "PATH",
-        "LANG",
-        "LC_ALL",
-        "SSH_AUTH_SOCK",
-    ] {
-        if let Some(value) = env::var_os(key) {
-            command.env(key, value);
-        }
-    }
-    command.env("TERM", "xterm-256color");
-    command.env("COLORTERM", "truecolor");
-    command.env("TERM_PROGRAM", "Syntaxis");
-    command.env("PWD", root);
-    command.arg("--noprofile");
-    command.arg("--rcfile");
-    command.arg(&shell_rc.0);
-    command.arg("-i");
-    Ok((command, shell_rc))
-}
-
-fn create_shell_rc() -> Result<ShellRc, TerminalError> {
-    let path = env::temp_dir().join(format!("syntaxis-bash-{}.rc", uuid::Uuid::new_v4()));
-    fs::write(
-        &path,
-        r#"if [[ -r "$HOME/.bashrc" ]]; then
-    source "$HOME/.bashrc"
-fi
-
-if [[ "$(declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]]; then
-    __syntaxis_original_prompt_commands=("${PROMPT_COMMAND[@]}")
-elif [[ -n "${PROMPT_COMMAND-}" ]]; then
-    __syntaxis_original_prompt_commands=("$PROMPT_COMMAND")
-else
-    __syntaxis_original_prompt_commands=()
-fi
-PS0=$'\e]777;syntaxis;command-start\a'"${PS0-}"
-
-__syntaxis_prompt_command() {
-    local __syntaxis_status=$?
-    printf '\e]777;syntaxis;command-end;%d\a' "$__syntaxis_status"
-    local __syntaxis_prompt_status="$__syntaxis_status"
-    local __syntaxis_prompt_entry
-    for __syntaxis_prompt_entry in "${__syntaxis_original_prompt_commands[@]}"; do
-        (exit "$__syntaxis_prompt_status")
-        eval -- "$__syntaxis_prompt_entry"
-        __syntaxis_prompt_status=$?
-    done
-}
-
-PROMPT_COMMAND=(__syntaxis_prompt_command)
-"#,
-    )
-    .map_err(|_| unavailable("Failed to prepare Bash integration"))?;
-    Ok(ShellRc(path))
 }
 const fn to_pty_size(size: TerminalSize) -> PtySize {
     PtySize {

@@ -5,6 +5,7 @@ use syntaxis_workspace::{
 };
 
 use super::api::WorkspaceFilesBootstrap;
+use crate::client_error::server_error_message;
 #[cfg(feature = "desktop")]
 use syntaxis_workspace::{EntryKind, ExecutionLocation, WorkspaceId};
 
@@ -245,13 +246,6 @@ pub async fn remove_worktree(
             .remove_worktree(&workspace, &worktree_workspace_id, force)
             .await
             .map_err(|error| error.message),
-    }
-}
-
-fn server_error_message(error: dioxus::prelude::ServerFnError) -> String {
-    match error {
-        dioxus::prelude::ServerFnError::ServerError { message, .. } => message,
-        other => other.to_string(),
     }
 }
 
@@ -632,21 +626,4 @@ fn host_registry() -> Result<&'static syntaxis_workspace_host::WorkspaceRegistry
         })
         .as_ref()
         .map_err(Clone::clone)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::server_error_message;
-    use dioxus::prelude::ServerFnError;
-
-    #[test]
-    fn worktree_server_errors_keep_the_actionable_message() {
-        let error = ServerFnError::ServerError {
-            message: "That branch already exists.".into(),
-            code: 422,
-            details: None,
-        };
-
-        assert_eq!(server_error_message(error), "That branch already exists.");
-    }
 }

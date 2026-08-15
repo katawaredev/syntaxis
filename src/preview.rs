@@ -3,6 +3,8 @@ use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
 use serde::{Deserialize, Serialize};
 use syntaxis_ui::prelude::{AppIcon, ControlSize, Icon, MenuContent, MenuTrigger, Toast, Tone};
 
+use crate::client_error::server_error_message;
+
 #[cfg(feature = "server")]
 pub(crate) mod server;
 
@@ -573,13 +575,6 @@ fn WorkspacePreview(workspace_id: String) -> Element {
                 }
             }
         }
-    }
-}
-
-fn server_error_message(error: ServerFnError) -> String {
-    match error {
-        ServerFnError::ServerError { message, .. } => message,
-        other => other.to_string(),
     }
 }
 

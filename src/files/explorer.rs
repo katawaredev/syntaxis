@@ -100,7 +100,7 @@ pub(super) fn Explorer(
             let Some(workspace) = workspace else {
                 return Ok(WorkspaceSearchResults::default());
             };
-            search_workspace_files(workspace, query, options, ignored_paths, show_ignored).await
+            search_workspace_files(workspace, query, options, ignored_paths, show_ignored()).await
         }
     });
     let active_search_query = search_request().map(|(_, query)| query);
@@ -158,45 +158,68 @@ pub(super) fn Explorer(
                             on_toggle: move |()| file_menu.toggle(),
                         }
                         MenuContent { class: "right-0 w-56",
-                            div { class: "px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground", "View" }
+                            div { class: "px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground",
+                                "View"
+                            }
                             DropdownMenuItem::<usize> {
-                                value: 0,
-                                index: 0,
+                                value: 0_usize,
+                                index: 0_usize,
                                 disabled: changes_by_path.is_empty() && !changed_only(),
                                 on_select: move |_| changed_only.toggle(),
-                                span { class: "flex items-center gap-2", Icon { icon: AppIcon::FileDiff, size: 14 } "Changed files only" }
-                                if changed_only() { Icon { icon: AppIcon::Check, size: 12 } }
+                                span { class: "flex items-center gap-2",
+                                    Icon { icon: AppIcon::FileDiff, size: 14 }
+                                    "Changed files only"
+                                }
+                                if changed_only() {
+                                    Icon { icon: AppIcon::Check, size: 12 }
+                                }
                             }
                             DropdownMenuItem::<usize> {
-                                value: 1,
-                                index: 1,
+                                value: 1_usize,
+                                index: 1_usize,
                                 on_select: move |_| show_ignored.toggle(),
-                                span { class: "flex items-center gap-2", Icon { icon: AppIcon::Eye, size: 14 } "Show Git ignored files" }
-                                if show_ignored() { Icon { icon: AppIcon::Check, size: 12 } }
+                                span { class: "flex items-center gap-2",
+                                    Icon { icon: AppIcon::Eye, size: 14 }
+                                    "Show Git ignored files"
+                                }
+                                if show_ignored() {
+                                    Icon { icon: AppIcon::Check, size: 12 }
+                                }
                             }
                             hr {}
-                            div { class: "px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground", "Selected item" }
+                            div { class: "px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground",
+                                "Selected item"
+                            }
                             DropdownMenuItem::<usize> {
-                                value: 2,
-                                index: 2,
+                                value: 2_usize,
+                                index: 2_usize,
                                 disabled: pending || selected_entry().is_none(),
                                 on_select: move |_| on_action.call(FileAction::Move),
-                                span { class: "flex items-center gap-2", Icon { icon: AppIcon::FileMove, size: 14 } "Move" }
+                                span { class: "flex items-center gap-2",
+                                    Icon { icon: AppIcon::FileMove, size: 14 }
+                                    "Move"
+                                }
                             }
                             DropdownMenuItem::<usize> {
-                                value: 3,
-                                index: 3,
+                                value: 3_usize,
+                                index: 3_usize,
                                 disabled: pending || selected_entry().is_none(),
                                 on_select: move |_| on_action.call(FileAction::Duplicate),
-                                span { class: "flex items-center gap-2", Icon { icon: AppIcon::Copy, size: 14 } "Duplicate" }
+                                span { class: "flex items-center gap-2",
+                                    Icon { icon: AppIcon::Copy, size: 14 }
+                                    "Duplicate"
+                                }
                             }
                             DropdownMenuItem::<usize> {
-                                value: 4,
-                                index: 4,
+                                value: 4_usize,
+                                index: 4_usize,
                                 disabled: pending || selected_entry().is_none(),
                                 class: "!text-destructive",
                                 on_select: move |_| on_action.call(FileAction::Delete),
-                                span { class: "flex items-center gap-2", Icon { icon: AppIcon::Delete, size: 14 } "Delete" }
+                                span { class: "flex items-center gap-2",
+                                    Icon { icon: AppIcon::Delete, size: 14 }
+                                    "Delete"
+                                }
                             }
                         }
                     }

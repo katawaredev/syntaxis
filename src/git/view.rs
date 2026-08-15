@@ -4,10 +4,10 @@ use dioxus_code_editor::{DiffLayout, UnifiedDiffView};
 use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
 use syntaxis_editor::language_slug_for_path;
 use syntaxis_git::{
-    BranchComparison, BranchInfo, BranchRequest, ChangeKind, CommitDetail, CommitInfo,
-    CommitOutcome, CommitRequest, ConflictChoice, ConflictFile, DiffHunk, DiffKind, FileChange,
-    HunkAction, RemoteInfo, RemoteRequest, RepositoryState, RepositoryStatus, TagInfo, TagRequest,
-    UnifiedDiff, parse_diff_hunks,
+    BranchComparison, BranchInfo, ChangeKind, CommitDetail, CommitInfo, CommitOutcome,
+    CommitRequest, ConflictChoice, ConflictFile, DiffHunk, DiffKind, FileChange, HunkAction,
+    RemoteInfo, RemoteRequest, RepositoryState, RepositoryStatus, TagInfo, TagRequest, UnifiedDiff,
+    parse_diff_hunks,
 };
 use syntaxis_ui::prelude::{
     AppIcon, Button, ButtonKind, Checkbox, ControlSize, DialogActions, DialogForm, Drawer, Field,
@@ -15,33 +15,44 @@ use syntaxis_ui::prelude::{
     PanelHeader, PanelHeaderKind, TextArea, TextInput, TextInputType, Toast, Tone,
 };
 
+use crate::client_error::server_error_message;
+
 #[path = "changes.rs"]
 mod changes;
+#[path = "view/controller.rs"]
+mod controller;
 #[path = "dialogs.rs"]
 mod dialogs;
 #[path = "history.rs"]
 mod history;
 #[path = "remotes.rs"]
 mod remotes;
+#[path = "view/support.rs"]
+mod support;
 #[path = "worktrees.rs"]
 mod worktrees;
 
 use self::changes::{ChangeDetail, GitSidebar, RawPatch};
+use self::controller::{
+    RepositoryActionSignals, compare_handler, mutation_handler, repository_action_handler,
+};
 use self::dialogs::{
     AbortMergeDialog, BranchDialog, CommitDialog, CommitHistoryActionDialog, CompareMergeDialog,
     DiscardAllDialog, ForcePushDialog, RemoteDialog, RemoveRemoteDialog, SigningDialog, TagDialog,
 };
 use self::history::HistoryDetail;
 use self::remotes::RemoteManager;
+use self::support::{
+    RepositoryWelcome, branch_request, copy_commit_hash, diff_line_class, display_remote_url,
+    remote_request, short_oid,
+};
 use self::worktrees::{BranchWorktreeAction, BranchWorktreeMenu};
 use super::api;
-use super::operations::{
-    Mutation, RepositoryAction, RepositoryActionSuccess, run_mutation, run_repository_action,
-};
+use super::operations::{Mutation, RepositoryAction};
 use super::repository::{RepositoryResources, SelectedChange, use_repository_resources};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-enum GitDialog {
+pub(super) enum GitDialog {
     #[default]
     None,
     Commit,
@@ -121,7 +132,7 @@ fn WorkspaceGit(slug: String) -> Element {
     let mut toolbar_menu = use_signal(|| false);
     let mut remote_target = use_signal(|| None::<RemoteInfo>);
     let mut pending = use_signal(|| false);
-    let mut refreshing = use_signal(|| false);
+    let refreshing = use_signal(|| false);
     let mut dialog = use_signal(GitDialog::default);
     let mut toast = use_signal(|| None::<(String, Tone)>);
     let mut operation_error = use_signal(|| None::<String>);
@@ -178,85 +189,28 @@ fn WorkspaceGit(slug: String) -> Element {
         });
     };
 
-    let mutation_slug = slug.clone();
-    let on_mutation = EventHandler::new(move |mutation: Mutation| {
-        let slug = mutation_slug.clone();
-        pending.set(true);
-        operation_error.set(None);
-        spawn(async move {
-            let result = run_mutation(slug, mutation).await;
-            pending.set(false);
-            match result {
-                Ok(success) => {
-                    selected.set(success.selection);
-                    if success.closes_dialog {
-                        dialog.set(GitDialog::None);
-                    }
-                    *refresh_key.write() += 1;
-                    if success.show_message {
-                        toast.set(Some((success.message.into(), Tone::Success)));
-                    }
-                }
-                Err(error) => operation_error.set(Some(server_error_message(error))),
-            }
-        });
-    });
-
-    let action_slug = slug.clone();
-    let on_repository_action = EventHandler::new(move |action: RepositoryAction| {
-        let slug = action_slug.clone();
-        let refresh_action = action.refresh_only();
-        pending.set(true);
-        if refresh_action {
-            refreshing.set(true);
-        }
-        operation_error.set(None);
-        spawn(async move {
-            let result = run_repository_action(slug, action).await;
-            pending.set(false);
-            if refresh_action {
-                refreshing.set(false);
-                *refresh_key.write() += 1;
-            }
-            match result {
-                Ok(RepositoryActionSuccess::Complete(message)) => {
-                    if !refresh_action {
-                        dialog.set(GitDialog::None);
-                        selected.set(None);
-                        *refresh_key.write() += 1;
-                    }
-                    toast.set(Some((message, Tone::Success)));
-                }
-                Ok(RepositoryActionSuccess::MergeConflicts(count)) => {
-                    dialog.set(GitDialog::None);
-                    *refresh_key.write() += 1;
-                    operation_error.set(Some(format!(
-                        "Merge stopped with conflicts in {count} file(s). Resolve the highlighted files or abort the merge."
-                    )));
-                }
-                Ok(RepositoryActionSuccess::ForceWithLeaseRequired(message)) => {
-                    operation_error.set(Some(message));
-                    dialog.set(GitDialog::ForcePush);
-                }
-                Err(error) => operation_error.set(Some(server_error_message(error))),
-            }
-        });
-    });
-
-    let compare_slug = slug.clone();
-    let on_compare = EventHandler::new(move |(base, head): (String, String)| {
-        let slug = compare_slug.clone();
-        pending.set(true);
-        operation_error.set(None);
-        comparison.set(None);
-        spawn(async move {
-            match api::compare(slug, base, head).await {
-                Ok(result) => comparison.set(Some(result)),
-                Err(error) => operation_error.set(Some(server_error_message(error))),
-            }
-            pending.set(false);
-        });
-    });
+    let on_mutation = mutation_handler(
+        slug.clone(),
+        pending,
+        operation_error,
+        selected,
+        dialog,
+        refresh_key,
+        toast,
+    );
+    let on_repository_action = repository_action_handler(
+        slug.clone(),
+        RepositoryActionSignals {
+            pending,
+            refreshing,
+            operation_error,
+            selected,
+            dialog,
+            refresh_key,
+            toast,
+        },
+    );
+    let on_compare = compare_handler(slug.clone(), pending, operation_error, comparison);
 
     let commit_slug = slug.clone();
     let on_commit = move |request: CommitRequest| {
@@ -1111,102 +1065,4 @@ fn WorkspaceGit(slug: String) -> Element {
             Toast { message, tone, on_close: move |()| toast.set(None) }
         }
     }
-}
-
-fn diff_line_class(line: &str) -> &'static str {
-    if line.starts_with('+') && !line.starts_with("+++") {
-        "grid min-h-[23px] grid-cols-[50px_1fr] bg-success/15"
-    } else if line.starts_with('-') && !line.starts_with("---") {
-        "grid min-h-[23px] grid-cols-[50px_1fr] bg-destructive/15"
-    } else if line.starts_with("@@") {
-        "grid min-h-[23px] grid-cols-[50px_1fr] bg-secondary text-primary"
-    } else {
-        "grid min-h-[23px] grid-cols-[50px_1fr]"
-    }
-}
-
-fn short_oid(oid: &str) -> &str {
-    oid.get(..7).unwrap_or(oid)
-}
-
-fn server_error_message(error: ServerFnError) -> String {
-    match error {
-        ServerFnError::ServerError { message, .. } => message,
-        other => other.to_string(),
-    }
-}
-
-fn copy_commit_hash(value: String, mut toast: Signal<Option<(String, Tone)>>) {
-    spawn(async move {
-        match crate::clipboard::copy_text(value).await {
-            Ok(()) => toast.set(Some(("Commit hash copied".into(), Tone::Success))),
-            Err(error) => toast.set(Some((
-                format!("Could not copy commit hash: {error}"),
-                Tone::Destructive,
-            ))),
-        }
-    });
-}
-
-#[component]
-fn RepositoryWelcome(pending: bool, on_initialize: EventHandler<MouseEvent>) -> Element {
-    rsx! {
-        section { class: "flex size-full items-center justify-center overflow-auto bg-background p-8",
-            div { class: "flex max-w-md flex-col items-center text-center",
-                div { class: "mb-5 grid size-16 place-items-center rounded-2xl border border-primary/20 bg-primary/10 text-primary shadow-sm",
-                    Icon { icon: AppIcon::GitBranch, size: 28 }
-                }
-                p { class: "mb-1 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground",
-                    "Version control"
-                }
-                h1 { class: "text-2xl font-semibold tracking-tight text-foreground",
-                    "Welcome to Git"
-                }
-                p { class: "mt-3 max-w-sm text-sm leading-6 text-muted-foreground",
-                    "This workspace is not under version control yet. Initialize a repository to track changes, create commits, and connect remotes."
-                }
-                button {
-                    class: "mt-6 inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-wait disabled:opacity-60",
-                    disabled: pending,
-                    onclick: move |event| on_initialize.call(event),
-                    Icon { icon: AppIcon::GitBranch, size: 16 }
-                    if pending {
-                        "Initializing…"
-                    } else {
-                        "Initialize repository"
-                    }
-                }
-                p { class: "mt-3 text-[11px] text-muted-foreground/75",
-                    "Creates a .git repository with main as the initial branch."
-                }
-            }
-        }
-    }
-}
-
-fn branch_request(name: String, start_point: Option<String>) -> BranchRequest {
-    BranchRequest { name, start_point }
-}
-
-fn remote_request(name: String, fetch_url: String, push_url: Option<String>) -> RemoteRequest {
-    RemoteRequest {
-        name,
-        fetch_url,
-        push_url,
-    }
-}
-
-fn display_remote_url(url: &str) -> String {
-    if let Some((scheme, remainder)) = url.split_once("://") {
-        let visible = remainder
-            .split_once('@')
-            .map_or(remainder, |(_, visible)| visible);
-        return format!("{scheme}://{visible}");
-    }
-    if let Some((credentials, visible)) = url.split_once('@')
-        && !credentials.contains('/')
-    {
-        return visible.to_owned();
-    }
-    url.to_owned()
 }

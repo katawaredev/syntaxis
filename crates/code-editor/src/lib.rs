@@ -96,6 +96,10 @@ pub enum LanguageServiceStatus {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "language-server capabilities are independent protocol flags, not exclusive states"
+)]
 pub struct LanguageServiceState {
     #[serde(default)]
     pub server_id: String,

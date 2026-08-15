@@ -114,7 +114,9 @@ pub fn Icon(icon: AppIcon, #[props(default = 16)] size: u32) -> Element {
             }
         }
         AppIcon::Completion => {
-            rsx! { TextCursorInput { size } }
+            rsx! {
+                TextCursorInput { size }
+            }
         }
         AppIcon::Command => {
             rsx! {
@@ -127,7 +129,9 @@ pub fn Icon(icon: AppIcon, #[props(default = 16)] size: u32) -> Element {
             }
         }
         AppIcon::CloseOthers => {
-            rsx! { CopyX { size } }
+            rsx! {
+                CopyX { size }
+            }
         }
         AppIcon::Attachment => {
             rsx! {
@@ -245,16 +249,24 @@ pub fn Icon(icon: AppIcon, #[props(default = 16)] size: u32) -> Element {
             }
         }
         AppIcon::GoToDefinition => {
-            rsx! { CornerDownRight { size } }
+            rsx! {
+                CornerDownRight { size }
+            }
         }
         AppIcon::FindReferences => {
-            rsx! { ScanSearch { size } }
+            rsx! {
+                ScanSearch { size }
+            }
         }
         AppIcon::FormatDocument => {
-            rsx! { WandSparkles { size } }
+            rsx! {
+                WandSparkles { size }
+            }
         }
         AppIcon::LanguageServices => {
-            rsx! { Blocks { size } }
+            rsx! {
+                Blocks { size }
+            }
         }
         AppIcon::LineNumbers => {
             rsx! {

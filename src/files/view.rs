@@ -40,6 +40,8 @@ use crate::{
 mod dialogs;
 #[path = "documents.rs"]
 mod documents;
+#[path = "editor_pane.rs"]
+mod editor_pane;
 #[path = "editor_ui.rs"]
 mod editor_ui;
 #[path = "explorer.rs"]
@@ -48,10 +50,16 @@ mod explorer;
 mod git_actions;
 #[path = "location.rs"]
 mod location;
+#[path = "overlays.rs"]
+mod overlays;
 #[path = "preview.rs"]
 pub(crate) mod preview;
 #[path = "search.rs"]
 mod search;
+#[path = "view_helpers.rs"]
+mod view_helpers;
+#[path = "workspace_sync.rs"]
+mod workspace_sync;
 
 pub use location::FilesQuery;
 
@@ -61,6 +69,7 @@ use documents::{
     reload_document, request_close, request_close_many, restore_documents, save_all,
     save_and_close, save_path,
 };
+use editor_pane::{EditorPane, EditorPaneState};
 use editor_ui::{
     EditorMenuItem, EditorShortcutState, MobileTabs, SearchOptions, SearchPanel,
     copy_editor_reference, find_matches, format_editor_reference, handle_editor_shortcut,
@@ -73,12 +82,15 @@ use git_actions::{
     toggle_stage,
 };
 use location::location_command;
+use overlays::FilesOverlays;
 use preview::{
     CsvPreview, EditorStatus, EmptyEditor, ImagePreview, MarkdownPreview, SafeSvgPreview,
     UnsupportedPreview, file_glyph, file_label, image_mime, is_csv, is_markdown, is_svg,
 };
 use search::WorkspaceSearchResult;
 pub(crate) use search::{SearchScope, WorkspaceSearchOptions, search_workspace_files};
+use view_helpers::{changed_parent_directories, diff_kind_for_change, open_diff_request};
+use workspace_sync::{WorkspaceSyncState, use_workspace_sync};
 
 const MAX_TEXT_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_PREVIEW_BYTES: u64 = 4 * 1024 * 1024;
@@ -122,11 +134,11 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
     let restore_workspace = target.clone();
     let activate_workspace_id = target.id.0.clone();
     let session_workspace_id = target.id.0.clone();
-    let mut workspace = use_signal(|| None::<WorkspaceRecord>);
-    let mut tree = use_signal(ExplorerTree::default);
-    let mut editor_configs = use_signal(Vec::<EditorConfigSource>::new);
-    let mut git_status = use_signal(|| None::<RepositoryStatus>);
-    let mut ignored_paths = use_signal(BTreeSet::<String>::new);
+    let workspace = use_signal(|| None::<WorkspaceRecord>);
+    let tree = use_signal(ExplorerTree::default);
+    let editor_configs = use_signal(Vec::<EditorConfigSource>::new);
+    let git_status = use_signal(|| None::<RepositoryStatus>);
+    let ignored_paths = use_signal(BTreeSet::<String>::new);
     let session = use_context::<FilesSessionState>();
     let documents = session.documents;
     let open_paths = use_memo(move || {
@@ -136,7 +148,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
             .map(|document| document.path().to_owned())
             .collect::<Vec<_>>()
     });
-    let mut active_path = session.active_path;
+    let active_path = session.active_path;
     let selected_entry = use_signal(|| None::<FileEntry>);
     let loading_path = use_signal(|| None::<String>);
     let loading_documents = use_signal(BTreeSet::<String>::new);
@@ -155,13 +167,13 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
     let mut markdown_preview = use_signal(|| false);
     let mut svg_preview = use_signal(|| false);
     let mut csv_preview = use_signal(|| false);
-    let mut show_ignored = use_signal(|| false);
+    let show_ignored = use_signal(|| false);
     let mut search_panel = use_signal(|| false);
     let search_input = use_signal(|| None::<std::rc::Rc<MountedData>>);
     let search_query = use_signal(String::new);
     let search_options = use_signal(SearchOptions::default);
     let mut search_match = use_signal(|| 0_usize);
-    let mut editor_search_status = use_signal(EditorSearchStatus::default);
+    let editor_search_status = use_signal(EditorSearchStatus::default);
     let replace_query = use_signal(String::new);
     let replace_open = use_signal(|| false);
     let mut go_to_line = use_signal(|| false);
@@ -185,7 +197,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
     let mut file_dialog = use_signal(|| None::<FileActionDialog>);
     let close_request = use_signal(|| None::<CloseRequest>);
     let mut git_revert_request = use_signal(|| None::<GitRevertRequest>);
-    let mut toast = use_signal(|| None::<ToastState>);
+    let toast = use_signal(|| None::<ToastState>);
     let initial_loading = initial().is_none();
     let initial_failed = initial().is_some_and(|result| result.is_err());
     let drawer_blocked = file_dialog().is_some()
@@ -201,14 +213,6 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
             drawer.set(false);
         }
     });
-    let mut processed_event_revision = session.processed_event_revision;
-    let mut requested_location = use_signal(|| None::<FilesQuery>);
-    let mut pending_location = use_signal(|| None::<FilesQuery>);
-    let mut session_ready = use_signal(|| false);
-    let mut session_revision = use_signal(|| 0_u64);
-    let mut revalidated_document = use_signal(|| None::<(String, String)>);
-    let has_initial_location = query.path.is_some();
-
     use_effect(move || session.activate(activate_workspace_id.clone()));
 
     use_effect(move || {
@@ -344,266 +348,28 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
         explorer::load_change_directories(pending, workspace(), tree, editor_configs, toast);
     });
 
-    use_effect(move || {
-        let Some(result) = initial() else { return };
-        match result {
-            Ok(loaded) => {
-                let should_restore = !has_initial_location
-                    && documents.peek().is_empty()
-                    && !loaded.session.tabs.is_empty();
-                workspace.set(Some(loaded.workspace));
-                tree.write().replace_directory("", loaded.entries);
-                editor_configs.set(loaded.editor_configs.clone());
-                git_status.set(loaded.git_status);
-                ignored_paths.set(loaded.ignored_paths);
-                if should_restore {
-                    restore_documents(
-                        loaded.session,
-                        restore_workspace.clone(),
-                        loaded.editor_configs,
-                        documents,
-                        active_path,
-                        session_ready,
-                    );
-                } else if !has_initial_location {
-                    session_ready.set(true);
-                }
-            }
-            Err(message) => set_error(toast, message),
-        }
-    });
-
-    use_effect(move || {
-        if !session_ready() {
-            return;
-        }
-        let session = WorkspaceSession {
-            files: FileSession {
-                tabs: open_paths(),
-                active: active_path(),
-            },
-            ..WorkspaceSession::default()
-        };
-        let revision = session_revision.peek().saturating_add(1);
-        session_revision.set(revision);
-        let workspace_id = session_workspace_id.clone();
-        spawn(async move {
-            dioxus_sdk_time::sleep(std::time::Duration::from_millis(500)).await;
-            if *session_revision.peek() != revision {
-                return;
-            }
-            if let Err(message) =
-                workspace_client::save_workspace_session(workspace_id, session).await
-            {
-                set_error(toast, format!("Could not remember open files: {message}"));
-            }
-        });
-    });
-
-    use_effect({
-        let query = query.clone();
-        move || {
-            let Some(path) = query.path.clone() else {
-                return;
-            };
-            if requested_location().as_ref() == Some(&query) {
-                return;
-            }
-            let Some(workspace) = workspace() else {
-                return;
-            };
-            requested_location.set(Some(query.clone()));
-            let relative = match RelativePath::try_from(path.clone()) {
-                Ok(relative) if !relative.is_root() => relative,
-                Ok(_) => {
-                    pending_location.set(None);
-                    session_ready.set(true);
-                    set_error(toast, "A source link must point to a file.");
-                    return;
-                }
-                Err(error) => {
-                    pending_location.set(None);
-                    session_ready.set(true);
-                    set_error(toast, error.message);
-                    return;
-                }
-            };
-            let mut normalized_location = query.clone();
-            normalized_location.path = Some(relative.as_str().to_owned());
-            pending_location.set(Some(normalized_location));
-            spawn(async move {
-                match workspace_client::stat_file(workspace.clone(), relative).await {
-                    Ok(entry) if entry.kind == EntryKind::File => open_document(
-                        entry,
-                        Some(workspace),
-                        editor_configs(),
-                        documents,
-                        active_path,
-                        loading_path,
-                        loading_documents,
-                        None,
-                    ),
-                    Ok(_) => {
-                        pending_location.set(None);
-                        session_ready.set(true);
-                        set_error(toast, format!("{path} is not a file."));
-                    }
-                    Err(message) => {
-                        pending_location.set(None);
-                        session_ready.set(true);
-                        set_error(toast, format!("Could not open {path}: {message}"));
-                    }
-                }
-            });
-        }
-    });
-
-    use_effect(move || {
-        let Some(location) = pending_location() else {
-            return;
-        };
-        let Some(path) = location.path.as_deref() else {
-            pending_location.set(None);
-            return;
-        };
-        if active_path().as_deref() != Some(path) {
-            return;
-        }
-        session_ready.set(true);
-        let Some(source) = text_document_contents(path, documents) else {
-            return;
-        };
-        let command = location_command(&source, &location);
-        issue_command(command_revision, editor_command, command);
-        pending_location.set(None);
-    });
-
-    let navigator = use_navigator();
-    use_effect(move || {
-        let Some(active) = active_path() else { return };
-        if documents
-            .read()
-            .iter()
-            .any(|document| document.path() == active)
-        {
-            return;
-        }
-        active_path.set(
-            documents
-                .read()
-                .last()
-                .map(|document| document.path().to_owned()),
-        );
-    });
-    use_effect({
-        let query = query.clone();
-        move || {
-            let route_request_pending = query.path.is_some()
-                && (requested_location().as_ref() != Some(&query) || pending_location().is_some());
-            if route_request_pending {
-                return;
-            }
-            let Some(path) = active_path() else {
-                if query.path.is_some() && documents.read().is_empty() {
-                    navigator.replace(crate::app::Route::Files {
-                        slug: route_slug.clone(),
-                        query: FilesQuery::default(),
-                    });
-                }
-                return;
-            };
-            let query_path = query
-                .path
-                .as_deref()
-                .and_then(|path| RelativePath::try_from(path).ok())
-                .map(|path| path.as_str().to_owned());
-            if query_path.as_deref() == Some(&path) {
-                return;
-            }
-            navigator.replace(crate::app::Route::Files {
-                slug: route_slug.clone(),
-                query: FilesQuery::path(path),
-            });
-        }
-    });
-
-    let event_state = use_context::<WorkspaceEventState>();
-    use_effect(move || {
-        let revision = (event_state.revision)();
-        if revision == 0 || revision <= *processed_event_revision.peek() {
-            return;
-        }
-        let Some(workspace) = workspace() else {
-            return;
-        };
-        let changes = event_state.take_pending(&workspace.id.0);
-        processed_event_revision.set(revision);
-        if changes.is_empty() {
-            return;
-        }
-        let parent_directories = changes
-            .iter()
-            .map(|change| {
-                change
-                    .path
-                    .as_str()
-                    .rsplit_once('/')
-                    .map_or_else(String::new, |(parent, _)| parent.to_owned())
-            })
-            .collect::<BTreeSet<_>>();
-        for change in changes {
-            let path = change.path.as_str().to_owned();
-            let is_open_text = documents.peek().iter().any(
-                |document| matches!(document, OpenDocument::Text(buffer) if buffer.path == path),
-            );
-            if is_open_text {
-                reconcile_workspace_change(workspace.clone(), path, change.kind, documents, toast);
-            }
-        }
-        explorer::reload_loaded_directories(
-            parent_directories,
-            Some(workspace.clone()),
-            tree,
-            editor_configs,
-            toast,
-        );
-        let workspace_id = workspace.id.0;
-        spawn(async move {
-            let (status, ignored) = futures_util::join!(
-                git_api::repository_status(workspace_id.clone()),
-                git_api::ignored_paths(workspace_id),
-            );
-            if let Ok(status) = status {
-                git_status.set(Some(status));
-            }
-            if let Ok(paths) = ignored {
-                ignored_paths.set(paths.into_iter().collect());
-            }
-        });
-    });
-
-    // Revalidate a tab when it becomes active. This closes the remaining gap if
-    // the host watcher was temporarily unavailable while the Files route was unmounted.
-    use_effect(move || {
-        let Some(workspace) = workspace() else {
-            return;
-        };
-        let Some(path) = active_path() else {
-            return;
-        };
-        let key = (workspace.id.0.clone(), path.clone());
-        if revalidated_document.peek().as_ref() == Some(&key) {
-            return;
-        }
-        revalidated_document.set(Some(key));
-        let is_open_text = documents
-            .peek()
-            .iter()
-            .any(|document| matches!(document, OpenDocument::Text(buffer) if buffer.path == path));
-        if is_open_text {
-            reconcile_workspace_change(workspace, path, ChangeKind::Modified, documents, toast);
-        }
-    });
+    let workspace_sync = WorkspaceSyncState {
+        initial,
+        query: query.clone(),
+        restore_workspace,
+        session_workspace_id,
+        route_slug,
+        workspace,
+        tree,
+        editor_configs,
+        git_status,
+        ignored_paths,
+        documents,
+        active_path,
+        loading_path,
+        loading_documents,
+        toast,
+        open_paths,
+        command_revision,
+        editor_command,
+        processed_event_revision: session.processed_event_revision,
+    };
+    use_workspace_sync(&workspace_sync);
 
     let active_document = active_path().and_then(|path| {
         documents
@@ -687,9 +453,9 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
             .collect()
     });
     let supports_language_action = |capability: fn(&LanguageServiceState) -> bool| {
-        active_language_services.iter().any(|service| {
-            service.status == LanguageServiceStatus::Ready && capability(service)
-        })
+        active_language_services
+            .iter()
+            .any(|service| service.status == LanguageServiceStatus::Ready && capability(service))
     };
     let supports_completion = supports_language_action(|service| service.completion);
     let supports_definition = supports_language_action(|service| service.definition);
@@ -713,8 +479,58 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
     let stage_slug = target_id.clone();
     let stage_change = active_changed.clone();
     let discard_slug = target_id.clone();
-    let sidebar_diff_slug = target_id.clone();
-    let drawer_diff_slug = target_id;
+    let explorer_open = EventHandler::new(move |entry: FileEntry| {
+        diff.set(None);
+        explorer_highlights.set(None);
+        pending_search_navigation.set(None);
+        let diff_request = changed_only()
+            .then(|| {
+                open_diff_request(
+                    target_id.clone(),
+                    entry.path.as_str(),
+                    git_status.read().as_ref(),
+                    diff,
+                    toast,
+                )
+            })
+            .flatten();
+        open_document(
+            entry,
+            workspace(),
+            editor_configs(),
+            documents,
+            active_path,
+            loading_path,
+            loading_documents,
+            diff_request,
+        );
+    });
+    let explorer_search_open = EventHandler::new(move |result: WorkspaceSearchResult| {
+        diff.set(None);
+        let path = result.entry.path.as_str().to_owned();
+        explorer_highlights.set(Some((path.clone(), result.matches.clone())));
+        pending_search_navigation.set(result.target.map(|target| (path, target)));
+        open_document(
+            result.entry,
+            workspace(),
+            editor_configs(),
+            documents,
+            active_path,
+            loading_path,
+            loading_documents,
+            None,
+        );
+    });
+    let explorer_expand = EventHandler::new(move |entry| {
+        expand_directory(entry, workspace(), tree, editor_configs, toast);
+    });
+    let explorer_action = EventHandler::new(move |action| {
+        file_dialog.set(Some(FileActionDialog {
+            action,
+            source: selected_entry().map(|entry| entry.path.as_str().to_owned()),
+        }));
+    });
+    let explorer_refresh = EventHandler::new(move |()| refresh += 1);
 
     rsx! {
         div { class: if sidebar_open() { "grid size-full min-h-0 min-w-0 grid-cols-[248px_minmax(0,1fr)] overflow-hidden max-md:block" } else { "grid size-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] overflow-hidden max-md:block" },
@@ -733,59 +549,11 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                         loading: initial_loading,
                         load_failed: initial_failed,
                         pending: pending(),
-                        on_open: move |entry: FileEntry| {
-                            diff.set(None);
-                            explorer_highlights.set(None);
-                            pending_search_navigation.set(None);
-                            let diff_request = changed_only()
-                                .then(|| {
-                                    open_diff_request(
-                                        sidebar_diff_slug.clone(),
-                                        entry.path.as_str(),
-                                        git_status.read().as_ref(),
-                                        diff,
-                                        toast,
-                                    )
-                                })
-                                .flatten();
-                            open_document(
-                                entry,
-                                workspace(),
-                                editor_configs(),
-                                documents,
-                                active_path,
-                                loading_path,
-                                loading_documents,
-                                diff_request,
-                            );
-                        },
-                        on_search_open: move |result: WorkspaceSearchResult| {
-                            diff.set(None);
-                            let path = result.entry.path.as_str().to_owned();
-                            explorer_highlights.set(Some((path.clone(), result.matches.clone())));
-                            pending_search_navigation.set(result.target.map(|target| (path, target)));
-                            open_document(
-                                result.entry,
-                                workspace(),
-                                editor_configs(),
-                                documents,
-                                active_path,
-                                loading_path,
-                                loading_documents,
-                                None,
-                            );
-                        },
-                        on_expand: move |entry| expand_directory(entry, workspace(), tree, editor_configs, toast),
-                        on_action: move |action| {
-                            file_dialog
-                                .set(
-                                    Some(FileActionDialog {
-                                        action,
-                                        source: selected_entry().map(|entry| entry.path.as_str().to_owned()),
-                                    }),
-                                );
-                        },
-                        on_refresh: move |()| refresh += 1,
+                        on_open: explorer_open,
+                        on_search_open: explorer_search_open,
+                        on_expand: explorer_expand,
+                        on_action: explorer_action,
+                        on_refresh: explorer_refresh,
                     }
                 }
             }
@@ -809,63 +577,21 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                         loading: initial_loading,
                         load_failed: initial_failed,
                         pending: pending(),
-                        on_open: move |entry: FileEntry| {
-                            diff.set(None);
-                            explorer_highlights.set(None);
-                            pending_search_navigation.set(None);
-                            let diff_request = changed_only()
-                                .then(|| {
-                                    open_diff_request(
-                                        drawer_diff_slug.clone(),
-                                        entry.path.as_str(),
-                                        git_status.read().as_ref(),
-                                        diff,
-                                        toast,
-                                    )
-                                })
-                                .flatten();
-                            open_document(
-                                entry,
-                                workspace(),
-                                editor_configs(),
-                                documents,
-                                active_path,
-                                loading_path,
-                                loading_documents,
-                                diff_request,
-                            );
+                        on_open: move |entry| {
+                            explorer_open.call(entry);
                             drawer.set(false);
                         },
-                        on_search_open: move |result: WorkspaceSearchResult| {
-                            diff.set(None);
-                            let path = result.entry.path.as_str().to_owned();
-                            explorer_highlights.set(Some((path.clone(), result.matches.clone())));
-                            pending_search_navigation.set(result.target.map(|target| (path, target)));
-                            open_document(
-                                result.entry,
-                                workspace(),
-                                editor_configs(),
-                                documents,
-                                active_path,
-                                loading_path,
-                                loading_documents,
-                                None,
-                            );
+                        on_search_open: move |result| {
+                            explorer_search_open.call(result);
                             drawer.set(false);
                         },
-                        on_expand: move |entry| expand_directory(entry, workspace(), tree, editor_configs, toast),
+                        on_expand: explorer_expand,
                         on_action: move |action| {
                             // Avoid overlapping focus traps when the mutation modal opens.
                             drawer.set(false);
-                            file_dialog
-                                .set(
-                                    Some(FileActionDialog {
-                                        action,
-                                        source: selected_entry().map(|entry| entry.path.as_str().to_owned()),
-                                    }),
-                                );
+                            explorer_action.call(action);
                         },
-                        on_refresh: move |()| refresh += 1,
+                        on_refresh: explorer_refresh,
                     }
                 }
             }
@@ -947,7 +673,9 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                 on_toggle: move |()| editor_menu.toggle(),
                             }
                             MenuContent { class: "right-0 w-60",
-                                div { class: "px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground", "Navigation" }
+                                div { class: "px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground",
+                                    "Navigation"
+                                }
                                 EditorMenuItem {
                                     index: 0,
                                     icon: AppIcon::GoToLine,
@@ -968,7 +696,9 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                     },
                                 }
                                 hr {}
-                                div { class: "px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground", "Code intelligence" }
+                                div { class: "px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground",
+                                    "Code intelligence"
+                                }
                                 EditorMenuItem {
                                     index: 2,
                                     icon: AppIcon::LanguageServices,
@@ -982,7 +712,11 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                     label: "Trigger Completion",
                                     suffix: "Mod Space",
                                     disabled: !editor_interactive || !autocomplete_enabled() || !supports_completion,
-                                    onclick: move |()| issue_command(command_revision, editor_command, EditorCommandKind::TriggerCompletion),
+                                    onclick: move |()| issue_command(
+                                        command_revision,
+                                        editor_command,
+                                        EditorCommandKind::TriggerCompletion,
+                                    ),
                                 }
                                 EditorMenuItem {
                                     index: 4,
@@ -990,7 +724,11 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                     label: "Go to Definition",
                                     suffix: "F12",
                                     disabled: !editor_interactive || !supports_definition,
-                                    onclick: move |()| issue_command(command_revision, editor_command, EditorCommandKind::GoToDefinition),
+                                    onclick: move |()| issue_command(
+                                        command_revision,
+                                        editor_command,
+                                        EditorCommandKind::GoToDefinition,
+                                    ),
                                 }
                                 EditorMenuItem {
                                     index: 5,
@@ -998,7 +736,11 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                     label: "Find References",
                                     suffix: "Shift F12",
                                     disabled: !editor_interactive || !supports_references,
-                                    onclick: move |()| issue_command(command_revision, editor_command, EditorCommandKind::FindReferences),
+                                    onclick: move |()| issue_command(
+                                        command_revision,
+                                        editor_command,
+                                        EditorCommandKind::FindReferences,
+                                    ),
                                 }
                                 EditorMenuItem {
                                     index: 6,
@@ -1006,10 +748,16 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                     label: "Format Document",
                                     suffix: "Shift Alt F",
                                     disabled: !editor_interactive || !supports_formatting,
-                                    onclick: move |()| issue_command(command_revision, editor_command, EditorCommandKind::FormatDocument),
+                                    onclick: move |()| issue_command(
+                                        command_revision,
+                                        editor_command,
+                                        EditorCommandKind::FormatDocument,
+                                    ),
                                 }
                                 hr {}
-                                div { class: "px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground", "Editor view" }
+                                div { class: "px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground",
+                                    "Editor view"
+                                }
                                 EditorMenuItem {
                                     index: 7,
                                     icon: AppIcon::WordWrap,
@@ -1025,7 +773,9 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                     onclick: move |()| line_numbers.toggle(),
                                 }
                                 hr {}
-                                div { class: "px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground", "Tabs" }
+                                div { class: "px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground",
+                                    "Tabs"
+                                }
                                 EditorMenuItem {
                                     index: 9,
                                     icon: AppIcon::Save,
@@ -1066,7 +816,9 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                     },
                                 }
                                 hr {}
-                                div { class: "px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground", "Source control" }
+                                div { class: "px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground",
+                                    "Source control"
+                                }
                                 EditorMenuItem {
                                     index: 12,
                                     icon: AppIcon::FileDiff,
@@ -1215,177 +967,38 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                         on_close: move |()| search_panel.set(false),
                     }
                 }
-                div { class: "relative min-h-0 min-w-0 flex-1 overflow-auto bg-card",
-                    if active_document.is_some() {
-                        if let Some(path) = loading_path() {
-                            div { class: "pointer-events-none sticky top-2 z-20 h-0 overflow-visible",
-                                div { class: "ml-auto mr-3 w-fit rounded-md border border-border bg-popover/95 px-2.5 py-1.5 text-[10px] text-muted-foreground shadow-lg backdrop-blur-sm",
-                                    "Opening {file_label(&path)}…"
-                                }
-                            }
-                        }
-                    }
-                    match active_document {
-                        None => rsx! {
-                            EmptyEditor {
-                                loading: loading_path()
-                                    .map(|path| format!("Opening {}…", file_label(&path)))
-                                    .or_else(|| initial_loading.then(|| "Loading workspace…".into())),
-                                unavailable: initial_failed,
-                            }
-                        },
-                        Some(
-                            ActiveDocumentView::Text { contents, .. },
-                        ) if diff().is_none() && active_markdown && markdown_preview() => {
-                            rsx! {
-                                MarkdownPreview { source: contents }
-                            }
-                        }
-                        Some(
-                            ActiveDocumentView::Text { path, contents, .. },
-                        ) if diff().is_none() && active_svg && svg_preview() => {
-                            rsx! {
-                                SafeSvgPreview { source: contents, path }
-                            }
-                        }
-                        Some(
-                            ActiveDocumentView::Text { path, contents, .. },
-                        ) if diff().is_none() && active_csv && csv_preview() => {
-                            rsx! {
-                                CsvPreview { source: contents, path }
-                            }
-                        }
-                        Some(ActiveDocumentView::Text { path, contents, status, config }) => {
-                            let language = language_for_path(&path);
-                            let language_slug = language_slug_for_path(&path);
-                            let configured_language_services = if let Some(workspace) = workspace() {
-                                let servers = language_servers_for_language(
-                                    language_slug,
-                                    &workspace.profile.technologies,
-                                );
-                                let connections = language_service_connections();
-                                servers
-                                    .iter()
-                                    .filter_map(|server| {
-                                        connections
-                                            .iter()
-                                            .find(|connection| connection.server_id == server.id)
-                                            .cloned()
-                                    })
-                                    .collect()
-                            } else {
-                                Vec::new()
-                            };
-                            let reload_path = path.clone();
-                            let input_path = path.clone();
-                            let active_diff = diff();
-                            let diff_original = match active_diff {
-                                Some(diff) => Some(diff.original.unwrap_or_default()),
-                                None => None,
-                            };
-                            rsx! {
-                                div { class: "relative size-full min-h-0",
-                                    if status == BufferStatus::Conflict {
-                                        div { class: "absolute top-2 right-3 z-10 flex items-center gap-2 rounded-md border border-warning/40 bg-popover px-2.5 py-1.5 text-[10px] shadow-lg",
-                                            span { class: "text-warning", "File changed on disk" }
-                                            button {
-                                                class: "text-primary hover:underline",
-                                                onclick: move |_| {
-                                                    if let Some(workspace) = workspace() {
-                                                        reload_document(workspace, reload_path.clone(), documents, toast);
-                                                    }
-                                                },
-                                                "Reload"
-                                            }
-                                        }
-                                    }
-                                    CodeEditor {
-                                        id: "syntaxis-active-editor",
-                                        class: "size-full min-h-full rounded-none",
-                                        value: contents,
-                                        language,
-                                        language_name: language_slug,
-                                        filename: path.clone(),
-                                        line_numbers: line_numbers(),
-                                        word_wrap: word_wrap(),
-                                        tab_width: config.tab_width,
-                                        indent_width: config.indent_size,
-                                        indent_with_tabs: config.indent_style == IndentStyle::Tabs,
-                                        autocomplete: autocomplete_enabled(),
-                                        language_services: configured_language_services,
-                                        command: Some(editor_command),
-                                        search_matches: if search_panel() { Vec::new() } else { workspace_editor_matches.clone() },
-                                        active_search_match: if search_panel() { None } else { (!workspace_editor_matches.is_empty()).then_some(0) },
-                                        search_query: search_panel()
-                                            .then(|| {
-                                                let options = search_options();
-                                                EditorSearchQuery {
-                                                    query: search_query(),
-                                                    case_sensitive: options.case_sensitive,
-                                                    whole_word: options.whole_word,
-                                                    regex: options.regex,
-                                                }
-                                            }),
-                                        diff_original,
-                                        onsearch: move |status: EditorSearchStatus| {
-                                            if let Some(current) = status.current {
-                                                search_match.set(current);
-                                            }
-                                            editor_search_status.set(status);
-                                        },
-                                        onselection: move |selection: EditorSelection| {
-                                            editor_selection.set(selection);
-                                        },
-                                        oninput: move |edits: Vec<EditorEdit>| {
-                                            apply_document_edits(&input_path, &edits, documents);
-                                        },
-                                        on_language_service: move |state: LanguageServiceState| {
-                                            let mut states = language_service_states.write();
-                                            if let Some(current) = states
-                                                .iter_mut()
-                                                .find(|current| current.server_id == state.server_id)
-                                            {
-                                                *current = state;
-                                            } else {
-                                                states.push(state);
-                                            }
-                                        },
-                                        onkeydown: move |event| handle_editor_shortcut(
-                                            &event,
-                                            workspace(),
-                                            path.clone(),
-                                            documents,
-                                            toast,
-                                            EditorShortcutState {
-                                                search_panel,
-                                                search_input,
-                                                go_to_line,
-                                            },
-                                        ),
-                                    }
-                                }
-                            }
-                        }
-                        Some(ActiveDocumentView::Image { path, data_url, size }) => rsx! {
-                            ImagePreview { path, data_url, size }
-                        },
-                        Some(ActiveDocumentView::Large { path, size }) => rsx! {
-                            UnsupportedPreview {
-                                path,
-                                size,
-                                title: "File is too large",
-                                reason: "Files larger than 4 MiB are not loaded into the editor.",
-                            }
-                        },
-                        Some(ActiveDocumentView::Unsupported { path, size, reason }) => rsx! {
-                            UnsupportedPreview {
-                                path,
-                                size,
-                                title: "Preview unavailable",
-                                reason,
-                            }
-                        },
-                    }
+                EditorPane {
+                    active_document,
+                    active_markdown,
+                    active_svg,
+                    active_csv,
+                    initial_loading,
+                    initial_failed,
+                    workspace_editor_matches,
+                    state: EditorPaneState {
+                        workspace,
+                        documents,
+                        loading_path,
+                        diff,
+                        markdown_preview,
+                        svg_preview,
+                        csv_preview,
+                        language_service_connections,
+                        language_service_states,
+                        editor_command,
+                        line_numbers,
+                        word_wrap,
+                        autocomplete_enabled,
+                        search_panel,
+                        search_options,
+                        search_query,
+                        search_match,
+                        editor_search_status,
+                        editor_selection,
+                        search_input,
+                        go_to_line,
+                        toast,
+                    },
                 }
                 EditorStatus {
                     path: active_path(),
@@ -1396,127 +1009,24 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
             }
         }
 
-        if let Some(dialog) = file_dialog() {
-            FileMutationDialog {
-                dialog: dialog.clone(),
-                on_close: move |()| file_dialog.set(None),
-                on_submit: move |destination| {
-                    file_dialog.set(None);
-                    run_file_action(
-                        dialog.clone(),
-                        destination,
-                        workspace(),
-                        documents,
-                        active_path,
-                        pending,
-                        refresh,
-                        toast,
-                    );
-                },
-            }
-        }
-        if let Some(request) = close_request() {
-            DirtyClosePrompt {
-                request,
-                workspace,
-                documents,
-                active_path,
-                close_request,
-                toast,
-            }
-        }
-        if let Some(request) = git_revert_request() {
-            GitDiscardPrompt {
-                path: request.path.clone(),
-                original: request.action == RevertAction::Original,
-                on_close: move |()| git_revert_request.set(None),
-                on_confirm: move |()| {
-                    git_revert_request.set(None);
-                    discard_git_change(
-                        discard_slug.clone(),
-                        request.path.clone(),
-                        request.action == RevertAction::Original,
-                        GitDiscardContext {
-                            workspace: workspace(),
-                            documents,
-                            active_path,
-                            refresh,
-                            diff,
-                            toast,
-                        },
-                    );
-                },
-            }
-        }
-        if go_to_line() {
-            GoToLineDialog {
-                current: editor_selection().line.max(1),
-                on_close: move |()| go_to_line.set(false),
-                on_submit: move |line| {
-                    issue_command(
-                        command_revision,
-                        editor_command,
-                        EditorCommandKind::GoToLine {
-                            line,
-                        },
-                    );
-                    go_to_line.set(false);
-                },
-            }
-        }
-        if let Some(toast_state) = toast() {
-            Toast {
-                message: toast_state.message,
-                tone: toast_state.tone,
-                on_close: move |()| toast.set(None),
-            }
+        FilesOverlays {
+            file_dialog,
+            close_request,
+            git_revert_request,
+            go_to_line,
+            toast,
+            workspace,
+            documents,
+            active_path,
+            pending,
+            refresh,
+            diff,
+            editor_selection,
+            command_revision,
+            editor_command,
+            discard_slug,
         }
     }
-}
-
-fn changed_parent_directories(status: &RepositoryStatus) -> BTreeSet<String> {
-    status
-        .changes
-        .iter()
-        .flat_map(|change| {
-            let path = change.path.as_str();
-            let mut parents = Vec::new();
-            let mut parent = path.rsplit_once('/').map(|(parent, _)| parent);
-            while let Some(directory) = parent {
-                parents.push(directory.to_owned());
-                parent = directory.rsplit_once('/').map(|(parent, _)| parent);
-            }
-            parents
-        })
-        .collect()
-}
-
-fn diff_kind_for_change(change: &syntaxis_git::FileChange) -> DiffKind {
-    if change.is_unstaged() {
-        DiffKind::Worktree
-    } else {
-        DiffKind::Staged
-    }
-}
-
-fn open_diff_request(
-    slug: String,
-    path: &str,
-    status: Option<&RepositoryStatus>,
-    diff: Signal<Option<UnifiedDiff>>,
-    toast: Signal<Option<ToastState>>,
-) -> Option<OpenDiffRequest> {
-    let kind = status?
-        .changes
-        .iter()
-        .find(|change| change.path.as_str() == path)
-        .map(diff_kind_for_change)?;
-    Some(OpenDiffRequest {
-        slug,
-        kind,
-        diff,
-        toast,
-    })
 }
 
 fn set_error(mut toast: Signal<Option<ToastState>>, message: impl Into<String>) {
@@ -1533,61 +1043,5 @@ fn set_success(mut toast: Signal<Option<ToastState>>, message: impl Into<String>
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn search_returns_non_overlapping_byte_ranges() {
-        assert_eq!(
-            find_matches("one two one", "one", SearchOptions::default()).unwrap(),
-            vec![(0, 3), (8, 11)]
-        );
-    }
-    #[test]
-    fn search_modes_handle_case_words_and_regex_errors() {
-        let sensitive = SearchOptions {
-            case_sensitive: true,
-            ..SearchOptions::default()
-        };
-        assert_eq!(
-            find_matches("Install install", "install", sensitive).unwrap(),
-            vec![(8, 15)]
-        );
-
-        let whole_word = SearchOptions {
-            whole_word: true,
-            ..SearchOptions::default()
-        };
-        assert_eq!(
-            find_matches("cat catalog cat_2 cat", "cat", whole_word).unwrap(),
-            vec![(0, 3), (18, 21)]
-        );
-
-        let regex = SearchOptions {
-            regex: true,
-            ..SearchOptions::default()
-        };
-        find_matches("anything", "[", regex).expect_err("invalid regexes must be rejected");
-    }
-    #[test]
-    fn replacement_supports_literal_dollars_and_regex_captures() {
-        assert_eq!(
-            replace_search_match("cost $1", "$1", "$2", SearchOptions::default(), (5, 7),).unwrap(),
-            "cost $2"
-        );
-
-        let regex = SearchOptions {
-            regex: true,
-            ..SearchOptions::default()
-        };
-        assert_eq!(
-            replace_all_search_matches("Doe, Jane; Roe, Richard", r"(\w+), (\w+)", "$2 $1", regex,)
-                .unwrap(),
-            "Jane Doe; Richard Roe"
-        );
-    }
-    #[test]
-    fn image_detection_is_explicit() {
-        assert_eq!(image_mime("assets/photo.PNG"), Some("image/png"));
-        assert_eq!(image_mime("archive.bin"), None);
-    }
-}
+#[path = "view_tests.rs"]
+mod tests;
