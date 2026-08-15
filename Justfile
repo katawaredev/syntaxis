@@ -76,10 +76,10 @@ install-lefthook:
     set -euo pipefail
 
     repo="evilmartians/lefthook"
-    url=$(curl -sL "https://api.github.com/repos/$repo/releases/latest" \
-        | grep -o '"browser_download_url": "[^"]*Linux_x86_64"'
-        | head -1
-        | cut -d'"' -f4)
+    url=$(curl -sL "https://api.github.com/repos/$repo/releases/latest" |
+        grep -o '"browser_download_url": "[^"]*Linux_x86_64"' |
+        head -1 |
+        cut -d'"' -f4)
     curl -sL "$url" -o /usr/local/bin/lefthook
     chmod +x /usr/local/bin/lefthook
     lefthook install

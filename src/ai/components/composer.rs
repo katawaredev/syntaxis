@@ -29,7 +29,7 @@ pub(crate) fn AgentComposer(
     on_cancel_edit: EventHandler<()>,
 ) -> Element {
     let speech_active = use_speech_bridge(draft, composer_error);
-    let mut draft_dirty = use_persisted_draft(draft, draft_key.clone());
+    let mut draft_dirty = use_persisted_draft(draft, &draft_key);
     use_paste_bridge(attachments, composer_error);
     let images = attachments();
     let can_send = connected
@@ -221,7 +221,8 @@ fn clear_saved_draft(draft_key: &str) {
     });
 }
 
-fn use_persisted_draft(draft: Signal<String>, draft_key: String) -> Signal<bool> {
+fn use_persisted_draft(draft: Signal<String>, draft_key: &str) -> Signal<bool> {
+    let draft_key = draft_key.to_owned();
     let mut requested_key = use_signal(String::new);
     let mut loaded_key = use_signal(|| None::<String>);
     let mut dirty = use_signal(|| false);

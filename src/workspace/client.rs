@@ -1,7 +1,7 @@
 use syntaxis_git::{WorktreeCreateRequest, WorktreeInfo};
 use syntaxis_workspace::{
-    BinaryFile, BrowseDirectory, FileEntry, FileVersion, RelativePath, RuntimeState,
-    TextFile, WorkspaceCleanupEntry, WorkspaceRecord, WorkspaceSection, WorkspaceSession,
+    BinaryFile, BrowseDirectory, FileEntry, FileVersion, RelativePath, RuntimeState, TextFile,
+    WorkspaceCleanupEntry, WorkspaceRecord, WorkspaceSection, WorkspaceSession,
 };
 
 use super::api::WorkspaceFilesBootstrap;
@@ -74,18 +74,6 @@ pub async fn set_workspace_last_section(
     }
 }
 
-pub async fn load_workspace_session(workspace_id: String) -> Result<WorkspaceSession, String> {
-    match selected_runtime() {
-        RuntimeTarget::Remote => super::api::load_workspace_session(workspace_id)
-            .await
-            .map_err(server_error_message),
-        #[cfg(feature = "desktop")]
-        RuntimeTarget::DesktopLocal => host_registry()?
-            .load_session(&WorkspaceId::new(workspace_id))
-            .map_err(|error| error.message),
-    }
-}
-
 pub async fn workspace_files_bootstrap(
     workspace: WorkspaceRecord,
 ) -> Result<WorkspaceFilesBootstrap, String> {
@@ -105,8 +93,8 @@ pub async fn workspace_files_bootstrap(
                 .iter()
                 .any(|entry| entry.name == ".editorconfig" && entry.kind == EntryKind::File)
             {
-                let path = RelativePath::try_from(".editorconfig")
-                    .map_err(|error| error.message)?;
+                let path =
+                    RelativePath::try_from(".editorconfig").map_err(|error| error.message)?;
                 syntaxis_workspace_host::HostWorkspaceFiles
                     .read_text(&workspace, &path, 4 * 1024 * 1024)
                     .await

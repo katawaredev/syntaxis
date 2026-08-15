@@ -2,7 +2,7 @@ use dioxus::prelude::document;
 
 /// Copies text using the clipboard implementation available to the current UI target.
 ///
-/// Callers depend only on this API so native targets can replace the WebView
+/// Callers depend only on this API so native targets can replace the `WebView`
 /// implementation without changing feature code.
 pub(crate) async fn copy_text(text: String) -> Result<(), String> {
     let eval = document::eval(

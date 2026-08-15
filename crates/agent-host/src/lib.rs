@@ -2168,7 +2168,7 @@ mod tests {
             })),
         };
 
-        assert!(session.shutdown().await.is_ok());
+        session.shutdown().await.unwrap();
     }
 
     #[test]

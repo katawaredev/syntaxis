@@ -294,6 +294,7 @@ fn WorkspaceGit(slug: String) -> Element {
     };
 
     let on_history_action = EventHandler::new(move |(action, oid): (HistoryAction, String)| {
+        let mut selected_commit = selected_commit;
         selected_commit.set(Some(oid.clone()));
         operation_error.set(None);
         match action {

@@ -8,8 +8,7 @@ use syntaxis_git::{
     CommitRequest, ConflictChoice, ConflictFile, ConflictRequest, DiffKind, GitErrorCode,
     GitOperations, HunkAction, HunkRequest, MergeOutcome, PushOutcome, RemoteInfo, RemoteRequest,
     RemoteResult, RepositorySnapshot, RepositoryState, RepositoryStatus, TagInfo, TagRequest,
-    UnifiedDiff,
-    WorktreeCreateRequest, WorktreeInfo, WorktreeOperations,
+    UnifiedDiff, WorktreeCreateRequest, WorktreeInfo, WorktreeOperations,
 };
 use syntaxis_git_host::HostGit;
 use syntaxis_workspace::RelativePath;
