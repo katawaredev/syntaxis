@@ -65,9 +65,9 @@ browser. Pi's session file remains the complete record.
 Syntaxis exposes a curated set of agent-relevant Pi settings. Global settings apply to the runtime
 user's Pi installation; running chats keep the values they loaded until they reload or restart.
 
-The form is generated for the Pi version pinned by Syntaxis. If the installed Pi version no longer
-matches, settings become read-only rather than risking incompatible writes. Other settings remain
-available through the Pi command-line client.
+The form is generated for the Pi version pinned by Syntaxis. Minor and patch updates remain editable.
+If the installed Pi major version differs, settings become read-only rather than risking incompatible
+writes. Other settings remain available through the Pi command-line client.
 
 Global instructions manage Pi's instance-wide `AGENTS.md`, normally `~/.pi/agent/AGENTS.md`. Saving
 an empty document removes it. New sessions load the updated instructions; existing processes may

@@ -15,9 +15,9 @@ pub(crate) async fn update_pi_setting(
     let workspace = crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
     let root = Path::new(&workspace.root);
     let version = pi_version(root).await?;
-    if version != PI_SETTINGS_SCHEMA_VERSION {
+    if !settings_schema_compatible(PI_SETTINGS_SCHEMA_VERSION, &version) {
         return Err(client_error(format!(
-            "Settings editing supports Pi {PI_SETTINGS_SCHEMA_VERSION}; the server has Pi {version}"
+            "Settings editing was generated from Pi {PI_SETTINGS_SCHEMA_VERSION}; the server's Pi {version} has a different major version"
         )));
     }
     let definition = PI_SETTING_DEFINITIONS
@@ -60,12 +60,14 @@ if (errors.length) throw errors[0].error;";
 
 async fn settings_snapshot(root: &Path) -> Result<PiSettingsSnapshot, ServerFnError> {
     let pi_version = pi_version(root).await?;
-    let compatible = pi_version == PI_SETTINGS_SCHEMA_VERSION && settings_manager_module().is_ok();
-    let compatibility_message = if pi_version != PI_SETTINGS_SCHEMA_VERSION {
+    let version_compatible = settings_schema_compatible(PI_SETTINGS_SCHEMA_VERSION, &pi_version);
+    let manager_available = settings_manager_module().is_ok();
+    let compatible = version_compatible && manager_available;
+    let compatibility_message = if !version_compatible {
         Some(format!(
-            "This Syntaxis build generated its settings UI from Pi {PI_SETTINGS_SCHEMA_VERSION}; the server runs Pi {pi_version}. Update Syntaxis before editing settings."
+            "This Syntaxis build generated its settings UI from Pi {PI_SETTINGS_SCHEMA_VERSION}; the server's Pi {pi_version} has a different major version. Update Syntaxis before editing settings."
         ))
-    } else if settings_manager_module().is_err() {
+    } else if !manager_available {
         Some("This Pi installation does not expose the SettingsManager module required for locked writes. Reading remains available.".into())
     } else {
         None
@@ -90,6 +92,16 @@ async fn settings_snapshot(root: &Path) -> Result<PiSettingsSnapshot, ServerFnEr
         compatibility_message,
         values,
     })
+}
+
+fn settings_schema_compatible(generated: &str, running: &str) -> bool {
+    fn major_version(version: &str) -> Option<u64> {
+        version.split('.').next()?.parse().ok()
+    }
+
+    major_version(generated)
+        .zip(major_version(running))
+        .is_some_and(|(generated, running)| generated == running)
 }
 
 fn validate_setting_value(kind: PiSettingKind, value: &Value) -> Result<(), ServerFnError> {
@@ -121,6 +133,19 @@ fn validate_setting_value(kind: PiSettingKind, value: &Value) -> Result<(), Serv
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn settings_schema_accepts_minor_and_patch_updates() {
+        assert!(settings_schema_compatible("0.84.1", "0.84.2"));
+        assert!(settings_schema_compatible("0.84.1", "0.85.0"));
+        assert!(settings_schema_compatible("1.3.0", "1.4.0"));
+    }
+
+    #[test]
+    fn settings_schema_rejects_different_or_invalid_major_versions() {
+        assert!(!settings_schema_compatible("1.3.0", "2.0.0"));
+        assert!(!settings_schema_compatible("0.84.1", "unknown"));
+    }
 
     #[test]
     fn generated_setting_values_are_type_checked() {
