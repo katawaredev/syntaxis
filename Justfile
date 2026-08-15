@@ -520,7 +520,7 @@ dx *args:
     dx {{ args }}
 
 # -----------------------------------------------------------------------------
-# Rust quality
+# Code quality
 # -----------------------------------------------------------------------------
 
 # Run the project's strict Clippy configuration with warnings treated as errors.
