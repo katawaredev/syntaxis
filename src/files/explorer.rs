@@ -630,6 +630,34 @@ pub(super) fn expand_directory(
     expand_loaded_directory(entry, workspace, tree, editor_configs, toast);
 }
 
+pub(super) fn reload_loaded_directories(
+    directories: impl IntoIterator<Item = String>,
+    workspace: Option<WorkspaceRecord>,
+    tree: Signal<ExplorerTree>,
+    editor_configs: Signal<Vec<EditorConfigSource>>,
+    toast: Signal<Option<ToastState>>,
+) {
+    let Some(workspace) = workspace else {
+        return;
+    };
+    for path in directories {
+        if !tree.read().is_loaded(&path) {
+            continue;
+        }
+        let Ok(relative) = RelativePath::try_from(path.clone()) else {
+            continue;
+        };
+        let entry = FileEntry {
+            name: path.rsplit('/').next().unwrap_or(&path).to_owned(),
+            path: relative,
+            kind: EntryKind::Directory,
+            size: 0,
+            version: None,
+        };
+        expand_loaded_directory(entry, workspace.clone(), tree, editor_configs, toast);
+    }
+}
+
 pub(super) fn load_change_directories(
     directories: Vec<String>,
     workspace: Option<WorkspaceRecord>,
@@ -673,7 +701,11 @@ fn expand_loaded_directory(
                     .iter()
                     .any(|entry| entry.name == ".editorconfig" && entry.kind == EntryKind::File)
                 {
-                    let config_path = format!("{path}/.editorconfig");
+                    let config_path = if path.is_empty() {
+                        ".editorconfig".to_owned()
+                    } else {
+                        format!("{path}/.editorconfig")
+                    };
                     if let Ok(relative) = RelativePath::try_from(config_path)
                         && let Ok(file) =
                             workspace_client::read_text(workspace, relative, MAX_TEXT_BYTES).await
@@ -691,6 +723,10 @@ fn expand_loaded_directory(
                             configs.push(source);
                         }
                     }
+                } else {
+                    editor_configs
+                        .write()
+                        .retain(|current| current.directory != path);
                 }
                 tree.write().replace_directory(&path, entries);
             }

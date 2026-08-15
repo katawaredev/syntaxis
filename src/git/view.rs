@@ -107,11 +107,7 @@ fn WorkspaceGit(slug: String) -> Element {
     let view = use_signal(SidebarView::default);
     let selected_commit = use_signal(|| None::<String>);
     let RepositoryResources {
-        status,
-        branches,
-        remotes,
-        tags,
-        history,
+        snapshot,
         diff,
         conflict,
         commit_detail,
@@ -152,16 +148,16 @@ fn WorkspaceGit(slug: String) -> Element {
         }
     });
 
-    use_effect(move || {
-        if let Some(Err(error)) = status() {
+    use_effect(move || match snapshot() {
+        Some(Err(error)) => {
             toast.set(Some((server_error_message(error), Tone::Destructive)));
         }
-    });
-
-    use_effect(move || {
-        if let Some(Err(error)) = remotes() {
-            toast.set(Some((server_error_message(error), Tone::Destructive)));
+        Some(Ok(snapshot)) => {
+            if let Err(error) = snapshot.remotes {
+                toast.set(Some((error.to_string(), Tone::Destructive)));
+            }
         }
+        None => {}
     });
 
     let initialize_slug = slug.clone();
@@ -359,20 +355,24 @@ fn WorkspaceGit(slug: String) -> Element {
         });
     };
 
-    let status_snapshot = status();
-    let status_loading = status_snapshot.is_none();
-    let status_error = status_snapshot
+    let repository_snapshot = snapshot();
+    let status_loading = repository_snapshot.is_none();
+    let status_error = repository_snapshot
         .as_ref()
         .and_then(|result| result.as_ref().err())
         .map(ToString::to_string);
-    let repository_missing = status_snapshot
+    let repository_missing = repository_snapshot.as_ref().is_some_and(|result| {
+        matches!(
+            result,
+            Ok(snapshot) if snapshot.state == RepositoryState::Uninitialized
+        )
+    });
+    let repository = repository_snapshot
         .as_ref()
-        .is_some_and(|result| matches!(result, Ok(RepositoryState::Uninitialized)));
-    let repository = status_snapshot
-        .as_ref()
-        .and_then(|result| match result {
-            Ok(RepositoryState::Ready(repository)) => Some(repository),
-            Ok(RepositoryState::Uninitialized) | Err(_) => None,
+        .and_then(|result| result.as_ref().ok())
+        .and_then(|snapshot| match &snapshot.state {
+            RepositoryState::Ready(repository) => Some(repository),
+            RepositoryState::Uninitialized => None,
         })
         .cloned()
         .unwrap_or_default();
@@ -383,32 +383,29 @@ fn WorkspaceGit(slug: String) -> Element {
             .find(|change| change.path.as_str() == selection.path)
             .cloned()
     });
-    let branch_list = branches()
+    let loaded_snapshot = repository_snapshot
         .as_ref()
-        .and_then(|result| result.as_ref().ok())
+        .and_then(|result| result.as_ref().ok());
+    let branch_list = loaded_snapshot
+        .and_then(|snapshot| snapshot.branches.as_ref().ok())
         .cloned()
         .unwrap_or_default();
-    let history_snapshot = history();
-    let history_loading = history_snapshot.is_none();
-    let history_error = history_snapshot
-        .as_ref()
-        .and_then(|result| result.as_ref().err())
-        .map(ToString::to_string);
-    let commit_list = history_snapshot
-        .as_ref()
-        .and_then(|result| result.as_ref().ok())
+    let history_loading = repository_snapshot.is_none();
+    let history_error = loaded_snapshot
+        .and_then(|snapshot| snapshot.history.as_ref().err())
+        .map(ToString::to_string)
+        .or_else(|| status_error.clone());
+    let commit_list = loaded_snapshot
+        .and_then(|snapshot| snapshot.history.as_ref().ok())
         .cloned()
         .unwrap_or_default();
-    let tag_list = tags()
-        .as_ref()
-        .and_then(|result| result.as_ref().ok())
+    let tag_list = loaded_snapshot
+        .and_then(|snapshot| snapshot.tags.as_ref().ok())
         .cloned()
         .unwrap_or_default();
-    let remotes_snapshot = remotes();
-    let remotes_loading = remotes_snapshot.is_none();
-    let remote_list = remotes_snapshot
-        .as_ref()
-        .and_then(|result| result.as_ref().ok())
+    let remotes_loading = repository_snapshot.is_none();
+    let remote_list = loaded_snapshot
+        .and_then(|snapshot| snapshot.remotes.as_ref().ok())
         .cloned()
         .unwrap_or_default();
     let selected_history_commit = selected_commit()

@@ -1,8 +1,5 @@
 use dioxus::prelude::*;
-use syntaxis_git::{
-    BranchInfo, CommitDetail, CommitInfo, ConflictFile, DiffKind, RemoteInfo, RepositoryState,
-    TagInfo, UnifiedDiff,
-};
+use syntaxis_git::{CommitDetail, ConflictFile, DiffKind, RepositorySnapshot, UnifiedDiff};
 
 use super::api;
 
@@ -15,11 +12,7 @@ pub(super) struct SelectedChange {
 
 #[derive(Clone, Copy)]
 pub(super) struct RepositoryResources {
-    pub status: Resource<Result<RepositoryState, ServerFnError>>,
-    pub branches: Resource<Result<Vec<BranchInfo>, ServerFnError>>,
-    pub remotes: Resource<Result<Vec<RemoteInfo>, ServerFnError>>,
-    pub tags: Resource<Result<Vec<TagInfo>, ServerFnError>>,
-    pub history: Resource<Result<Vec<CommitInfo>, ServerFnError>>,
+    pub snapshot: Resource<Result<RepositorySnapshot, ServerFnError>>,
     pub diff: Resource<Option<Result<UnifiedDiff, ServerFnError>>>,
     pub conflict: Resource<Option<Result<ConflictFile, ServerFnError>>>,
     pub commit_detail: Resource<Option<Result<CommitDetail, ServerFnError>>>,
@@ -39,63 +32,11 @@ pub(super) fn use_repository_resources(
     expanded_diff: Signal<bool>,
     selected_commit: Signal<Option<String>>,
 ) -> RepositoryResources {
-    let status_slug = slug.to_owned();
-    let status = use_resource(move || {
-        let slug = status_slug.clone();
+    let snapshot_slug = slug.to_owned();
+    let snapshot = use_resource(move || {
+        let slug = snapshot_slug.clone();
         let _ = refresh_key();
-        async move { api::repository_state(slug).await }
-    });
-    let branches_slug = slug.to_owned();
-    let branches = use_resource(move || {
-        let slug = branches_slug.clone();
-        let _ = refresh_key();
-        let repository_ready = repository_ready(status);
-        async move {
-            if repository_ready {
-                api::branches(slug).await
-            } else {
-                Ok(Vec::new())
-            }
-        }
-    });
-    let remotes_slug = slug.to_owned();
-    let remotes = use_resource(move || {
-        let slug = remotes_slug.clone();
-        let _ = refresh_key();
-        let repository_ready = repository_ready(status);
-        async move {
-            if repository_ready {
-                api::remotes(slug).await
-            } else {
-                Ok(Vec::new())
-            }
-        }
-    });
-    let tags_slug = slug.to_owned();
-    let tags = use_resource(move || {
-        let slug = tags_slug.clone();
-        let _ = refresh_key();
-        let repository_ready = repository_ready(status);
-        async move {
-            if repository_ready {
-                api::tags(slug).await
-            } else {
-                Ok(Vec::new())
-            }
-        }
-    });
-    let history_slug = slug.to_owned();
-    let history = use_resource(move || {
-        let slug = history_slug.clone();
-        let _ = refresh_key();
-        let repository_ready = repository_ready(status);
-        async move {
-            if repository_ready {
-                api::history(slug, 100).await
-            } else {
-                Ok(Vec::new())
-            }
-        }
+        async move { api::repository_snapshot(slug).await }
     });
     let SelectionResources {
         diff,
@@ -103,11 +44,7 @@ pub(super) fn use_repository_resources(
         commit_detail,
     } = use_selection_resources(slug, refresh_key, selected, expanded_diff, selected_commit);
     RepositoryResources {
-        status,
-        branches,
-        remotes,
-        tags,
-        history,
+        snapshot,
         diff,
         conflict,
         commit_detail,
@@ -165,11 +102,4 @@ fn use_selection_resources(
         conflict,
         commit_detail,
     }
-}
-
-fn repository_ready(status: Resource<Result<RepositoryState, ServerFnError>>) -> bool {
-    status
-        .read()
-        .as_ref()
-        .is_some_and(|result| matches!(result, Ok(RepositoryState::Ready(_))))
 }

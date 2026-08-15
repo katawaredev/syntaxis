@@ -1,10 +1,12 @@
 use syntaxis_git::{WorktreeCreateRequest, WorktreeInfo};
 use syntaxis_workspace::{
-    BinaryFile, BrowseDirectory, FileEntry, FileVersion, RelativePath, RuntimeState, TextFile,
-    WorkspaceCleanupEntry, WorkspaceRecord, WorkspaceSection, WorkspaceSession,
+    BinaryFile, BrowseDirectory, FileEntry, FileVersion, RelativePath, RuntimeState,
+    TextFile, WorkspaceCleanupEntry, WorkspaceRecord, WorkspaceSection, WorkspaceSession,
 };
+
+use super::api::WorkspaceFilesBootstrap;
 #[cfg(feature = "desktop")]
-use syntaxis_workspace::{ExecutionLocation, WorkspaceId};
+use syntaxis_workspace::{EntryKind, ExecutionLocation, WorkspaceId};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[allow(
@@ -81,6 +83,52 @@ pub async fn load_workspace_session(workspace_id: String) -> Result<WorkspaceSes
         RuntimeTarget::DesktopLocal => host_registry()?
             .load_session(&WorkspaceId::new(workspace_id))
             .map_err(|error| error.message),
+    }
+}
+
+pub async fn workspace_files_bootstrap(
+    workspace: WorkspaceRecord,
+) -> Result<WorkspaceFilesBootstrap, String> {
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::api::workspace_files_bootstrap(workspace.id.0)
+            .await
+            .map_err(server_error_message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => {
+            use syntaxis_workspace::WorkspaceFiles;
+
+            let entries = syntaxis_workspace_host::HostWorkspaceFiles
+                .list(&workspace, &RelativePath::root())
+                .await
+                .map_err(|error| error.message)?;
+            let root_editor_config = if entries
+                .iter()
+                .any(|entry| entry.name == ".editorconfig" && entry.kind == EntryKind::File)
+            {
+                let path = RelativePath::try_from(".editorconfig")
+                    .map_err(|error| error.message)?;
+                syntaxis_workspace_host::HostWorkspaceFiles
+                    .read_text(&workspace, &path, 4 * 1024 * 1024)
+                    .await
+                    .ok()
+                    .map(|file| file.content)
+            } else {
+                None
+            };
+            let (git_status, ignored_paths) = futures_util::join!(
+                crate::git::api::repository_status(workspace.id.0.clone()),
+                crate::git::api::ignored_paths(workspace.id.0.clone()),
+            );
+            Ok(WorkspaceFilesBootstrap {
+                entries,
+                root_editor_config,
+                git_status: git_status.ok(),
+                ignored_paths: ignored_paths.unwrap_or_default(),
+                session: host_registry()?
+                    .load_session(&WorkspaceId::new(workspace.id.0))
+                    .map_err(|error| error.message)?,
+            })
+        }
     }
 }
 

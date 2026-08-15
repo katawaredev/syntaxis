@@ -6,8 +6,8 @@ use syntaxis_git::{
     BranchComparison, BranchInfo, BranchRequest, CloneClientMessage, CloneServerMessage,
     CommitDetail, CommitInfo, CommitOutcome, CommitRequest, ConflictChoice, ConflictFile, DiffKind,
     HunkAction, MergeOutcome, PushOutcome, RemoteInfo, RemoteRequest, RemoteResult,
-    RepositoryState, RepositoryStatus, TagInfo, TagRequest, UnifiedDiff, WorktreeCreateRequest,
-    WorktreeInfo,
+    RepositorySnapshot, RepositoryState, RepositoryStatus, TagInfo, TagRequest, UnifiedDiff,
+    WorktreeCreateRequest, WorktreeInfo,
 };
 use syntaxis_workspace::WorkspaceRecord;
 
@@ -61,6 +61,13 @@ pub async fn ignored_paths(workspace_slug: String) -> Result<Vec<String>, Server
 #[get("/api/git/state/{workspace_slug}")]
 pub async fn repository_state(workspace_slug: String) -> Result<RepositoryState, ServerFnError> {
     server::repository_state(&workspace_slug).await
+}
+
+#[get("/api/git/snapshot/{workspace_slug}")]
+pub async fn repository_snapshot(
+    workspace_slug: String,
+) -> Result<RepositorySnapshot, ServerFnError> {
+    server::repository_snapshot(&workspace_slug).await
 }
 
 #[post("/api/git/init")]

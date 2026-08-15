@@ -87,6 +87,8 @@ impl Route {
 pub fn App() -> Element {
     let notification_center = crate::ai::notifications::use_notification_center();
     use_context_provider(|| notification_center);
+    let workspace_list = crate::workspace::use_workspace_list_cache();
+    use_context_provider(|| workspace_list);
     let geist_font_face = format!(
         "@font-face {{ font-family: 'Geist Variable'; src: url('{GEIST_FONT}') format('woff2'); font-style: normal; font-weight: 100 900; font-display: swap; }}",
     );

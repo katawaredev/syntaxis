@@ -7,7 +7,8 @@ use syntaxis_git::{
     CloneMode, CloneRequest, CloneServerMessage, CommitDetail, CommitInfo, CommitOutcome,
     CommitRequest, ConflictChoice, ConflictFile, ConflictRequest, DiffKind, GitErrorCode,
     GitOperations, HunkAction, HunkRequest, MergeOutcome, PushOutcome, RemoteInfo, RemoteRequest,
-    RemoteResult, RepositoryState, RepositoryStatus, TagInfo, TagRequest, UnifiedDiff,
+    RemoteResult, RepositorySnapshot, RepositoryState, RepositoryStatus, TagInfo, TagRequest,
+    UnifiedDiff,
     WorktreeCreateRequest, WorktreeInfo, WorktreeOperations,
 };
 use syntaxis_git_host::HostGit;
@@ -208,7 +209,7 @@ async fn send_clone_error(
         .await;
 }
 
-pub(super) async fn repository_status(
+pub(crate) async fn repository_status(
     workspace_slug: &str,
 ) -> Result<RepositoryStatus, ServerFnError> {
     let workspace = workspace(workspace_slug).await?;
@@ -218,7 +219,7 @@ pub(super) async fn repository_status(
         .map_err(server_error)
 }
 
-pub(super) async fn ignored_paths(workspace_slug: &str) -> Result<Vec<String>, ServerFnError> {
+pub(crate) async fn ignored_paths(workspace_slug: &str) -> Result<Vec<String>, ServerFnError> {
     let workspace = workspace(workspace_slug).await?;
     HostGit::default()
         .ignored_paths(&workspace)
@@ -237,6 +238,39 @@ pub(super) async fn repository_state(
         }
         Err(error) => Err(server_error(error)),
     }
+}
+
+pub(super) async fn repository_snapshot(
+    workspace_slug: &str,
+) -> Result<RepositorySnapshot, ServerFnError> {
+    let workspace = workspace(workspace_slug).await?;
+    let git = HostGit::default();
+    let state = match git.status(&workspace).await {
+        Ok(status) => RepositoryState::Ready(status),
+        Err(error) if error.code == GitErrorCode::NotRepository => {
+            return Ok(RepositorySnapshot {
+                state: RepositoryState::Uninitialized,
+                branches: Ok(Vec::new()),
+                remotes: Ok(Vec::new()),
+                tags: Ok(Vec::new()),
+                history: Ok(Vec::new()),
+            });
+        }
+        Err(error) => return Err(server_error(error)),
+    };
+    let (branches, remotes, tags, history) = futures_util::join!(
+        git.branches(&workspace),
+        git.remotes(&workspace),
+        git.tags(&workspace),
+        git.history(&workspace, 100),
+    );
+    Ok(RepositorySnapshot {
+        state,
+        branches,
+        remotes,
+        tags,
+        history,
+    })
 }
 
 pub(super) async fn initialize_repository(workspace_slug: &str) -> Result<(), ServerFnError> {

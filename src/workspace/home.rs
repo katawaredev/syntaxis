@@ -7,7 +7,7 @@ use syntaxis_ui::prelude::{AppIcon, Icon, Toast};
 use syntaxis_workspace::{ExecutionLocation, RuntimeCapability, RuntimeState};
 
 use self::{dialogs::HomeDialogs, recent::RecentProjects};
-use super::client::{list_workspaces, runtime_state};
+use super::{WorkspaceListCache, client::runtime_state};
 use crate::{ai::notifications::NotificationMenu, app::LogoutButton};
 
 #[derive(Clone, PartialEq, Eq)]
@@ -94,20 +94,12 @@ impl RuntimePresentation {
 pub fn Home() -> Element {
     let mut dialog = use_signal(|| HomeDialog::None);
     let mut toast = use_signal(|| None::<String>);
-    let mut refresh_key = use_signal(|| 0_u64);
+    let workspace_list = use_context::<WorkspaceListCache>();
+    use_effect(move || workspace_list.ensure());
     let runtime = use_resource(runtime_state);
-    let workspaces = use_resource(move || async move {
-        let _ = refresh_key();
-        list_workspaces().await
-    });
-    let workspace_result = workspaces();
-    let workspace_records = workspace_result
-        .as_ref()
-        .and_then(|result| result.as_ref().ok())
-        .cloned()
-        .unwrap_or_default();
-    let workspace_loading = workspace_result.is_none();
-    let workspace_error = workspace_result.is_some_and(|result| result.is_err());
+    let workspace_records = workspace_list.records();
+    let workspace_loading = workspace_list.is_loading() && !workspace_list.is_loaded();
+    let workspace_error = workspace_list.error().is_some() && workspace_records.is_empty();
     let runtime_snapshot = runtime()
         .as_ref()
         .and_then(|result| result.as_ref().ok())
@@ -168,7 +160,7 @@ pub fn Home() -> Element {
                     on_clear_mise_tools: move |()| dialog.set(HomeDialog::ClearMiseTools),
                     on_delete: move |index| dialog.set(HomeDialog::Delete(index)),
                     on_notice: move |message| toast.set(Some(message)),
-                    on_refresh: move |()| *refresh_key.write() += 1,
+                    on_refresh: move |()| workspace_list.refresh(),
                 }
                 footer { class: "mt-auto pt-10 text-center text-[11px] text-muted-foreground/65",
                     {runtime_presentation.footer.clone()}
@@ -181,7 +173,7 @@ pub fn Home() -> Element {
             workspaces: workspace_records,
             runtime: runtime_presentation,
             on_notice: move |message| toast.set(Some(message)),
-            on_changed: move |()| *refresh_key.write() += 1,
+            on_changed: move |()| workspace_list.refresh(),
         }
         if let Some(message) = toast() {
             Toast { message, on_close: move |()| toast.set(None) }

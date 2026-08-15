@@ -10,8 +10,8 @@ use dioxus::{
     prelude::ServerFnError,
 };
 use syntaxis_workspace::{
-    BinaryFile, BrowseDirectory, BrowseRoot, EventBatch, FileEntry, FileVersion, RelativePath,
-    TextFile, WorkspaceBrowser, WorkspaceCleanupEntry, WorkspaceFiles, WorkspaceId,
+    BinaryFile, BrowseDirectory, BrowseRoot, EntryKind, EventBatch, FileEntry, FileVersion,
+    RelativePath, TextFile, WorkspaceBrowser, WorkspaceCleanupEntry, WorkspaceFiles, WorkspaceId,
     WorkspaceRecord, WorkspaceRegistry, WorkspaceSection, WorkspaceSession,
 };
 use syntaxis_workspace_host::{
@@ -19,7 +19,7 @@ use syntaxis_workspace_host::{
     WorkspaceWatcher,
 };
 
-use super::server_error;
+use super::{DEFAULT_TEXT_LIMIT, WorkspaceFilesBootstrap, server_error};
 
 static REGISTRY: OnceLock<Result<WorkspaceRegistryStore, syntaxis_workspace::WorkspaceError>> =
     OnceLock::new();
@@ -102,6 +102,41 @@ pub(super) async fn load_workspace_session(
     id: &WorkspaceId,
 ) -> Result<WorkspaceSession, ServerFnError> {
     registry()?.load_session(id).map_err(server_error)
+}
+
+pub(super) async fn workspace_files_bootstrap(
+    id: &WorkspaceId,
+) -> Result<WorkspaceFilesBootstrap, ServerFnError> {
+    let workspace = workspace_by_id(id).await?;
+    let entries = HostWorkspaceFiles
+        .list(&workspace, &RelativePath::root())
+        .await
+        .map_err(server_error)?;
+    let root_editor_config = if entries
+        .iter()
+        .any(|entry| entry.name == ".editorconfig" && entry.kind == EntryKind::File)
+    {
+        let path = RelativePath::try_from(".editorconfig").map_err(server_error)?;
+        HostWorkspaceFiles
+            .read_text(&workspace, &path, DEFAULT_TEXT_LIMIT)
+            .await
+            .ok()
+            .map(|file| file.content)
+    } else {
+        None
+    };
+    let workspace_id = id.0.clone();
+    let (git_status, ignored_paths) = futures_util::join!(
+        crate::git::api::server::repository_status(&workspace_id),
+        crate::git::api::server::ignored_paths(&workspace_id),
+    );
+    Ok(WorkspaceFilesBootstrap {
+        entries,
+        root_editor_config,
+        git_status: git_status.ok(),
+        ignored_paths: ignored_paths.unwrap_or_default(),
+        session: registry()?.load_session(id).map_err(server_error)?,
+    })
 }
 
 pub(super) async fn save_workspace_session(

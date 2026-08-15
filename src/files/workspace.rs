@@ -2,11 +2,9 @@ use std::collections::BTreeSet;
 
 use syntaxis_editor::EditorConfigSource;
 use syntaxis_git::RepositoryStatus;
-use syntaxis_workspace::{EntryKind, FileEntry, FileSession, RelativePath, WorkspaceRecord};
+use syntaxis_workspace::{FileEntry, FileSession, WorkspaceRecord};
 
-use crate::{git::api as git_api, workspace::client as workspace_client};
-
-const MAX_EDITOR_CONFIG_BYTES: u64 = 4 * 1024 * 1024;
+use crate::workspace::client as workspace_client;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct InitialFiles {
@@ -19,34 +17,22 @@ pub(super) struct InitialFiles {
 }
 
 pub(super) async fn load_initial(workspace: WorkspaceRecord) -> Result<InitialFiles, String> {
-    let entries = workspace_client::list_files(workspace.clone(), RelativePath::root()).await?;
-    let mut editor_configs = Vec::new();
-    if entries
-        .iter()
-        .any(|entry| entry.name == ".editorconfig" && entry.kind == EntryKind::File)
-        && let Ok(config) = workspace_client::read_text(
-            workspace.clone(),
-            RelativePath::try_from(".editorconfig").map_err(|error| error.message)?,
-            MAX_EDITOR_CONFIG_BYTES,
-        )
-        .await
-    {
-        editor_configs.push(EditorConfigSource {
-            directory: String::new(),
-            contents: config.content,
-        });
-    }
-    let (git_status, ignored_paths, session) = futures_util::join!(
-        git_api::repository_status(workspace.id.0.clone()),
-        git_api::ignored_paths(workspace.id.0.clone()),
-        workspace_client::load_workspace_session(workspace.id.0.clone()),
-    );
+    let bootstrap = workspace_client::workspace_files_bootstrap(workspace.clone()).await?;
+    let editor_configs = bootstrap
+        .root_editor_config
+        .map(|contents| {
+            vec![EditorConfigSource {
+                directory: String::new(),
+                contents,
+            }]
+        })
+        .unwrap_or_default();
     Ok(InitialFiles {
         workspace,
-        entries,
+        entries: bootstrap.entries,
         editor_configs,
-        git_status: git_status.ok(),
-        ignored_paths: ignored_paths.unwrap_or_default().into_iter().collect(),
-        session: session.unwrap_or_default().files,
+        git_status: bootstrap.git_status,
+        ignored_paths: bootstrap.ignored_paths.into_iter().collect(),
+        session: bootstrap.session.files,
     })
 }

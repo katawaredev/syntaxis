@@ -1,6 +1,17 @@
 use serde::{Deserialize, Serialize};
 use syntaxis_workspace::{RelativePath, WorkspaceRecord};
 
+use crate::{GitResult, RepositoryState};
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct RepositorySnapshot {
+    pub state: RepositoryState,
+    pub branches: GitResult<Vec<BranchInfo>>,
+    pub remotes: GitResult<Vec<RemoteInfo>>,
+    pub tags: GitResult<Vec<TagInfo>>,
+    pub history: GitResult<Vec<CommitInfo>>,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BranchInfo {
     pub name: String,

@@ -1,9 +1,20 @@
 use dioxus::fullstack::{WebSocketOptions, Websocket};
 use dioxus::prelude::*;
+use serde::{Deserialize, Serialize};
+use syntaxis_git::RepositoryStatus;
 use syntaxis_workspace::{
     BinaryFile, BrowseDirectory, BrowseRoot, EventBatch, FileEntry, FileVersion, RuntimeState,
     TextFile, WorkspaceCleanupEntry, WorkspaceRecord, WorkspaceSection, WorkspaceSession,
 };
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct WorkspaceFilesBootstrap {
+    pub entries: Vec<FileEntry>,
+    pub root_editor_config: Option<String>,
+    pub git_status: Option<RepositoryStatus>,
+    pub ignored_paths: Vec<String>,
+    pub session: WorkspaceSession,
+}
 #[cfg(feature = "server")]
 use syntaxis_workspace::{
     ExecutionLocation, RelativePath, RuntimeCapabilities, RuntimeCapability, RuntimeIdentity,
@@ -50,6 +61,13 @@ pub async fn load_workspace_session(
     workspace_id: String,
 ) -> Result<WorkspaceSession, ServerFnError> {
     server::load_workspace_session(&WorkspaceId::new(workspace_id)).await
+}
+
+#[get("/api/workspaces/{workspace_id}/files-bootstrap")]
+pub async fn workspace_files_bootstrap(
+    workspace_id: String,
+) -> Result<WorkspaceFilesBootstrap, ServerFnError> {
+    server::workspace_files_bootstrap(&WorkspaceId::new(workspace_id)).await
 }
 #[post("/api/workspaces/{workspace_id}/session")]
 pub async fn save_workspace_session(

@@ -174,7 +174,6 @@ fn RemoteTerminal(
     let mut sessions_loaded = use_signal(|| false);
     let mut active = use_signal(|| None::<SessionId>);
     let mut remembered = use_signal(|| None::<SessionId>);
-    let mut remembered_loaded = use_signal(|| embedded);
     let mut output = use_signal(|| None::<RendererOutputBatch>);
     let mut renderer_command = use_signal(|| None::<RendererCommand>);
     let mut renderer_command_sequence = use_signal(|| 0_u64);
@@ -237,7 +236,6 @@ fn RemoteTerminal(
                 if let Either::Left((Ok(Some(id)), _)) = select(stored, timeout).await {
                     remembered.set(Some(SessionId::new(id)));
                 }
-                remembered_loaded.set(true);
             });
         }
     });
@@ -264,9 +262,6 @@ fn RemoteTerminal(
             let initializer_label = initializer_label.clone();
             let on_initializer_finished = on_initializer_finished;
             async move {
-                while !remembered_loaded() {
-                    dioxus_sdk_time::sleep(std::time::Duration::from_millis(10)).await;
-                }
                 let mut retry_attempt = 0_u8;
                 let mut last_error = String::new();
                 'connections: loop {

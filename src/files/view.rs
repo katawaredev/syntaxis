@@ -527,6 +527,16 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
         if changes.is_empty() {
             return;
         }
+        let parent_directories = changes
+            .iter()
+            .map(|change| {
+                change
+                    .path
+                    .as_str()
+                    .rsplit_once('/')
+                    .map_or_else(String::new, |(parent, _)| parent.to_owned())
+            })
+            .collect::<BTreeSet<_>>();
         for change in changes {
             let path = change.path.as_str().to_owned();
             let is_open_text = documents.peek().iter().any(
@@ -536,7 +546,26 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                 reconcile_workspace_change(workspace.clone(), path, change.kind, documents, toast);
             }
         }
-        refresh.with_mut(|revision| *revision += 1);
+        explorer::reload_loaded_directories(
+            parent_directories,
+            Some(workspace.clone()),
+            tree,
+            editor_configs,
+            toast,
+        );
+        let workspace_id = workspace.id.0;
+        spawn(async move {
+            let (status, ignored) = futures_util::join!(
+                git_api::repository_status(workspace_id.clone()),
+                git_api::ignored_paths(workspace_id),
+            );
+            if let Ok(status) = status {
+                git_status.set(Some(status));
+            }
+            if let Ok(paths) = ignored {
+                ignored_paths.set(paths.into_iter().collect());
+            }
+        });
     });
 
     // Revalidate a tab when it becomes active. This closes the remaining gap if

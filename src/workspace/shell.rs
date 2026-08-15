@@ -12,9 +12,9 @@ use crate::{
 use syntaxis_workspace::{ExecutionLocation, RuntimeState, WorkspaceSection};
 
 use super::ProjectIcon;
-use super::client::{list_workspaces, runtime_state, set_workspace_last_section, touch_workspace};
+use super::client::{runtime_state, set_workspace_last_section, touch_workspace};
 use super::worktrees::use_active_workspace;
-use super::{WorkspaceEventState, events::WorkspaceEventBridge};
+use super::{WorkspaceEventState, WorkspaceListCache, events::WorkspaceEventBridge};
 use crate::ai::notifications::NotificationMenu;
 
 #[component]
@@ -37,25 +37,22 @@ pub fn WorkspaceShell() -> Element {
         Route::Ai { slug, .. } | Route::AiSettings { slug, .. } => (slug, WorkspaceSection::Ai),
         Route::Home {} => ("syntaxis".into(), WorkspaceSection::Files),
     };
-    let workspaces = use_resource(list_workspaces);
+    let workspace_list = use_context::<WorkspaceListCache>();
+    use_effect(move || workspace_list.ensure());
+    let workspaces = workspace_list.records();
     let runtime = use_resource(runtime_state);
     let mut touched_workspace = use_signal(|| None::<String>);
     let mut persisted_section = use_signal(|| None::<(String, WorkspaceSection)>);
-    let registered_workspace = workspaces()
-        .as_ref()
-        .and_then(|result| result.as_ref().ok())
-        .and_then(|workspaces| workspaces.iter().find(|workspace| workspace.slug == slug))
+    let registered_workspace = workspaces
+        .iter()
+        .find(|workspace| workspace.slug == slug)
         .cloned();
     let active_slug = slug.clone();
     use_effect(use_reactive((&active_slug,), move |(active_slug,)| {
-        let Some(workspace) = workspaces()
-            .as_ref()
-            .and_then(|result| result.as_ref().ok())
-            .and_then(|workspaces| {
-                workspaces
-                    .iter()
-                    .find(|workspace| workspace.slug == active_slug)
-            })
+        let Some(workspace) = workspace_list
+            .records()
+            .iter()
+            .find(|workspace| workspace.slug == active_slug)
             .cloned()
         else {
             return;
@@ -70,14 +67,10 @@ pub fn WorkspaceShell() -> Element {
     use_effect(use_reactive(
         (&touch_slug, &active),
         move |(touch_slug, active)| {
-            let Some(workspace_id) = workspaces()
-                .as_ref()
-                .and_then(|result| result.as_ref().ok())
-                .and_then(|workspaces| {
-                    workspaces
-                        .iter()
-                        .find(|workspace| workspace.slug == touch_slug)
-                })
+            let Some(workspace_id) = workspace_list
+                .records()
+                .iter()
+                .find(|workspace| workspace.slug == touch_slug)
                 .map(|workspace| workspace.id.0.clone())
             else {
                 return;
