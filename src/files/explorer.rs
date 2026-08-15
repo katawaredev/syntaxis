@@ -45,7 +45,7 @@ pub(super) fn Explorer(
     mut search: Signal<String>,
     git_status: Option<RepositoryStatus>,
     ignored_paths: BTreeSet<String>,
-    show_ignored: bool,
+    mut show_ignored: Signal<bool>,
     loading: bool,
     load_failed: bool,
     pending: bool,
@@ -57,6 +57,7 @@ pub(super) fn Explorer(
 ) -> Element {
     let mut search_options = use_signal(WorkspaceSearchOptions::default);
     let mut search_menu = use_signal(|| false);
+    let mut file_menu = use_signal(|| false);
     let mut search_request = use_signal(|| None::<(u64, String)>);
     let mut search_revision = use_signal(|| 0_u64);
     let mut visible_search_files = use_signal(|| 100_usize);
@@ -76,7 +77,7 @@ pub(super) fn Explorer(
             "",
             filter_changes.then_some(&git_paths),
             &ignored_paths,
-            show_ignored,
+            show_ignored(),
             filter_changes,
         );
         (changes_by_path, directory_changes, nodes)
@@ -137,43 +138,67 @@ pub(super) fn Explorer(
                         disabled: pending,
                         onclick: move |_| on_action.call(FileAction::CreateFolder),
                     }
-                    IconButton {
-                        label: "Move selected",
-                        icon: AppIcon::FileMove,
-                        size: ControlSize::Small,
-                        disabled: pending || selected_entry().is_none(),
-                        onclick: move |_| on_action.call(FileAction::Move),
-                    }
-                    IconButton {
-                        label: "Duplicate selected",
-                        icon: AppIcon::Copy,
-                        size: ControlSize::Small,
-                        disabled: pending || selected_entry().is_none(),
-                        onclick: move |_| on_action.call(FileAction::Duplicate),
-                    }
-                    IconButton {
-                        label: "Delete selected",
-                        icon: AppIcon::Delete,
-                        size: ControlSize::Small,
-                        danger: true,
-                        disabled: pending || selected_entry().is_none(),
-                        onclick: move |_| on_action.call(FileAction::Delete),
-                    }
                     span { class: "flex-1" }
-                    IconButton {
-                        label: if changed_only() { "Show all files" } else { "Show changed files only" },
-                        icon: AppIcon::FileDiff,
-                        size: ControlSize::Small,
-                        pressed: changed_only(),
-                        disabled: changes_by_path.is_empty() && !changed_only(),
-                        onclick: move |_| changed_only.toggle(),
-                    }
                     IconButton {
                         label: "Refresh files",
                         icon: AppIcon::Refresh,
                         size: ControlSize::Small,
                         disabled: pending,
                         onclick: move |_| on_refresh.call(()),
+                    }
+                    DropdownMenu {
+                        class: "relative shrink-0",
+                        open: file_menu(),
+                        on_open_change: move |open: bool| file_menu.set(open),
+                        MenuTrigger {
+                            label: "Explorer actions",
+                            icon: AppIcon::Menu,
+                            size: ControlSize::Small,
+                            open: file_menu(),
+                            on_toggle: move |()| file_menu.toggle(),
+                        }
+                        MenuContent { class: "right-0 w-56",
+                            div { class: "px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground", "View" }
+                            DropdownMenuItem::<usize> {
+                                value: 0,
+                                index: 0,
+                                disabled: changes_by_path.is_empty() && !changed_only(),
+                                on_select: move |_| changed_only.toggle(),
+                                span { class: "flex items-center gap-2", Icon { icon: AppIcon::FileDiff, size: 14 } "Changed files only" }
+                                if changed_only() { Icon { icon: AppIcon::Check, size: 12 } }
+                            }
+                            DropdownMenuItem::<usize> {
+                                value: 1,
+                                index: 1,
+                                on_select: move |_| show_ignored.toggle(),
+                                span { class: "flex items-center gap-2", Icon { icon: AppIcon::Eye, size: 14 } "Show Git ignored files" }
+                                if show_ignored() { Icon { icon: AppIcon::Check, size: 12 } }
+                            }
+                            hr {}
+                            div { class: "px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground", "Selected item" }
+                            DropdownMenuItem::<usize> {
+                                value: 2,
+                                index: 2,
+                                disabled: pending || selected_entry().is_none(),
+                                on_select: move |_| on_action.call(FileAction::Move),
+                                span { class: "flex items-center gap-2", Icon { icon: AppIcon::FileMove, size: 14 } "Move" }
+                            }
+                            DropdownMenuItem::<usize> {
+                                value: 3,
+                                index: 3,
+                                disabled: pending || selected_entry().is_none(),
+                                on_select: move |_| on_action.call(FileAction::Duplicate),
+                                span { class: "flex items-center gap-2", Icon { icon: AppIcon::Copy, size: 14 } "Duplicate" }
+                            }
+                            DropdownMenuItem::<usize> {
+                                value: 4,
+                                index: 4,
+                                disabled: pending || selected_entry().is_none(),
+                                class: "!text-destructive",
+                                on_select: move |_| on_action.call(FileAction::Delete),
+                                span { class: "flex items-center gap-2", Icon { icon: AppIcon::Delete, size: 14 } "Delete" }
+                            }
+                        }
                     }
                 }
             }

@@ -1,4 +1,12 @@
-import { LSPClient, serverCompletion, serverDiagnostics } from "@codemirror/lsp-client";
+import {
+  findReferences,
+  formatDocument,
+  jumpToDefinition,
+  LSPClient,
+  LSPPlugin,
+  serverCompletion,
+  serverDiagnostics,
+} from "@codemirror/lsp-client";
 
 const REGISTRY_KEY = Symbol.for("syntaxis.codeMirror.languageServices");
 const IDLE_DISCONNECT_MS = 2 * 60 * 1000;
@@ -96,10 +104,19 @@ const createSession = async (config) => {
     message: "",
     listeners: new Set(),
   };
+  const capabilities = () => {
+    const available = client.serverCapabilities ?? {};
+    return {
+      completion: Boolean(available.completionProvider),
+      definition: Boolean(available.definitionProvider),
+      references: Boolean(available.referencesProvider),
+      formatting: Boolean(available.documentFormattingProvider),
+    };
+  };
   const updateStatus = (status, message = "") => {
     session.status = status;
     session.message = message;
-    for (const listener of session.listeners) listener(status, message);
+    for (const listener of session.listeners) listener(status, message, capabilities());
   };
   const client = new LSPClient({
     rootUri: config.rootUri,
@@ -148,7 +165,12 @@ const acquireSession = async (config) => {
   }
   session.refs += 1;
   session.listeners.add(config.onStatus);
-  config.onStatus(session.status, session.message);
+  config.onStatus(session.status, session.message, {
+    completion: Boolean(session.client.serverCapabilities?.completionProvider),
+    definition: Boolean(session.client.serverCapabilities?.definitionProvider),
+    references: Boolean(session.client.serverCapabilities?.referencesProvider),
+    formatting: Boolean(session.client.serverCapabilities?.documentFormattingProvider),
+  });
   return session;
 };
 
@@ -186,4 +208,19 @@ export const connectLanguageService = async (config) => {
       releaseSession(config.sessionKey, session, config.onStatus);
     },
   };
+};
+
+export const runLanguageServiceAction = (action, view) => {
+  switch (action) {
+    case "go_to_definition":
+      return jumpToDefinition(view);
+    case "find_references":
+      return findReferences(view);
+    case "format_document":
+      return LSPPlugin.get(view)?.client.hasCapability("documentFormattingProvider") === false
+        ? false
+        : formatDocument(view);
+    default:
+      return false;
+  }
 };

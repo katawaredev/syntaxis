@@ -37,6 +37,10 @@ enum EditorBridgeCommand {
         query: Option<EditorSearchQuery>,
     },
     Focus,
+    TriggerCompletion,
+    GoToDefinition,
+    FindReferences,
+    FormatDocument,
     GoToLine {
         line: usize,
     },
@@ -58,6 +62,10 @@ impl From<EditorCommandKind> for EditorBridgeCommand {
     fn from(command: EditorCommandKind) -> Self {
         match command {
             EditorCommandKind::Focus => Self::Focus,
+            EditorCommandKind::TriggerCompletion => Self::TriggerCompletion,
+            EditorCommandKind::GoToDefinition => Self::GoToDefinition,
+            EditorCommandKind::FindReferences => Self::FindReferences,
+            EditorCommandKind::FormatDocument => Self::FormatDocument,
             EditorCommandKind::GoToLine { line } => Self::GoToLine { line },
             EditorCommandKind::Select { start, end } => Self::Select { start, end },
             EditorCommandKind::Replace { value, start, end } => Self::Replace { value, start, end },
@@ -92,6 +100,14 @@ enum EditorBridgeEvent {
         status: LanguageServiceStatus,
         #[serde(default)]
         message: String,
+        #[serde(default)]
+        completion: bool,
+        #[serde(default)]
+        definition: bool,
+        #[serde(default)]
+        references: bool,
+        #[serde(default)]
+        formatting: bool,
     },
 }
 
@@ -187,12 +203,20 @@ pub(super) fn InteractiveCodeEditor(editor_props: CodeEditorProps) -> Element {
                             server_name,
                             status,
                             message,
+                            completion,
+                            definition,
+                            references,
+                            formatting,
                         } => {
                             props.on_language_service.call(LanguageServiceState {
                                 server_id,
                                 server_name,
                                 status,
                                 message,
+                                completion,
+                                definition,
+                                references,
+                                formatting,
                             });
                         }
                     }

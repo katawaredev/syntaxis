@@ -3,6 +3,7 @@ import {
   closeBrackets,
   closeBracketsKeymap,
   completeAnyWord,
+  startCompletion,
 } from "@codemirror/autocomplete";
 import {
   addCursorAbove,
@@ -269,10 +270,14 @@ import { tags } from "@lezer/highlight";
   let view;
   let languageServiceRevision = 0;
   let languageServiceHandles = [];
+  let languageServiceModule = null;
+  const runLanguageServiceAction = (action, editorView) =>
+    languageServiceModule?.runLanguageServiceAction(action, editorView) ?? false;
   const releaseLanguageService = () => {
     languageServiceRevision += 1;
     for (const handle of languageServiceHandles) handle.release();
     languageServiceHandles = [];
+    languageServiceModule = null;
   };
   const configureLanguageService = async (config) => {
     const revision = ++languageServiceRevision;
@@ -299,13 +304,14 @@ import { tags } from "@lezer/highlight";
                 rootUri: service.root_uri,
                 filename: config.filename,
                 languageId: service.language_id,
-                onStatus(status, message = "") {
+                onStatus(status, message = "", capabilities = {}) {
                   dioxus.send({
                     type: "language_service_status",
                     server_id: service.server_id,
                     server_name: service.server_name,
                     status,
                     message,
+                    ...capabilities,
                   });
                 },
               });
@@ -327,6 +333,7 @@ import { tags } from "@lezer/highlight";
         return;
       }
       languageServiceHandles = handles;
+      languageServiceModule = module;
       view.dispatch({
         effects: languageServiceCompartment.reconfigure(handles.map((handle) => handle.extension)),
       });
@@ -427,6 +434,18 @@ import { tags } from "@lezer/highlight";
         search({ createPanel: hiddenSearchPanel }),
         EditorState.allowMultipleSelections.of(true),
         keymap.of([
+          {
+            key: "F12",
+            run: (editorView) => runLanguageServiceAction("go_to_definition", editorView),
+          },
+          {
+            key: "Shift-F12",
+            run: (editorView) => runLanguageServiceAction("find_references", editorView),
+          },
+          {
+            key: "Shift-Alt-f",
+            run: (editorView) => runLanguageServiceAction("format_document", editorView),
+          },
           { key: "Mod-d", run: selectNextOccurrence },
           { key: "Mod-Shift-l", run: selectSelectionMatches },
           { key: "Alt-Shift-ArrowUp", run: addCursorAbove },
@@ -557,6 +576,15 @@ import { tags } from "@lezer/highlight";
       configureSearch(command.query);
     } else if (command.type === "focus") {
       view.focus();
+    } else if (command.type === "trigger_completion") {
+      startCompletion(view);
+      view.focus();
+    } else if (
+      command.type === "go_to_definition" ||
+      command.type === "find_references" ||
+      command.type === "format_document"
+    ) {
+      runLanguageServiceAction(command.type, view);
     } else if (command.type === "go_to_line") {
       const line = view.state.doc.line(Math.min(Math.max(1, command.line), view.state.doc.lines));
       view.dispatch({

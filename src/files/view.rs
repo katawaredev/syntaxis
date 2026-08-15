@@ -6,6 +6,7 @@ use dioxus_code::Language;
 use dioxus_code_editor::{
     CodeEditor, EditorCommand, EditorCommandKind, EditorEdit, EditorRange, EditorSearchQuery,
     EditorSearchStatus, EditorSelection, LanguageServiceConfig, LanguageServiceState,
+    LanguageServiceStatus,
 };
 use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
 use syntaxis_editor::{
@@ -252,6 +253,10 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                     server_name: server.label.into(),
                     status: dioxus_code_editor::LanguageServiceStatus::Starting,
                     message: String::new(),
+                    completion: false,
+                    definition: false,
+                    references: false,
+                    formatting: false,
                 })
                 .collect(),
         );
@@ -681,6 +686,15 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
             .filter(|state| server_ids.contains(&state.server_id.as_str()))
             .collect()
     });
+    let supports_language_action = |capability: fn(&LanguageServiceState) -> bool| {
+        active_language_services.iter().any(|service| {
+            service.status == LanguageServiceStatus::Ready && capability(service)
+        })
+    };
+    let supports_completion = supports_language_action(|service| service.completion);
+    let supports_definition = supports_language_action(|service| service.definition);
+    let supports_references = supports_language_action(|service| service.references);
+    let supports_formatting = supports_language_action(|service| service.formatting);
     let search_status = editor_search_status();
     let search_error = (!search_status.valid).then(|| "Invalid regular expression".to_owned());
     let workspace_editor_matches = active_path()
@@ -715,7 +729,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                         search: explorer_search,
                         git_status: git_status(),
                         ignored_paths: ignored_paths(),
-                        show_ignored: show_ignored(),
+                        show_ignored,
                         loading: initial_loading,
                         load_failed: initial_failed,
                         pending: pending(),
@@ -791,7 +805,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                         search: explorer_search,
                         git_status: git_status(),
                         ignored_paths: ignored_paths(),
-                        show_ignored: show_ignored(),
+                        show_ignored,
                         loading: initial_loading,
                         load_failed: initial_failed,
                         pending: pending(),
@@ -932,7 +946,8 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                 open: editor_menu(),
                                 on_toggle: move |()| editor_menu.toggle(),
                             }
-                            MenuContent { class: "right-0 w-51",
+                            MenuContent { class: "right-0 w-60",
+                                div { class: "px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground", "Navigation" }
                                 EditorMenuItem {
                                     index: 0,
                                     icon: AppIcon::GoToLine,
@@ -952,38 +967,67 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                         }
                                     },
                                 }
+                                hr {}
+                                div { class: "px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground", "Code intelligence" }
                                 EditorMenuItem {
                                     index: 2,
+                                    icon: AppIcon::LanguageServices,
+                                    label: "Language Services",
+                                    checked: autocomplete_enabled(),
+                                    onclick: move |()| autocomplete_enabled.toggle(),
+                                }
+                                EditorMenuItem {
+                                    index: 3,
+                                    icon: AppIcon::Completion,
+                                    label: "Trigger Completion",
+                                    suffix: "Mod Space",
+                                    disabled: !editor_interactive || !autocomplete_enabled() || !supports_completion,
+                                    onclick: move |()| issue_command(command_revision, editor_command, EditorCommandKind::TriggerCompletion),
+                                }
+                                EditorMenuItem {
+                                    index: 4,
+                                    icon: AppIcon::GoToDefinition,
+                                    label: "Go to Definition",
+                                    suffix: "F12",
+                                    disabled: !editor_interactive || !supports_definition,
+                                    onclick: move |()| issue_command(command_revision, editor_command, EditorCommandKind::GoToDefinition),
+                                }
+                                EditorMenuItem {
+                                    index: 5,
+                                    icon: AppIcon::FindReferences,
+                                    label: "Find References",
+                                    suffix: "Shift F12",
+                                    disabled: !editor_interactive || !supports_references,
+                                    onclick: move |()| issue_command(command_revision, editor_command, EditorCommandKind::FindReferences),
+                                }
+                                EditorMenuItem {
+                                    index: 6,
+                                    icon: AppIcon::FormatDocument,
+                                    label: "Format Document",
+                                    suffix: "Shift Alt F",
+                                    disabled: !editor_interactive || !supports_formatting,
+                                    onclick: move |()| issue_command(command_revision, editor_command, EditorCommandKind::FormatDocument),
+                                }
+                                hr {}
+                                div { class: "px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground", "Editor view" }
+                                EditorMenuItem {
+                                    index: 7,
                                     icon: AppIcon::WordWrap,
                                     label: "Word Wrap",
                                     checked: word_wrap(),
                                     onclick: move |()| word_wrap.toggle(),
                                 }
                                 EditorMenuItem {
-                                    index: 3,
+                                    index: 8,
                                     icon: AppIcon::LineNumbers,
                                     label: "Line Numbers",
                                     checked: line_numbers(),
                                     onclick: move |()| line_numbers.toggle(),
                                 }
-                                EditorMenuItem {
-                                    index: 4,
-                                    icon: AppIcon::Code,
-                                    label: "Code Intelligence",
-                                    suffix: "Mod Space",
-                                    checked: autocomplete_enabled(),
-                                    onclick: move |()| autocomplete_enabled.toggle(),
-                                }
-                                EditorMenuItem {
-                                    index: 5,
-                                    icon: AppIcon::Explorer,
-                                    label: "Show Git Ignored Files",
-                                    checked: show_ignored(),
-                                    onclick: move |()| show_ignored.toggle(),
-                                }
                                 hr {}
+                                div { class: "px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground", "Tabs" }
                                 EditorMenuItem {
-                                    index: 6,
+                                    index: 9,
                                     icon: AppIcon::Save,
                                     label: "Save All",
                                     suffix: "Mod Shift S",
@@ -991,7 +1035,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                     onclick: move |()| save_all(workspace().as_ref(), documents, toast),
                                 }
                                 EditorMenuItem {
-                                    index: 7,
+                                    index: 10,
                                     icon: AppIcon::Close,
                                     label: "Close All",
                                     disabled: documents.read().is_empty(),
@@ -1005,8 +1049,8 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                     },
                                 }
                                 EditorMenuItem {
-                                    index: 9,
-                                    icon: AppIcon::Close,
+                                    index: 11,
+                                    icon: AppIcon::CloseOthers,
                                     label: "Close Others",
                                     disabled: active_path().is_none(),
                                     onclick: move |()| {
@@ -1022,8 +1066,9 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                     },
                                 }
                                 hr {}
+                                div { class: "px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground", "Source control" }
                                 EditorMenuItem {
-                                    index: 8,
+                                    index: 12,
                                     icon: AppIcon::FileDiff,
                                     label: if diff().is_some() { "Hide Changes" } else { "View Changes" },
                                     disabled: diff().is_none() && active_diff_kind.is_none(),
@@ -1037,7 +1082,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                     ),
                                 }
                                 EditorMenuItem {
-                                    index: 10,
+                                    index: 13,
                                     icon: if active_changed.as_ref().is_some_and(syntaxis_git::FileChange::is_unstaged) { AppIcon::FilePlus } else { AppIcon::FileMinus },
                                     label: if active_changed.as_ref().is_some_and(syntaxis_git::FileChange::is_unstaged) { "Stage File" } else { "Unstage File" },
                                     disabled: active_changed.is_none(),
@@ -1045,7 +1090,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                 }
                                 hr {}
                                 EditorMenuItem {
-                                    index: 11,
+                                    index: 14,
                                     icon: AppIcon::Revert,
                                     label: active_revert_action.map_or("Revert File", RevertAction::label),
                                     disabled: active_revert_action.is_none(),

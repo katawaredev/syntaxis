@@ -2,13 +2,14 @@
 
 use dioxus::prelude::*;
 use dioxus_icons::lucide::{
-    ArrowDown, ArrowUp, Bell, Bot, BrainCog, BrushCleaning, CaseSensitive, ChartNoAxesColumn,
-    Check, ChevronDown, ChevronLeft, ChevronRight, Code, Command, Copy, Ellipsis, EllipsisVertical,
-    ExternalLink, Eye, FileDiff, FileInput, FileMinus, FilePlus, FolderGit2, FolderOpen,
-    FolderPlus, GitBranch, GitCommitHorizontal, GitFork, Hash, Info, ListChevronsDownUp,
-    ListChevronsUpDown, ListOrdered, LogOut, Menu, Mic, PanelLeftOpen, Paperclip, Play, Plus,
-    RefreshCw, Regex, Repeat1, Replace, ReplaceAll, RotateCcw, Save, Search, Send, Share2,
-    ShieldAlert, Sparkles, Square, SquarePen, SquareTerminal, Trash2, Type, WholeWord, X,
+    ArrowDown, ArrowUp, Bell, Blocks, Bot, BrainCog, BrushCleaning, CaseSensitive,
+    ChartNoAxesColumn, Check, ChevronDown, ChevronLeft, ChevronRight, Code, Command, Copy, CopyX,
+    CornerDownRight, Ellipsis, EllipsisVertical, ExternalLink, Eye, FileDiff, FileInput, FileMinus,
+    FilePlus, FolderGit2, FolderOpen, FolderPlus, GitBranch, GitCommitHorizontal, GitFork, Hash,
+    Info, ListChevronsDownUp, ListChevronsUpDown, ListOrdered, LogOut, Menu, Mic, PanelLeftOpen,
+    Paperclip, Play, Plus, RefreshCw, Regex, Repeat1, Replace, ReplaceAll, RotateCcw, Save,
+    ScanSearch, Search, Send, Share2, ShieldAlert, Sparkles, Square, SquarePen, SquareTerminal,
+    TextCursorInput, TextWrap, Trash2, WandSparkles, WholeWord, X,
 };
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum AppIcon {
@@ -18,8 +19,10 @@ pub enum AppIcon {
     ChevronDown,
     Close,
     Code,
+    Completion,
     Command,
     Copy,
+    CloseOthers,
     Attachment,
     Microphone,
     Usage,
@@ -43,6 +46,10 @@ pub enum AppIcon {
     GitBranch,
     Worktree,
     GoToLine,
+    GoToDefinition,
+    FindReferences,
+    FormatDocument,
+    LanguageServices,
     LineNumbers,
     Logout,
     MatchCase,
@@ -106,6 +113,9 @@ pub fn Icon(icon: AppIcon, #[props(default = 16)] size: u32) -> Element {
                 Code { size }
             }
         }
+        AppIcon::Completion => {
+            rsx! { TextCursorInput { size } }
+        }
         AppIcon::Command => {
             rsx! {
                 Command { size }
@@ -115,6 +125,9 @@ pub fn Icon(icon: AppIcon, #[props(default = 16)] size: u32) -> Element {
             rsx! {
                 Copy { size }
             }
+        }
+        AppIcon::CloseOthers => {
+            rsx! { CopyX { size } }
         }
         AppIcon::Attachment => {
             rsx! {
@@ -230,6 +243,18 @@ pub fn Icon(icon: AppIcon, #[props(default = 16)] size: u32) -> Element {
             rsx! {
                 ListOrdered { size }
             }
+        }
+        AppIcon::GoToDefinition => {
+            rsx! { CornerDownRight { size } }
+        }
+        AppIcon::FindReferences => {
+            rsx! { ScanSearch { size } }
+        }
+        AppIcon::FormatDocument => {
+            rsx! { WandSparkles { size } }
+        }
+        AppIcon::LanguageServices => {
+            rsx! { Blocks { size } }
         }
         AppIcon::LineNumbers => {
             rsx! {
@@ -368,7 +393,7 @@ pub fn Icon(icon: AppIcon, #[props(default = 16)] size: u32) -> Element {
         }
         AppIcon::WordWrap => {
             rsx! {
-                Type { size }
+                TextWrap { size }
             }
         }
         AppIcon::Expand => {

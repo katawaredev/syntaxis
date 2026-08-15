@@ -104,6 +104,14 @@ pub struct LanguageServiceState {
     pub status: LanguageServiceStatus,
     #[serde(default)]
     pub message: String,
+    #[serde(default)]
+    pub completion: bool,
+    #[serde(default)]
+    pub definition: bool,
+    #[serde(default)]
+    pub references: bool,
+    #[serde(default)]
+    pub formatting: bool,
 }
 
 impl Default for EditorSearchStatus {
@@ -120,6 +128,10 @@ impl Default for EditorSearchStatus {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum EditorCommandKind {
     Focus,
+    TriggerCompletion,
+    GoToDefinition,
+    FindReferences,
+    FormatDocument,
     GoToLine {
         line: usize,
     },
