@@ -115,7 +115,7 @@ pub fn Home() -> Element {
                             {runtime_presentation.eyebrow.clone()}
                         }
                         h1 { class: "mt-1 text-4xl font-semibold tracking-tight text-foreground max-md:text-3xl max-[420px]:mt-0 max-[420px]:text-2xl",
-                            "Welcome to Syntaxis"
+                            "Welcome back!"
                         }
                         p { class: "mt-1 text-[15px] text-muted-foreground max-[420px]:text-[13px]",
                             "Pick up where you left off or open another project."
