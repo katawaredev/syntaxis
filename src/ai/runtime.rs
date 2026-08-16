@@ -152,8 +152,12 @@ impl AgentRuntime {
 
     pub(super) fn send_to_selected(self, action: ClientMessage) {
         if let Some(session_id) = (self.selected_id)() {
-            self.client.send(session_action(session_id, action));
+            self.send_to_session(session_id, action);
         }
+    }
+
+    pub(super) fn send_to_session(self, session_id: String, action: ClientMessage) {
+        self.client.send(session_action(session_id, action));
     }
 }
 

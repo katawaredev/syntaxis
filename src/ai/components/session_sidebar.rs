@@ -19,6 +19,8 @@ pub(crate) fn AgentSessionSidebar(
     connected: bool,
     on_select: EventHandler<String>,
     on_new: EventHandler<()>,
+    on_clone: EventHandler<String>,
+    on_export: EventHandler<String>,
     on_rename: EventHandler<String>,
     on_delete: EventHandler<String>,
 ) -> Element {
@@ -154,6 +156,8 @@ pub(crate) fn AgentSessionSidebar(
                                 session,
                                 connected,
                                 on_select,
+                                on_clone,
+                                on_export,
                                 on_rename,
                                 on_delete,
                             }
@@ -260,6 +264,8 @@ fn AgentSessionRow(
     active: bool,
     connected: bool,
     on_select: EventHandler<String>,
+    on_clone: EventHandler<String>,
+    on_export: EventHandler<String>,
     on_rename: EventHandler<String>,
     on_delete: EventHandler<String>,
 ) -> Element {
@@ -272,6 +278,8 @@ fn AgentSessionRow(
         AgentStatus::Failed => "bg-destructive",
         AgentStatus::Stopped => "bg-muted-foreground/50",
     };
+    let clone_id = session.id.clone();
+    let export_id = session.id.clone();
     let rename_id = session.id.clone();
     let delete_id = session.id.clone();
     rsx! {
@@ -302,10 +310,37 @@ fn AgentSessionRow(
                     on_toggle: move |()| menu_open.toggle(),
                     Icon { icon: AppIcon::MoreVertical, size: 15 }
                 }
-                MenuContent { class: "top-[calc(50%+16px)] right-0 w-44",
+                MenuContent { class: "top-[calc(50%+16px)] right-0 w-48",
+                    DropdownMenuItem::<String> {
+                        value: clone_id.clone(),
+                        index: 0_usize,
+                        disabled: !connected || session.running,
+                        on_select: move |session_id| {
+                            on_clone.call(session_id);
+                            menu_open.set(false);
+                        },
+                        span { class: "flex items-center gap-2",
+                            Icon { icon: AppIcon::Copy, size: 13 }
+                            "Clone branch"
+                        }
+                    }
+                    DropdownMenuItem::<String> {
+                        value: export_id.clone(),
+                        index: 1_usize,
+                        disabled: !connected || session.running,
+                        on_select: move |session_id| {
+                            on_export.call(session_id);
+                            menu_open.set(false);
+                        },
+                        span { class: "flex items-center gap-2",
+                            Icon { icon: AppIcon::Share, size: 13 }
+                            "Export HTML"
+                        }
+                    }
+                    hr {}
                     DropdownMenuItem::<String> {
                         value: rename_id.clone(),
-                        index: 0_usize,
+                        index: 2_usize,
                         disabled: !connected,
                         on_select: move |session_id| {
                             on_rename.call(session_id);
@@ -318,7 +353,7 @@ fn AgentSessionRow(
                     }
                     DropdownMenuItem::<String> {
                         value: delete_id.clone(),
-                        index: 1_usize,
+                        index: 3_usize,
                         disabled: !connected,
                         class: "!text-destructive",
                         on_select: move |session_id| {

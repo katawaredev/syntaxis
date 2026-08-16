@@ -50,6 +50,7 @@ fn model_parser_preserves_filter_metadata() -> Result<(), String> {
     }))
     .ok_or_else(|| "valid model metadata was rejected".to_owned())?;
     assert!(model.reasoning);
+    assert_eq!(model.thinking_levels, ThinkingLevel::STANDARD);
     assert!(model.supports_images);
     assert_eq!(model.context_window, 200_000);
     assert_eq!(model.max_tokens, 32_000);
@@ -60,6 +61,35 @@ fn model_parser_preserves_filter_metadata() -> Result<(), String> {
     assert!(!model.cost.is_free());
     Ok(())
 }
+
+#[test]
+fn model_parser_respects_sparse_thinking_level_maps() -> Result<(), String> {
+    let model = parse_model(&json!({
+        "provider": "example",
+        "id": "reasoner",
+        "reasoning": true,
+        "thinkingLevelMap": {
+            "off": null,
+            "minimal": null,
+            "low": "low",
+            "medium": null,
+            "high": "high",
+            "xhigh": null,
+            "max": "max"
+        }
+    }))
+    .ok_or_else(|| "valid model metadata was rejected".to_owned())?;
+    assert_eq!(
+        model.thinking_levels,
+        vec![ThinkingLevel::Low, ThinkingLevel::High, ThinkingLevel::Max],
+    );
+    assert_eq!(
+        model.effective_thinking_level(ThinkingLevel::Medium),
+        ThinkingLevel::Low,
+    );
+    Ok(())
+}
+
 #[test]
 fn history_maps_pi_messages_and_tool_results() {
     let messages = vec![

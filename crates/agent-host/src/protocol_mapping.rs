@@ -52,6 +52,7 @@ pub(super) fn parse_model(value: &Value) -> Option<ModelSummary> {
         id,
         name,
         reasoning,
+        thinking_levels: parse_thinking_levels(value, reasoning),
         supports_images,
         context_window: value
             .get("contextWindow")
@@ -64,6 +65,21 @@ pub(super) fn parse_model(value: &Value) -> Option<ModelSummary> {
         cost: parse_model_cost(value.get("cost")),
     })
 }
+fn parse_thinking_levels(model: &Value, reasoning: bool) -> Vec<ThinkingLevel> {
+    if !reasoning {
+        return ThinkingLevel::OFF_ONLY.to_vec();
+    }
+    let mapping = model.get("thinkingLevelMap").and_then(Value::as_object);
+    ThinkingLevel::ALL
+        .into_iter()
+        .filter(|level| match mapping.and_then(|mapping| mapping.get(level.as_str())) {
+            Some(Value::Null) => false,
+            Some(Value::String(_)) => true,
+            _ => ThinkingLevel::STANDARD.contains(level),
+        })
+        .collect()
+}
+
 pub(super) fn parse_model_cost(cost: Option<&Value>) -> ModelCost {
     let rate = |value: Option<&Value>, field| {
         value

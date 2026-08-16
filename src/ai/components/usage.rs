@@ -3,6 +3,7 @@ use super::*;
 #[component]
 pub(super) fn UsageMenu(
     stats: Option<SessionStats>,
+    statuses: Vec<(String, String)>,
     compact_disabled: bool,
     on_compact: EventHandler<()>,
 ) -> Element {
@@ -54,6 +55,7 @@ pub(super) fn UsageMenu(
             PopoverContent { class: "touch-popover absolute top-[calc(100%+6px)] right-0 z-80 w-76 rounded-xl border border-border bg-popover p-3 shadow-2xl",
                 UsagePopover {
                     stats,
+                    statuses,
                     compact_disabled,
                     on_compact: move |()| {
                         open.set(false);
@@ -68,6 +70,7 @@ pub(super) fn UsageMenu(
 #[component]
 fn UsagePopover(
     stats: Option<SessionStats>,
+    statuses: Vec<(String, String)>,
     compact_disabled: bool,
     on_compact: EventHandler<()>,
 ) -> Element {
@@ -108,6 +111,42 @@ fn UsagePopover(
                 "Usage appears after the first response."
             }
         }
+        if !statuses.is_empty() {
+            section { class: "mt-3 border-t border-border pt-2.5",
+                div { class: "mb-1.5 flex items-center gap-1.5 text-[9px] font-semibold tracking-wider text-muted-foreground uppercase",
+                    Icon { icon: AppIcon::Code, size: 12 }
+                    "Session services"
+                }
+                div { class: "space-y-1", role: "status",
+                    for (key, text) in statuses {
+                        div {
+                            key: "{key}",
+                            class: "flex items-start gap-2 rounded-md bg-background/60 px-2 py-1.5 text-[9px] leading-relaxed text-muted-foreground",
+                            title: "{key}",
+                            span {
+                                class: format!(
+                                    "mt-1 size-1.5 shrink-0 rounded-full {}",
+                                    service_status_dot(&text),
+                                ),
+                                aria_hidden: "true",
+                            }
+                            span { class: "min-w-0 break-words", "{text}" }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn service_status_dot(status: &str) -> &'static str {
+    let status = status.to_ascii_lowercase();
+    if status.contains("error") || status.contains("failed") {
+        "bg-destructive"
+    } else if status.contains("inactive") || status.contains("disabled") {
+        "bg-muted-foreground/50"
+    } else {
+        "bg-success"
     }
 }
 

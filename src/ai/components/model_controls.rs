@@ -36,8 +36,10 @@ struct ModelFilters {
 pub(super) fn ModelPicker(
     selected: Option<ModelSummary>,
     models: Vec<ModelSummary>,
+    thinking_level: ThinkingLevel,
     disabled: bool,
-    on_select: EventHandler<(String, String)>,
+    on_select: EventHandler<(String, String, ThinkingLevel)>,
+    on_thinking: EventHandler<ThinkingLevel>,
 ) -> Element {
     let mut open = use_signal(|| false);
     let mut query = use_signal(String::new);
@@ -52,6 +54,20 @@ pub(super) fn ModelPicker(
     let selected_provider = selected
         .as_ref()
         .map_or_else(|| "Agent".to_owned(), |model| model.provider.clone());
+    let selected_detail = selected.as_ref().map_or_else(
+        || "Agent".to_owned(),
+        |model| {
+            if model.reasoning {
+                format!(
+                    "{} · {} effort",
+                    model.provider,
+                    model.effective_thinking_level(thinking_level).label(),
+                )
+            } else {
+                model.provider.clone()
+            }
+        },
+    );
     let groups = group_models(
         models.clone(),
         &query(),
@@ -84,7 +100,7 @@ pub(super) fn ModelPicker(
                 span { class: "min-w-0 flex-1 max-[520px]:hidden",
                     strong { class: "block truncate text-[11px] font-medium", "{selected_name}" }
                     small { class: "block truncate text-[9px] text-muted-foreground",
-                        "{selected_provider}"
+                        "{selected_detail}"
                     }
                 }
                 span { class: "max-[520px]:hidden",
@@ -101,6 +117,12 @@ pub(super) fn ModelPicker(
                         aria_label: "Search agent models",
                         oninput: move |event| query.set(event.value()),
                     }
+                }
+                ReasoningEffort {
+                    model: selected.clone(),
+                    selected: thinking_level,
+                    disabled,
+                    on_select: on_thinking,
                 }
                 div { class: "space-y-2 border-b border-border bg-secondary/20 px-3 py-2",
                     div { class: "flex flex-wrap items-center gap-1.5",
@@ -158,8 +180,9 @@ pub(super) fn ModelPicker(
                             provider,
                             models: provider_models,
                             selected_key: selected_key.clone(),
-                            on_select: move |selection| {
-                                on_select.call(selection);
+                            on_select: move |model: ModelSummary| {
+                                let effective_level = model.effective_thinking_level(thinking_level);
+                                on_select.call((model.provider, model.id, effective_level));
                                 open.set(false);
                             },
                         }
@@ -171,37 +194,69 @@ pub(super) fn ModelPicker(
 }
 
 #[component]
-pub(super) fn ThinkingPicker(
+fn ReasoningEffort(
+    model: Option<ModelSummary>,
     selected: ThinkingLevel,
     disabled: bool,
     on_select: EventHandler<ThinkingLevel>,
 ) -> Element {
-    let mut open = use_signal(|| false);
-    rsx! {
-        DropdownMenu {
-            class: "relative",
-            open: open(),
-            disabled,
-            on_open_change: move |next: bool| open.set(next),
-            MenuTrigger {
-                label: format!("Thinking level: {}", selected.as_str()),
-                icon: AppIcon::BrainCog,
-                class: "max-[520px]:size-10",
-                open: open(),
-                on_toggle: move |()| open.toggle(),
+    let Some(model) = model else {
+        return rsx! {};
+    };
+    let levels = model.supported_thinking_levels().to_vec();
+    let effective = model.effective_thinking_level(selected);
+    let selected_index = levels
+        .iter()
+        .position(|level| *level == effective)
+        .unwrap_or_default();
+    if !model.reasoning {
+        return rsx! {
+            div { class: "flex items-center gap-2 border-b border-border bg-secondary/10 px-3 py-2 text-[10px] text-muted-foreground",
+                Icon { icon: AppIcon::BrainCog, size: 13 }
+                span { "Reasoning effort is unavailable for this model." }
             }
-            MenuContent { class: "right-0 w-44",
-                for (index, level) in ThinkingLevel::ALL.into_iter().enumerate() {
-                    DropdownMenuItem::<ThinkingLevel> {
-                        value: level,
-                        index,
-                        on_select: move |next| on_select.call(next),
-                        span { "{level.as_str()}" }
-                        if level == selected {
-                            Icon { icon: AppIcon::Check, size: 13 }
-                        }
-                    }
+        };
+    }
+    rsx! {
+        div { class: "border-b border-border bg-secondary/10 px-3 py-2.5",
+            div { class: "flex items-center gap-2",
+                Icon { icon: AppIcon::BrainCog, size: 14 }
+                label {
+                    class: "text-[10px] font-medium text-foreground",
+                    r#for: "model-reasoning-effort",
+                    "Reasoning effort"
                 }
+                output { class: "ml-auto rounded-md bg-primary/10 px-2 py-0.5 text-[9px] font-semibold text-primary",
+                    r#for: "model-reasoning-effort",
+                    "{effective.label()}"
+                }
+            }
+            input {
+                id: "model-reasoning-effort",
+                class: "mt-2 h-7 w-full cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-50",
+                r#type: "range",
+                min: "0",
+                max: "{levels.len().saturating_sub(1)}",
+                step: "1",
+                value: "{selected_index}",
+                disabled: disabled || levels.len() < 2,
+                aria_label: "Reasoning effort for {model.name}",
+                oninput: move |event| {
+                    if let Ok(index) = event.value().parse::<usize>()
+                        && let Some(level) = levels.get(index)
+                    {
+                        on_select.call(*level);
+                    }
+                },
+            }
+            div { class: "flex justify-between text-[8px] text-muted-foreground",
+                span { "{levels.first().copied().unwrap_or(ThinkingLevel::Off).label()}" }
+                if levels.len() > 1 {
+                    span { "{levels.last().copied().unwrap_or(ThinkingLevel::Off).label()}" }
+                }
+            }
+            p { class: "mt-1 text-[8px] leading-relaxed text-muted-foreground",
+                "Only effort levels supported by this model are available."
             }
         }
     }
@@ -212,7 +267,7 @@ fn ModelGroup(
     provider: String,
     models: Vec<ModelSummary>,
     selected_key: Option<String>,
-    on_select: EventHandler<(String, String)>,
+    on_select: EventHandler<ModelSummary>,
 ) -> Element {
     rsx! {
         section { class: "not-last:mb-1.5",
@@ -239,12 +294,12 @@ fn ModelGroup(
 fn ModelRow(
     model: ModelSummary,
     selected: bool,
-    on_select: EventHandler<(String, String)>,
+    on_select: EventHandler<ModelSummary>,
 ) -> Element {
     rsx! {
         button {
             class: if selected { "grid min-h-10 w-full grid-cols-[minmax(0,1fr)_7rem_1rem] items-center gap-2 rounded-lg bg-primary/10 px-2.5 py-1.5 text-left text-xs text-foreground" } else { "grid min-h-10 w-full grid-cols-[minmax(0,1fr)_7rem_1rem] items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground" },
-            onclick: move |_| on_select.call((model.provider.clone(), model.id.clone())),
+            onclick: move |_| on_select.call(model.clone()),
             span { class: "min-w-0",
                 strong { class: "block truncate font-medium", "{model.name}" }
                 if model.name != model.id {

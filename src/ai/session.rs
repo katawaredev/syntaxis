@@ -20,7 +20,7 @@ pub(super) fn apply_server_message(
         } => {
             selected_id.set(Some(session_id));
             extension_request.set(next.pending_extension_request.clone());
-            snapshot.set(next);
+            snapshot.set(sanitize_snapshot(next));
         }
         ServerMessage::SessionEvent { session_id, event } => {
             if selected_id().as_deref() == Some(session_id.as_str()) {
@@ -45,7 +45,7 @@ fn apply_agent_event(
     match message {
         ServerMessage::Snapshot { snapshot: next } => {
             extension_request.set(next.pending_extension_request.clone());
-            snapshot.set(next);
+            snapshot.set(sanitize_snapshot(next));
         }
         ServerMessage::ItemAdded { item } => snapshot.write().items.push(item),
         ServerMessage::ItemDelta {
@@ -134,6 +134,7 @@ fn apply_agent_event(
             state.extension_title = title;
             state.extension_statuses = statuses;
             state.extension_widgets = widgets;
+            sanitize_extension_surfaces(&mut state);
         }
         ServerMessage::ComposerText { text } => draft.set(text),
         ServerMessage::ExportReady {
@@ -147,6 +148,57 @@ fn apply_agent_event(
         | ServerMessage::SessionEvent { .. }
         | ServerMessage::Pong { .. } => {}
     }
+}
+
+fn sanitize_snapshot(mut snapshot: AgentSnapshot) -> AgentSnapshot {
+    sanitize_extension_surfaces(&mut snapshot);
+    snapshot
+}
+
+fn sanitize_extension_surfaces(snapshot: &mut AgentSnapshot) {
+    if let Some(title) = &mut snapshot.extension_title {
+        *title = strip_ansi(title);
+    }
+    for (_, text) in &mut snapshot.extension_statuses {
+        *text = strip_ansi(text);
+    }
+    for widget in &mut snapshot.extension_widgets {
+        for line in &mut widget.lines {
+            *line = strip_ansi(line);
+        }
+    }
+}
+
+fn strip_ansi(value: &str) -> String {
+    let mut output = String::with_capacity(value.len());
+    let mut characters = value.chars().peekable();
+    while let Some(character) = characters.next() {
+        if character != '\u{1b}' {
+            output.push(character);
+            continue;
+        }
+        match characters.next() {
+            Some('[') => {
+                for code in characters.by_ref() {
+                    if ('@'..='~').contains(&code) {
+                        break;
+                    }
+                }
+            }
+            Some(']') => {
+                while let Some(code) = characters.next() {
+                    if code == '\u{7}' {
+                        break;
+                    }
+                    if code == '\u{1b}' && characters.next_if_eq(&'\\').is_some() {
+                        break;
+                    }
+                }
+            }
+            Some(_) | None => {}
+        }
+    }
+    output
 }
 
 fn download_export(filename: String, data_base64: String) {
@@ -221,6 +273,19 @@ mod tests {
             status_message: "Ready".into(),
             running: false,
         }
+    }
+
+    #[test]
+    fn extension_surface_text_strips_ansi_control_sequences() {
+        let mut snapshot = AgentSnapshot::default();
+        snapshot.extension_title = Some("\u{1b}[1mTools\u{1b}[22m".into());
+        snapshot.extension_statuses = vec![(
+            "lsp".into(),
+            "\u{1b}[38;5;241mLSP Inactive\u{1b}[39m".into(),
+        )];
+        let snapshot = sanitize_snapshot(snapshot);
+        assert_eq!(snapshot.extension_title.as_deref(), Some("Tools"));
+        assert_eq!(snapshot.extension_statuses[0].1, "LSP Inactive");
     }
 
     #[test]

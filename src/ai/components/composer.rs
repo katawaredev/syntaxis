@@ -39,7 +39,6 @@ pub(crate) fn AgentComposer(
     pending_messages: usize,
     steering_queue: Vec<String>,
     follow_up_queue: Vec<String>,
-    extension_statuses: Vec<(String, String)>,
     extension_widgets: Vec<ExtensionWidget>,
     draft_key: String,
     commands: Vec<PiCommand>,
@@ -417,15 +416,6 @@ pub(crate) fn AgentComposer(
                     }
                 }
                 ExtensionWidgets { widgets: extension_widgets, placement: "belowEditor" }
-                if !extension_statuses.is_empty() {
-                    div {
-                        class: "flex flex-wrap gap-x-3 gap-y-1 px-2.5 pt-1.5 text-[9px] text-muted-foreground",
-                        role: "status",
-                        for (key, text) in extension_statuses {
-                            span { key: "{key}", title: "{key}", "{text}" }
-                        }
-                    }
-                }
                 if !images.is_empty() && !accepts_images {
                     p { class: "px-2.5 pt-1.5 text-[10px] text-warning",
                         "Choose a vision-capable model to send these images."

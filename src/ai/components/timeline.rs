@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 use syntaxis_agent::{AgentStatus, ChatItem, ImageAttachment, ItemStatus};
-use syntaxis_ui::prelude::{AppIcon, IconButton, Modal};
+use syntaxis_ui::prelude::{AppIcon, Icon, IconButton, Modal};
 
 use crate::files::preview::render_markdown;
 
@@ -180,13 +180,17 @@ fn AgentTimelineItem(
                             }
                         }
                         if let Some(entry_id) = entry_id {
-                            IconButton {
-                                label: "Edit message and branch from here",
-                                icon: AppIcon::NewChat,
+                            button {
+                                class: "flex h-8 items-center gap-1.5 rounded-md px-2 text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40",
+                                r#type: "button",
                                 disabled: !can_edit,
+                                aria_label: "Edit message and branch from here",
+                                title: "Edit this prompt and create a conversation branch",
                                 onclick: move |_| {
                                     on_edit.call((entry_id.clone(), edit_text.clone(), edit_images.clone()));
                                 },
+                                Icon { icon: AppIcon::NewChat, size: 13 }
+                                "Branch from here"
                             }
                         }
                     }

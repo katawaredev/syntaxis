@@ -278,6 +278,12 @@ fn RemoteAgent(
                                 connected,
                                 on_select: move |session_id: String| runtime.select_session(session_id),
                                 on_new: move |()| runtime.create_session(),
+                                on_clone: move |session_id: String| {
+                                    runtime.send_to_session(session_id, ClientMessage::CloneSession);
+                                },
+                                on_export: move |session_id: String| {
+                                    runtime.send_to_session(session_id, ClientMessage::ExportHtml);
+                                },
                                 on_rename: move |session_id: String| {
                                     if let Some(session) = sessions()
                                         .into_iter()
@@ -336,6 +342,14 @@ fn RemoteAgent(
                                         drawer.set(false);
                                         runtime.create_session();
                                     },
+                                    on_clone: move |session_id: String| {
+                                        drawer.set(false);
+                                        runtime.send_to_session(session_id, ClientMessage::CloneSession);
+                                    },
+                                    on_export: move |session_id: String| {
+                                        drawer.set(false);
+                                        runtime.send_to_session(session_id, ClientMessage::ExportHtml);
+                                    },
                                     on_rename: move |session_id: String| {
                                         drawer.set(false);
                                         if let Some(session) = sessions()
@@ -386,11 +400,12 @@ fn RemoteAgent(
                         on_toggle_sidebar: move |()| sidebar_open.toggle(),
                         on_open_sidebar: move |()| drawer.set(true),
                         on_new_worktree: move |()| worktree_flow.open_dialog(),
-                        on_model: move |(provider, model_id)| {
+                        on_model: move |(provider, model_id, thinking_level)| {
                             runtime
                                 .send_to_selected(ClientMessage::SetModel {
                                     provider,
                                     model_id,
+                                    thinking_level,
                                 });
                         },
                         on_thinking: move |level| {
@@ -402,31 +417,6 @@ fn RemoteAgent(
                         on_compact: move |()| {
                             compact_instructions.set(String::new());
                             compact_dialog.set(true);
-                        },
-                        on_branch: move |(entry_id, text): (String, String)| {
-                            let (previous_draft, previous_attachments) = editing_message()
-                                .map_or_else(
-                                    || (draft(), attachments()),
-                                    |edit| (edit.previous_draft, edit.previous_attachments),
-                                );
-                            editing_message
-                                .set(
-                                    Some(PendingMessageEdit {
-                                        entry_id,
-                                        previous_draft,
-                                        previous_attachments,
-                                    }),
-                                );
-                            draft.set(text);
-                            attachments.set(Vec::new());
-                            composer_error.set(None);
-                            focus_ai_composer();
-                        },
-                        on_clone: move |()| {
-                            runtime.send_to_selected(ClientMessage::CloneSession);
-                        },
-                        on_export: move |()| {
-                            runtime.send_to_selected(ClientMessage::ExportHtml);
                         },
                     }
                     if let Some(message) = connection.read().banner() {
@@ -492,7 +482,6 @@ fn RemoteAgent(
                             pending_messages: current.pending_messages,
                             steering_queue: current.steering_queue.clone(),
                             follow_up_queue: current.follow_up_queue.clone(),
-                            extension_statuses: current.extension_statuses.clone(),
                             extension_widgets: current.extension_widgets.clone(),
                             draft_key,
                             commands: current.commands.clone(),

@@ -36,6 +36,15 @@ impl ThinkingLevel {
         Self::Xhigh,
         Self::Max,
     ];
+    pub const STANDARD: [Self; 5] = [
+        Self::Off,
+        Self::Minimal,
+        Self::Low,
+        Self::Medium,
+        Self::High,
+    ];
+    pub const OFF_ONLY: [Self; 1] = [Self::Off];
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Off => "off",
@@ -45,6 +54,18 @@ impl ThinkingLevel {
             Self::High => "high",
             Self::Xhigh => "xhigh",
             Self::Max => "max",
+        }
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Off => "Off",
+            Self::Minimal => "Minimal",
+            Self::Low => "Low",
+            Self::Medium => "Medium",
+            Self::High => "High",
+            Self::Xhigh => "Extra high",
+            Self::Max => "Maximum",
         }
     }
 }
@@ -166,6 +187,7 @@ pub struct ModelSummary {
     pub id: String,
     pub name: String,
     pub reasoning: bool,
+    pub thinking_levels: Vec<ThinkingLevel>,
     pub supports_images: bool,
     pub context_window: u64,
     pub max_tokens: u64,
@@ -215,6 +237,32 @@ pub struct SessionStats {
 impl ModelSummary {
     pub fn key(&self) -> String {
         format!("{}\u{1f}{}", self.provider, self.id)
+    }
+
+    pub fn supported_thinking_levels(&self) -> &[ThinkingLevel] {
+        if self.thinking_levels.is_empty() {
+            &ThinkingLevel::OFF_ONLY
+        } else {
+            &self.thinking_levels
+        }
+    }
+
+    pub fn effective_thinking_level(&self, requested: ThinkingLevel) -> ThinkingLevel {
+        let requested_index = ThinkingLevel::ALL
+            .iter()
+            .position(|level| *level == requested)
+            .unwrap_or_default();
+        self.supported_thinking_levels()
+            .iter()
+            .copied()
+            .min_by_key(|level| {
+                ThinkingLevel::ALL
+                    .iter()
+                    .position(|candidate| candidate == level)
+                    .unwrap_or_default()
+                    .abs_diff(requested_index)
+            })
+            .unwrap_or(ThinkingLevel::Off)
     }
 }
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -316,6 +364,7 @@ pub enum ClientMessage {
     SetModel {
         provider: String,
         model_id: String,
+        thinking_level: ThinkingLevel,
     },
     SetThinkingLevel {
         level: ThinkingLevel,
@@ -371,8 +420,11 @@ impl ClientMessage {
                 AgentErrorCode::InvalidRequest,
                 "A Pi message entry id is required",
             )),
-            Self::SetModel { provider, model_id }
-                if provider.trim().is_empty() || model_id.trim().is_empty() =>
+            Self::SetModel {
+                provider,
+                model_id,
+                ..
+            } if provider.trim().is_empty() || model_id.trim().is_empty() =>
             {
                 Err(AgentError::new(
                     AgentErrorCode::InvalidRequest,

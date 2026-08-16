@@ -758,17 +758,40 @@ impl HostAgentSession {
                 .await
             }
             ClientMessage::Abort => self.send(json!({ "type" : "abort" })).await,
-            ClientMessage::SetModel { provider, model_id } => {
+            ClientMessage::SetModel {
+                provider,
+                model_id,
+                thinking_level,
+            } => {
+                let thinking_level = lock(&self.state)
+                    .snapshot
+                    .models
+                    .iter()
+                    .find(|model| model.provider == provider && model.id == model_id)
+                    .map_or(thinking_level, |model| {
+                        model.effective_thinking_level(thinking_level)
+                    });
                 self.send(json!(
                     { "type" : "set_model", "provider" : provider, "modelId" :
                     model_id, }
                 ))
+                .await?;
+                self.send(json!(
+                    { "type" : "set_thinking_level", "level" : thinking_level.as_str(), }
+                ))
                 .await
             }
             ClientMessage::SetThinkingLevel { level } => {
-                {
-                    lock(&self.state).snapshot.thinking_level = level;
-                }
+                let level = {
+                    let mut state = lock(&self.state);
+                    let effective = state
+                        .snapshot
+                        .model
+                        .as_ref()
+                        .map_or(level, |model| model.effective_thinking_level(level));
+                    state.snapshot.thinking_level = effective;
+                    effective
+                };
                 let snapshot = self.snapshot();
                 let _ = self.event_input.send(ServerMessage::ModelChanged {
                     model: snapshot.model,
