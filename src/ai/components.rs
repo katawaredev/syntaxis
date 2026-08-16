@@ -1,6 +1,5 @@
-use std::collections::BTreeMap;
-
 use dioxus::prelude::*;
+use dioxus_primitives::collapsible::{Collapsible, CollapsibleContent, CollapsibleTrigger};
 use dioxus_primitives::popover::{PopoverContent, PopoverRoot, PopoverTrigger};
 use syntaxis_agent::{AgentSnapshot, ModelSummary, SessionStats, ThinkingLevel};
 use syntaxis_ui::prelude::{AppIcon, BrandIcon, BrandMark, Icon, IconButton};

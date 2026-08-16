@@ -120,6 +120,10 @@ pub async fn clear_mise_tools() -> Result<(), ServerFnError> {
 pub async fn clear_runtime_caches() -> Result<usize, ServerFnError> {
     server::clear_runtime_caches().await
 }
+#[post("/api/runtime/tools/clear")]
+pub async fn clear_runtime_tools() -> Result<usize, ServerFnError> {
+    server::clear_runtime_tools().await
+}
 #[get("/api/runtime")]
 pub async fn runtime_state() -> Result<RuntimeState, ServerFnError> {
     let mut available = vec![

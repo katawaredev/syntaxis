@@ -7,6 +7,7 @@ pub(super) fn SettingsForm(
     selected_section: ReadSignal<AiSettingsSection>,
     revision: Signal<u64>,
     toast: Signal<Option<(String, Tone)>>,
+    on_provider_accounts_changed: EventHandler<()>,
 ) -> Element {
     let saving = use_signal(|| None::<String>);
     let error = use_signal(|| None::<String>);
@@ -57,7 +58,10 @@ pub(super) fn SettingsForm(
                 }
             }
             if selected_section() == AiSettingsSection::ProviderAccounts {
-                ProviderAccounts { workspace_id: workspace_id.clone() }
+                ProviderAccounts {
+                    workspace_id: workspace_id.clone(),
+                    on_accounts_changed: on_provider_accounts_changed,
+                }
             }
         }
     }

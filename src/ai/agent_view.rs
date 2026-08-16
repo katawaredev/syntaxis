@@ -109,7 +109,7 @@ fn RemoteAgent(
         draft_session,
         creating_session,
         pending_new_prompt,
-        client,
+        mut client,
         ..
     } = runtime;
     let mut drawer = use_signal(|| false);
@@ -554,6 +554,9 @@ fn RemoteAgent(
                         sidebar_open: sidebar_open(),
                         on_toggle_sidebar: move |()| sidebar_open.toggle(),
                         on_open_sidebar: move |()| drawer.set(true),
+                        on_provider_accounts_changed: move |()| {
+                            client.restart();
+                        },
                     }
                 }
             }

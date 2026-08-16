@@ -1,7 +1,6 @@
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use dioxus::prelude::*;
 use syntaxis_workspace::{WorkspaceRecord, WorkspaceSection};
+use web_time::{SystemTime, UNIX_EPOCH};
 
 use super::client::list_workspaces;
 
@@ -71,7 +70,7 @@ impl WorkspaceListCache {
         self.error.set(None);
         let revision = (self.request_revision)().saturating_add(1);
         self.request_revision.set(revision);
-        dioxus::core::spawn_forever(async move {
+        spawn(async move {
             let result = list_workspaces().await;
             if (self.request_revision)() != revision {
                 return;

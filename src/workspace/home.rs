@@ -20,8 +20,7 @@ pub(super) enum HomeDialog {
     UpdateTools(usize),
     Notes(usize),
     Cleanup(usize),
-    ClearRuntimeCaches,
-    ClearMiseTools,
+    FreeRuntimeSpace,
     Delete(usize),
 }
 
@@ -156,8 +155,7 @@ pub fn Home() -> Element {
                     on_update_tools: move |index| dialog.set(HomeDialog::UpdateTools(index)),
                     on_notes: move |index| dialog.set(HomeDialog::Notes(index)),
                     on_cleanup: move |index| dialog.set(HomeDialog::Cleanup(index)),
-                    on_clear_runtime_caches: move |()| dialog.set(HomeDialog::ClearRuntimeCaches),
-                    on_clear_mise_tools: move |()| dialog.set(HomeDialog::ClearMiseTools),
+                    on_free_runtime_space: move |()| dialog.set(HomeDialog::FreeRuntimeSpace),
                     on_delete: move |index| dialog.set(HomeDialog::Delete(index)),
                     on_notice: move |message| toast.set(Some(message)),
                     on_refresh: move |()| workspace_list.refresh(),
