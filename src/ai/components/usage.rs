@@ -124,10 +124,7 @@ fn UsagePopover(
                             class: "flex items-start gap-2 rounded-md bg-background/60 px-2 py-1.5 text-[9px] leading-relaxed text-muted-foreground",
                             title: "{key}",
                             span {
-                                class: format!(
-                                    "mt-1 size-1.5 shrink-0 rounded-full {}",
-                                    service_status_dot(&text),
-                                ),
+                                class: format!("mt-1 size-1.5 shrink-0 rounded-full {}", service_status_dot(&text)),
                                 aria_hidden: "true",
                             }
                             span { class: "min-w-0 break-words", "{text}" }

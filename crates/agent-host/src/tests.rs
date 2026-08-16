@@ -63,6 +63,10 @@ fn model_parser_preserves_filter_metadata() -> Result<(), String> {
 }
 
 #[test]
+#[allow(
+    clippy::panic_in_result_fn,
+    reason = "the test uses Result for fallible setup and assertions for behavior"
+)]
 fn model_parser_respects_sparse_thinking_level_maps() -> Result<(), String> {
     let model = parse_model(&json!({
         "provider": "example",

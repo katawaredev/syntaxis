@@ -72,11 +72,13 @@ fn parse_thinking_levels(model: &Value, reasoning: bool) -> Vec<ThinkingLevel> {
     let mapping = model.get("thinkingLevelMap").and_then(Value::as_object);
     ThinkingLevel::ALL
         .into_iter()
-        .filter(|level| match mapping.and_then(|mapping| mapping.get(level.as_str())) {
-            Some(Value::Null) => false,
-            Some(Value::String(_)) => true,
-            _ => ThinkingLevel::STANDARD.contains(level),
-        })
+        .filter(
+            |level| match mapping.and_then(|mapping| mapping.get(level.as_str())) {
+                Some(Value::Null) => false,
+                Some(Value::String(_)) => true,
+                _ => ThinkingLevel::STANDARD.contains(level),
+            },
+        )
         .collect()
 }
 

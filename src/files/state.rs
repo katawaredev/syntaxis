@@ -5,8 +5,8 @@ use dioxus_code_editor::EditorSelection;
 use futures_util::{StreamExt, future::FutureExt};
 use syntaxis_editor::{BufferStatus, EditorBuffer, EditorConfig};
 use syntaxis_git::{DiffKind, UnifiedDiff};
-use syntaxis_workspace::WorkspaceSession;
 use syntaxis_ui::prelude::Tone;
+use syntaxis_workspace::WorkspaceSession;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) enum OpenDocument {
@@ -243,8 +243,8 @@ pub(crate) fn use_files_session_writer() -> FilesSessionWriter {
                 let mut pending = BTreeMap::from([(workspace_id, session)]);
                 loop {
                     let next = sessions.next().fuse();
-                    let debounce = dioxus_sdk_time::sleep(std::time::Duration::from_millis(250))
-                        .fuse();
+                    let debounce =
+                        dioxus_sdk_time::sleep(std::time::Duration::from_millis(250)).fuse();
                     futures_util::pin_mut!(next, debounce);
                     match futures_util::future::select(next, debounce).await {
                         futures_util::future::Either::Left((Some((workspace_id, session)), _)) => {

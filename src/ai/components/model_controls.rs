@@ -226,8 +226,9 @@ fn ReasoningEffort(
                     r#for: "model-reasoning-effort",
                     "Reasoning effort"
                 }
-                output { class: "ml-auto rounded-md bg-primary/10 px-2 py-0.5 text-[9px] font-semibold text-primary",
-                    r#for: "model-reasoning-effort",
+                output {
+                    class: "ml-auto rounded-md bg-primary/10 px-2 py-0.5 text-[9px] font-semibold text-primary",
+                    "for": "model-reasoning-effort",
                     "{effective.label()}"
                 }
             }
@@ -291,15 +292,12 @@ fn ModelGroup(
 }
 
 #[component]
-fn ModelRow(
-    model: ModelSummary,
-    selected: bool,
-    on_select: EventHandler<ModelSummary>,
-) -> Element {
+fn ModelRow(model: ModelSummary, selected: bool, on_select: EventHandler<ModelSummary>) -> Element {
+    let selected_model = model.clone();
     rsx! {
         button {
             class: if selected { "grid min-h-10 w-full grid-cols-[minmax(0,1fr)_7rem_1rem] items-center gap-2 rounded-lg bg-primary/10 px-2.5 py-1.5 text-left text-xs text-foreground" } else { "grid min-h-10 w-full grid-cols-[minmax(0,1fr)_7rem_1rem] items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground" },
-            onclick: move |_| on_select.call(model.clone()),
+            onclick: move |_| on_select.call(selected_model.clone()),
             span { class: "min-w-0",
                 strong { class: "block truncate font-medium", "{model.name}" }
                 if model.name != model.id {

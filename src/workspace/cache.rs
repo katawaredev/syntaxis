@@ -50,17 +50,12 @@ impl WorkspaceListCache {
         };
         let mut workspace = records.remove(index);
         if let Ok(elapsed) = SystemTime::now().duration_since(UNIX_EPOCH) {
-            workspace.last_opened_unix_ms =
-                i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX);
+            workspace.last_opened_unix_ms = i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX);
         }
         records.insert(0, workspace);
     }
 
-    pub(crate) fn set_last_section(
-        mut self,
-        workspace_id: &str,
-        section: WorkspaceSection,
-    ) {
+    pub(crate) fn set_last_section(mut self, workspace_id: &str, section: WorkspaceSection) {
         if let Some(workspace) = self
             .records
             .write()
