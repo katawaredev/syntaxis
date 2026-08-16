@@ -33,7 +33,6 @@ struct SyncSignals {
     requested_location: Signal<Option<FilesQuery>>,
     pending_location: Signal<Option<FilesQuery>>,
     session_ready: Signal<bool>,
-    session_revision: Signal<u64>,
     revalidated_document: Signal<Option<(String, String)>>,
 }
 
@@ -42,7 +41,6 @@ pub(super) fn use_workspace_sync(state: &WorkspaceSyncState) {
         requested_location: use_signal(|| None),
         pending_location: use_signal(|| None),
         session_ready: use_signal(|| false),
-        session_revision: use_signal(|| 0),
         revalidated_document: use_signal(|| None),
     };
     use_initial_load(state.clone(), signals);
@@ -112,15 +110,19 @@ fn use_initial_load(state: WorkspaceSyncState, signals: SyncSignals) {
         ..
     } = state;
     let mut session_ready = signals.session_ready;
+    let session_writer = use_context::<FilesSessionWriter>();
     let has_initial_location = query.path.is_some();
     use_effect(move || {
         let Some(result) = initial() else { return };
         match result {
             Ok(loaded) => {
+                let session = session_writer
+                    .latest(&loaded.workspace.id.0)
+                    .map_or(loaded.session, |session| session.files);
                 let should_restore = should_restore_session(
                     has_initial_location,
                     documents.peek().is_empty(),
-                    !loaded.session.tabs.is_empty(),
+                    !session.tabs.is_empty(),
                 );
                 workspace.set(Some(loaded.workspace));
                 tree.write().replace_directory("", loaded.entries);
@@ -129,7 +131,7 @@ fn use_initial_load(state: WorkspaceSyncState, signals: SyncSignals) {
                 ignored_paths.set(loaded.ignored_paths);
                 if should_restore {
                     restore_documents(
-                        loaded.session,
+                        session,
                         restore_workspace.clone(),
                         loaded.editor_configs,
                         documents,
@@ -154,32 +156,26 @@ fn use_session_persistence(state: WorkspaceSyncState, signals: SyncSignals) {
         ..
     } = state;
     let session_ready = signals.session_ready;
-    let mut session_revision = signals.session_revision;
+    let writer = use_context::<FilesSessionWriter>();
     use_effect(move || {
         if !session_ready() {
             return;
         }
-        let session = WorkspaceSession {
-            files: FileSession {
-                tabs: open_paths(),
-                active: active_path(),
+        writer.save(
+            session_workspace_id.clone(),
+            WorkspaceSession {
+                files: FileSession {
+                    tabs: open_paths(),
+                    active: active_path(),
+                },
+                ..WorkspaceSession::default()
             },
-            ..WorkspaceSession::default()
-        };
-        let revision = session_revision.peek().saturating_add(1);
-        session_revision.set(revision);
-        let workspace_id = session_workspace_id.clone();
-        spawn(async move {
-            dioxus_sdk_time::sleep(std::time::Duration::from_millis(500)).await;
-            if *session_revision.peek() != revision {
-                return;
-            }
-            if let Err(message) =
-                workspace_client::save_workspace_session(workspace_id, session).await
-            {
-                set_error(toast, format!("Could not remember open files: {message}"));
-            }
-        });
+        );
+    });
+    use_effect(move || {
+        if let Some(message) = writer.take_error() {
+            set_error(toast, format!("Could not remember open files: {message}"));
+        }
     });
 }
 

@@ -1,7 +1,11 @@
+use std::collections::BTreeMap;
+
 use dioxus::prelude::*;
 use dioxus_code_editor::EditorSelection;
+use futures_util::{StreamExt, future::FutureExt};
 use syntaxis_editor::{BufferStatus, EditorBuffer, EditorConfig};
 use syntaxis_git::{DiffKind, UnifiedDiff};
+use syntaxis_workspace::WorkspaceSession;
 use syntaxis_ui::prelude::Tone;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -199,6 +203,73 @@ pub(crate) fn use_files_session() -> FilesSessionState {
         active_path: use_signal(|| None),
         editor_selection: use_signal(EditorSelection::default),
         processed_event_revision: use_signal(|| 0),
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct FilesSessionWriter {
+    client: Coroutine<(String, WorkspaceSession)>,
+    latest: Signal<BTreeMap<String, WorkspaceSession>>,
+    error: Signal<Option<String>>,
+}
+
+impl FilesSessionWriter {
+    pub(crate) fn save(mut self, workspace_id: String, session: WorkspaceSession) {
+        self.latest
+            .write()
+            .insert(workspace_id.clone(), session.clone());
+        self.client.send((workspace_id, session));
+    }
+
+    pub(crate) fn latest(self, workspace_id: &str) -> Option<WorkspaceSession> {
+        self.latest.peek().get(workspace_id).cloned()
+    }
+
+    pub(crate) fn take_error(mut self) -> Option<String> {
+        let message = (self.error)();
+        if message.is_some() {
+            self.error.set(None);
+        }
+        message
+    }
+}
+
+pub(crate) fn use_files_session_writer() -> FilesSessionWriter {
+    let latest = use_signal(BTreeMap::new);
+    let mut error = use_signal(|| None);
+    let client = use_coroutine(
+        move |mut sessions: UnboundedReceiver<(String, WorkspaceSession)>| async move {
+            while let Some((workspace_id, session)) = sessions.next().await {
+                let mut pending = BTreeMap::from([(workspace_id, session)]);
+                loop {
+                    let next = sessions.next().fuse();
+                    let debounce = dioxus_sdk_time::sleep(std::time::Duration::from_millis(250))
+                        .fuse();
+                    futures_util::pin_mut!(next, debounce);
+                    match futures_util::future::select(next, debounce).await {
+                        futures_util::future::Either::Left((Some((workspace_id, session)), _)) => {
+                            pending.insert(workspace_id, session);
+                        }
+                        futures_util::future::Either::Left((None, _))
+                        | futures_util::future::Either::Right(_) => break,
+                    }
+                }
+                for (workspace_id, session) in pending {
+                    match crate::workspace::client::save_workspace_session(workspace_id, session)
+                        .await
+                    {
+                        Ok(()) if error.peek().is_some() => error.set(None),
+                        Ok(()) => {}
+                        Err(message) => error.set(Some(message)),
+                    }
+                }
+            }
+        },
+    );
+    FilesSessionWriter {
+        client,
+        latest,
+        error,
     }
 }
 

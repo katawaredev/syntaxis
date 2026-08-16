@@ -621,7 +621,9 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                         tabs: open_tabs,
                         active_path,
                         open: mobile_tabs_open,
-                        on_close: move |path| request_close(path, documents, close_request),
+                        on_close: move |path| {
+                            request_close(path, documents, active_path, close_request);
+                        },
                     }
                     div { class: "flex items-center gap-1",
                         if diff().is_none() && active_markdown {
@@ -795,7 +797,12 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                             .iter()
                                             .map(|document| document.path().to_owned())
                                             .collect();
-                                        request_close_many(paths, documents, close_request);
+                                        request_close_many(
+                                            paths,
+                                            documents,
+                                            active_path,
+                                            close_request,
+                                        );
                                     },
                                 }
                                 EditorMenuItem {
@@ -811,7 +818,12 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                                 .filter(|document| document.path() != active)
                                                 .map(|document| document.path().to_owned())
                                                 .collect();
-                                            request_close_many(paths, documents, close_request);
+                                            request_close_many(
+                                                paths,
+                                                documents,
+                                                active_path,
+                                                close_request,
+                                            );
                                         }
                                     },
                                 }

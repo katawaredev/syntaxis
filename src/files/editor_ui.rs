@@ -43,7 +43,9 @@ pub(super) fn render_tab(
                 active_path.set(Some(path.clone()));
                 diff.set(None);
             },
-            on_close: move |()| request_close(close_path.clone(), documents, close_request),
+            on_close: move |()| {
+                request_close(close_path.clone(), documents, active_path, close_request);
+            },
         }
     }
 }
@@ -70,6 +72,7 @@ pub(super) fn MobileTabs(
             MenuContent { class: "right-2 left-2 w-auto",
                 for (index, tab) in tabs.into_iter().enumerate() {
                     DropdownMenuItem::<String> {
+                        key: "{tab.path}",
                         value: tab.path.clone(),
                         index,
                         on_select: move |path| {

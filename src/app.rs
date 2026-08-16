@@ -89,6 +89,8 @@ pub fn App() -> Element {
     use_context_provider(|| notification_center);
     let workspace_list = crate::workspace::use_workspace_list_cache();
     use_context_provider(|| workspace_list);
+    let files_session_writer = crate::files::use_files_session_writer();
+    use_context_provider(|| files_session_writer);
     let geist_font_face = format!(
         "@font-face {{ font-family: 'Geist Variable'; src: url('{GEIST_FONT}') format('woff2'); font-style: normal; font-weight: 100 900; font-display: swap; }}",
     );

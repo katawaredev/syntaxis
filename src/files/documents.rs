@@ -397,14 +397,16 @@ pub(super) fn save_all(
 pub(super) fn request_close(
     path: String,
     documents: Signal<Vec<OpenDocument>>,
+    active_path: Signal<Option<String>>,
     close_request: Signal<Option<CloseRequest>>,
 ) {
-    request_close_many(vec![path], documents, close_request);
+    request_close_many(vec![path], documents, active_path, close_request);
 }
 
 pub(super) fn request_close_many(
     paths: Vec<String>,
-    mut documents: Signal<Vec<OpenDocument>>,
+    documents: Signal<Vec<OpenDocument>>,
+    active_path: Signal<Option<String>>,
     mut close_request: Signal<Option<CloseRequest>>,
 ) {
     if paths.is_empty() {
@@ -418,9 +420,7 @@ pub(super) fn request_close_many(
     if has_dirty_document {
         close_request.set(Some(CloseRequest { paths }));
     } else {
-        documents
-            .write()
-            .retain(|document| !paths_to_close.contains(document.path()));
+        close_documents(&paths, documents, active_path);
     }
 }
 

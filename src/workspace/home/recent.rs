@@ -179,6 +179,7 @@ fn WorkspaceRows(
         div { class: "rounded-xl border border-border bg-card shadow-sm",
             for (index, workspace) in workspaces.into_iter().enumerate() {
                 WorkspaceRow {
+                    key: "{workspace.id.0}",
                     workspace,
                     index,
                     on_bootstrap,

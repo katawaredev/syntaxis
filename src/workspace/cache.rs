@@ -1,5 +1,7 @@
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use dioxus::prelude::*;
-use syntaxis_workspace::WorkspaceRecord;
+use syntaxis_workspace::{WorkspaceRecord, WorkspaceSection};
 
 use super::client::list_workspaces;
 
@@ -22,10 +24,6 @@ impl WorkspaceListCache {
         (self.error)()
     }
 
-    pub(crate) fn is_loading(self) -> bool {
-        (self.loading)()
-    }
-
     pub(crate) fn is_loaded(self) -> bool {
         (self.loaded)()
     }
@@ -42,12 +40,43 @@ impl WorkspaceListCache {
         }
     }
 
+    pub(crate) fn touch(mut self, workspace_id: &str) {
+        let mut records = self.records.write();
+        let Some(index) = records
+            .iter()
+            .position(|workspace| workspace.id.0 == workspace_id)
+        else {
+            return;
+        };
+        let mut workspace = records.remove(index);
+        if let Ok(elapsed) = SystemTime::now().duration_since(UNIX_EPOCH) {
+            workspace.last_opened_unix_ms =
+                i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX);
+        }
+        records.insert(0, workspace);
+    }
+
+    pub(crate) fn set_last_section(
+        mut self,
+        workspace_id: &str,
+        section: WorkspaceSection,
+    ) {
+        if let Some(workspace) = self
+            .records
+            .write()
+            .iter_mut()
+            .find(|workspace| workspace.id.0 == workspace_id)
+        {
+            workspace.last_section = section;
+        }
+    }
+
     fn load(mut self) {
         self.loading.set(true);
         self.error.set(None);
         let revision = (self.request_revision)().saturating_add(1);
         self.request_revision.set(revision);
-        spawn(async move {
+        dioxus::core::spawn_forever(async move {
             let result = list_workspaces().await;
             if (self.request_revision)() != revision {
                 return;

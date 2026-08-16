@@ -98,7 +98,7 @@ pub fn Home() -> Element {
     use_effect(move || workspace_list.ensure());
     let runtime = use_resource(runtime_state);
     let workspace_records = workspace_list.records();
-    let workspace_loading = workspace_list.is_loading() && !workspace_list.is_loaded();
+    let workspace_loading = !workspace_list.is_loaded();
     let workspace_error = workspace_list.error().is_some() && workspace_records.is_empty();
     let runtime_snapshot = runtime()
         .as_ref()
