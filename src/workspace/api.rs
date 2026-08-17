@@ -26,6 +26,10 @@ const DEFAULT_TEXT_LIMIT: u64 = 4 * 1024 * 1024;
 pub async fn list_workspaces() -> Result<Vec<WorkspaceRecord>, ServerFnError> {
     server::list_workspaces().await
 }
+#[get("/api/workspaces/availability")]
+pub async fn list_workspace_availability() -> Result<Vec<WorkspaceRecord>, ServerFnError> {
+    server::list_workspace_availability().await
+}
 #[get("/api/workspaces/{workspace_id}")]
 pub async fn get_workspace(workspace_id: String) -> Result<WorkspaceRecord, ServerFnError> {
     server::get_workspace(&WorkspaceId::new(workspace_id)).await

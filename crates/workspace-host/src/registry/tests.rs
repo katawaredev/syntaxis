@@ -34,6 +34,12 @@ fn registry_persists_and_reports_missing_workspaces() {
     assert_eq!(records[0].last_section, WorkspaceSection::Git);
     assert_eq!(
         records[0].availability,
+        syntaxis_workspace::WorkspaceAvailability::Checking
+    );
+
+    let records = reopened.list_with_availability().unwrap();
+    assert_eq!(
+        records[0].availability,
         syntaxis_workspace::WorkspaceAvailability::Missing
     );
 }

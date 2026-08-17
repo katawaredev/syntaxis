@@ -44,6 +44,22 @@ pub async fn list_workspaces() -> Result<Vec<WorkspaceRecord>, String> {
     }
 }
 
+pub async fn list_workspace_availability() -> Result<Vec<WorkspaceRecord>, String> {
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::api::list_workspace_availability()
+            .await
+            .map_err(server_error_message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => tokio::task::spawn_blocking(|| {
+            host_registry()?
+                .list_with_availability()
+                .map_err(|error| error.message)
+        })
+        .await
+        .map_err(|_| "The workspace availability task failed".to_owned())?,
+    }
+}
+
 pub async fn touch_workspace(workspace_id: String) -> Result<(), String> {
     use syntaxis_workspace::{WorkspaceId, WorkspaceRegistry};
 

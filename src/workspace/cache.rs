@@ -3,7 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use dioxus::prelude::*;
 use syntaxis_workspace::{WorkspaceRecord, WorkspaceSection};
 
-use super::client::list_workspaces;
+use super::client::{list_workspace_availability, list_workspaces};
 
 /// Route-stable workspace data with stale-while-revalidate behavior.
 #[derive(Clone, Copy, PartialEq)]
@@ -81,12 +81,26 @@ impl WorkspaceListCache {
             if (self.request_revision)() != revision {
                 return;
             }
-            match result {
-                Ok(records) => self.records.set(records),
-                Err(message) => self.error.set(Some(message)),
-            }
+            let records = match result {
+                Ok(records) => records,
+                Err(message) => {
+                    self.error.set(Some(message));
+                    self.loaded.set(true);
+                    self.loading.set(false);
+                    return;
+                }
+            };
+            self.records.set(records);
             self.loaded.set(true);
             self.loading.set(false);
+
+            // Filesystem probes can block indefinitely on unavailable mounts. Resolve them
+            // after metadata is visible, and discard stale results from superseded requests.
+            if let Ok(records) = list_workspace_availability().await
+                && (self.request_revision)() == revision
+            {
+                self.records.set(records);
+            }
         });
     }
 }

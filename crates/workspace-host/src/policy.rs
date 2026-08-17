@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use syntaxis_workspace::{ErrorCode, WorkspaceError, WorkspaceResult};
 
@@ -34,6 +34,14 @@ impl RegistrationPolicy {
             Self::Unrestricted => true,
             Self::Allowlisted { roots } => roots.iter().any(|root| candidate.starts_with(root)),
         }
+    }
+
+    pub(crate) fn permits_stored_root(&self, candidate: &Path) -> bool {
+        candidate.is_absolute()
+            && !candidate
+                .components()
+                .any(|component| matches!(component, Component::CurDir | Component::ParentDir))
+            && self.permits(candidate)
     }
 
     pub(crate) fn permits_registered_root(&self, candidate: &Path) -> bool {

@@ -65,11 +65,6 @@ struct StoredWorkspace {
 
 impl StoredWorkspace {
     fn into_record(self) -> WorkspaceRecord {
-        let availability = if Path::new(&self.root).is_dir() {
-            WorkspaceAvailability::Available
-        } else {
-            WorkspaceAvailability::Missing
-        };
         WorkspaceRecord {
             id: self.id,
             slug: self.slug,
@@ -80,7 +75,7 @@ impl StoredWorkspace {
             registered_at_unix_ms: self.registered_at_unix_ms,
             last_opened_unix_ms: self.last_opened_unix_ms,
             last_section: self.last_section,
-            availability,
+            availability: WorkspaceAvailability::Checking,
         }
     }
 }
@@ -370,7 +365,13 @@ impl WorkspaceRegistryStore {
         let mut records = file
             .workspaces
             .iter()
-            .filter(|record| self.policy.permits_registered_root(Path::new(&record.root)))
+            // Registered roots are canonicalized before they are persisted. Keep listing
+            // metadata-only while rejecting malformed or out-of-policy stored paths;
+            // security-sensitive operations still revalidate against the filesystem.
+            .filter(|record| {
+                self.policy
+                    .permits_stored_root(Path::new(&record.root))
+            })
             .cloned()
             .map(StoredWorkspace::into_record)
             .collect::<Vec<_>>();
@@ -393,6 +394,37 @@ impl WorkspaceRegistryStore {
             .ok_or_else(workspace_not_found)?
             .into_record();
         self.require_permitted_record(record)
+            .map(Self::resolve_record_availability)
+    }
+
+    /// Resolves filesystem availability away from the latency-sensitive metadata listing.
+    pub fn list_with_availability(&self) -> WorkspaceResult<Vec<WorkspaceRecord>> {
+        self.list_records().map(|records| {
+            records
+                .into_iter()
+                .map(|record| self.resolve_list_record_availability(record))
+                .collect()
+        })
+    }
+
+    fn resolve_list_record_availability(&self, mut record: WorkspaceRecord) -> WorkspaceRecord {
+        if !self
+            .policy
+            .permits_registered_root(Path::new(&record.root))
+        {
+            record.availability = WorkspaceAvailability::Missing;
+            return record;
+        }
+        Self::resolve_record_availability(record)
+    }
+
+    fn resolve_record_availability(mut record: WorkspaceRecord) -> WorkspaceRecord {
+        record.availability = if Path::new(&record.root).is_dir() {
+            WorkspaceAvailability::Available
+        } else {
+            WorkspaceAvailability::Missing
+        };
+        record
     }
 
     fn register_path(&self, absolute_path: &str) -> WorkspaceResult<WorkspaceRecord> {
@@ -478,6 +510,7 @@ impl WorkspaceRegistryStore {
             .ok_or_else(workspace_not_found)?
             .into_record();
         self.require_permitted_record(record)
+            .map(Self::resolve_record_availability)
     }
 
     fn require_permitted_record(

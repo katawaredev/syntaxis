@@ -207,6 +207,7 @@ fn WorkspaceRow(
     on_changed: EventHandler<()>,
 ) -> Element {
     let availability = workspace.availability;
+    let workspace_available = availability == WorkspaceAvailability::Available;
     let workspace_id = workspace.id.0.clone();
     let workspace_name = workspace.name.clone();
     let mut menu_open = use_signal(|| false);
@@ -217,7 +218,7 @@ fn WorkspaceRow(
                 class: "grid min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-3 max-md:grid-cols-[auto_minmax(0,1fr)] max-md:py-2.5",
                 to: Route::for_workspace_section(workspace.slug.clone(), workspace.last_section),
                 onclick: move |event: MouseEvent| {
-                    if availability == WorkspaceAvailability::Missing {
+                    if !workspace_available {
                         event.prevent_default();
                     }
                 },
@@ -232,6 +233,8 @@ fn WorkspaceRow(
                         }
                         if availability == WorkspaceAvailability::Missing {
                             StatusBadge { label: "Missing", tone: Tone::Destructive }
+                        } else if availability == WorkspaceAvailability::Checking {
+                            StatusBadge { label: "Checking", tone: Tone::Neutral }
                         }
                         p { class: "hidden min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground max-md:block",
                             "{workspace.root}"
@@ -258,7 +261,7 @@ fn WorkspaceRow(
                     DropdownMenuItem::<ProjectAction> {
                         value: ProjectAction::Bootstrap,
                         index: 0_usize,
-                        disabled: refreshing() || availability == WorkspaceAvailability::Missing,
+                        disabled: refreshing() || !workspace_available,
                         on_select: move |_: ProjectAction| on_bootstrap.call(index),
                         span { class: "flex items-center gap-2",
                             Icon { icon: AppIcon::Terminal, size: 14 }
@@ -268,7 +271,7 @@ fn WorkspaceRow(
                     DropdownMenuItem::<ProjectAction> {
                         value: ProjectAction::UpdateTools,
                         index: 1_usize,
-                        disabled: refreshing() || availability == WorkspaceAvailability::Missing,
+                        disabled: refreshing() || !workspace_available,
                         on_select: move |_: ProjectAction| on_update_tools.call(index),
                         span { class: "flex items-center gap-2",
                             Icon { icon: AppIcon::Refresh, size: 14 }
@@ -288,7 +291,7 @@ fn WorkspaceRow(
                     DropdownMenuItem::<ProjectAction> {
                         value: ProjectAction::Refresh,
                         index: 3_usize,
-                        disabled: refreshing() || availability == WorkspaceAvailability::Missing,
+                        disabled: refreshing() || !workspace_available,
                         on_select: move |_: ProjectAction| {
                             if refreshing() {
                                 return;
@@ -320,7 +323,7 @@ fn WorkspaceRow(
                         value: ProjectAction::Cleanup,
                         index: 4_usize,
                         class: "!text-destructive",
-                        disabled: refreshing() || availability == WorkspaceAvailability::Missing,
+                        disabled: refreshing() || !workspace_available,
                         on_select: move |_: ProjectAction| on_cleanup.call(index),
                         span { class: "flex items-center gap-2",
                             Icon { icon: AppIcon::Cleanup, size: 14 }

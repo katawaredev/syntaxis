@@ -23,6 +23,8 @@ use super::{DEFAULT_TEXT_LIMIT, WorkspaceFilesBootstrap, server_error};
 
 static REGISTRY: OnceLock<Result<WorkspaceRegistryStore, syntaxis_workspace::WorkspaceError>> =
     OnceLock::new();
+static BROWSER: OnceLock<Result<HostWorkspaceBrowser, syntaxis_workspace::WorkspaceError>> =
+    OnceLock::new();
 
 pub(super) async fn list_workspaces() -> Result<Vec<WorkspaceRecord>, ServerFnError> {
     registry()?
@@ -32,6 +34,15 @@ pub(super) async fn list_workspaces() -> Result<Vec<WorkspaceRecord>, ServerFnEr
         .into_iter()
         .map(public_workspace)
         .collect()
+}
+
+pub(super) async fn list_workspace_availability() -> Result<Vec<WorkspaceRecord>, ServerFnError> {
+    let registry = registry()?;
+    let records = tokio::task::spawn_blocking(move || registry.list_with_availability())
+        .await
+        .map_err(|_| internal_server_error("The workspace availability task failed"))?
+        .map_err(server_error)?;
+    records.into_iter().map(public_workspace).collect()
 }
 
 pub(super) async fn get_workspace(id: &WorkspaceId) -> Result<WorkspaceRecord, ServerFnError> {
@@ -194,8 +205,8 @@ pub(super) async fn clear_mise_tools() -> Result<(), ServerFnError> {
 pub(super) async fn clear_runtime_caches() -> Result<usize, ServerFnError> {
     tokio::task::spawn_blocking(crate::workspace::runtime_cache::purge)
         .await
-        .map_err(|_| runtime_cache_error("The runtime cache cleanup task failed"))?
-        .map_err(runtime_cache_error)
+        .map_err(|_| internal_server_error("The runtime cache cleanup task failed"))?
+        .map_err(internal_server_error)
 }
 
 async fn run_mise(arguments: &[&str]) -> Result<(), ServerFnError> {
@@ -221,7 +232,7 @@ fn mise_command_error(message: &str) -> ServerFnError {
     }
 }
 
-fn runtime_cache_error(message: impl Into<String>) -> ServerFnError {
+fn internal_server_error(message: impl Into<String>) -> ServerFnError {
     ServerFnError::ServerError {
         message: message.into(),
         code: 500,
@@ -419,11 +430,15 @@ fn registry() -> Result<&'static WorkspaceRegistryStore, ServerFnError> {
         .map_err(|error| server_error(error.clone()))
 }
 
-fn browser() -> Result<HostWorkspaceBrowser, ServerFnError> {
-    HostWorkspaceBrowser::new(RegistrationPolicy::Allowlisted {
-        roots: configured_roots(),
-    })
-    .map_err(server_error)
+fn browser() -> Result<&'static HostWorkspaceBrowser, ServerFnError> {
+    BROWSER
+        .get_or_init(|| {
+            HostWorkspaceBrowser::new(RegistrationPolicy::Allowlisted {
+                roots: configured_roots(),
+            })
+        })
+        .as_ref()
+        .map_err(|error| server_error(error.clone()))
 }
 
 fn public_workspace(mut workspace: WorkspaceRecord) -> Result<WorkspaceRecord, ServerFnError> {

@@ -13,6 +13,8 @@ impl WorkspaceId {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WorkspaceAvailability {
+    /// Filesystem availability has not been resolved yet.
+    Checking,
     Available,
     Missing,
 }
