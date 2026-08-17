@@ -11,14 +11,9 @@ mod update_tools;
 use dioxus::prelude::*;
 
 use self::{
-    bootstrap::BootstrapProjectDialog,
-    cleanup::CleanupWorkspaceDialog,
-    delete::DeleteWorkspaceDialog,
-    folder::WorkspaceFolderDialog,
-    git_url::GitUrlDialog,
-    mise_tools::{ClearMiseToolsDialog, ClearRuntimeCachesDialog},
-    new_project::NewProjectDialog,
-    notes::WorkspaceNotesDialog,
+    bootstrap::BootstrapProjectDialog, cleanup::CleanupWorkspaceDialog,
+    delete::DeleteWorkspaceDialog, folder::WorkspaceFolderDialog, git_url::GitUrlDialog,
+    mise_tools::FreeRuntimeSpaceDialog, new_project::NewProjectDialog, notes::WorkspaceNotesDialog,
     update_tools::UpdateProjectToolsDialog,
 };
 use super::{HomeDialog, RuntimePresentation};
@@ -87,11 +82,8 @@ pub(super) fn HomeDialogs(
                 on_notice,
             }
         }
-        if dialog() == HomeDialog::ClearMiseTools {
-            ClearMiseToolsDialog { dialog, on_notice }
-        }
-        if dialog() == HomeDialog::ClearRuntimeCaches {
-            ClearRuntimeCachesDialog { dialog, on_notice }
+        if dialog() == HomeDialog::FreeRuntimeSpace {
+            FreeRuntimeSpaceDialog { dialog, on_notice }
         }
         if let HomeDialog::Delete(index) = dialog() {
             DeleteWorkspaceDialog {

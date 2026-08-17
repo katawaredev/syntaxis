@@ -79,7 +79,7 @@ pub fn WorkspaceShell() -> Element {
                 touched_workspace.set(Some(workspace_id.clone()));
                 workspace_list.touch(&workspace_id);
                 let touched_id = workspace_id.clone();
-                dioxus::core::spawn_forever(async move {
+                spawn(async move {
                     let _ = touch_workspace(touched_id).await;
                 });
             }
@@ -88,7 +88,7 @@ pub fn WorkspaceShell() -> Element {
             }
             persisted_section.set(Some((workspace_id.clone(), active)));
             workspace_list.set_last_section(&workspace_id, active);
-            dioxus::core::spawn_forever(async move {
+            spawn(async move {
                 let _ = set_workspace_last_section(workspace_id, active).await;
             });
         },

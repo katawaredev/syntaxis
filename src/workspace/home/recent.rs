@@ -26,8 +26,7 @@ enum ProjectAction {
 enum MiseAction {
     Update,
     Prune,
-    ClearCaches,
-    Clear,
+    FreeSpace,
 }
 #[component]
 pub(super) fn RecentProjects(
@@ -38,8 +37,7 @@ pub(super) fn RecentProjects(
     on_update_tools: EventHandler<usize>,
     on_notes: EventHandler<usize>,
     on_cleanup: EventHandler<usize>,
-    on_clear_runtime_caches: EventHandler<()>,
-    on_clear_mise_tools: EventHandler<()>,
+    on_free_runtime_space: EventHandler<()>,
     on_delete: EventHandler<usize>,
     on_notice: EventHandler<String>,
     on_refresh: EventHandler<()>,
@@ -119,25 +117,14 @@ pub(super) fn RecentProjects(
                             }
                         }
                         DropdownMenuItem::<MiseAction> {
-                            value: MiseAction::ClearCaches,
+                            value: MiseAction::FreeSpace,
                             index: 2_usize,
                             class: "!text-destructive",
                             disabled: updating() || pruning(),
-                            on_select: move |_: MiseAction| on_clear_runtime_caches.call(()),
+                            on_select: move |_: MiseAction| on_free_runtime_space.call(()),
                             span { class: "flex items-center gap-2",
                                 Icon { icon: AppIcon::Delete, size: 14 }
-                                "Clear runtime caches"
-                            }
-                        }
-                        DropdownMenuItem::<MiseAction> {
-                            value: MiseAction::Clear,
-                            index: 3_usize,
-                            class: "!text-destructive",
-                            disabled: updating() || pruning(),
-                            on_select: move |_: MiseAction| on_clear_mise_tools.call(()),
-                            span { class: "flex items-center gap-2",
-                                Icon { icon: AppIcon::Delete, size: 14 }
-                                "Remove all tools"
+                                "Free up space…"
                             }
                         }
                     }

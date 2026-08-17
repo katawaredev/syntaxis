@@ -1,37 +1,5 @@
 use super::*;
 
-#[derive(Clone, Copy, Default, Eq, PartialEq)]
-enum PricingFilter {
-    #[default]
-    All,
-    Free,
-    Metered,
-}
-impl PricingFilter {
-    const fn as_str(self) -> &'static str {
-        match self {
-            Self::All => "all",
-            Self::Free => "free",
-            Self::Metered => "metered",
-        }
-    }
-
-    fn from_str(value: &str) -> Self {
-        match value {
-            "free" => Self::Free,
-            "metered" => Self::Metered,
-            _ => Self::All,
-        }
-    }
-}
-#[derive(Clone, Copy, Default)]
-struct ModelFilters {
-    pricing: PricingFilter,
-    reasoning_only: bool,
-    vision_only: bool,
-    min_context: u64,
-}
-
 #[component]
 pub(super) fn ModelPicker(
     selected: Option<ModelSummary>,
@@ -42,11 +10,8 @@ pub(super) fn ModelPicker(
     on_thinking: EventHandler<ThinkingLevel>,
 ) -> Element {
     let mut open = use_signal(|| false);
+    let mut choosing_model = use_signal(|| false);
     let mut query = use_signal(String::new);
-    let mut pricing = use_signal(PricingFilter::default);
-    let mut reasoning_only = use_signal(|| false);
-    let mut vision_only = use_signal(|| false);
-    let mut min_context = use_signal(|| 0_u64);
     let selected_key = selected.as_ref().map(ModelSummary::key);
     let selected_name = selected
         .as_ref()
@@ -68,24 +33,21 @@ pub(super) fn ModelPicker(
             }
         },
     );
-    let groups = group_models(
-        models.clone(),
-        &query(),
-        ModelFilters {
-            pricing: pricing(),
-            reasoning_only: reasoning_only(),
-            vision_only: vision_only(),
-            min_context: min_context(),
-        },
-    );
+    let visible_models = filter_models(models.clone(), &query())
+        .into_iter()
+        .filter(|model| selected_key.as_deref() != Some(model.key().as_str()))
+        .collect::<Vec<_>>();
+    let model_groups = group_models_by_provider(visible_models);
     rsx! {
         PopoverRoot {
             class: "relative min-w-0",
             is_modal: false,
             open: open(),
             on_open_change: move |next| {
+                let was_open = open();
                 open.set(next);
-                if next {
+                if next && !was_open {
+                    choosing_model.set(false);
                     query.set(String::new());
                 }
             },
@@ -108,14 +70,30 @@ pub(super) fn ModelPicker(
                 }
             }
             PopoverContent { class: "touch-popover absolute top-[calc(100%+6px)] right-0 z-80 w-[min(430px,calc(100vw-1rem))] overflow-hidden rounded-xl border border-border bg-popover shadow-2xl",
-                div { class: "flex items-center gap-2 border-b border-border px-3 py-2",
-                    Icon { icon: AppIcon::Search, size: 14 }
-                    input {
-                        class: "h-8 min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground",
-                        value: query(),
-                        placeholder: "Search models or providers…",
-                        aria_label: "Search agent models",
-                        oninput: move |event| query.set(event.value()),
+                if let Some(model) = selected.clone() {
+                    div { class: "border-b border-border px-3 py-3",
+                        div { class: "flex items-start gap-3",
+                            div { class: "min-w-0 flex-1",
+                                strong { class: "block truncate text-sm font-semibold",
+                                    "{model.name}"
+                                }
+                                p { class: "mt-1 text-[10px] text-muted-foreground",
+                                    {format_context_window(model.context_window)}
+                                    if model.reasoning {
+                                        " · Reasoning"
+                                    }
+                                    if model.supports_images {
+                                        " · Vision"
+                                    }
+                                }
+                                p {
+                                    class: "mt-1 text-[10px] text-muted-foreground",
+                                    title: "Input / output catalog price per million tokens",
+                                    {format_model_price_long(&model)}
+                                }
+                            }
+                            Icon { icon: AppIcon::Check, size: 15 }
+                        }
                     }
                 }
                 ReasoningEffort {
@@ -124,67 +102,69 @@ pub(super) fn ModelPicker(
                     disabled,
                     on_select: on_thinking,
                 }
-                div { class: "space-y-2 border-b border-border bg-secondary/20 px-3 py-2",
-                    div { class: "flex flex-wrap items-center gap-1.5",
-                        select {
-                            class: "h-7 rounded-md border border-input bg-background px-2 text-[10px] text-foreground",
-                            aria_label: "Filter models by catalog price",
-                            value: pricing().as_str(),
-                            onchange: move |event| pricing.set(PricingFilter::from_str(&event.value())),
-                            option { value: "all", "Any price" }
-                            option { value: "free", "Free ($0 rates)" }
-                            option { value: "metered", "Metered" }
+                Collapsible {
+                    open: choosing_model(),
+                    on_open_change: move |next| {
+                        choosing_model.set(next);
+                        if !next {
+                            query.set(String::new());
                         }
-                        select {
-                            class: "h-7 rounded-md border border-input bg-background px-2 text-[10px] text-foreground",
-                            aria_label: "Minimum model context window",
-                            value: min_context().to_string(),
-                            onchange: move |event| {
-                                min_context.set(event.value().parse().unwrap_or_default());
-                            },
-                            option { value: "0", "Any context" }
-                            option { value: "128000", "128K+ context" }
-                            option { value: "200000", "200K+ context" }
-                            option { value: "1000000", "1M+ context" }
-                        }
-                        label { class: "flex h-7 cursor-pointer items-center gap-1 rounded-md border border-input bg-background px-2 text-[10px]",
-                            input {
-                                r#type: "checkbox",
-                                checked: reasoning_only(),
-                                onchange: move |event| reasoning_only.set(event.checked()),
+                    },
+                    CollapsibleTrigger { class: "flex h-11 w-full items-center px-3 text-left text-xs font-medium transition-colors hover:bg-accent",
+                        "Choose model"
+                        span { class: "ml-auto grid size-7 place-items-center text-muted-foreground",
+                            if choosing_model() {
+                                Icon { icon: AppIcon::Close, size: 14 }
+                            } else {
+                                Icon { icon: AppIcon::ChevronDown, size: 14 }
                             }
-                            "Reasoning"
                         }
-                        label { class: "flex h-7 cursor-pointer items-center gap-1 rounded-md border border-input bg-background px-2 text-[10px]",
-                            input {
-                                r#type: "checkbox",
-                                checked: vision_only(),
-                                onchange: move |event| vision_only.set(event.checked()),
+                    }
+                    CollapsibleContent {
+                        div { class: "border-y border-border p-3",
+                            div { class: "flex h-9 items-center gap-2 rounded-lg border border-input bg-background px-3",
+                                Icon { icon: AppIcon::Search, size: 14 }
+                                input {
+                                    class: "min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground",
+                                    value: query(),
+                                    placeholder: "Search models…",
+                                    aria_label: "Search models",
+                                    oninput: move |event| query.set(event.value()),
+                                }
                             }
-                            "Vision"
                         }
-                    }
-                    p { class: "text-[9px] leading-relaxed text-muted-foreground",
-                        "The agent only lists models available through configured credentials. Prices are catalog token rates; subscription models may still show metered rates."
-                    }
-                }
-                div { class: "max-h-[min(420px,70vh)] overflow-y-auto p-1.5",
-                    if groups.is_empty() {
-                        p { class: "px-3 py-8 text-center text-xs text-muted-foreground",
-                            "No matching models"
-                        }
-                    }
-                    for (provider, provider_models) in groups {
-                        ModelGroup {
-                            key: "{provider}",
-                            provider,
-                            models: provider_models,
-                            selected_key: selected_key.clone(),
-                            on_select: move |model: ModelSummary| {
-                                let effective_level = model.effective_thinking_level(thinking_level);
-                                on_select.call((model.provider, model.id, effective_level));
-                                open.set(false);
-                            },
+                        div { class: "max-h-[min(360px,55vh)] overflow-y-auto p-1.5",
+                            if model_groups.is_empty() {
+                                p { class: "px-3 py-8 text-center text-xs text-muted-foreground",
+                                    "No matching models"
+                                }
+                            }
+                            for (provider, provider_models) in model_groups {
+                                div {
+                                    key: "{provider}",
+                                    class: "not-first:mt-1.5",
+                                    div { class: "sticky top-0 z-1 flex h-8 items-center gap-2 bg-popover/95 px-2.5 text-[9px] font-semibold tracking-wide text-muted-foreground uppercase backdrop-blur-sm",
+                                        span { class: "grid size-5 place-items-center rounded-md bg-primary/10 text-primary",
+                                            ProviderMark {
+                                                provider: provider.clone(),
+                                                size: 11,
+                                            }
+                                        }
+                                        span { class: "truncate", "{provider}" }
+                                    }
+                                    for model in provider_models {
+                                        ModelRow {
+                                            key: "{model.key()}",
+                                            model,
+                                            on_select: move |model: ModelSummary| {
+                                                let effective_level = model.effective_thinking_level(thinking_level);
+                                                on_select.call((model.provider, model.id, effective_level));
+                                                open.set(false);
+                                            },
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -226,8 +206,9 @@ fn ReasoningEffort(
                     r#for: "model-reasoning-effort",
                     "Reasoning effort"
                 }
-                output { class: "ml-auto rounded-md bg-primary/10 px-2 py-0.5 text-[9px] font-semibold text-primary",
-                    r#for: "model-reasoning-effort",
+                output {
+                    class: "ml-auto rounded-md bg-primary/10 px-2 py-0.5 text-[9px] font-semibold text-primary",
+                    "for": "model-reasoning-effort",
                     "{effective.label()}"
                 }
             }
@@ -255,56 +236,27 @@ fn ReasoningEffort(
                     span { "{levels.last().copied().unwrap_or(ThinkingLevel::Off).label()}" }
                 }
             }
-            p { class: "mt-1 text-[8px] leading-relaxed text-muted-foreground",
-                "Only effort levels supported by this model are available."
-            }
         }
     }
 }
 
 #[component]
-fn ModelGroup(
-    provider: String,
-    models: Vec<ModelSummary>,
-    selected_key: Option<String>,
-    on_select: EventHandler<ModelSummary>,
-) -> Element {
-    rsx! {
-        section { class: "not-last:mb-1.5",
-            div { class: "sticky top-0 z-1 flex items-center gap-2 bg-popover/95 px-2 py-1.5 text-[9px] font-semibold tracking-wider text-muted-foreground uppercase backdrop-blur",
-                span { class: "grid size-4 place-items-center text-foreground",
-                    ProviderMark { provider: provider.clone(), size: 13 }
-                }
-                "{provider}"
-                span { class: "ml-auto font-normal tracking-normal", "{models.len()}" }
-            }
-            for model in models {
-                ModelRow {
-                    key: "{model.key()}",
-                    selected: selected_key.as_deref() == Some(model.key().as_str()),
-                    model,
-                    on_select,
-                }
-            }
-        }
-    }
-}
-
-#[component]
-fn ModelRow(
-    model: ModelSummary,
-    selected: bool,
-    on_select: EventHandler<ModelSummary>,
-) -> Element {
+fn ModelRow(model: ModelSummary, on_select: EventHandler<ModelSummary>) -> Element {
+    let selected_model = model.clone();
     rsx! {
         button {
-            class: if selected { "grid min-h-10 w-full grid-cols-[minmax(0,1fr)_7rem_1rem] items-center gap-2 rounded-lg bg-primary/10 px-2.5 py-1.5 text-left text-xs text-foreground" } else { "grid min-h-10 w-full grid-cols-[minmax(0,1fr)_7rem_1rem] items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground" },
-            onclick: move |_| on_select.call(model.clone()),
+            class: "grid min-h-12 w-full grid-cols-[minmax(0,1fr)_7rem] items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground",
+            r#type: "button",
+            onclick: move |_| on_select.call(selected_model.clone()),
             span { class: "min-w-0",
                 strong { class: "block truncate font-medium", "{model.name}" }
-                if model.name != model.id {
-                    small { class: "block truncate font-mono text-[9px] text-muted-foreground",
-                        "{model.id}"
+                small { class: "block truncate text-[9px] text-muted-foreground",
+                    {format_context_window(model.context_window)}
+                    if model.reasoning {
+                        " · Reasoning"
+                    }
+                    if model.supports_images {
+                        " · Vision"
                     }
                 }
             }
@@ -313,20 +265,6 @@ fn ModelRow(
                     class: if model.cost.is_free() { "block text-[9px] font-medium text-success" } else { "block text-[9px] font-medium text-muted-foreground" },
                     title: "Input / output catalog price per million tokens",
                     {format_model_price(&model)}
-                }
-                small { class: "block truncate text-[8px] text-muted-foreground",
-                    {format_context_window(model.context_window)}
-                    if model.reasoning {
-                        " · reasoning"
-                    }
-                    if model.supports_images {
-                        " · vision"
-                    }
-                }
-            }
-            span { class: "grid size-4 place-items-center",
-                if selected {
-                    Icon { icon: AppIcon::Check, size: 13 }
                 }
             }
         }
@@ -355,40 +293,34 @@ fn ProviderMark(provider: String, size: u32) -> Element {
     }
 }
 
-fn group_models(
-    models: Vec<ModelSummary>,
-    query: &str,
-    filters: ModelFilters,
-) -> Vec<(String, Vec<ModelSummary>)> {
+fn filter_models(models: Vec<ModelSummary>, query: &str) -> Vec<ModelSummary> {
     let query = query.trim().to_ascii_lowercase();
-    let mut groups = BTreeMap::<String, Vec<ModelSummary>>::new();
+    let free_query = query == "free";
+    let mut models = models
+        .into_iter()
+        .filter(|model| {
+            let searchable =
+                format!("{} {} {}", model.provider, model.name, model.id).to_ascii_lowercase();
+            query.is_empty() || searchable.contains(&query) || (free_query && model.cost.is_free())
+        })
+        .collect::<Vec<_>>();
+    models.sort_by_key(|model| (model.provider.to_lowercase(), model.name.to_lowercase()));
+    models
+}
+
+fn group_models_by_provider(models: Vec<ModelSummary>) -> Vec<(String, Vec<ModelSummary>)> {
+    let mut groups = Vec::<(String, Vec<ModelSummary>)>::new();
     for model in models {
-        let searchable =
-            format!("{} {} {}", model.provider, model.name, model.id).to_ascii_lowercase();
-        let pricing_matches = match filters.pricing {
-            PricingFilter::All => true,
-            PricingFilter::Free => model.cost.is_free(),
-            PricingFilter::Metered => !model.cost.is_free(),
-        };
-        if (query.is_empty() || searchable.contains(&query))
-            && pricing_matches
-            && (!filters.reasoning_only || model.reasoning)
-            && (!filters.vision_only || model.supports_images)
-            && model.context_window >= filters.min_context
+        if let Some((_, provider_models)) = groups
+            .last_mut()
+            .filter(|(provider, _)| provider == &model.provider)
         {
-            groups
-                .entry(model.provider.clone())
-                .or_default()
-                .push(model);
+            provider_models.push(model);
+        } else {
+            groups.push((model.provider.clone(), vec![model]));
         }
     }
     groups
-        .into_iter()
-        .map(|(provider, mut models)| {
-            models.sort_by_key(|model| model.name.to_lowercase());
-            (provider, models)
-        })
-        .collect()
 }
 
 fn format_model_price(model: &ModelSummary) -> String {
@@ -398,6 +330,18 @@ fn format_model_price(model: &ModelSummary) -> String {
     let tiers = if model.cost.has_paid_tier { "+" } else { "" };
     format!(
         "{} in · {} out{tiers}",
+        format_model_rate(model.cost.input),
+        format_model_rate(model.cost.output),
+    )
+}
+
+fn format_model_price_long(model: &ModelSummary) -> String {
+    if model.cost.is_free() {
+        return "Free".to_owned();
+    }
+    let tiers = if model.cost.has_paid_tier { "+" } else { "" };
+    format!(
+        "{} input · {} output{tiers} / 1M tokens",
         format_model_rate(model.cost.input),
         format_model_rate(model.cost.output),
     )

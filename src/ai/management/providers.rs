@@ -1,7 +1,10 @@
 use super::*;
 
 #[component]
-pub(super) fn ProviderAccounts(workspace_id: String) -> Element {
+pub(super) fn ProviderAccounts(
+    workspace_id: String,
+    on_accounts_changed: EventHandler<()>,
+) -> Element {
     let providers_workspace_id = workspace_id.clone();
     let mut revision = use_signal(|| 0_u64);
     let providers = use_resource(move || {
@@ -18,7 +21,7 @@ pub(super) fn ProviderAccounts(workspace_id: String) -> Element {
         error.set(None);
         let workspace_id = login_workspace_id.clone();
         spawn(async move {
-            match api::start_pi_provider_login(workspace_id, provider_id, auth_type).await {
+            match api::start_pi_provider_login(workspace_id.clone(), provider_id, auth_type).await {
                 Ok(started) => {
                     let flow_id = started.id.clone();
                     flow.set(Some(started));
@@ -31,9 +34,20 @@ pub(super) fn ProviderAccounts(workspace_id: String) -> Element {
                         match api::pi_provider_login_status(flow_id.clone()).await {
                             Ok(snapshot) => {
                                 let finished = snapshot.complete || snapshot.error.is_some();
+                                let complete = snapshot.complete;
                                 flow.set(Some(snapshot));
                                 if finished {
                                     revision.with_mut(|revision| *revision += 1);
+                                    if complete {
+                                        match api::reload_pi_agent_runtime(workspace_id.clone())
+                                            .await
+                                        {
+                                            Ok(()) => on_accounts_changed.call(()),
+                                            Err(reload_error) => {
+                                                error.set(Some(reload_error.to_string()));
+                                            }
+                                        }
+                                    }
                                     break;
                                 }
                             }
@@ -115,8 +129,16 @@ pub(super) fn ProviderAccounts(workspace_id: String) -> Element {
                                                     pending.set(Some(provider_id.clone()));
                                                     error.set(None);
                                                     spawn(async move {
-                                                        match api::logout_pi_provider(workspace_id, provider_id).await {
-                                                            Ok(()) => revision.with_mut(|revision| *revision += 1),
+                                                        match api::logout_pi_provider(workspace_id.clone(), provider_id).await {
+                                                            Ok(()) => {
+                                                                revision.with_mut(|revision| *revision += 1);
+                                                                match api::reload_pi_agent_runtime(workspace_id).await {
+                                                                    Ok(()) => on_accounts_changed.call(()),
+                                                                    Err(reload_error) => {
+                                                                        error.set(Some(reload_error.to_string()));
+                                                                    }
+                                                                }
+                                                            }
                                                             Err(logout_error) => {
                                                                 error.set(Some(logout_error.to_string()));
                                                             }

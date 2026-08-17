@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.9.1](https://github.com/katawaredev/syntaxis/compare/v0.9.0...v0.9.1) (2026-08-16)
+
+
+### Bug Fixes
+
+* **ai:** reduce interface clutter ([c33a963](https://github.com/katawaredev/syntaxis/commit/c33a96324de993c3993b75a408f0d6764473ec90))
+* cache not being updated ([08c062e](https://github.com/katawaredev/syntaxis/commit/08c062e45671e37cd1897b4f981b9687d7c7543c))
+* ui inconsistencies ([b7b88e4](https://github.com/katawaredev/syntaxis/commit/b7b88e49faf3057a6075f608c9a0937f0b184318))
+
 ## [0.9.0](https://github.com/katawaredev/syntaxis/compare/v0.8.0...v0.9.0) (2026-08-15)
 
 

@@ -245,6 +245,11 @@ pub(crate) async fn pi_settings(workspace_id: String) -> Result<PiSettingsSnapsh
     server::pi_settings(WorkspaceId::new(workspace_id)).await
 }
 
+#[post("/api/pi/runtime/reload")]
+pub(crate) async fn reload_pi_agent_runtime(workspace_id: String) -> Result<(), ServerFnError> {
+    server::reload_pi_agent_runtime(WorkspaceId::new(workspace_id)).await
+}
+
 #[post("/api/pi/settings/update")]
 pub(crate) async fn update_pi_setting(
     workspace_id: String,

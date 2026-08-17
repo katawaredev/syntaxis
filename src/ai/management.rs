@@ -90,6 +90,7 @@ pub(super) fn SettingsPanel(
     sidebar_open: bool,
     on_toggle_sidebar: EventHandler<()>,
     on_open_sidebar: EventHandler<()>,
+    on_provider_accounts_changed: EventHandler<()>,
 ) -> Element {
     let settings_workspace_id = workspace_id.clone();
     let settings = use_resource(move || {
@@ -125,6 +126,7 @@ pub(super) fn SettingsPanel(
                             selected_section,
                             revision,
                             toast,
+                            on_provider_accounts_changed,
                         }
                     },
                 }

@@ -194,6 +194,14 @@ pub(super) async fn search_conversations(
         })
 }
 
+pub(super) async fn reload_pi_agent_runtime(
+    workspace_id: WorkspaceId,
+) -> Result<(), ServerFnError> {
+    crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
+    agents().close_workspace(&workspace_id);
+    Ok(())
+}
+
 pub(super) async fn notification_socket(
     options: WebSocketOptions,
 ) -> Result<

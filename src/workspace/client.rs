@@ -554,6 +554,20 @@ pub async fn clear_runtime_caches() -> Result<usize, String> {
     }
 }
 
+pub async fn clear_runtime_tools() -> Result<usize, String> {
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::api::clear_runtime_tools()
+            .await
+            .map_err(server_error_message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => {
+            tokio::task::spawn_blocking(super::runtime_cache::purge_tools)
+                .await
+                .map_err(|_| "The desktop tool cleanup task failed".to_owned())?
+        }
+    }
+}
+
 #[cfg(feature = "desktop")]
 async fn run_local_mise(arguments: &[&str]) -> Result<(), String> {
     let output = tokio::process::Command::new("mise")

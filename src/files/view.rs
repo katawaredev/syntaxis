@@ -27,8 +27,8 @@ use syntaxis_workspace::{
 
 use super::state::{
     ActiveBufferMeta, ActiveDocumentView, CloseRequest, FileAction, FileActionDialog,
-    FilesSessionState, GitRevertRequest, OpenDiffRequest, OpenDocument, OpenTab, RevertAction,
-    ToastState,
+    FilesSessionState, FilesSessionWriter, GitRevertRequest, OpenDiffRequest, OpenDocument,
+    OpenTab, RevertAction, ToastState,
 };
 use super::workspace::load_initial;
 use crate::{
@@ -797,12 +797,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                             .iter()
                                             .map(|document| document.path().to_owned())
                                             .collect();
-                                        request_close_many(
-                                            paths,
-                                            documents,
-                                            active_path,
-                                            close_request,
-                                        );
+                                        request_close_many(paths, documents, active_path, close_request);
                                     },
                                 }
                                 EditorMenuItem {
@@ -818,12 +813,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                                 .filter(|document| document.path() != active)
                                                 .map(|document| document.path().to_owned())
                                                 .collect();
-                                            request_close_many(
-                                                paths,
-                                                documents,
-                                                active_path,
-                                                close_request,
-                                            );
+                                            request_close_many(paths, documents, active_path, close_request);
                                         }
                                     },
                                 }

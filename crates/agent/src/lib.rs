@@ -421,16 +421,11 @@ impl ClientMessage {
                 "A Pi message entry id is required",
             )),
             Self::SetModel {
-                provider,
-                model_id,
-                ..
-            } if provider.trim().is_empty() || model_id.trim().is_empty() =>
-            {
-                Err(AgentError::new(
-                    AgentErrorCode::InvalidRequest,
-                    "A Pi provider and model are required",
-                ))
-            }
+                provider, model_id, ..
+            } if provider.trim().is_empty() || model_id.trim().is_empty() => Err(AgentError::new(
+                AgentErrorCode::InvalidRequest,
+                "A Pi provider and model are required",
+            )),
             Self::SelectSession { session_id }
             | Self::DeleteSession { session_id }
             | Self::RenameSession { session_id, .. }

@@ -1,7 +1,6 @@
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use dioxus::prelude::*;
 use syntaxis_workspace::{WorkspaceRecord, WorkspaceSection};
+use web_time::{SystemTime, UNIX_EPOCH};
 
 use super::client::{list_workspace_availability, list_workspaces};
 
@@ -50,17 +49,12 @@ impl WorkspaceListCache {
         };
         let mut workspace = records.remove(index);
         if let Ok(elapsed) = SystemTime::now().duration_since(UNIX_EPOCH) {
-            workspace.last_opened_unix_ms =
-                i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX);
+            workspace.last_opened_unix_ms = i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX);
         }
         records.insert(0, workspace);
     }
 
-    pub(crate) fn set_last_section(
-        mut self,
-        workspace_id: &str,
-        section: WorkspaceSection,
-    ) {
+    pub(crate) fn set_last_section(mut self, workspace_id: &str, section: WorkspaceSection) {
         if let Some(workspace) = self
             .records
             .write()
@@ -76,7 +70,7 @@ impl WorkspaceListCache {
         self.error.set(None);
         let revision = (self.request_revision)().saturating_add(1);
         self.request_revision.set(revision);
-        dioxus::core::spawn_forever(async move {
+        spawn(async move {
             let result = list_workspaces().await;
             if (self.request_revision)() != revision {
                 return;

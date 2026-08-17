@@ -277,12 +277,14 @@ mod tests {
 
     #[test]
     fn extension_surface_text_strips_ansi_control_sequences() {
-        let mut snapshot = AgentSnapshot::default();
-        snapshot.extension_title = Some("\u{1b}[1mTools\u{1b}[22m".into());
-        snapshot.extension_statuses = vec![(
-            "lsp".into(),
-            "\u{1b}[38;5;241mLSP Inactive\u{1b}[39m".into(),
-        )];
+        let snapshot = AgentSnapshot {
+            extension_title: Some("\u{1b}[1mTools\u{1b}[22m".into()),
+            extension_statuses: vec![(
+                "lsp".into(),
+                "\u{1b}[38;5;241mLSP Inactive\u{1b}[39m".into(),
+            )],
+            ..AgentSnapshot::default()
+        };
         let snapshot = sanitize_snapshot(snapshot);
         assert_eq!(snapshot.extension_title.as_deref(), Some("Tools"));
         assert_eq!(snapshot.extension_statuses[0].1, "LSP Inactive");
