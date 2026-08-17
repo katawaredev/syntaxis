@@ -509,8 +509,15 @@ pub(super) fn ChangeDetail(
                         "This file has a binary Git diff and cannot be displayed as text."
                     }
                 },
+                Some(Ok(diff))
+                    if diff.original.as_deref() == Some("")
+                        && diff.current.as_deref() == Some("") => rsx! {
+                    div { class: "grid min-h-48 place-items-center p-8 text-center text-xs text-muted-foreground",
+                        "This is an empty file, so there are no textual changes to display."
+                    }
+                },
                 Some(Ok(diff)) if diff.patch.is_empty() => rsx! {
-                    div { class: "grid min-h-48 place-items-center text-xs text-muted-foreground",
+                    div { class: "grid min-h-48 place-items-center p-8 text-center text-xs text-muted-foreground",
                         "Git reported no textual changes for this file."
                     }
                 },

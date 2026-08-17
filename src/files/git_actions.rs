@@ -2,13 +2,15 @@
     unused_imports,
     reason = "Dioxus expands the parent glob for RSX hot-reload analysis"
 )]
+use std::collections::BTreeSet;
+
 use super::{
-    AnyStorage, DiffKind, FileAction, FileActionDialog, FormExtension, GlobalAttributesExtension,
-    MAX_TEXT_BYTES, MetaExtension, OpenDocument, ReadableExt, ReadableHashMapExt,
-    ReadableHashSetExt, ReadableOptionExt, ReadableResultExt, ReadableStrExt, ReadableVecExt,
-    RelativePath, Signal, SvgAttributesExtension, ToastState, UnifiedDiff, WorkspaceRecord,
-    WritableExt, WritableVecExt, close_documents, git_api, set_error, set_success, spawn,
-    workspace_client,
+    AnyStorage, DiffKind, EditorConfigSource, FileAction, FileActionDialog, FormExtension,
+    GlobalAttributesExtension, MAX_TEXT_BYTES, MetaExtension, OpenDocument, ReadableExt,
+    ReadableHashMapExt, ReadableHashSetExt, ReadableOptionExt, ReadableResultExt, ReadableStrExt,
+    ReadableVecExt, RelativePath, Signal, SvgAttributesExtension, ToastState, UnifiedDiff,
+    WorkspaceRecord, WritableExt, WritableVecExt, close_documents, git_api, open_document,
+    set_error, set_success, spawn, workspace_client,
 };
 
 pub(super) fn toggle_diff(
@@ -170,8 +172,11 @@ pub(super) fn run_file_action(
     dialog: FileActionDialog,
     destination: String,
     workspace: Option<WorkspaceRecord>,
+    editor_configs: Vec<EditorConfigSource>,
     documents: Signal<Vec<OpenDocument>>,
     active_path: Signal<Option<String>>,
+    loading_path: Signal<Option<String>>,
+    loading_documents: Signal<BTreeSet<String>>,
     mut pending: Signal<bool>,
     mut refresh: Signal<u64>,
     toast: Signal<Option<ToastState>>,
@@ -201,50 +206,75 @@ pub(super) fn run_file_action(
         let source_path = dialog
             .source
             .as_ref()
-            .and_then(|source| RelativePath::try_from(source.clone()).ok());
-        let result = match dialog.action {
-            FileAction::CreateFile => {
-                workspace_client::create_file(workspace, destination_path.clone().unwrap())
-                    .await
-                    .map(drop)
+            .map(|source| {
+                RelativePath::try_from(source.clone()).map_err(|error| error.message)
+            })
+            .transpose();
+        let result = async {
+            let source_path = source_path?;
+            match dialog.action {
+                FileAction::CreateFile => {
+                    let destination = destination_path
+                        .clone()
+                        .ok_or_else(|| "Choose a file path.".to_owned())?;
+                    workspace_client::create_file(workspace.clone(), destination)
+                        .await
+                        .map(Some)
+                }
+                FileAction::CreateFolder => {
+                    let destination = destination_path
+                        .clone()
+                        .ok_or_else(|| "Choose a folder path.".to_owned())?;
+                    workspace_client::create_directory(workspace.clone(), destination)
+                        .await
+                        .map(|_| None)
+                }
+                FileAction::Move | FileAction::Duplicate => {
+                    let source = source_path
+                        .ok_or_else(|| "Choose an existing workspace item.".to_owned())?;
+                    let destination = destination_path
+                        .clone()
+                        .ok_or_else(|| "Choose a destination path.".to_owned())?;
+                    if dialog.action == FileAction::Move {
+                        workspace_client::move_entry(workspace.clone(), source, destination).await
+                    } else {
+                        workspace_client::copy_entry(workspace.clone(), source, destination).await
+                    }
+                    .map(|_| None)
+                }
+                FileAction::Delete => {
+                    let source = source_path
+                        .ok_or_else(|| "Choose an existing workspace item.".to_owned())?;
+                    workspace_client::delete_entry(workspace.clone(), source)
+                        .await
+                        .map(|_| None)
+                }
             }
-            FileAction::CreateFolder => {
-                workspace_client::create_directory(workspace, destination_path.clone().unwrap())
-                    .await
-                    .map(drop)
-            }
-            FileAction::Move => {
-                workspace_client::move_entry(
-                    workspace,
-                    source_path.unwrap(),
-                    destination_path.clone().unwrap(),
-                )
-                .await
-            }
-            FileAction::Duplicate => {
-                workspace_client::copy_entry(
-                    workspace,
-                    source_path.unwrap(),
-                    destination_path.clone().unwrap(),
-                )
-                .await
-            }
-            FileAction::Delete => {
-                workspace_client::delete_entry(workspace, source_path.unwrap()).await
-            }
-        };
+        }
+        .await;
         pending.set(false);
         match result {
-            Ok(()) => {
-                if dialog.action == FileAction::Move {
-                    rename_documents(
-                        dialog.source.as_deref().unwrap_or(""),
-                        destination_path.unwrap().as_str(),
+            Ok(created_entry) => {
+                if let Some(entry) = created_entry {
+                    open_document(
+                        entry,
+                        Some(workspace),
+                        editor_configs,
                         documents,
                         active_path,
+                        loading_path,
+                        loading_documents,
+                        None,
                     );
-                } else if dialog.action == FileAction::Delete {
-                    let source = dialog.source.as_deref().unwrap_or("");
+                } else if dialog.action == FileAction::Move {
+                    if let (Some(source), Some(destination)) =
+                        (dialog.source.as_deref(), destination_path.as_ref())
+                    {
+                        rename_documents(source, destination.as_str(), documents, active_path);
+                    }
+                } else if dialog.action == FileAction::Delete
+                    && let Some(source) = dialog.source.as_deref()
+                {
                     let paths = documents
                         .read()
                         .iter()
