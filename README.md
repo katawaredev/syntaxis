@@ -31,6 +31,11 @@ It is not a good fit if you need:
 
 ## What it includes
 
+### Projects
+
+Open an existing server folder, clone a Git repository, or scaffold a new project in a live terminal.
+Projects remain normal directories and continue to work outside Syntaxis.
+
 ### Files and editor
 
 Browse and search the project, open multiple files, find and replace text, view images, inspect diffs,
@@ -66,14 +71,9 @@ detect listening processes associated with the current project.
 The preview gateway supports HTTP and WebSockets, so common hot-reload setups continue to work.
 Previews are private by default and can optionally receive a separate revocable share link.
 
-### Projects
+### Coding agent
 
-Open an existing server folder, clone a Git repository, or scaffold a new project in a live terminal.
-Projects remain normal directories and continue to work outside Syntaxis.
-
-### Optional coding agent
-
-Syntaxis includes an optional interface for the [Pi coding agent](https://pi.dev/). It uses Pi's
+Syntaxis includes an interface for the [Pi coding agent](https://pi.dev/). It uses Pi's
 native RPC mode and Pi's existing provider configuration, sessions, prompts, skills, and extensions.
 None of the editor, terminal, Git, project, or preview features require it.
 
@@ -90,7 +90,7 @@ phone, tablet, or desktop browser
 ```
 
 The supported production deployment is a container on Linux. Project directories are mounted into
-the container, and a persistent home stores installed tools and optional Pi data.
+the container, and a persistent home stores installed tools and Pi data.
 
 Syntaxis performs file operations and starts terminals, Git, language servers, project commands, and
 other tools with the runtime user's permissions. It is not an SSH gateway or a security boundary
