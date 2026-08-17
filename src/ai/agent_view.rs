@@ -112,7 +112,7 @@ fn RemoteAgent(
         mut client,
         ..
     } = runtime;
-    let mut drawer = use_signal(|| false);
+    let mut drawer = use_context::<super::AiDrawerState>().open;
     let mut sidebar_open = use_signal(|| true);
     let mut panel = use_signal(|| {
         if settings_section.is_some() {
@@ -328,7 +328,7 @@ fn RemoteAgent(
                     restore_focus: "button[aria-label='Open AI sidebar']",
                     on_close: move |()| drawer.set(false),
                     div { class: "flex h-full min-h-0 flex-col",
-                        AiSidebarTabs { panel, on_change: move |_| drawer.set(false) }
+                        AiSidebarTabs { panel, on_change: move |_| {} }
                         if panel() == AiPanel::Chat {
                             div { class: "min-h-0 flex-1",
                                 AgentSessionSidebar {
@@ -377,7 +377,6 @@ fn RemoteAgent(
                                 on_selected: {
                                     let workspace_slug = workspace_slug.clone();
                                     move |section| {
-                                        drawer.set(false);
                                         navigator
                                             .push(crate::app::Route::AiSettings {
                                                 slug: workspace_slug.clone(),

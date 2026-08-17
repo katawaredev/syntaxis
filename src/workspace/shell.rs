@@ -28,6 +28,8 @@ pub fn WorkspaceShell() -> Element {
         revision: use_signal(|| 0),
     };
     use_context_provider(|| event_state);
+    let mut ai_drawer = use_signal(|| false);
+    use_context_provider(|| crate::ai::AiDrawerState { open: ai_drawer });
     let route = use_route::<Route>();
     let (slug, active) = match route {
         Route::Files { slug, .. } => (slug, WorkspaceSection::Files),
@@ -37,6 +39,17 @@ pub fn WorkspaceShell() -> Element {
         Route::Ai { slug, .. } | Route::AiSettings { slug, .. } => (slug, WorkspaceSection::Ai),
         Route::Home {} => ("syntaxis".into(), WorkspaceSection::Files),
     };
+    let mut drawer_workspace = use_signal(|| None::<String>);
+    use_effect(use_reactive((&active, &slug), move |(active, slug)| {
+        if active != WorkspaceSection::Ai {
+            ai_drawer.set(false);
+            return;
+        }
+        if drawer_workspace() != Some(slug.clone()) {
+            drawer_workspace.set(Some(slug.clone()));
+            ai_drawer.set(false);
+        }
+    }));
     let workspace_list = use_context::<WorkspaceListCache>();
     use_effect(move || workspace_list.ensure());
     let workspaces = workspace_list.records();

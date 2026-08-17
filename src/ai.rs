@@ -1,3 +1,10 @@
+use dioxus::prelude::Signal;
+
+#[derive(Clone, Copy)]
+pub(crate) struct AiDrawerState {
+    pub(crate) open: Signal<bool>,
+}
+
 mod agent_view;
 pub(crate) mod api;
 mod components;
