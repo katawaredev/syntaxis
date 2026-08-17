@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 use dioxus_primitives::collapsible::{Collapsible, CollapsibleContent, CollapsibleTrigger};
 use dioxus_primitives::popover::{PopoverContent, PopoverRoot, PopoverTrigger};
 use syntaxis_agent::{AgentSnapshot, ModelSummary, SessionStats, ThinkingLevel};
-use syntaxis_ui::prelude::{AppIcon, BrandIcon, BrandMark, Icon, IconButton};
+use syntaxis_ui::prelude::{AppIcon, Icon, IconButton, ProviderIcon};
 
 mod composer;
 mod extension_dialog;

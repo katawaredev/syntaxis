@@ -86,21 +86,31 @@ pub(super) fn ProviderAccounts(
                     p { class: "rounded-lg bg-destructive/10 p-3 text-xs text-destructive", "{load_error}" }
                 },
                 Some(Ok(items)) => rsx! {
-                    div { class: "divide-y divide-border overflow-hidden rounded-xl border border-border bg-background",
+                    div { class: "grid divide-y divide-border overflow-hidden rounded-xl border border-border bg-background @max-[520px]:gap-2 @max-[520px]:divide-y-0 @max-[520px]:overflow-visible @max-[520px]:border-0 @max-[520px]:bg-transparent",
                         for provider in items {
                             div {
                                 key: "{provider.id}",
-                                class: "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-4 py-3 @max-[520px]:grid-cols-1 @max-[520px]:gap-2",
-                                div { class: "min-w-0 flex-1",
-                                    strong { class: "block truncate text-xs font-medium", "{provider.name}" }
-                                    small { class: if provider.configured { "mt-0.5 block break-words text-[10px] text-success" } else { "mt-0.5 block break-words text-[10px] text-muted-foreground" },
-                                        if provider.configured {
-                                            "Connected · "
+                                class: "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-4 py-3 transition-colors hover:bg-muted/25 @max-[520px]:grid-cols-1 @max-[520px]:gap-3 @max-[520px]:rounded-xl @max-[520px]:border @max-[520px]:border-border @max-[520px]:bg-background/80 @max-[520px]:p-3 @max-[520px]:shadow-sm",
+                                div { class: "flex min-w-0 items-center gap-3",
+                                    span {
+                                        class: "grid size-9 shrink-0 place-items-center rounded-xl border border-primary/15 bg-primary/8 text-primary shadow-xs",
+                                        ProviderIcon {
+                                            provider: provider.id.clone(),
+                                            size: 18,
                                         }
-                                        "{provider.status}"
+                                    }
+                                    div { class: "min-w-0 flex-1",
+                                        strong { class: "block truncate text-xs font-semibold", "{provider.name}" }
+                                        small { class: if provider.configured { "mt-0.5 flex items-center gap-1.5 break-words text-[10px] leading-relaxed text-success" } else { "mt-0.5 block break-words text-[10px] leading-relaxed text-muted-foreground" },
+                                            if provider.configured {
+                                                span { class: "size-1.5 shrink-0 rounded-full bg-success shadow-[0_0_0_3px_color-mix(in_oklab,var(--color-success)_14%,transparent)]" }
+                                                "Connected · "
+                                            }
+                                            "{provider.status}"
+                                        }
                                     }
                                 }
-                                div { class: "flex shrink-0 flex-wrap justify-end gap-1.5 @max-[520px]:w-full @max-[520px]:justify-start",
+                                div { class: "flex shrink-0 flex-wrap justify-end gap-1.5 @max-[520px]:w-full @max-[520px]:justify-start @max-[520px]:border-t @max-[520px]:border-border/70 @max-[520px]:pt-2.5 @max-[360px]:[&>button]:flex-1",
                                     for method in provider.methods.clone() {
                                         Button {
                                             label: match method.auth_type {

@@ -14,6 +14,7 @@ mod input;
 mod menu;
 mod panel;
 mod project_badge;
+mod provider_icon;
 mod select;
 mod size;
 mod slide_to_confirm;
@@ -39,6 +40,7 @@ pub use panel::{
     PanelHeader, PanelHeaderKind, PanelTab, PanelTabIndicator, PanelTabList, PanelTabWidth,
 };
 pub use project_badge::{ProjectLanguageBadge, ProjectTechnologyBadge};
+pub use provider_icon::ProviderIcon;
 pub use select::Select;
 pub use size::ControlSize;
 pub use slide_to_confirm::SlideToConfirm;
@@ -52,7 +54,8 @@ pub mod prelude {
         DialogActions, DialogForm, Drawer, EmptyState, Field, FileIcon, GitChangeBadge, Icon,
         IconButton, MenuButtonTrigger, MenuContent, MenuTrigger, Modal, PanelHeader,
         PanelHeaderKind, PanelTab, PanelTabIndicator, PanelTabList, PanelTabWidth,
-        ProjectLanguageBadge, ProjectTechnologyBadge, ProjectTemplateIcon, Select, SlideToConfirm,
-        StatusBadge, TemplateIcon, TextArea, TextAreaResize, TextInput, TextInputType, Toast, Tone,
+        ProjectLanguageBadge, ProjectTechnologyBadge, ProjectTemplateIcon, ProviderIcon, Select,
+        SlideToConfirm, StatusBadge, TemplateIcon, TextArea, TextAreaResize, TextInput,
+        TextInputType, Toast, Tone,
     };
 }

@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 use serde_json::{Value, json};
 use syntaxis_ui::prelude::{
-    AppIcon, Button, ButtonKind, DialogActions, DialogForm, IconButton, Modal, Tone,
+    AppIcon, Button, ButtonKind, DialogActions, DialogForm, IconButton, Modal, ProviderIcon, Tone,
 };
 
 use super::{

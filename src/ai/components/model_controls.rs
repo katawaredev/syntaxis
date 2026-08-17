@@ -57,7 +57,7 @@ pub(super) fn ModelPicker(
                 aria_expanded: open(),
                 disabled: disabled || models.is_empty(),
                 span { class: "grid size-5 shrink-0 place-items-center rounded-md bg-primary/10 text-primary",
-                    ProviderMark { provider: selected_provider.clone(), size: 12 }
+                    ProviderIcon { provider: selected_provider.clone(), size: 12 }
                 }
                 span { class: "min-w-0 flex-1 max-[520px]:hidden",
                     strong { class: "block truncate text-[11px] font-medium", "{selected_name}" }
@@ -145,7 +145,7 @@ pub(super) fn ModelPicker(
                                     class: "not-first:mt-1.5",
                                     div { class: "sticky top-0 z-1 flex h-8 items-center gap-2 bg-popover/95 px-2.5 text-[9px] font-semibold tracking-wide text-muted-foreground uppercase backdrop-blur-sm",
                                         span { class: "grid size-5 place-items-center rounded-md bg-primary/10 text-primary",
-                                            ProviderMark {
+                                            ProviderIcon {
                                                 provider: provider.clone(),
                                                 size: 11,
                                             }
@@ -272,27 +272,6 @@ fn ModelRow(model: ModelSummary, on_select: EventHandler<ModelSummary>) -> Eleme
 }
 
 #[component]
-fn ProviderMark(provider: String, size: u32) -> Element {
-    let normalized = provider.to_ascii_lowercase();
-    if normalized.contains("openai") || normalized.contains("codex") {
-        rsx! {
-            BrandMark { icon: BrandIcon::OpenAi, size }
-        }
-    } else if normalized.contains("google") || normalized.contains("gemini") {
-        rsx! {
-            Icon { icon: AppIcon::Sparkles, size }
-        }
-    } else if normalized.contains("anthropic") || normalized.contains("claude") {
-        rsx! {
-            span { class: "font-serif text-[1em] font-bold", "A" }
-        }
-    } else {
-        rsx! {
-            Icon { icon: AppIcon::Bot, size }
-        }
-    }
-}
-
 fn filter_models(models: Vec<ModelSummary>, query: &str) -> Vec<ModelSummary> {
     let query = query.trim().to_ascii_lowercase();
     let free_query = query == "free";
