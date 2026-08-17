@@ -101,39 +101,34 @@
   syncViewport();
 
   // The dropdown primitive prevents pointerdown to keep focus in the menu.
-  // WebKit consequently drops both compatibility clicks and native scrolling.
-  // Recreate those touch semantics, and provide the same pan fallback for the
-  // two drawer lists that WebKit can otherwise strand inside a modal dialog.
-  const webkitTouch =
-    navigator.maxTouchPoints > 0 && CSS.supports?.("-webkit-touch-callout", "none");
-  let touchPan = null;
+  // WebKit consequently drops both compatibility clicks and native scrolling,
+  // so recreate only the menu's missing touch semantics here. Regular drawer
+  // regions use native overflow scrolling configured in CSS.
+  let menuPan = null;
   let suppressTouchClick = null;
+  const suppressClickIn = (container) => {
+    suppressTouchClick = container;
+    window.setTimeout(() => {
+      if (suppressTouchClick === container) suppressTouchClick = null;
+    }, 500);
+  };
+
   document.addEventListener(
     "pointerdown",
     (event) => {
       if (event.pointerType !== "touch") return;
       const menu = event.target.closest?.(".syntaxis-menu-content");
-      const scrollRegion = event.target.closest?.(".touch-scroll-region");
-      const container =
-        menu instanceof HTMLElement
-          ? menu
-          : webkitTouch && scrollRegion instanceof HTMLElement
-            ? scrollRegion
-            : null;
-      if (!container) return;
-      const action =
-        menu instanceof HTMLElement
-          ? event.target.closest?.("[role='option'], button, a[href]")
-          : null;
-      touchPan = {
-        container,
+      if (!(menu instanceof HTMLElement)) return;
+      const action = event.target.closest?.("[role='option'], button, a[href]");
+      menuPan = {
+        container: menu,
         action: action instanceof HTMLElement && menu.contains(action) ? action : null,
         pointerId: event.pointerId,
         startX: event.clientX,
         startY: event.clientY,
         lastY: event.clientY,
         moved: false,
-        scrollable: container.scrollHeight > container.clientHeight,
+        scrollable: menu.scrollHeight > menu.clientHeight,
       };
     },
     true,
@@ -141,41 +136,38 @@
   document.addEventListener(
     "pointermove",
     (event) => {
-      if (!touchPan || event.pointerId !== touchPan.pointerId || !touchPan.scrollable) return;
-      const distanceX = Math.abs(event.clientX - touchPan.startX);
-      const distanceY = Math.abs(event.clientY - touchPan.startY);
-      if (!touchPan.moved && (distanceY < 6 || distanceY <= distanceX)) return;
-      touchPan.moved = true;
-      touchPan.container.scrollTop += touchPan.lastY - event.clientY;
-      touchPan.lastY = event.clientY;
+      if (!menuPan || event.pointerId !== menuPan.pointerId || !menuPan.scrollable) return;
+      const distanceX = Math.abs(event.clientX - menuPan.startX);
+      const distanceY = Math.abs(event.clientY - menuPan.startY);
+      if (!menuPan.moved && (distanceY < 6 || distanceY <= distanceX)) return;
+      menuPan.moved = true;
+      menuPan.container.scrollTop += menuPan.lastY - event.clientY;
+      menuPan.lastY = event.clientY;
       event.preventDefault();
     },
     true,
   );
-  const finishTouchPan = (event) => {
-    if (!touchPan || event.pointerId !== touchPan.pointerId) return;
-    if (touchPan.moved) {
-      const container = touchPan.container;
-      suppressTouchClick = container;
-      window.setTimeout(() => {
-        if (suppressTouchClick === container) suppressTouchClick = null;
-      }, 500);
+  const finishMenuPan = (event) => {
+    if (!menuPan || event.pointerId !== menuPan.pointerId) return;
+    if (menuPan.moved) {
+      suppressClickIn(menuPan.container);
     } else if (
       event.type === "pointerup" &&
-      touchPan.action &&
-      !touchPan.action.hasAttribute("disabled") &&
-      touchPan.action.dataset.disabled !== "true"
+      menuPan.action &&
+      !menuPan.action.hasAttribute("disabled") &&
+      menuPan.action.dataset.disabled !== "true"
     ) {
       // HTMLElement.click() produces the click the dropdown's prevented
       // pointerdown suppresses on iOS. Prevent pointerup from adding a second.
       event.preventDefault();
       event.stopImmediatePropagation();
-      touchPan.action.click();
+      menuPan.action.click();
     }
-    touchPan = null;
+    menuPan = null;
   };
-  document.addEventListener("pointerup", finishTouchPan, true);
-  document.addEventListener("pointercancel", finishTouchPan, true);
+  document.addEventListener("pointerup", finishMenuPan, true);
+  document.addEventListener("pointercancel", finishMenuPan, true);
+
   document.addEventListener(
     "click",
     (event) => {

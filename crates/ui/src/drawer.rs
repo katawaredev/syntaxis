@@ -23,11 +23,11 @@ pub fn Drawer(
                     restore_focus_after_drawer(&restore_after_dismiss);
                 }
             },
-            class: "mobile-drawer-root fixed inset-0 z-100 grid touch-pan-y place-items-stretch overscroll-contain bg-background/75 backdrop-blur-sm",
+            class: "mobile-drawer-root fixed inset-0 z-100 grid touch-auto place-items-stretch overscroll-contain bg-background/75 backdrop-blur-sm",
             DialogContent {
-                class: "mobile-drawer-content min-h-0 overflow-hidden {content_class} max-w-[86vw] touch-pan-y overscroll-contain shadow-2xl",
+                class: "mobile-drawer-content flex min-h-0 flex-col overflow-hidden {content_class} max-w-[86vw] touch-auto overscroll-contain shadow-2xl",
                 "aria-label": label,
-                div { class: "flex h-12 items-center justify-between border-b border-border px-2.5",
+                div { class: "flex h-12 shrink-0 items-center justify-between border-b border-border px-2.5",
                     DialogTitle { {title} }
                     button {
                         class: "inline-flex size-8.5 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground",
@@ -39,7 +39,7 @@ pub fn Drawer(
                         Icon { icon: AppIcon::Close }
                     }
                 }
-                {children}
+                div { class: "min-h-0 flex-1 overflow-hidden", {children} }
             }
         }
     }

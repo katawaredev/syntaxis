@@ -130,22 +130,20 @@
 .mobile-drawer-content {
   min-height: 0;
   overflow: hidden;
-  touch-action: pan-y;
+  touch-action: auto;
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
 }
-.touch-scroll-region {
+
+.touch-scroll-region,
+.mobile-drawer-content .overflow-y-auto {
   touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
 }
 
-@supports (-webkit-touch-callout: none) {
-  @media (pointer: coarse) {
-    .touch-scroll-region {
-      /* ui.js owns the pan when WebKit strands a scroller in a dialog. */
-      touch-action: none;
-    }
-  }
+.mobile-drawer-content .overflow-auto {
+  touch-action: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 :where(.overflow-auto, .overflow-y-auto, .overflow-x-auto) {
