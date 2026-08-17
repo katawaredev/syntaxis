@@ -59,7 +59,7 @@ struct LoginForm {
 
 pub(crate) fn serve() -> ! {
     let state = AuthState::from_environment()
-        .unwrap_or_else(|message| panic!("Syntaxis authentication configuration error: {message}"));
+        .unwrap_or_else(|message| panic!("Authentication configuration error: {message}"));
 
     dioxus::serve(move || {
         let state = state.clone();

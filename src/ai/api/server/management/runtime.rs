@@ -113,7 +113,7 @@ fn truncate(value: &str, max_bytes: usize) -> String {
     while !value.is_char_boundary(end) {
         end -= 1;
     }
-    format!("{}\n\n…truncated by Syntaxis…", value[..end].trim())
+    format!("{}\n\n…output truncated…", value[..end].trim())
 }
 
 pub(super) fn command_failure(output: &std::process::Output) -> String {

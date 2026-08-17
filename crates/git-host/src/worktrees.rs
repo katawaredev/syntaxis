@@ -153,7 +153,7 @@ impl WorktreeOperations for HostGit {
             .ok_or_else(|| invalid_request("The worktree no longer exists."))?;
         if !worktree.is_managed() {
             return Err(invalid_request(
-                "Only worktrees managed by Syntaxis can be removed here.",
+                "Only application-managed worktrees can be removed here.",
             ));
         }
         let target_root = self
@@ -307,7 +307,7 @@ impl HostGit {
         if !existing.is_empty() && !existing.ends_with('\n') {
             existing.push('\n');
         }
-        existing.push_str("# Syntaxis managed worktrees\n");
+        existing.push_str("# Application-managed worktrees\n");
         existing.push_str(rule);
         existing.push('\n');
         std::fs::write(path, existing).map_err(|_| {

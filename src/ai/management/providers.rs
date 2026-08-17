@@ -70,7 +70,7 @@ pub(super) fn ProviderAccounts(
             div { class: "px-1",
                 h3 { class: "text-sm font-semibold", "Provider accounts" }
                 p { class: "mt-1 text-xs leading-relaxed text-muted-foreground",
-                    "Connect subscriptions or store API keys using Pi's authentication flows. Credentials are kept by Pi on the Syntaxis host."
+                    "Connect subscriptions or store API keys using Pi's authentication flows. Credentials are stored by Pi on the application host."
                 }
             }
             if let Some(message) = error() {

@@ -26,7 +26,7 @@ pub(super) fn FreeRuntimeSpaceDialog(
     rsx! {
         Modal {
             title: "Free up space",
-            description: "Choose what Syntaxis should remove. Everything listed here can be downloaded or installed again later.",
+            description: "Choose what should be removed. Everything listed here can be downloaded or installed again later.",
             on_close: move |()| {
                 if !pending {
                     dialog.set(HomeDialog::None);
@@ -48,7 +48,7 @@ pub(super) fn FreeRuntimeSpaceDialog(
                     checked: remove_mise(),
                     disabled: pending,
                     title: "Tools installed with Mise".to_owned(),
-                    description: "Removes Node.js, Rust, and other tool versions managed by Mise. Syntaxis can reinstall them from your project setup files."
+                    description: "Removes Node.js, Rust, and other tool versions managed by Mise. They can be reinstalled from your project setup files."
                         .to_owned(),
                     on_checked_change: move |checked| {
                         remove_mise.set(checked);
@@ -78,7 +78,7 @@ pub(super) fn FreeRuntimeSpaceDialog(
                             on_confirmed: move |confirmed| removal_confirmed.set(confirmed),
                         }
                         small { class: "block px-1 text-[10px] text-muted-foreground",
-                            "Applies to every project in Syntaxis. Your project files, settings, credentials, lockfiles, and AI sessions will not be deleted."
+                            "Applies to every project in this workspace. Your project files, settings, credentials, lockfiles, and AI sessions will not be deleted."
                         }
                     }
                 }
@@ -143,7 +143,7 @@ pub(super) fn FreeRuntimeSpaceDialog(
                                         request
                                             .set(
                                                 RequestState::Error(
-                                                    "Syntaxis couldn't finish everything you selected. Some items may already have been removed.",
+                                                    "Not everything you selected could be removed. Some items may already have been removed.",
                                                 ),
                                             );
                                     }

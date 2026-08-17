@@ -98,7 +98,7 @@ pub fn WorkspaceShell() -> Element {
             WORKSPACES
                 .iter()
                 .find(|workspace| workspace.slug == slug)
-                .map_or("Syntaxis", |workspace| workspace.name)
+                .map_or("Workspace", |workspace| workspace.name)
         },
         |workspace| workspace.name.as_str(),
     );
@@ -163,7 +163,7 @@ pub fn WorkspaceShell() -> Element {
                     }
                 } else {
                     div { class: "grid size-7 shrink-0 place-items-center rounded-md bg-linear-to-br from-primary to-primary/60 text-xs font-bold text-primary-foreground",
-                        "S"
+                        "W"
                     }
                 }
                 div { class: "flex min-w-0 items-center gap-2",

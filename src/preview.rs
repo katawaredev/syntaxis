@@ -561,7 +561,7 @@ fn WorkspacePreview(workspace_id: String) -> Element {
                                 "Start the project dev server in Terminal, bind it to 127.0.0.1, then enter its runtime port here."
                             }
                             p { class: "mt-2 text-xs text-muted-foreground",
-                                "The port remains private; browser traffic passes through an authenticated Syntaxis gateway."
+                                "The port remains private; browser traffic passes through an authenticated gateway."
                             }
                         }
                     }

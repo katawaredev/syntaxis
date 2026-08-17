@@ -82,7 +82,7 @@ pub(super) async fn create_preview_lease(
                 .await
                 .ok_or_else(|| {
                     unavailable(format!(
-                        "Could not connect to loopback port {port} from the Syntaxis runtime. \
+                        "Could not connect to loopback port {port} from the application runtime. \
                          Make sure the server is listening on 127.0.0.1, ::1, or a wildcard interface."
                     ))
                 })?

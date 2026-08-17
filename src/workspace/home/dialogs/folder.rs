@@ -10,7 +10,7 @@ use crate::workspace::home::{HomeDialog, RuntimePresentation};
 const MISSING_FOLDER_ERROR: &str =
     "That folder is no longer available. Choose another project directory.";
 const PERMISSION_ERROR: &str =
-    "Syntaxis does not have permission to open that folder. Check its permissions and try again.";
+    "This application does not have permission to open that folder. Check its permissions and try again.";
 const OUTSIDE_ROOT_ERROR: &str =
     "That folder is outside the roots exposed by the connected runtime.";
 const INVALID_PATH_ERROR: &str = "Use no more than one leading slash in the folder path.";

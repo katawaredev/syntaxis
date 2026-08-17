@@ -23,7 +23,7 @@ pub(crate) async fn update_pi_setting(
     let definition = PI_SETTING_DEFINITIONS
         .iter()
         .find(|definition| definition.path == path)
-        .ok_or_else(|| client_error("This Pi setting is not exposed by Syntaxis"))?;
+        .ok_or_else(|| client_error("This Pi setting is not available in the settings interface"))?;
     validate_setting_value(definition.kind, &value)?;
     let (node, manager) = settings_manager_module()?;
     let script = r"import { pathToFileURL } from 'node:url';
@@ -65,7 +65,7 @@ async fn settings_snapshot(root: &Path) -> Result<PiSettingsSnapshot, ServerFnEr
     let compatible = version_compatible && manager_available;
     let compatibility_message = if !version_compatible {
         Some(format!(
-            "This Syntaxis build generated its settings UI from Pi {PI_SETTINGS_SCHEMA_VERSION}; the server's Pi {pi_version} has a different major version. Update Syntaxis before editing settings."
+            "This settings interface was generated from Pi {PI_SETTINGS_SCHEMA_VERSION}; the server's Pi {pi_version} has a different major version. Update the application before editing settings."
         ))
     } else if !manager_available {
         Some("This Pi installation does not expose the SettingsManager module required for locked writes. Reading remains available.".into())

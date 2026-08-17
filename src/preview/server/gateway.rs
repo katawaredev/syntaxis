@@ -518,7 +518,7 @@ fn local_preview_base_url(
     };
     if !local {
         return Err(request_error(
-            "Set SYNTAXIS_PREVIEW_ORIGIN to an HTTP(S) origin whose wildcard subdomains route to Syntaxis.",
+            "Set SYNTAXIS_PREVIEW_ORIGIN to an HTTP(S) origin whose wildcard subdomains route to this application.",
             503,
         ));
     }
@@ -692,7 +692,7 @@ fn unauthorized() -> Response {
 fn bad_gateway(lease: &Lease) -> Response {
     gateway_error(
         StatusCode::BAD_GATEWAY,
-        "The preview service is no longer reachable. Restart it and reconnect from Syntaxis.",
+        "The preview service is no longer reachable. Restart it and reconnect from the workspace.",
         lease,
     )
 }

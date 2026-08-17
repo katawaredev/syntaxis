@@ -16,9 +16,9 @@ pub struct MockWorkspace {
 
 pub const WORKSPACES: [MockWorkspace; 4] = [
     MockWorkspace {
-        slug: "syntaxis",
-        name: "Syntaxis",
-        path: "/home/alex/projects/syntaxis",
+        slug: "sample-project",
+        name: "Sample Project",
+        path: "/home/alex/projects/sample-project",
         icon: "S",
         recent: "Just now",
         state: WorkspaceState::Available,

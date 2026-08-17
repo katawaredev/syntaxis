@@ -43,7 +43,7 @@ pub(super) fn WorkspaceNotesDialog(
     rsx! {
         Modal {
             title: format!("Notes for {}", workspace.name),
-            description: "Private notes stored with this workspace's Syntaxis data.",
+            description: "Private notes stored with this workspace's application data.",
             content_class: "max-w-170".to_owned(),
             on_close: move |()| {
                 if !saving() {

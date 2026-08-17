@@ -179,7 +179,7 @@ pub(super) fn BootstrapProjectDialog(
                         }
                     }
                     p { class: "text-xs leading-relaxed text-muted-foreground",
-                        "This creates a checkout-local mise.local.toml. For Git repositories, Syntaxis also excludes that file and its lockfile from commits."
+                        "This creates a checkout-local mise.local.toml. For Git repositories, that file and its lockfile are also excluded from commits."
                     }
                     DialogActions {
                         Button {

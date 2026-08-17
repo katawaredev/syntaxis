@@ -250,7 +250,7 @@ pub(super) fn reconcile_workspace_change(
                     .unwrap_or(false);
                 if should_report {
                     let detail = if kind == ChangeKind::Removed {
-                        "was removed outside Syntaxis".to_owned()
+                        "was removed outside the editor".to_owned()
                     } else {
                         format!("could not be reloaded: {message}")
                     };

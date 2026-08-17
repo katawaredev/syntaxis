@@ -219,7 +219,7 @@ impl HostWorkspaceFiles {
         {
             return Err(WorkspaceError::new(
                 ErrorCode::Conflict,
-                "The file changed outside Syntaxis. Reload it before saving.",
+                "The file changed outside the editor. Reload it before saving.",
             ));
         }
 

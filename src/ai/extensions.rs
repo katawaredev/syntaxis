@@ -257,7 +257,7 @@ fn PackageConfirmation(
             },
             DialogForm {
                 if !uninstalling {
-                    DangerNote { message: "Review the package source before installing. Syntaxis does not sandbox Pi packages." }
+                    DangerNote { message: "Review the package source before installing. Pi packages are not sandboxed." }
                 }
                 DialogActions {
                     Button {

@@ -50,7 +50,7 @@ pub(super) fn validate_target(target: &PreviewTarget) -> Result<Url, ServerFnErr
             == url.port_or_known_default()
     {
         return Err(request_error(
-            "The Syntaxis server cannot be used as a preview target.",
+            "The application server cannot be used as a preview target.",
             400,
         ));
     }
@@ -71,7 +71,7 @@ fn validate_port(port: u16) -> Result<(), ServerFnError> {
         == Some(port)
     {
         return Err(request_error(
-            "The Syntaxis server port cannot be used as a preview target.",
+            "The application server port cannot be used as a preview target.",
             400,
         ));
     }
@@ -115,7 +115,7 @@ pub(super) async fn probe_target(upstream: &Url) -> Result<(), ServerFnError> {
     .map_err(|_| unavailable("The preview target did not respond in time."))?;
     response.map_err(|_| {
         unavailable(format!(
-            "Could not connect to {} from the Syntaxis runtime.",
+            "Could not connect to {} from the application runtime.",
             target_label(upstream)
         ))
     })?;
