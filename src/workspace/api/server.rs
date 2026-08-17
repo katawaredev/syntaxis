@@ -212,8 +212,8 @@ pub(super) async fn clear_runtime_caches() -> Result<usize, ServerFnError> {
 pub(super) async fn clear_runtime_tools() -> Result<usize, ServerFnError> {
     tokio::task::spawn_blocking(crate::workspace::runtime_cache::purge_tools)
         .await
-        .map_err(|_| runtime_cache_error("The runtime tool cleanup task failed"))?
-        .map_err(runtime_cache_error)
+        .map_err(|_| internal_server_error("The runtime tool cleanup task failed"))?
+        .map_err(internal_server_error)
 }
 
 async fn run_mise(arguments: &[&str]) -> Result<(), ServerFnError> {
