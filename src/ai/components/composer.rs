@@ -34,6 +34,7 @@ pub(crate) fn AgentComposer(
     mut draft: Signal<String>,
     mut attachments: Signal<Vec<ImageAttachment>>,
     mut composer_error: Signal<Option<String>>,
+    agent_name: String,
     connected: bool,
     working: bool,
     pending_messages: usize,
@@ -213,8 +214,8 @@ pub(crate) fn AgentComposer(
                             rows: 3,
                             value: draft(),
                             disabled: !connected,
-                            placeholder: if working { "Steer the agent while it works…" } else { "Ask agent to change or inspect this project…" },
-                            aria_label: "Message agent",
+                            placeholder: if working { format!("Steer {agent_name} while it works…") } else { format!("Ask {agent_name} to change or inspect this project…") },
+                            aria_label: "Message {agent_name}",
                             "data-images-enabled": accepts_images && connected,
                             ontouchstart: move |_| touch_input.set(true),
                             oninput: move |event| {
@@ -366,7 +367,7 @@ pub(crate) fn AgentComposer(
                         div { class: "ml-auto flex shrink-0 items-center gap-1",
                             if working {
                                 IconButton {
-                                    label: "Stop agent",
+                                    label: format!("Stop {agent_name}"),
                                     icon: AppIcon::Stop,
                                     danger: true,
                                     onclick: move |_| on_abort.call(()),
@@ -375,8 +376,8 @@ pub(crate) fn AgentComposer(
                             button {
                                 class: "grid size-8.5 place-items-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-35",
                                 disabled: !can_send,
-                                aria_label: if working { "Steer agent" } else { "Send message" },
-                                title: if working { "Steer agent" } else { "Send message" },
+                                aria_label: if working { format!("Steer {agent_name}") } else { "Send message".to_owned() },
+                                title: if working { format!("Steer {agent_name}") } else { "Send message".to_owned() },
                                 onclick: move |_| {
                                     submit_composer(
                                         can_send,

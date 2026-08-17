@@ -11,6 +11,7 @@ const RENDER_PAGE_ITEMS: usize = 100;
 pub(crate) fn AgentTimeline(
     items: Vec<ChatItem>,
     status: AgentStatus,
+    agent_name: String,
     loading: bool,
     creating: bool,
     unavailable: bool,
@@ -96,7 +97,7 @@ pub(crate) fn AgentTimeline(
                             if status == AgentStatus::Compacting {
                                 "Compacting context…"
                             } else {
-                                "Agent is working…"
+                                "{agent_name} is working…"
                             }
                         }
                     }

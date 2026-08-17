@@ -229,6 +229,10 @@ fn RemoteAgent(
         current.status,
         AgentStatus::Working | AgentStatus::Compacting
     );
+    let agent_name = current
+        .model
+        .as_ref()
+        .map_or_else(|| "Agent".to_owned(), |model| model.name.clone());
     let accepts_images = current
         .model
         .as_ref()
@@ -443,6 +447,7 @@ fn RemoteAgent(
                         AgentTimeline {
                             items: current.items.clone(),
                             status: current.status,
+                            agent_name: agent_name.clone(),
                             loading: session_loading(),
                             creating: creating_session() && draft_session(),
                             unavailable: connection_failed,
@@ -477,6 +482,7 @@ fn RemoteAgent(
                             draft,
                             attachments,
                             composer_error,
+                            agent_name,
                             connected: composer_connected,
                             working: is_working,
                             pending_messages: current.pending_messages,
