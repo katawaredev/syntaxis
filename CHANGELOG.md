@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.9.2](https://github.com/katawaredev/syntaxis/compare/v0.9.1...v0.9.2) (2026-08-17)
+
+
+### Bug Fixes
+
+* **ai:** provider icons ([4447dc9](https://github.com/katawaredev/syntaxis/commit/4447dc9a3cbeacd0ef71fb8f71d87de367725b28))
+* **ai:** use agent's name instead of generic name ([dd89195](https://github.com/katawaredev/syntaxis/commit/dd891955e0d4d4681d4ed708675125ed3afa022b))
+* better handling of new files ([7d94d0c](https://github.com/katawaredev/syntaxis/commit/7d94d0ca32ad170c51b9a910d03b75b8a11728b5))
+* build failing ([559fc1e](https://github.com/katawaredev/syntaxis/commit/559fc1e83a57345176d1834477d8fcc6fc9c65c8))
+* **ui:** drawer touch scrolling ([83c8cd6](https://github.com/katawaredev/syntaxis/commit/83c8cd667e7982d19164098af1b9ee8e655e71fe))
+* **ui:** more neutral app descriptions ([f511866](https://github.com/katawaredev/syntaxis/commit/f511866485037c5c37df26fb3c00a47b94aa43f8))
+* web socket compatibility for older browsers ([3a4fe06](https://github.com/katawaredev/syntaxis/commit/3a4fe06d1e03825f037134962de700e6f94f02e4))
+* **workspace:** faster recent projects loading ([489b28c](https://github.com/katawaredev/syntaxis/commit/489b28c4af24902176fd759581931f4102e80826))
+* wrong import ([c4b5228](https://github.com/katawaredev/syntaxis/commit/c4b52288ade45c6484e87f482931f4a2ad3ec176))
+
 ## [0.9.1](https://github.com/katawaredev/syntaxis/compare/v0.9.0...v0.9.1) (2026-08-16)
 
 
