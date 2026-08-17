@@ -368,10 +368,7 @@ impl WorkspaceRegistryStore {
             // Registered roots are canonicalized before they are persisted. Keep listing
             // metadata-only while rejecting malformed or out-of-policy stored paths;
             // security-sensitive operations still revalidate against the filesystem.
-            .filter(|record| {
-                self.policy
-                    .permits_stored_root(Path::new(&record.root))
-            })
+            .filter(|record| self.policy.permits_stored_root(Path::new(&record.root)))
             .cloned()
             .map(StoredWorkspace::into_record)
             .collect::<Vec<_>>();
@@ -398,6 +395,10 @@ impl WorkspaceRegistryStore {
     }
 
     /// Resolves filesystem availability away from the latency-sensitive metadata listing.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the workspace registry cannot be locked or read.
     pub fn list_with_availability(&self) -> WorkspaceResult<Vec<WorkspaceRecord>> {
         self.list_records().map(|records| {
             records
@@ -408,10 +409,7 @@ impl WorkspaceRegistryStore {
     }
 
     fn resolve_list_record_availability(&self, mut record: WorkspaceRecord) -> WorkspaceRecord {
-        if !self
-            .policy
-            .permits_registered_root(Path::new(&record.root))
-        {
+        if !self.policy.permits_registered_root(Path::new(&record.root)) {
             record.availability = WorkspaceAvailability::Missing;
             return record;
         }

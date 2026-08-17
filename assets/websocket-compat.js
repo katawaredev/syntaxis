@@ -2,9 +2,7 @@
   const NativeWebSocket = window.WebSocket;
 
   const openSocket = (url, protocols) =>
-    protocols === undefined
-      ? new NativeWebSocket(url)
-      : new NativeWebSocket(url, protocols);
+    protocols === undefined ? new NativeWebSocket(url) : new NativeWebSocket(url, protocols);
 
   function CompatibleWebSocket(url, protocols) {
     if (!new.target) {

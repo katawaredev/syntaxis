@@ -4,6 +4,10 @@
 )]
 use std::collections::BTreeSet;
 
+#[allow(
+    unused_imports,
+    reason = "Dioxus expands the parent glob for RSX hot-reload analysis"
+)]
 use super::{
     AnyStorage, DiffKind, EditorConfigSource, FileAction, FileActionDialog, FormExtension,
     GlobalAttributesExtension, MAX_TEXT_BYTES, MetaExtension, OpenDocument, ReadableExt,
@@ -164,6 +168,20 @@ pub(super) fn revert_active(path: Option<String>, mut documents: Signal<Vec<Open
     }
 }
 
+fn parse_destination_path(
+    action: FileAction,
+    destination: &str,
+) -> Result<Option<RelativePath>, String> {
+    if action == FileAction::Delete {
+        return Ok(None);
+    }
+    match RelativePath::try_from(destination.trim().to_owned()) {
+        Ok(path) if !path.is_root() => Ok(Some(path)),
+        Ok(_) => Err("Choose a non-root path.".to_owned()),
+        Err(error) => Err(error.message),
+    }
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "the dispatcher receives independent reactive handles from its Dioxus owner"
@@ -186,29 +204,18 @@ pub(super) fn run_file_action(
     };
     pending.set(true);
     spawn(async move {
-        let destination_path = if dialog.action == FileAction::Delete {
-            None
-        } else {
-            match RelativePath::try_from(destination.trim().to_owned()) {
-                Ok(path) if !path.is_root() => Some(path),
-                Ok(_) => {
-                    set_error(toast, "Choose a non-root path.");
-                    pending.set(false);
-                    return;
-                }
-                Err(error) => {
-                    set_error(toast, error.message);
-                    pending.set(false);
-                    return;
-                }
+        let destination_path = match parse_destination_path(dialog.action, &destination) {
+            Ok(path) => path,
+            Err(message) => {
+                set_error(toast, message);
+                pending.set(false);
+                return;
             }
         };
         let source_path = dialog
             .source
             .as_ref()
-            .map(|source| {
-                RelativePath::try_from(source.clone()).map_err(|error| error.message)
-            })
+            .map(|source| RelativePath::try_from(source.clone()).map_err(|error| error.message))
             .transpose();
         let result = async {
             let source_path = source_path?;
@@ -240,14 +247,14 @@ pub(super) fn run_file_action(
                     } else {
                         workspace_client::copy_entry(workspace.clone(), source, destination).await
                     }
-                    .map(|_| None)
+                    .map(|()| None)
                 }
                 FileAction::Delete => {
                     let source = source_path
                         .ok_or_else(|| "Choose an existing workspace item.".to_owned())?;
                     workspace_client::delete_entry(workspace.clone(), source)
                         .await
-                        .map(|_| None)
+                        .map(|()| None)
                 }
             }
         }

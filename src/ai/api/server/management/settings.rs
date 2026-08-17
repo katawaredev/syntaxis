@@ -23,7 +23,9 @@ pub(crate) async fn update_pi_setting(
     let definition = PI_SETTING_DEFINITIONS
         .iter()
         .find(|definition| definition.path == path)
-        .ok_or_else(|| client_error("This Pi setting is not available in the settings interface"))?;
+        .ok_or_else(|| {
+            client_error("This Pi setting is not available in the settings interface")
+        })?;
     validate_setting_value(definition.kind, &value)?;
     let (node, manager) = settings_manager_module()?;
     let script = r"import { pathToFileURL } from 'node:url';

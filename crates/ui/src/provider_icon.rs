@@ -12,38 +12,72 @@ pub fn ProviderIcon(provider: String, #[props(default = 16)] size: u32) -> Eleme
     let provider = provider.to_ascii_lowercase();
 
     if provider.contains("azure") {
-        rsx! { monochrome::MicrosoftAzure { size } }
+        rsx! {
+            monochrome::MicrosoftAzure { size }
+        }
     } else if provider.contains("bedrock") || provider.contains("amazon") {
-        rsx! { monochrome::AwsBedrockIcon { size } }
+        rsx! {
+            monochrome::AwsBedrockIcon { size }
+        }
     } else if provider.contains("github") || provider.contains("copilot") {
-        rsx! { monochrome::GithubCopilot { size } }
+        rsx! {
+            monochrome::GithubCopilot { size }
+        }
     } else if provider.contains("anthropic") || provider.contains("claude") {
-        rsx! { monochrome::AnthropicIcon { size } }
+        rsx! {
+            monochrome::AnthropicIcon { size }
+        }
     } else if provider.contains("openai") || provider.contains("codex") {
-        rsx! { monochrome::OpenaiIcon { size } }
+        rsx! {
+            monochrome::OpenaiIcon { size }
+        }
     } else if provider.contains("google") || provider.contains("gemini") {
-        rsx! { monochrome::GoogleGeminiIcon { size } }
+        rsx! {
+            monochrome::GoogleGeminiIcon { size }
+        }
     } else if provider.contains("mistral") {
-        rsx! { monochrome::MistralAiIcon { size } }
+        rsx! {
+            monochrome::MistralAiIcon { size }
+        }
     } else if provider.contains("cohere") {
-        rsx! { monochrome::CohereIcon { size } }
+        rsx! {
+            monochrome::CohereIcon { size }
+        }
     } else if provider.contains("perplexity") {
-        rsx! { monochrome::PerplexityIcon { size } }
+        rsx! {
+            monochrome::PerplexityIcon { size }
+        }
     } else if provider.contains("deepseek") {
-        rsx! { monochrome::Deepseek { size } }
+        rsx! {
+            monochrome::Deepseek { size }
+        }
     } else if provider.contains("hugging") {
-        rsx! { monochrome::HuggingFaceIcon { size } }
+        rsx! {
+            monochrome::HuggingFaceIcon { size }
+        }
     } else if provider.contains("cloudflare") {
-        rsx! { monochrome::CloudflareIcon { size } }
+        rsx! {
+            monochrome::CloudflareIcon { size }
+        }
     } else if provider.contains("together") {
-        rsx! { monochrome::Together { size } }
+        rsx! {
+            monochrome::Together { size }
+        }
     } else if provider.contains("ollama") {
-        rsx! { monochrome::OllamaIcon { size } }
+        rsx! {
+            monochrome::OllamaIcon { size }
+        }
     } else if provider.contains("groq") {
-        rsx! { monochrome::Groq { size } }
+        rsx! {
+            monochrome::Groq { size }
+        }
     } else if provider.contains("xai") || provider.contains("grok") {
-        rsx! { monochrome::Xai { size } }
+        rsx! {
+            monochrome::Xai { size }
+        }
     } else {
-        rsx! { Icon { icon: AppIcon::Bot, size } }
+        rsx! {
+            Icon { icon: AppIcon::Bot, size }
+        }
     }
 }

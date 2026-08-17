@@ -271,7 +271,6 @@ fn ModelRow(model: ModelSummary, on_select: EventHandler<ModelSummary>) -> Eleme
     }
 }
 
-#[component]
 fn filter_models(models: Vec<ModelSummary>, query: &str) -> Vec<ModelSummary> {
     let query = query.trim().to_ascii_lowercase();
     let free_query = query == "free";

@@ -92,12 +92,8 @@ pub(super) fn ProviderAccounts(
                                 key: "{provider.id}",
                                 class: "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-4 py-3 transition-colors hover:bg-muted/25 @max-[520px]:grid-cols-1 @max-[520px]:gap-3 @max-[520px]:rounded-xl @max-[520px]:border @max-[520px]:border-border @max-[520px]:bg-background/80 @max-[520px]:p-3 @max-[520px]:shadow-sm",
                                 div { class: "flex min-w-0 items-center gap-3",
-                                    span {
-                                        class: "grid size-9 shrink-0 place-items-center rounded-xl border border-primary/15 bg-primary/8 text-primary shadow-xs",
-                                        ProviderIcon {
-                                            provider: provider.id.clone(),
-                                            size: 18,
-                                        }
+                                    span { class: "grid size-9 shrink-0 place-items-center rounded-xl border border-primary/15 bg-primary/8 text-primary shadow-xs",
+                                        ProviderIcon { provider: provider.id.clone(), size: 18 }
                                     }
                                     div { class: "min-w-0 flex-1",
                                         strong { class: "block truncate text-xs font-semibold", "{provider.name}" }
