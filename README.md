@@ -9,8 +9,6 @@ open the same projects from mobile, tablet, or desktop.
 Your code stays in ordinary folders on your machine. Syntaxis does not provide compute, copy your
 repositories into a hosted workspace, or replace your existing command-line tools.
 
-<!-- Add screenshots here: workspace, editor, Git diff, terminal, and preview. -->
-
 ## Is this for you?
 
 Syntaxis is for developers who:
@@ -33,10 +31,24 @@ It is not a good fit if you need:
 
 ### Projects
 
+<table>
+<tr>
+<td><img src="screenshots/home.jpg" alt="home" width="100%"></td>
+<td><img src="screenshots/home-new.jpg" alt="new project" width="100%"></td>
+</tr>
+</table>
+
 Open an existing server folder, clone a Git repository, or scaffold a new project in a live terminal.
 Projects remain normal directories and continue to work outside Syntaxis.
 
 ### Files and editor
+
+<table>
+<tr>
+<td><img src="screenshots/editor.jpg" alt="editor" width="100%"></td>
+<td><img src="screenshots/editor-sidebar.jpg" alt="editor sidebar" width="100%"></td>
+</tr>
+</table>
 
 Browse and search the project, open multiple files, find and replace text, view images, inspect diffs,
 and edit with syntax highlighting.
@@ -50,6 +62,12 @@ Mise configuration, it can infer a starting toolchain and language-server setup.
 
 ### Terminal
 
+<table>
+<tr>
+<td><img src="screenshots/terminal.jpg" alt="terminal" width="360"></td>
+</tr>
+</table>
+
 Create and reconnect to real shell sessions running on the server. The terminal includes touch
 scrolling, mobile control keys, and links from recognized source locations back to the editor.
 
@@ -58,12 +76,25 @@ close them.
 
 ### Git
 
+<table>
+<tr>
+<td><img src="screenshots/git-file.jpg" alt="git file review" width="100%"></td>
+<td><img src="screenshots/git-sidebar.jpg" alt="git sidebar" width="100%"></td>
+</tr>
+</table>
+
 Review staged and unstaged diffs, stage or discard files, commit, manage branches and tags, inspect
 history, work with remotes, pull, push, and handle common merge workflows.
 
 The supplied container can use SSH and GnuPG configuration deliberately mounted from the host.
 
 ### Preview
+
+<table>
+<tr>
+<td><img src="screenshots/preview.jpg" alt="preview" width="360"></td>
+</tr>
+</table>
 
 Start an HTTP development server from Terminal and open it through Syntaxis. On Linux, Syntaxis can
 detect listening processes associated with the current project.
@@ -72,6 +103,13 @@ The preview gateway supports HTTP and WebSockets, so common hot-reload setups co
 Previews are private by default and can optionally receive a separate revocable share link.
 
 ### Coding agent
+
+<table>
+<tr>
+<td><img src="screenshots/chat.jpg" alt="chat" width="100%"></td>
+<td><img src="screenshots/chat-settings-general.jpg" alt="chat settings" width="100%"></td>
+</tr>
+</table>
 
 Syntaxis includes an interface for the [Pi coding agent](https://pi.dev/). It uses Pi's
 native RPC mode and Pi's existing provider configuration, sessions, prompts, skills, and extensions.
