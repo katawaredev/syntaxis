@@ -393,7 +393,7 @@ fn ProjectMetadata(workspace: WorkspaceRecord, desktop: bool) -> Element {
                     }
                 }
                 time {
-                    class: "shrink-0 whitespace-nowrap text-left text-[10px] text-muted-foreground/75",
+                    class: "shrink-0 whitespace-nowrap text-left text-[10px] text-muted-foreground",
                     title: last_opened_title,
                     "Opened {last_opened}"
                 }

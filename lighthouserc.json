@@ -7,6 +7,9 @@
       "startServerReadyTimeout": 30000,
       "numberOfRuns": 3,
       "settings": {
+        "extraHeaders": {
+          "Authorization": "Bearer syntaxis-local-lighthouse-token-0001"
+        },
         "maxWaitForFcp": 120000,
         "maxWaitForLoad": 120000,
         "formFactor": "mobile",

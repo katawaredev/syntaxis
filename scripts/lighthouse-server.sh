@@ -6,6 +6,12 @@ server="$root/target/dx/syntaxis/release/web/server"
 host="${LHCI_HOST:-127.0.0.1}"
 port="${LHCI_PORT:-4173}"
 log="$root/.lighthouseci/server.log"
+runtime="$root/autoresearch/runtime"
+benchmark_token="${LHCI_API_TOKEN:-syntaxis-local-lighthouse-token-0001}"
+benchmark_password_hash="${LHCI_PASSWORD_HASH:-}"
+if [[ -z "$benchmark_password_hash" ]]; then
+    benchmark_password_hash='$argon2id$v=19$m=65536,t=3,p=4$c29tZXNhbHQ$RdescudvJCsgt3ub+b+dWRWJTmaaJObG'
+fi
 
 if [[ ! -x "$server" ]]; then
     echo "Production server not found: $server" >&2
@@ -14,7 +20,14 @@ if [[ ! -x "$server" ]]; then
 fi
 
 mkdir -p "$root/.lighthouseci"
-IP="$host" PORT="$port" "$server" >"$log" 2>&1 &
+bun "$root/autoresearch/provision.mjs" >/dev/null
+IP="$host" \
+PORT="$port" \
+SYNTAXIS_API_TOKEN="$benchmark_token" \
+SYNTAXIS_PASSWORD_HASH="$benchmark_password_hash" \
+SYNTAXIS_DATA_DIR="$runtime/data" \
+SYNTAXIS_WORKSPACE_ROOTS="$root/autoresearch" \
+"$server" >"$log" 2>&1 &
 server_pid=$!
 
 cleanup() {

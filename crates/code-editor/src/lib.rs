@@ -17,11 +17,7 @@ use serde::{Deserialize, Serialize};
 
 pub const CODE_EDITOR_CSS: Asset = asset!("/assets/dioxus-code-editor.css");
 const LSP_MODULE: Asset = asset!("/assets/lsp.bundle.js");
-#[expect(
-    clippy::large_include_file,
-    reason = "the generated CodeMirror bundle must execute inside Dioxus' eval channel"
-)]
-const EDITOR_BRIDGE: &str = include_str!("../assets/editor.bundle.js");
+const EDITOR_BRIDGE: Asset = asset!("/assets/editor.bundle.js");
 static EDITOR_ID_NEXT: AtomicU64 = AtomicU64::new(0);
 
 mod bridge;

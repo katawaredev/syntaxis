@@ -160,7 +160,7 @@ pub fn Home() -> Element {
                     on_notice: move |message| toast.set(Some(message)),
                     on_refresh: move |()| workspace_list.refresh(),
                 }
-                footer { class: "mt-auto pt-10 text-center text-[11px] text-muted-foreground/65",
+                footer { class: "mt-auto pt-10 text-center text-[11px] text-muted-foreground",
                     {runtime_presentation.footer.clone()}
                 }
             }

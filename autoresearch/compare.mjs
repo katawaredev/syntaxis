@@ -38,12 +38,46 @@ const metrics = [
   "totalBlockingTimeMs",
   "applicationUiUsableMs",
   "recentProjectsUsableMs",
+  "editorUsableMs",
 ];
-process.stdout.write(`${JSON.stringify({
-  baseline: before.timestamp,
-  candidate: after.timestamp,
-  sameWorkload: JSON.stringify(before.inputs?.viewport) === JSON.stringify(after.inputs?.viewport)
-    && before.inputs?.fixture === after.inputs?.fixture,
-  sameToolchain: JSON.stringify(before.environment) === JSON.stringify(after.environment),
-  metrics: Object.fromEntries(metrics.map((key) => [key, comparison(key)])),
-}, null, 2)}\n`);
+
+const stableEnvironmentKeys = [
+  "hostname",
+  "platform",
+  "platformRelease",
+  "architecture",
+  "cpuModel",
+  "logicalCpuCount",
+  "totalMemoryBytes",
+  "node",
+  "bun",
+  "dioxus",
+  "lighthouse",
+  "rust",
+  "browser",
+  "lighthouseConfig",
+  "repetitions",
+];
+
+function stableEnvironment(result) {
+  return Object.fromEntries(
+    stableEnvironmentKeys.map((key) => [key, result.environment?.[key] ?? null]),
+  );
+}
+
+process.stdout.write(
+  `${JSON.stringify(
+    {
+      baseline: before.timestamp,
+      candidate: after.timestamp,
+      sameWorkload:
+        JSON.stringify(before.inputs?.viewport) === JSON.stringify(after.inputs?.viewport) &&
+        before.inputs?.fixture === after.inputs?.fixture,
+      sameToolchain:
+        JSON.stringify(stableEnvironment(before)) === JSON.stringify(stableEnvironment(after)),
+      metrics: Object.fromEntries(metrics.map((key) => [key, comparison(key)])),
+    },
+    null,
+    2,
+  )}\n`,
+);

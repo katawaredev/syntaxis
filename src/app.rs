@@ -30,7 +30,6 @@ static WEB_APP_ICON_512: Asset = asset!(
 pub(crate) const GEIST_FONT: Asset = asset!("/assets/geist-latin-wght-normal.woff2");
 const WEBSOCKET_COMPAT_SCRIPT: Asset = asset!("/assets/websocket-compat.js");
 const UI_SCRIPT: Asset = asset!("/assets/ui.js");
-const AI_CHAT_SCRIPT: Asset = asset!("/assets/ai-chat.js");
 const THEME_COLOR: &str = "#1f2021";
 
 // TODO(route-splitting): Enable Dioxus WASM splitting for these routes once the
@@ -122,7 +121,6 @@ pub fn App() -> Element {
         document::Stylesheet { href: TAILWIND_CSS }
         document::Script { src: WEBSOCKET_COMPAT_SCRIPT }
         document::Script { src: UI_SCRIPT }
-        document::Script { src: AI_CHAT_SCRIPT }
         Router::<Route> {}
     }
 }

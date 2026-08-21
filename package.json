@@ -36,7 +36,8 @@
     "@earendil-works/pi-coding-agent": "0.84.2",
     "@lhci/cli": "0.15.1",
     "oxfmt": "^0.63.0",
-    "oxlint": "^1.78.0"
+    "oxlint": "^1.78.0",
+    "puppeteer-core": "^24.43.1"
   },
   "overrides": {
     "@codemirror/view": "6.43.8"

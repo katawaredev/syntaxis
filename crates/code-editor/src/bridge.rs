@@ -160,7 +160,15 @@ pub(super) fn InteractiveCodeEditor(editor_props: CodeEditorProps) -> Element {
         let configuration = configuration.clone();
         let last_configuration = Rc::clone(&last_configuration);
         move || {
-            let mut events = document::eval(EDITOR_BRIDGE);
+            let mut events = document::eval(&format!(
+                r"
+                const response = await fetch('{EDITOR_BRIDGE}');
+                if (!response.ok) throw new Error(`Could not load editor bridge: ${{response.status}}`);
+                const source = await response.text();
+                eval(source);
+                //# sourceURL=syntaxis-editor-bridge.js
+                ",
+            ));
             drop(events.send(configuration.clone()));
             *last_configuration.borrow_mut() = Some(configuration.clone());
             event_bridge.set(Some(events));

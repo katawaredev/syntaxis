@@ -20,6 +20,7 @@ use super::worktree::{IsolatedWorktreeDialog, use_worktree_flow};
 use super::{AiQuery, AiSettingsSection, components, notifications};
 
 const AI_CHAT_CSS: Asset = asset!("/assets/ai/chat.css");
+const AI_CHAT_SCRIPT: Asset = asset!("/assets/ai-chat.js");
 
 #[derive(Clone)]
 struct PendingMessageEdit {
@@ -57,7 +58,7 @@ fn AiRoute(
     settings_section: Option<AiSettingsSection>,
 ) -> Element {
     let active = use_context::<crate::workspace::ActiveWorkspace>();
-    match active.current() {
+    let content = match active.current() {
         Some(workspace) => rsx! {
             RemoteAgent {
                 key: "{workspace.id.0}",
@@ -74,6 +75,10 @@ fn AiRoute(
                 "Loading agent…"
             }
         },
+    };
+    rsx! {
+        document::Script { src: AI_CHAT_SCRIPT }
+        {content}
     }
 }
 
