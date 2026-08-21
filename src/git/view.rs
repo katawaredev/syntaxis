@@ -1,5 +1,4 @@
 use dioxus::prelude::*;
-use dioxus_code::Language;
 use dioxus_code_editor::{DiffLayout, UnifiedDiffView};
 use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
 use syntaxis_editor::language_slug_for_path;

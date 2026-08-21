@@ -26,7 +26,7 @@ PORT="$port" \
 SYNTAXIS_API_TOKEN="$benchmark_token" \
 SYNTAXIS_PASSWORD_HASH="$benchmark_password_hash" \
 SYNTAXIS_DATA_DIR="$runtime/data" \
-SYNTAXIS_WORKSPACE_ROOTS="$root/autoresearch" \
+SYNTAXIS_WORKSPACE_ROOTS="$runtime" \
 "$server" >"$log" 2>&1 &
 server_pid=$!
 

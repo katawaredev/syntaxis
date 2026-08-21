@@ -19,5 +19,29 @@
     "editable": "#syntaxis-active-editor [role=\"textbox\"][aria-label=\"Code editor\"]",
     "readyRule": "editor mount and editable CodeMirror textbox both exist"
   },
-  "repetitions": 3
+  "homeInteraction": {
+    "trigger": "button",
+    "triggerText": "New project",
+    "ready": "[role=\"dialog\"] #new-project-path",
+    "readyRule": "New project action opens its interactive dialog and paints it"
+  },
+  "responsiveViewports": [
+    {
+      "name": "narrow-mobile",
+      "width": 320,
+      "height": 700,
+      "deviceScaleFactor": 2,
+      "formFactor": "mobile"
+    },
+    {
+      "name": "desktop",
+      "width": 1440,
+      "height": 900,
+      "deviceScaleFactor": 1,
+      "formFactor": "desktop"
+    }
+  ],
+  "repetitions": 5,
+  "navigationTimeoutMs": 120000,
+  "readinessTimeoutMs": 30000
 }

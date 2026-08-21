@@ -1,6 +1,81 @@
-# Mobile startup performance campaign report
+# Performance autoresearch report
 
-## Outcome
+## Second-pass outcome
+
+The second pass found that syntax highlighting for Git diffs pulled every
+`dioxus-code`/Arborium language parser into the root client WASM even though the
+route-local CodeMirror bundle already contains the required parsers. Diff
+highlighting now uses that existing browser module, and the editor bridge is a
+cacheable ES module instead of fetched text executed with `eval` on every mount.
+
+Against the accepted first-pass build, two candidate collections reproduced the
+important runtime gains. The retained five-run candidate reduced median TBT by
+22.7%, Lighthouse application-UI usability time by 53.1%, Recent Projects
+readiness by 35.7%, the paired Home task by 32.5%, and editor readiness by 29.1%.
+Initial WASM Brotli size fell 58.3%, from 4,017,290 B to 1,676,041 B. LCP and the
+90 ms observed load remained effectively unchanged. FCP varied between neutral
+and 3.8% better across the two candidate sets, so no independent FCP improvement
+is claimed.
+
+The candidate release build completed successfully. Browser checks found no
+console, page, or request failures and no horizontal overflow on Home or editor
+at 320x700 or 1440x900. Full repository QA remains to be run after explicit
+confirmation because it can rewrite Rust formatting and Clippy findings.
+
+## Second-pass measurements
+
+The baseline and candidate used the same release artifact workflow, 390x844 DPR
+2 mobile workload, toolchain, fixed fixture contents, and five repetitions. Each
+direct route measurement launched a fresh Chromium process; collection order
+alternated between Home and editor.
+
+| Metric | First-pass baseline median (range) | Second-pass candidate median (range) | Change |
+| --- | ---: | ---: | ---: |
+| FCP | 1,094.0 ms (1,052.0–1,103.7) | 1,052.4 ms (1,051.1–1,116.3) | -3.8% |
+| LCP | 1,354.3 ms (1,352.2–1,503.7) | 1,352.4 ms (1,351.1–1,352.9) | -0.1% |
+| TBT | 422 ms (376–464) | 326 ms (326–332) | -22.7% |
+| Initial page load | 87 ms (79–95) | 90 ms (79–95) | +3.4% |
+| Application UI usable | 21,727.6 ms (21,719.4–21,765.9) | 10,180.4 ms (10,093.5–10,183.7) | -53.1% |
+| Recent Projects usable | 406.6 ms (404.8–1,207.8) | 261.4 ms (228.3–271.4) | -35.7% |
+| New Project interaction | 33.9 ms (32.2–44.3) | 36.3 ms (32.2–1,077.8) | +7.1% |
+| Paired Home task | 446.6 ms (438.1–1,240.1) | 301.3 ms (286.6–1,306.1) | -32.5% |
+| Editor usable | 657.9 ms (649.8–745.6) | 466.4 ms (457.6–477.1) | -29.1% |
+
+The isolated interaction delta is 2.4 ms and is below the observed browser
+variability. Its candidate range contains a repeatable first-process animation
+frame outlier, so the paired navigation-to-completed-task distribution is the
+more representative Home workflow result.
+
+| Release asset measure | First-pass baseline | Second-pass candidate | Change |
+| --- | ---: | ---: | ---: |
+| Initial WASM raw | 42,432,547 B | 6,980,469 B | -83.5% |
+| Initial WASM Brotli | 4,017,290 B | 1,676,041 B | -58.3% |
+| All public assets raw | 45,328,739 B | 9,641,988 B | -78.7% |
+| All public assets Brotli | 4,787,824 B | 2,412,780 B | -49.6% |
+
+The all-assets reduction is smaller because the 1.67 MB raw CodeMirror bridge is
+still shipped as a route-local asset. It is no longer duplicated as Rust parser
+code in the initial WASM.
+
+## Second-pass harness improvements
+
+- Increased both direct-browser and Lighthouse collections from three to five
+  runs and added tested median, percentile, variance, deviation, and MAD helpers
+  while preserving collection-order samples.
+- Isolated every timed navigation in a fresh Chromium process and alternated
+  route order, so “cold” no longer means a warm browser reused across all runs.
+- Added the New Project interaction and paired Home task, editor readiness,
+  long-task profiles, browser-error gates, and narrow-mobile/desktop overflow
+  checks.
+- Rejects Lighthouse/workload viewport or repetition drift, records source-state
+  hashes, filters only newly created `.report.json` files, and handles server
+  startup failure, timeout, and shutdown deterministically.
+- Copies the fixture into an ignored runtime directory and initializes a
+  deterministic standalone Git repository. The focused Git smoke temporarily
+  changes only that copy, verifies the diff and route-local highlighting, and
+  restores it without touching the parent Syntaxis worktree.
+
+## First-pass outcome
 
 The campaign reduced median mobile FCP by 16.0%, Lighthouse application-UI
 usability time by 11.3%, TBT by 6.0%, and the initial WASM's Brotli size by
@@ -14,7 +89,7 @@ profiles were intentionally discarded after the campaign because they are tied
 to one machine and toolchain; a future campaign should establish a fresh local
 baseline.
 
-## Method
+## First-pass method
 
 Baseline and candidates used the same machine, optimized Dioxus web server,
 deterministically provisioned fixture, Chromium 151.0.7922.173, 390x844 viewport
@@ -64,7 +139,7 @@ claim because its baseline variance was especially high.
 The total-asset reduction is smaller than the initial-WASM reduction because the
 editor bridge was moved to a route-local asset, not removed.
 
-## Successful experiments
+## First-pass successful experiments
 
 - **AR-001 — route-local CodeMirror bridge:** removed a 1.67 MB generated editor
   bridge from the Home WASM and loaded the same bridge when the editor mounts.
@@ -82,7 +157,7 @@ editor bridge was moved to a route-local asset, not removed.
   FCP improvement. A direct AI-route smoke test confirmed the helper loaded and
   exposed its expected API without browser errors.
 
-## Rejected major ideas
+## First-pass rejected major ideas
 
 - **AR-004 — SSR workspace-list seeding:** removed the client workspace-list
   request and improved Recent Projects by only 17 ms, while regressing FCP by
@@ -95,44 +170,46 @@ editor bridge was moved to a route-local asset, not removed.
 
 ## Correctness and generality
 
-The final product source passed the repository's web and server quality gates.
-Browser smoke checks also covered:
+The first-pass product source passed the repository's web and server quality
+gates. The second-pass release build and focused browser smoke checks succeeded;
+full current QA is pending confirmation. Combined browser smoke checks covered:
 
 - empty Recent Projects;
 - populated Recent Projects with small, medium, and larger repository paths;
 - 320x700 narrow mobile, the fixed 390x844 workload, and 1440x900 desktop;
 - the fixed editor route and editable CodeMirror surface; and
+- a changed Rust file on the Git route with route-local syntax highlighting; and
 - the AI route after route-local helper loading.
 
 The Recent Projects section became ready under the exact two-condition rule in
 all states and viewports. The representative browser checks produced no page or
 console errors.
 
-Lighthouse's performance assertions do **not** all pass: final TBT is 423 ms,
-above the existing 300 ms threshold, and Lighthouse still warns about the long
-interactive time. Accessibility and browser-error assertions now pass. No
+Lighthouse's performance assertions do **not** all pass: second-pass TBT is 326
+ms, above the existing 300 ms threshold, and interactive time is 10,180 ms,
+slightly above its 10,000 ms threshold. Accessibility and browser-error
+assertions pass. No
 assertion, test, lint rule, accessibility behavior, or feature was weakened.
 
 ## Current bottlenecks and remaining opportunities
 
-The dominant remaining cost is the unified 4.02 MB Brotli client WASM and roughly
-375–440 ms of Dioxus bootstrap evaluation. Lighthouse's simulated interactive
-metric remains around 21.7 seconds because that bootstrap produces a late long
-task under mobile throttling. Document delivery, workspace enumeration,
-serialization, runtime-state requests, and availability requests were measured
-in only a few milliseconds and are not material bottlenecks. Editor/LSP and
-terminal assets are not on the Home request path after the accepted changes.
+The dominant remaining cost is the unified 1.68 MB Brotli client WASM and about
+326 ms of blocking under Lighthouse mobile simulation. Its interactive metric
+is now around 10.18 seconds. Document delivery, workspace enumeration,
+serialization, runtime-state requests, and availability requests remain only a
+few milliseconds and are not material bottlenecks. Editor/LSP and terminal
+assets are not on the Home request path.
 
 The most credible follow-up is true route/code splitting once the documented
-upstream Walrus failure is resolved. A separate size/profile campaign could then
-identify feature-preserving modularization opportunities in shared UI, icon, or
-parser code. It would also be useful to separate warm and first-browser-process
-Recent Projects distributions: the roughly 1.2-second first sample persists even
-though the workspace API itself is fast. Smaller script scheduling changes are
-unlikely to be worthwhile without new trace evidence.
+upstream Walrus failure is resolved. A separate size-symbol profile could then
+identify feature-preserving modularization opportunities in shared UI and icon
+code. The first-process animation-frame outlier should remain visible rather than
+be discarded; five-run medians and the paired task metric keep it from distorting
+the main responsiveness conclusion. Smaller scheduling changes are unlikely to
+be worthwhile without new trace evidence.
 
-The release-build-time increase from LTO is the main accepted tradeoff. The final
-Recent Projects and editor medians are 12.8 ms and 5.6 ms slower than baseline,
-respectively; both sit within the observed browser variability, but they remain
-recorded rather than presented as wins. Further work should use the same fixed
+The release-build-time increase from first-pass LTO remains the main accepted
+tradeoff. The second pass adds a route-local dynamic import when a diff first
+requests highlighting, but plain diff text renders immediately and the same
+module is already required by the editor. Further work should use the same fixed
 workload and establish a fresh baseline before making changes.

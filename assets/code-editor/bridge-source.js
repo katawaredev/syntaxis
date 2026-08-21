@@ -57,9 +57,64 @@ import {
   placeholder,
   rectangularSelection,
 } from "@codemirror/view";
-import { tags } from "@lezer/highlight";
+import { highlightCode as renderHighlightedCode, tagHighlighter, tags } from "@lezer/highlight";
 
-(async () => {
+const languageAliases = {
+  bash: "shell",
+  "c-sharp": "csharp",
+  cpp: "c++",
+  ini: "properties",
+};
+
+const languageDescription = (language, filename) => {
+  const name = languageAliases[language] ?? language;
+  return (
+    LanguageDescription.matchFilename(languages, filename) ??
+    (name === "plaintext" ? null : LanguageDescription.matchLanguageName(languages, name, false))
+  );
+};
+
+const diffHighlighter = tagHighlighter([
+  { tag: tags.comment, class: "dxc-syntax-comment" },
+  { tag: [tags.keyword, tags.modifier], class: "dxc-syntax-keyword" },
+  { tag: [tags.string, tags.regexp], class: "dxc-syntax-string" },
+  { tag: [tags.number, tags.bool, tags.null], class: "dxc-syntax-literal" },
+  {
+    tag: [tags.function(tags.variableName), tags.function(tags.propertyName)],
+    class: "dxc-syntax-function",
+  },
+  { tag: [tags.typeName, tags.className, tags.namespace], class: "dxc-syntax-type" },
+  { tag: [tags.propertyName, tags.attributeName], class: "dxc-syntax-property" },
+  { tag: [tags.operator, tags.punctuation], class: "dxc-syntax-operator" },
+  { tag: [tags.tagName, tags.heading], class: "dxc-syntax-heading" },
+  { tag: [tags.link, tags.url], class: "dxc-syntax-link" },
+  { tag: tags.invalid, class: "dxc-syntax-invalid" },
+]);
+
+async function highlightSource(source, language, filename) {
+  const description = languageDescription(language, filename);
+  if (!description) return [{ text: source, tag: null }];
+  const support = await description.load();
+  const tokens = [];
+  renderHighlightedCode(
+    source,
+    support.language.parser.parse(source),
+    diffHighlighter,
+    (text, classes) => tokens.push({ text, tag: classes || null }),
+    () => tokens.push({ text: "\n", tag: null }),
+  );
+  return tokens;
+}
+
+export async function highlightDiff({ original, current, language, filename }) {
+  const [originalTokens, currentTokens] = await Promise.all([
+    highlightSource(original, language, filename),
+    highlightSource(current, language, filename),
+  ]);
+  return { original: originalTokens, current: currentTokens };
+}
+
+export async function startEditor(dioxus) {
   const initial = await dioxus.recv();
   const mount = document.getElementById(initial.id);
   if (!(mount instanceof HTMLElement)) return;
@@ -214,19 +269,10 @@ import { tags } from "@lezer/highlight";
     { tag: tags.invalid, color: "var(--destructive)" },
   ]);
 
-  const languageAliases = {
-    bash: "shell",
-    "c-sharp": "csharp",
-    cpp: "c++",
-    ini: "properties",
-  };
   let languageRevision = 0;
   const loadLanguage = async (config) => {
     const revision = ++languageRevision;
-    const name = languageAliases[config.language] ?? config.language;
-    const description =
-      LanguageDescription.matchFilename(languages, config.filename) ??
-      (name === "plaintext" ? null : LanguageDescription.matchLanguageName(languages, name, false));
+    const description = languageDescription(config.language, config.filename);
     const support = description ? await description.load() : [];
     if (revision === languageRevision && view) {
       view.dispatch({ effects: languageCompartment.reconfigure(support) });
@@ -629,4 +675,4 @@ import { tags } from "@lezer/highlight";
 
   releaseLanguageService();
   view.destroy();
-})();
+}

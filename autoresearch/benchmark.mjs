@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 
 import { execFileSync, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { cpus, freemem, hostname, platform, release, totalmem } from "node:os";
 import { join, resolve } from "node:path";
+
+import { summary } from "./stats.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const research = join(root, "autoresearch");
@@ -12,7 +15,33 @@ const publicDir = join(root, "target/dx/syntaxis/release/web/public");
 const outputDir = join(research, "results");
 const profilesDir = join(research, "profiles");
 const workload = JSON.parse(await readFile(join(research, "workload.json"), "utf8"));
+const lighthouseConfig = JSON.parse(await readFile(join(root, "lighthouserc.json"), "utf8"));
 const repetitions = workload.repetitions;
+
+function assertHarnessConfiguration() {
+  const collect = lighthouseConfig.ci?.collect;
+  const screen = collect?.settings?.screenEmulation;
+  const mismatches = [];
+  if (collect?.numberOfRuns !== repetitions) {
+    mismatches.push(
+      `Lighthouse runs ${collect?.numberOfRuns ?? "unset"}; workload requires ${repetitions}`,
+    );
+  }
+  for (const key of ["width", "height", "deviceScaleFactor"]) {
+    if (screen?.[key] !== workload.viewport[key]) {
+      mismatches.push(
+        `Lighthouse ${key} is ${screen?.[key] ?? "unset"}; workload requires ${workload.viewport[key]}`,
+      );
+    }
+  }
+  if (collect?.settings?.formFactor !== workload.viewport.formFactor) {
+    mismatches.push(
+      `Lighthouse formFactor is ${collect?.settings?.formFactor ?? "unset"}; workload requires ${workload.viewport.formFactor}`,
+    );
+  }
+  if (mismatches.length)
+    throw new Error(`Benchmark configuration drift:\n${mismatches.join("\n")}`);
+}
 
 function toolVersion(executable, args) {
   try {
@@ -45,30 +74,45 @@ async function withBenchmarkServer(action) {
     stdio: ["ignore", "pipe", "pipe"],
   });
   let output = "";
+  let readySettled = false;
+  const exit = new Promise((resolvePromise) => child.once("exit", resolvePromise));
   const ready = new Promise((resolvePromise, reject) => {
     const inspect = (chunk) => {
       const text = chunk.toString();
-      output += text;
+      output = `${output}${text}`.slice(-64 * 1024);
       process.stdout.write(text);
-      if (output.includes("Lighthouse server ready")) resolvePromise();
+      if (output.includes("Lighthouse server ready")) {
+        readySettled = true;
+        resolvePromise();
+      }
     };
     child.stdout.on("data", inspect);
     child.stderr.on("data", inspect);
     child.once("error", reject);
     child.once("exit", (code, signal) => {
-      reject(
-        new Error(
-          `benchmark server exited before measurement with ${code ?? `signal ${signal}`}\n${output}`,
-        ),
-      );
+      if (!readySettled) {
+        reject(
+          new Error(
+            `benchmark server exited before measurement with ${code ?? `signal ${signal}`}\n${output}`,
+          ),
+        );
+      }
     });
   });
-  await ready;
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(
+      () => reject(new Error(`Benchmark server was not ready within 30 seconds\n${output}`)),
+      30_000,
+    );
+  });
+  await Promise.race([ready, timeout]);
+  clearTimeout(timeoutId);
   try {
     return await action();
   } finally {
-    child.kill("SIGTERM");
-    await new Promise((resolvePromise) => child.once("exit", resolvePromise));
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+    await exit;
   }
 }
 
@@ -86,7 +130,7 @@ async function filesUnder(directory) {
 async function reportNames() {
   return new Set(
     (await readdir(reports, { withFileTypes: true }).catch(() => []))
-      .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".report.json"))
       .map((entry) => entry.name),
   );
 }
@@ -101,32 +145,6 @@ function observedMetric(report, id) {
   return typeof value === "number" ? value : null;
 }
 
-function summary(values) {
-  const usable = values.filter((value) => typeof value === "number").sort((a, b) => a - b);
-  if (!usable.length) {
-    return {
-      median: null,
-      min: null,
-      max: null,
-      range: null,
-      variance: null,
-      standardDeviation: null,
-      values: [],
-    };
-  }
-  const mean = usable.reduce((total, value) => total + value, 0) / usable.length;
-  const variance = usable.reduce((total, value) => total + (value - mean) ** 2, 0) / usable.length;
-  return {
-    median: usable[Math.floor(usable.length / 2)],
-    min: usable[0],
-    max: usable.at(-1),
-    range: usable.at(-1) - usable[0],
-    variance,
-    standardDeviation: Math.sqrt(variance),
-    values: usable,
-  };
-}
-
 function browserSummary(measurement) {
   if (!measurement) return null;
   return {
@@ -134,10 +152,28 @@ function browserSummary(measurement) {
     min: measurement.minMs,
     max: measurement.maxMs,
     range: measurement.rangeMs,
+    p25: measurement.p25Ms,
+    p75: measurement.p75Ms,
+    p95: measurement.p95Ms,
     variance: measurement.varianceMs2,
     standardDeviation: measurement.standardDeviationMs,
+    medianAbsoluteDeviation: measurement.medianAbsoluteDeviationMs,
     values: measurement.rawMeasurementsMs,
-    status: "measured-with-puppeteer",
+    status: "measured-with-isolated-puppeteer-processes",
+  };
+}
+
+function gitSourceState() {
+  const status = toolVersion("git", ["status", "--porcelain=v1", "--untracked-files=all"]);
+  const trackedDiff = execFileSync("git", ["diff", "--binary", "HEAD"], {
+    cwd: root,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  return {
+    dirty: status.length > 0,
+    status: status ? status.split("\n") : [],
+    trackedDiffSha256: createHash("sha256").update(trackedDiff).digest("hex"),
   };
 }
 
@@ -225,6 +261,7 @@ function profileReport(report) {
   };
 }
 
+assertHarnessConfiguration();
 await mkdir(outputDir, { recursive: true });
 await mkdir(profilesDir, { recursive: true });
 const reportsBefore = await reportNames();
@@ -272,6 +309,8 @@ const measurements = {
   initialPageLoadMs: summary(reportsData.map((report) => observedMetric(report, "observedLoad"))),
   applicationUiUsableMs: summary(reportsData.map((report) => audit(report, "interactive"))),
   recentProjectsUsableMs: browserSummary(browserMeasurement.recentProjects),
+  homeInteractionResponseMs: browserSummary(browserMeasurement.homeInteraction),
+  homeTaskCompletionMs: browserSummary(browserMeasurement.homeTask),
   editorUsableMs: browserSummary(browserMeasurement.editor),
 };
 const hardware = cpus();
@@ -280,11 +319,26 @@ const baselinePath = join(research, "baseline.json");
 const isBaseline = !(await stat(baselinePath).catch(() => null));
 const runId = `${isBaseline ? "baseline" : "run"}-${timestamp.replaceAll(/[:.]/g, "-")}`;
 const result = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   timestamp,
+  label: process.env.AUTORESEARCH_LABEL ?? null,
   commit: toolVersion("git", ["rev-parse", "HEAD"]),
+  sourceState: gitSourceState(),
   correctness: {
     lighthouseAssertionsPassed,
+    browserIssuesPassed: browserMeasurement.pageIssues.every(
+      (issues) =>
+        issues.consoleErrors.length === 0 &&
+        issues.pageErrors.length === 0 &&
+        issues.requestFailures.length === 0,
+    ),
+    responsiveLayoutPassed: browserMeasurement.responsive.every(
+      (audit) => !audit.layout.horizontalOverflow && audit.layout.rootRect !== null,
+    ),
+    gitDiffPassed:
+      browserMeasurement.gitDiff.markerPresent &&
+      browserMeasurement.gitDiff.syntaxCommentCount > 0 &&
+      !browserMeasurement.gitDiff.layout.horizontalOverflow,
   },
   environment: {
     hostname: hostname(),
@@ -303,17 +357,24 @@ const result = {
     browser: browserMeasurement.browser,
     lighthouseConfig: "lighthouserc.json",
     repetitions,
+    browserIsolation: browserMeasurement.browserIsolation,
+    releaseBuildSkipped: process.env.AUTORESEARCH_SKIP_BUILD === "true",
   },
   inputs: {
+    workload,
     viewport: workload.viewport,
     fixture: workload.fixtureDirectory,
     homeUrl: workload.homeUrl,
     editorUrl,
     recentProjectsReady: workload.recentProjectsReady,
     editorReady: workload.editorReady,
+    homeInteraction: workload.homeInteraction,
+    responsiveViewports: workload.responsiveViewports,
     lighthouseSettings: reportsData[0]?.configSettings ?? null,
     usabilityMetric: "Lighthouse interactive audit",
     recentProjectsMetric: browserMeasurement.recentProjects.metric,
+    homeInteractionMetric: browserMeasurement.homeInteraction.metric,
+    homeTaskMetric: browserMeasurement.homeTask.metric,
     editorMetric: browserMeasurement.editor?.metric ?? null,
   },
   rawMeasurements: reportsData.map((report) => ({
@@ -327,7 +388,11 @@ const result = {
   })),
   browserRawMeasurements: {
     recentProjectsUsableMs: browserMeasurement.recentProjects.rawMeasurementsMs,
+    homeInteractionResponseMs: browserMeasurement.homeInteraction.rawMeasurementsMs,
+    homeTaskCompletionMs: browserMeasurement.homeTask.rawMeasurementsMs,
     editorUsableMs: browserMeasurement.editor?.rawMeasurementsMs ?? [],
+    pageIssues: browserMeasurement.pageIssues,
+    responsive: browserMeasurement.responsive,
   },
   medianMeasurements: measurements,
   buildAssetSizes: await assetSizes(),
@@ -339,20 +404,23 @@ await writeFile(
   profileDestination,
   `${JSON.stringify(
     {
-      schemaVersion: 1,
+      schemaVersion: 2,
       timestamp,
       commit: result.commit,
       workload: result.inputs,
       environment: result.environment,
       lighthouseRuns: reportsData.map(profileReport),
+      browserRuns: {
+        recentProjects: browserMeasurement.recentProjects.profiles,
+        editor: browserMeasurement.editor?.profiles ?? [],
+        responsive: browserMeasurement.responsive,
+        gitDiff: browserMeasurement.gitDiff,
+        pageIssues: browserMeasurement.pageIssues,
+      },
     },
     null,
     2,
   )}\n`,
 );
-execFileSync(join(root, "node_modules/.bin/oxfmt"), ["--write", destination, profileDestination], {
-  cwd: root,
-  stdio: "inherit",
-});
 process.stdout.write(`Wrote ${destination}\n`);
 process.stdout.write(`Wrote ${profileDestination}\n`);

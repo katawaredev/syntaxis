@@ -186,9 +186,11 @@ fn SourceAction(
     description: String,
     onclick: EventHandler<MouseEvent>,
 ) -> Element {
+    let accessible_title = title.clone();
     rsx! {
         button {
             class: "grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-3 overflow-hidden rounded-xl border border-border bg-card p-4 text-left shadow-sm transition-colors hover:border-primary/60 hover:bg-accent/80 max-[420px]:p-3.5",
+            "aria-label": accessible_title,
             onclick: move |event| onclick.call(event),
             span { class: "grid size-9 place-items-center rounded-lg bg-primary/10 text-primary",
                 Icon { icon, size: 22 }

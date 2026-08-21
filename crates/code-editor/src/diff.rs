@@ -1,11 +1,10 @@
 use std::collections::BTreeSet;
 
 use dioxus::prelude::*;
-use dioxus_code::advanced::{Buffer, CodeThemeStyles, TokenSpan};
-use dioxus_code::{CodeTheme, Language};
+use serde::{Deserialize, Serialize};
 use similar::{ChangeTag, TextDiff};
 
-use super::{CODE_EDITOR_CSS, editor_class, shared_code_theme};
+use super::{CODE_EDITOR_CSS, EDITOR_BRIDGE, editor_class};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum DiffLayout {
@@ -28,10 +27,24 @@ struct DiffSegment {
     emphasized: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 struct DiffToken {
     text: String,
-    tag: Option<&'static str>,
+    tag: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+struct HighlightedDiff {
+    original: Vec<DiffToken>,
+    current: Vec<DiffToken>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct DiffHighlightRequest {
+    original: String,
+    current: String,
+    language: String,
+    filename: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -54,8 +67,8 @@ enum DiffRow {
 pub fn UnifiedDiffView(
     original: String,
     current: String,
-    #[props(default = Language::Rust)] language: Language,
-    #[props(default = shared_code_theme(), into)] theme: CodeTheme,
+    #[props(into, default = "plaintext".to_owned())] language: String,
+    #[props(into, default)] filename: String,
     #[props(default = true)] line_numbers: bool,
     #[props(default = false)] word_wrap: bool,
     #[props(default = 4)] tab_width: usize,
@@ -65,23 +78,56 @@ pub fn UnifiedDiffView(
     #[props(default)] new_line_offset: usize,
     #[props(into, default)] class: String,
 ) -> Element {
-    let mut class = editor_class(theme, line_numbers, word_wrap, &class);
+    let mut class = editor_class(line_numbers, word_wrap, &class);
     class.push_str(match layout {
         DiffLayout::Editor => " dxc-diff-layout-editor",
         DiffLayout::Embedded => " dxc-diff-layout-embedded",
         DiffLayout::FullFile => " dxc-diff-layout-full-file",
     });
+    let mut highlighted = use_signal(|| None::<HighlightedDiff>);
+    let mut highlight_revision = use_signal(|| 0_u64);
+    use_effect(use_reactive(
+        (&original, &current, &language, &filename),
+        move |(original, current, language, filename)| {
+            *highlight_revision.write() += 1;
+            let revision = highlight_revision();
+            highlighted.set(None);
+            let request = DiffHighlightRequest {
+                original,
+                current,
+                language,
+                filename,
+            };
+            let mut evaluator = document::eval(&format!(
+                r"
+                const module = await import('{EDITOR_BRIDGE}');
+                const request = await dioxus.recv();
+                dioxus.send(await module.highlightDiff(request));
+                ",
+            ));
+            if evaluator.send(request).is_err() {
+                return;
+            }
+            spawn(async move {
+                if let Ok(tokens) = evaluator.recv::<HighlightedDiff>().await
+                    && highlight_revision() == revision
+                {
+                    highlighted.set(Some(tokens));
+                }
+            });
+        },
+    ));
+    let highlighted = highlighted.read();
     let rows = unified_diff_rows(
         &original,
         &current,
-        language,
+        highlighted.as_ref(),
         old_line_offset,
         new_line_offset,
         collapse_unchanged,
     );
     let mut expanded = use_signal(BTreeSet::<usize>::new);
     rsx! {
-        CodeThemeStyles { theme }
         document::Stylesheet { href: CODE_EDITOR_CSS }
         div {
             class: "{class} dxc-diff-editor",
@@ -148,7 +194,7 @@ fn DiffLineView(line: DiffLine) -> Element {
                 span { class: "dxc-diff-syntax",
                     for token in line.tokens {
                         if let Some(tag) = token.tag {
-                            TokenSpan { text: token.text, tag }
+                            span { class: tag, "{token.text}" }
                         } else {
                             span { "{token.text}" }
                         }
@@ -173,7 +219,7 @@ fn DiffLineView(line: DiffLine) -> Element {
 fn unified_diff_rows(
     original: &str,
     current: &str,
-    language: Language,
+    highlighted: Option<&HighlightedDiff>,
     old_line_offset: usize,
     new_line_offset: usize,
     collapse_unchanged: bool,
@@ -182,8 +228,14 @@ fn unified_diff_rows(
         return Vec::new();
     }
     let diff = TextDiff::from_lines(original, current);
-    let old_tokens = highlighted_diff_lines(original, language);
-    let new_tokens = highlighted_diff_lines(current, language);
+    let old_tokens = highlighted.map_or_else(
+        || plain_diff_lines(original),
+        |tokens| token_lines(&tokens.original, original),
+    );
+    let new_tokens = highlighted.map_or_else(
+        || plain_diff_lines(current),
+        |tokens| token_lines(&tokens.current, current),
+    );
     let lines = diff
         .iter_all_inline_changes()
         .map(|change| {
@@ -227,34 +279,44 @@ fn unified_diff_rows(
     }
 }
 
-fn highlighted_diff_lines(source: &str, language: Language) -> Vec<Vec<DiffToken>> {
-    Buffer::new(language, source.to_owned()).map_or_else(
-        |_| {
-            source
-                .split('\n')
-                .map(|line| {
-                    vec![DiffToken {
-                        text: line.to_owned(),
-                        tag: None,
-                    }]
-                })
-                .collect()
-        },
-        |buffer| {
-            buffer
-                .lines()
-                .into_iter()
-                .map(|line| {
-                    line.into_iter()
-                        .map(|segment| DiffToken {
-                            text: segment.text().to_owned(),
-                            tag: segment.tag(),
-                        })
-                        .collect()
-                })
-                .collect()
-        },
-    )
+fn plain_diff_lines(source: &str) -> Vec<Vec<DiffToken>> {
+    source
+        .split('\n')
+        .map(|line| {
+            vec![DiffToken {
+                text: line.to_owned(),
+                tag: None,
+            }]
+        })
+        .collect()
+}
+
+fn token_lines(tokens: &[DiffToken], source: &str) -> Vec<Vec<DiffToken>> {
+    if tokens.is_empty() {
+        return plain_diff_lines(source);
+    }
+    let mut lines = vec![Vec::new()];
+    for token in tokens {
+        for (index, part) in token.text.split('\n').enumerate() {
+            if index > 0 {
+                lines.push(Vec::new());
+            }
+            if !part.is_empty() {
+                lines
+                    .last_mut()
+                    .expect("at least one token line")
+                    .push(DiffToken {
+                        text: part.to_owned(),
+                        tag: token.tag.clone(),
+                    });
+            }
+        }
+    }
+    if lines.len() == source.split('\n').count() {
+        lines
+    } else {
+        plain_diff_lines(source)
+    }
 }
 
 fn trim_diff_line_ending(segments: &mut Vec<DiffSegment>) {
@@ -325,7 +387,7 @@ mod tests {
         let rows = unified_diff_rows(
             "same\nold value\nend\n",
             "same\nnew value\nend\n",
-            Language::Rust,
+            None,
             0,
             0,
             true,
@@ -348,7 +410,7 @@ mod tests {
 
     #[test]
     fn unified_diff_applies_fragment_line_offsets() {
-        let rows = unified_diff_rows("old", "new", Language::Rust, 9, 19, false);
+        let rows = unified_diff_rows("old", "new", None, 9, 19, false);
         let lines = rows
             .iter()
             .filter_map(|row| match row {
@@ -376,7 +438,7 @@ mod tests {
             writeln!(original, "line {line}").expect("writing to a String cannot fail");
         }
         let current = original.replace("line 15\n", "changed 15\n");
-        let rows = unified_diff_rows(&original, &current, Language::Rust, 0, 0, true);
+        let rows = unified_diff_rows(&original, &current, None, 0, 0, true);
 
         assert!(rows.iter().any(|row| matches!(row, DiffRow::Fold { .. })));
         assert!(
@@ -386,6 +448,32 @@ mod tests {
         assert!(
             rows.iter()
                 .any(|row| matches!(row, DiffRow::Line(line) if line.kind == DiffLineKind::Insert))
+        );
+    }
+
+    #[test]
+    fn route_local_highlight_tokens_preserve_lines_and_classes() {
+        let tokens = vec![
+            DiffToken {
+                text: "fn".into(),
+                tag: Some("dxc-syntax-keyword".into()),
+            },
+            DiffToken {
+                text: " main() {\n    😀\n}".into(),
+                tag: None,
+            },
+        ];
+
+        let lines = token_lines(&tokens, "fn main() {\n    😀\n}");
+        assert_eq!(lines.len(), 3);
+        assert_eq!(lines[0][0].tag.as_deref(), Some("dxc-syntax-keyword"));
+        assert_eq!(
+            lines
+                .iter()
+                .flatten()
+                .map(|token| token.text.as_str())
+                .collect::<String>(),
+            "fn main() {    😀}",
         );
     }
 }

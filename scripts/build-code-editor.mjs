@@ -15,7 +15,7 @@ const manifest = resolve(root, "package.json");
 const lockfile = resolve(root, "bun.lock");
 const script = fileURLToPath(import.meta.url);
 const cacheKey = createHash("sha256")
-  .update("syntaxis-code-editor-v1\0")
+  .update("syntaxis-code-editor-v2\0")
   .update(readFileSync(script))
   .update(readFileSync(source))
   .update(readFileSync(lspSource))
@@ -37,7 +37,7 @@ const { default: esbuild } = await import("esbuild");
 const result = await esbuild.build({
   entryPoints: [source],
   bundle: true,
-  format: "iife",
+  format: "esm",
   outfile: destination,
   platform: "browser",
   target: "es2020",

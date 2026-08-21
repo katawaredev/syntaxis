@@ -6,7 +6,7 @@ use super::{
     ActionCallback, AnyStorage, AppIcon, ChangeKind, CommitInfo, ConflictChoice, ConflictFile,
     ControlSize, DiffHunk, DiffKind, DiffLayout, DropdownMenu, DropdownMenuItem, Element,
     EventHandler, FileChange, FileIcon, GitChangeBadge, GlobalAttributesExtension, HasAttributes,
-    History, HistoryAction, HunkAction, Icon, InputExtension, Language, LinkExtension, MenuContent,
+    History, HistoryAction, HunkAction, Icon, InputExtension, LinkExtension, MenuContent,
     MenuTrigger, Mutation, OptionExtension, Props, ReadableExt, ReadableHashMapExt,
     ReadableHashSetExt, ReadableOptionExt, ReadableResultExt, ReadableStrExt, ReadableVecExt,
     RepositoryStatus, Result, SelectExtension, SelectedChange, ServerFnError, SidebarView, Signal,
@@ -712,6 +712,7 @@ fn HunkCard(
 ) -> Element {
     let (original, current) = hunk_sources(&hunk.body);
     let language = diff_language(&selection.path);
+    let filename = selection.path.clone();
     rsx! {
         section { class: "min-w-0 overflow-hidden rounded-md border border-border bg-card",
             header { class: "flex min-h-9 items-center justify-end gap-3 border-b border-border bg-muted/45 px-3 py-1.5 font-sans text-[10px] text-muted-foreground",
@@ -791,6 +792,7 @@ fn HunkCard(
                 original,
                 current,
                 language,
+                filename,
                 collapse_unchanged: false,
                 layout: DiffLayout::Embedded,
                 old_line_offset: hunk.old_start.saturating_sub(1),
@@ -813,6 +815,7 @@ fn FullFileDiff(diff: UnifiedDiff, path: String) -> Element {
                 original,
                 current,
                 language: diff_language(&path),
+                filename: path,
                 collapse_unchanged: false,
                 layout: DiffLayout::FullFile,
             }
@@ -820,8 +823,8 @@ fn FullFileDiff(diff: UnifiedDiff, path: String) -> Element {
     }
 }
 
-fn diff_language(path: &str) -> Language {
-    Language::from_slug(language_slug_for_path(path)).unwrap_or(Language::Rust)
+fn diff_language(path: &str) -> String {
+    language_slug_for_path(path).to_owned()
 }
 
 fn hunk_sources(body: &str) -> (String, String) {
