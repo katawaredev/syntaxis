@@ -130,6 +130,12 @@ pub trait GitOperations: Send + Sync {
 
     async fn pull(&self, workspace: &WorkspaceRecord) -> GitResult<RemoteResult>;
 
+    async fn publish_branch(
+        &self,
+        workspace: &WorkspaceRecord,
+        remote: &str,
+    ) -> GitResult<RemoteResult>;
+
     async fn push(
         &self,
         workspace: &WorkspaceRecord,

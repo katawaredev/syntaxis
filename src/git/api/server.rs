@@ -626,6 +626,17 @@ pub(super) async fn pull(workspace_slug: &str) -> Result<RemoteResult, ServerFnE
         .map_err(server_error)
 }
 
+pub(super) async fn publish_branch(
+    workspace_slug: &str,
+    remote: &str,
+) -> Result<RemoteResult, ServerFnError> {
+    let workspace = workspace(workspace_slug).await?;
+    HostGit::default()
+        .publish_branch(&workspace, remote)
+        .await
+        .map_err(server_error)
+}
+
 pub(super) async fn push(
     workspace_slug: &str,
     force_with_lease: bool,

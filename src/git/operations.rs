@@ -119,6 +119,7 @@ pub(super) enum RepositoryAction {
     Merge(String),
     AbortMerge,
     Pull,
+    Publish(String),
     Refresh,
     FetchRemote(String),
     AddRemote(RemoteRequest),
@@ -183,6 +184,9 @@ pub(super) async fn run_repository_action(
             .await
             .map(|()| "Aborted merge".to_owned()),
         RepositoryAction::Pull => api::pull(slug).await.map(|result| result.message),
+        RepositoryAction::Publish(remote) => api::publish_branch(slug, remote)
+            .await
+            .map(|result| result.message),
         RepositoryAction::Refresh => api::fetch(slug).await.map(|result| result.message),
         RepositoryAction::FetchRemote(name) => api::fetch_remote(slug, name)
             .await

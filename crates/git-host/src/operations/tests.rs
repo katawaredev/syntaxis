@@ -13,7 +13,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::HostGit;
 
-use super::{GITHUB_SSH_PUSH_REWRITE, push_arguments};
+use super::{GITHUB_SSH_PUSH_REWRITE, publish_arguments, push_arguments};
 
 #[test]
 fn github_ssh_push_fallback_is_command_scoped() {
@@ -25,6 +25,26 @@ fn github_ssh_push_fallback_is_command_scoped() {
             OsString::from(GITHUB_SSH_PUSH_REWRITE),
             OsString::from("push"),
             OsString::from("--force-with-lease"),
+        ]
+    );
+    assert_eq!(
+        publish_arguments("origin", false),
+        vec![
+            OsString::from("push"),
+            OsString::from("--set-upstream"),
+            OsString::from("origin"),
+            OsString::from("HEAD"),
+        ]
+    );
+    assert_eq!(
+        publish_arguments("origin", true),
+        vec![
+            OsString::from("-c"),
+            OsString::from(GITHUB_SSH_PUSH_REWRITE),
+            OsString::from("push"),
+            OsString::from("--set-upstream"),
+            OsString::from("origin"),
+            OsString::from("HEAD"),
         ]
     );
 }
@@ -557,6 +577,37 @@ async fn fetch_push_and_force_with_lease_follow_real_remote_state() {
         host.push(&workspace, true).await.unwrap(),
         PushOutcome::Pushed { .. }
     ));
+}
+
+#[tokio::test]
+async fn publishes_a_new_branch_and_sets_its_upstream() {
+    let repository = init_repository();
+    fs::write(repository.path().join("tracked.txt"), "base\n").unwrap();
+    git(repository.path(), &["add", "tracked.txt"]);
+    git(repository.path(), &["commit", "-m", "base"]);
+    let remote_parent = TempDir::new().unwrap();
+    git(remote_parent.path(), &["init", "--bare", "remote.git"]);
+    let remote = remote_parent.path().join("remote.git");
+    git(
+        repository.path(),
+        &["remote", "add", "origin", remote.to_str().unwrap()],
+    );
+    git(repository.path(), &["switch", "-c", "feature/publish"]);
+
+    let host = HostGit::default();
+    let workspace = workspace(repository.path());
+    let result = host.publish_branch(&workspace, "origin").await.unwrap();
+
+    assert_eq!(result.message, "Published branch to origin.");
+    assert_eq!(
+        host.status(&workspace)
+            .await
+            .unwrap()
+            .branch
+            .upstream
+            .as_deref(),
+        Some("origin/feature/publish")
+    );
 }
 
 #[tokio::test]

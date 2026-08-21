@@ -800,6 +800,14 @@ impl GitOperations for HostGit {
         self.pull_fast_forward(workspace).await
     }
 
+    async fn publish_branch(
+        &self,
+        workspace: &WorkspaceRecord,
+        remote: &str,
+    ) -> GitResult<RemoteResult> {
+        self.publish_current_branch(workspace, remote).await
+    }
+
     async fn push(
         &self,
         workspace: &WorkspaceRecord,
