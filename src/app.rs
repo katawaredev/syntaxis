@@ -28,6 +28,7 @@ static WEB_APP_ICON_512: Asset = asset!(
     AssetOptions::builder().with_hash_suffix(false)
 );
 pub(crate) const GEIST_FONT: Asset = asset!("/assets/geist-latin-wght-normal.woff2");
+const WEBSOCKET_COMPAT_SCRIPT: Asset = asset!("/assets/websocket-compat.js");
 const UI_SCRIPT: Asset = asset!("/assets/ui.js");
 const AI_CHAT_SCRIPT: Asset = asset!("/assets/ai-chat.js");
 const THEME_COLOR: &str = "#1f2021";
@@ -119,6 +120,7 @@ pub fn App() -> Element {
         }
         document::Style { {geist_font_face} }
         document::Stylesheet { href: TAILWIND_CSS }
+        document::Script { src: WEBSOCKET_COMPAT_SCRIPT }
         document::Script { src: UI_SCRIPT }
         document::Script { src: AI_CHAT_SCRIPT }
         Router::<Route> {}
