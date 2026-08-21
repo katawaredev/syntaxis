@@ -1,0 +1,18 @@
+{
+  "name": "mobile-cold-start-recent-projects",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "deviceScaleFactor": 2,
+    "formFactor": "mobile"
+  },
+  "fixtureDirectory": "autoresearch/fixture",
+  "homeUrl": "http://127.0.0.1:4173/",
+  "editorUrl": null,
+  "recentProjectsReady": {
+    "section": "section[aria-labelledby=\"recent-title\"]",
+    "loadingState": "[aria-label=\"Loading recent projects\"]",
+    "readyRule": "section exists and loadingState is absent"
+  },
+  "repetitions": 3
+}

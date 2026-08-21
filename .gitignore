@@ -5,6 +5,7 @@
 /node_modules
 /.lighthouseci
 /lighthouse-reports
+/autoresearch/results/
 /mise.local.toml
 /mise.local.lock
 .DS_Store

@@ -11,7 +11,11 @@
     "lint:web:fix": "oxlint --fix --deny-warnings .",
     "test:terminal": "bun test assets/terminal/source-links.test.js",
     "lighthouse": "rm -rf target/dx/syntaxis/release/web/public && dx build --platform web --release --locked --debug-symbols false && lhci autorun",
-    "lighthouse:open": "lhci open"
+    "lighthouse:open": "lhci open",
+    "autoresearch:benchmark": "bun autoresearch/benchmark.mjs",
+    "autoresearch:compare": "bun autoresearch/compare.mjs",
+    "autoresearch:recent-projects": "bun autoresearch/recent-projects.mjs",
+    "autoresearch:verify": "bun autoresearch/verify.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",
