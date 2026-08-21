@@ -124,6 +124,11 @@ fn snippet(text: &str, match_start: usize, match_end: usize) -> String {
 }
 
 pub(crate) fn delete(workspace_root: &Path, session_id: &str, path: &Path) -> std::io::Result<()> {
+    match fs::metadata(path) {
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    }
     let expected_cwd = canonical_or_owned(workspace_root);
     let descriptor = read_descriptor(path, &expected_cwd).ok_or_else(|| {
         std::io::Error::new(
@@ -137,7 +142,11 @@ pub(crate) fn delete(workspace_root: &Path, session_id: &str, path: &Path) -> st
             "The Pi session id does not match its session file",
         ));
     }
-    fs::remove_file(path)
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
 }
 
 fn session_root(workspace_root: &Path) -> PathBuf {
@@ -368,6 +377,16 @@ mod tests {
         assert!(path.exists());
         delete(&workspace, "session-1", &path).unwrap();
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn deleting_an_unpersisted_session_succeeds() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace = temp.path().join("workspace");
+        fs::create_dir(&workspace).unwrap();
+        let path = temp.path().join("not-yet-created.jsonl");
+
+        delete(&workspace, "session-1", &path).unwrap();
     }
 
     #[test]
