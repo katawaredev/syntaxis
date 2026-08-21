@@ -50,6 +50,9 @@ jobs:
           restore-keys: |
             bun-${{ runner.os }}-
 
+      - name: Install JavaScript dependencies
+        run: bun install --frozen-lockfile
+
       - name: Install cargo-binstall
         uses: cargo-bins/cargo-binstall@main
         with:
