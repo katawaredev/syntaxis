@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1](https://github.com/katawaredev/syntaxis/compare/v0.10.0...v0.10.1) (2026-08-22)
+
+
+### Bug Fixes
+
+* **editor:** disable mobile auto zoom ([b90548b](https://github.com/katawaredev/syntaxis/commit/b90548b8cadbb0ff851d9dcc1afd99f109df1efa))
+
 ## [0.10.0](https://github.com/katawaredev/syntaxis/compare/v0.9.3...v0.10.0) (2026-08-22)
 
 
