@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.9.3](https://github.com/katawaredev/syntaxis/compare/v0.9.2...v0.9.3) (2026-08-22)
+
+
+### Bug Fixes
+
+* **ai:** allow deleting empty sessions ([18a4944](https://github.com/katawaredev/syntaxis/commit/18a4944ec20d48d172431eff0ee33a3cefcc558d))
+* **ai:** don't close drawer when switching to settings ([d5d9bb1](https://github.com/katawaredev/syntaxis/commit/d5d9bb1ca328d841723589a65fc0c3ab801461f5))
+* import websocket compat script ([e41ea2b](https://github.com/katawaredev/syntaxis/commit/e41ea2b87f4b7fc8d73c3eb459e6075bca014ba3))
+* legacy websocket url ([ecbe90a](https://github.com/katawaredev/syntaxis/commit/ecbe90a52e4e3a62537c3568d4ee575aa44867af))
+
 ## [0.9.2](https://github.com/katawaredev/syntaxis/compare/v0.9.1...v0.9.2) (2026-08-17)
 
 
