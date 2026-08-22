@@ -8,7 +8,9 @@ use syntaxis_ui::prelude::{
 };
 use syntaxis_workspace::{WorkspaceAvailability, WorkspaceRecord, WorkspaceTechnology};
 
-use crate::workspace::client::{prune_mise_tools, refresh_workspace, update_mise_tools};
+use crate::workspace::client::{
+    list_workspace_availability, prune_mise_tools, refresh_workspace, update_mise_tools,
+};
 
 const MIN_LANGUAGE_PERMILLE: u64 = 20;
 
@@ -195,14 +197,15 @@ fn WorkspaceRow(
 ) -> Element {
     let availability = workspace.availability;
     let workspace_available = availability == WorkspaceAvailability::Available;
+    let workspace_missing = availability == WorkspaceAvailability::Missing;
     let workspace_id = workspace.id.0.clone();
     let workspace_name = workspace.name.clone();
     let mut menu_open = use_signal(|| false);
     let mut refreshing = use_signal(|| false);
     rsx! {
-        article { class: if availability == WorkspaceAvailability::Missing { "flex min-h-22 min-w-0 items-center border-b border-border opacity-65 first:rounded-t-xl last:rounded-b-xl last:border-b-0 hover:bg-accent/60 max-md:min-h-16" } else { "flex min-h-22 min-w-0 items-center border-b border-border first:rounded-t-xl last:rounded-b-xl last:border-b-0 hover:bg-accent/60 max-md:min-h-16" },
+        article { class: "flex min-h-22 min-w-0 items-center border-b border-border first:rounded-t-xl last:rounded-b-xl last:border-b-0 hover:bg-accent/60 max-md:min-h-16",
             Link {
-                class: "grid min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-3 max-md:grid-cols-[auto_minmax(0,1fr)] max-md:py-2.5",
+                class: if workspace_missing { "grid min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-3 opacity-65 max-md:grid-cols-[auto_minmax(0,1fr)] max-md:py-2.5" } else { "grid min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-3 max-md:grid-cols-[auto_minmax(0,1fr)] max-md:py-2.5" },
                 to: Route::for_workspace_section(workspace.slug.clone(), workspace.last_section),
                 onclick: move |event: MouseEvent| {
                     if !workspace_available {
@@ -245,40 +248,42 @@ fn WorkspaceRow(
                     on_toggle: move |()| menu_open.toggle(),
                 }
                 MenuContent { class: "right-0 w-40",
-                    DropdownMenuItem::<ProjectAction> {
-                        value: ProjectAction::Bootstrap,
-                        index: 0_usize,
-                        disabled: refreshing() || !workspace_available,
-                        on_select: move |_: ProjectAction| on_bootstrap.call(index),
-                        span { class: "flex items-center gap-2",
-                            Icon { icon: AppIcon::Terminal, size: 14 }
-                            "Bootstrap"
+                    if !workspace_missing {
+                        DropdownMenuItem::<ProjectAction> {
+                            value: ProjectAction::Bootstrap,
+                            index: 0_usize,
+                            disabled: refreshing() || !workspace_available,
+                            on_select: move |_: ProjectAction| on_bootstrap.call(index),
+                            span { class: "flex items-center gap-2",
+                                Icon { icon: AppIcon::Terminal, size: 14 }
+                                "Bootstrap"
+                            }
                         }
-                    }
-                    DropdownMenuItem::<ProjectAction> {
-                        value: ProjectAction::UpdateTools,
-                        index: 1_usize,
-                        disabled: refreshing() || !workspace_available,
-                        on_select: move |_: ProjectAction| on_update_tools.call(index),
-                        span { class: "flex items-center gap-2",
-                            Icon { icon: AppIcon::Refresh, size: 14 }
-                            "Update tools"
+                        DropdownMenuItem::<ProjectAction> {
+                            value: ProjectAction::UpdateTools,
+                            index: 1_usize,
+                            disabled: refreshing() || !workspace_available,
+                            on_select: move |_: ProjectAction| on_update_tools.call(index),
+                            span { class: "flex items-center gap-2",
+                                Icon { icon: AppIcon::Refresh, size: 14 }
+                                "Update tools"
+                            }
                         }
-                    }
-                    DropdownMenuItem::<ProjectAction> {
-                        value: ProjectAction::Notes,
-                        index: 2_usize,
-                        disabled: refreshing(),
-                        on_select: move |_: ProjectAction| on_notes.call(index),
-                        span { class: "flex items-center gap-2",
-                            Icon { icon: AppIcon::NewChat, size: 14 }
-                            "Notes"
+                        DropdownMenuItem::<ProjectAction> {
+                            value: ProjectAction::Notes,
+                            index: 2_usize,
+                            disabled: refreshing(),
+                            on_select: move |_: ProjectAction| on_notes.call(index),
+                            span { class: "flex items-center gap-2",
+                                Icon { icon: AppIcon::NewChat, size: 14 }
+                                "Notes"
+                            }
                         }
                     }
                     DropdownMenuItem::<ProjectAction> {
                         value: ProjectAction::Refresh,
-                        index: 3_usize,
-                        disabled: refreshing() || !workspace_available,
+                        index: if workspace_missing { 0_usize } else { 3_usize },
+                        disabled: refreshing() || (!workspace_available && !workspace_missing),
                         on_select: move |_: ProjectAction| {
                             if refreshing() {
                                 return;
@@ -287,9 +292,29 @@ fn WorkspaceRow(
                             let workspace_id = workspace_id.clone();
                             let workspace_name = workspace_name.clone();
                             spawn(async move {
-                                match refresh_workspace(workspace_id).await {
-                                    Ok(_) => {
-                                        on_notice.call(format!("Refreshed {workspace_name}"));
+                                let result = if workspace_missing {
+                                    list_workspace_availability()
+                                        .await
+                                        .and_then(|workspaces| {
+                                            workspaces
+                                                .into_iter()
+                                                .find(|workspace| {
+                                                    workspace.id.0.as_str() == workspace_id.as_str()
+                                                })
+                                                .ok_or_else(|| "Workspace entry was not found".to_owned())
+                                        })
+                                } else {
+                                    refresh_workspace(workspace_id).await
+                                };
+                                match result {
+                                    Ok(workspace) => {
+                                        if workspace.availability == WorkspaceAvailability::Missing {
+                                            on_notice.call(format!("{workspace_name} is still missing"));
+                                        } else if workspace_missing {
+                                            on_notice.call(format!("{workspace_name} is available again"));
+                                        } else {
+                                            on_notice.call(format!("Refreshed {workspace_name}"));
+                                        }
                                         on_changed.call(());
                                     }
                                     Err(error) => on_notice.call(error),
@@ -300,32 +325,44 @@ fn WorkspaceRow(
                         span { class: "flex items-center gap-2",
                             Icon { icon: AppIcon::Refresh, size: 14 }
                             if refreshing() {
-                                "Refreshing…"
+                                if workspace_missing {
+                                    "Checking…"
+                                } else {
+                                    "Refreshing…"
+                                }
+                            } else if workspace_missing {
+                                "Check again"
                             } else {
                                 "Refresh"
                             }
                         }
                     }
-                    DropdownMenuItem::<ProjectAction> {
-                        value: ProjectAction::Cleanup,
-                        index: 4_usize,
-                        class: "!text-destructive",
-                        disabled: refreshing() || !workspace_available,
-                        on_select: move |_: ProjectAction| on_cleanup.call(index),
-                        span { class: "flex items-center gap-2",
-                            Icon { icon: AppIcon::Cleanup, size: 14 }
-                            "Cleanup files"
+                    if !workspace_missing {
+                        DropdownMenuItem::<ProjectAction> {
+                            value: ProjectAction::Cleanup,
+                            index: 4_usize,
+                            class: "!text-destructive",
+                            disabled: refreshing() || !workspace_available,
+                            on_select: move |_: ProjectAction| on_cleanup.call(index),
+                            span { class: "flex items-center gap-2",
+                                Icon { icon: AppIcon::Cleanup, size: 14 }
+                                "Cleanup files"
+                            }
                         }
                     }
                     DropdownMenuItem::<ProjectAction> {
                         value: ProjectAction::Delete,
-                        index: 5_usize,
+                        index: if workspace_missing { 1_usize } else { 5_usize },
                         class: "!text-destructive",
                         disabled: refreshing(),
                         on_select: move |_: ProjectAction| on_delete.call(index),
                         span { class: "flex items-center gap-2",
                             Icon { icon: AppIcon::Delete, size: 14 }
-                            "Delete"
+                            if workspace_missing {
+                                "Remove"
+                            } else {
+                                "Delete"
+                            }
                         }
                     }
                 }
