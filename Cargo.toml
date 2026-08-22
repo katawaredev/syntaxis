@@ -1,6 +1,6 @@
 [package]
 name = "syntaxis"
-version = "0.9.3"
+version = "0.10.0"
 authors = ["Nikolay Stoynov <arvigeus@gmail.com>"]
 edition = "2024"
 license = "MIT"

@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.10.0](https://github.com/katawaredev/syntaxis/compare/v0.9.3...v0.10.0) (2026-08-22)
+
+
+### Features
+
+* **git:** diverge merge with upstream ([c55244f](https://github.com/katawaredev/syntaxis/commit/c55244fd106a740db09a3a276ef9c507d3047fb6))
+* **git:** rebase ([9c8c125](https://github.com/katawaredev/syntaxis/commit/9c8c125af1fda5ccdf269955bea46c75507ba478))
+
+
+### Bug Fixes
+
+* **git:** rebase wording ([9c7766a](https://github.com/katawaredev/syntaxis/commit/9c7766afbf17a6f5eb5370b224c0a5ef64309065))
+* pin rust version ([6ec947f](https://github.com/katawaredev/syntaxis/commit/6ec947ffcec297e7e6ab667629922b147838d027))
+* **ui:** set page title for routes ([58626e6](https://github.com/katawaredev/syntaxis/commit/58626e6f8bd813bed8358c73800c82b42157b4d5))
+* **workspace:** handle missing projects ([6ab3052](https://github.com/katawaredev/syntaxis/commit/6ab30523d8a049c7e3adbf5ff7d5905aa7a92d12))
+
 ## [0.9.3](https://github.com/katawaredev/syntaxis/compare/v0.9.2...v0.9.3) (2026-08-22)
 
 
