@@ -1,6 +1,8 @@
 use std::ffi::OsString;
 
-use syntaxis_git::{GitError, GitErrorCode, GitOperations, GitResult, PushOutcome, RemoteResult};
+use syntaxis_git::{
+    GitError, GitErrorCode, GitOperations, GitResult, PushOutcome, RebaseOutcome, RemoteResult,
+};
 use syntaxis_workspace::WorkspaceRecord;
 use tokio_util::sync::CancellationToken;
 
@@ -53,11 +55,34 @@ impl HostGit {
             {
                 Err(GitError::new(
                     GitErrorCode::Conflict,
-                    "The local and upstream branches have diverged. Rebase or merge them in the terminal before pulling.",
+                    "The local and upstream branches have diverged. Merge the upstream branch from Git actions, or rebase in the terminal before pulling.",
                 ))
             }
             Err(error) => Err(error),
         }
+    }
+
+    pub(super) async fn pull_with_rebase(
+        &self,
+        workspace: &WorkspaceRecord,
+    ) -> GitResult<RebaseOutcome> {
+        if self.status(workspace).await?.rebase.is_some() {
+            return Err(GitError::new(
+                GitErrorCode::Conflict,
+                "A rebase is already in progress.",
+            ));
+        }
+        self.run_rebase_step(
+            workspace,
+            &[
+                "pull".into(),
+                "--rebase".into(),
+                "--no-autostash".into(),
+                "--prune".into(),
+            ],
+            "Pull with rebase completed.",
+        )
+        .await
     }
 
     pub(super) async fn push_upstream(

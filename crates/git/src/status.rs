@@ -40,6 +40,13 @@ pub struct FileChange {
     pub unstaged_deletions: u64,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct RebaseStatus {
+    pub current: u32,
+    pub total: u32,
+    pub commit_subject: String,
+}
+
 impl FileChange {
     pub fn is_staged(&self) -> bool {
         self.index.is_some()
@@ -54,6 +61,8 @@ impl FileChange {
 pub struct RepositoryStatus {
     pub branch: BranchStatus,
     pub changes: Vec<FileChange>,
+    #[serde(default)]
+    pub rebase: Option<RebaseStatus>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

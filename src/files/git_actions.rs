@@ -14,7 +14,7 @@ use super::{
     ReadableHashMapExt, ReadableHashSetExt, ReadableOptionExt, ReadableResultExt, ReadableStrExt,
     ReadableVecExt, RelativePath, Signal, SvgAttributesExtension, ToastState, UnifiedDiff,
     WorkspaceRecord, WritableExt, WritableVecExt, close_documents, git_api, open_document,
-    set_error, set_success, spawn, workspace_client,
+    set_error, spawn, workspace_client,
 };
 
 pub(super) fn toggle_diff(
@@ -151,7 +151,6 @@ pub(super) fn discard_git_change(
         diff.set(None);
         let mut refresh = context.refresh;
         refresh += 1;
-        set_success(context.toast, format!("Discarded Git changes in {path}"));
     });
 }
 
@@ -294,7 +293,6 @@ pub(super) fn run_file_action(
                     close_documents(&paths, documents, active_path);
                 }
                 refresh += 1;
-                set_success(toast, "Workspace files updated");
             }
             Err(message) => set_error(toast, message),
         }

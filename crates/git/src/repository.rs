@@ -143,6 +143,13 @@ pub enum MergeOutcome {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum RebaseOutcome {
+    Complete { message: String },
+    Stopped { conflicts: usize, message: String },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct RemoteResult {
     pub message: String,
 }

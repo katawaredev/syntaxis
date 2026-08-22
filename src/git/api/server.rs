@@ -6,9 +6,9 @@ use syntaxis_git::{
     BranchComparison, BranchInfo, BranchRequest, CLONE_PROTOCOL_VERSION, CloneClientMessage,
     CloneMode, CloneRequest, CloneServerMessage, CommitDetail, CommitInfo, CommitOutcome,
     CommitRequest, ConflictChoice, ConflictFile, ConflictRequest, DiffKind, GitErrorCode,
-    GitOperations, HunkAction, HunkRequest, MergeOutcome, PushOutcome, RemoteInfo, RemoteRequest,
-    RemoteResult, RepositorySnapshot, RepositoryState, RepositoryStatus, TagInfo, TagRequest,
-    UnifiedDiff, WorktreeCreateRequest, WorktreeInfo, WorktreeOperations,
+    GitOperations, HunkAction, HunkRequest, MergeOutcome, PushOutcome, RebaseOutcome, RemoteInfo,
+    RemoteRequest, RemoteResult, RepositorySnapshot, RepositoryState, RepositoryStatus, TagInfo,
+    TagRequest, UnifiedDiff, WorktreeCreateRequest, WorktreeInfo, WorktreeOperations,
 };
 use syntaxis_git_host::HostGit;
 use syntaxis_workspace::RelativePath;
@@ -622,6 +622,38 @@ pub(super) async fn pull(workspace_slug: &str) -> Result<RemoteResult, ServerFnE
     let workspace = workspace(workspace_slug).await?;
     HostGit::default()
         .pull(&workspace)
+        .await
+        .map_err(server_error)
+}
+
+pub(super) async fn pull_rebase(workspace_slug: &str) -> Result<RebaseOutcome, ServerFnError> {
+    let workspace = workspace(workspace_slug).await?;
+    HostGit::default()
+        .pull_rebase(&workspace)
+        .await
+        .map_err(server_error)
+}
+
+pub(super) async fn continue_rebase(workspace_slug: &str) -> Result<RebaseOutcome, ServerFnError> {
+    let workspace = workspace(workspace_slug).await?;
+    HostGit::default()
+        .continue_rebase(&workspace)
+        .await
+        .map_err(server_error)
+}
+
+pub(super) async fn skip_rebase(workspace_slug: &str) -> Result<RebaseOutcome, ServerFnError> {
+    let workspace = workspace(workspace_slug).await?;
+    HostGit::default()
+        .skip_rebase(&workspace)
+        .await
+        .map_err(server_error)
+}
+
+pub(super) async fn abort_rebase(workspace_slug: &str) -> Result<(), ServerFnError> {
+    let workspace = workspace(workspace_slug).await?;
+    HostGit::default()
+        .abort_rebase(&workspace)
         .await
         .map_err(server_error)
 }

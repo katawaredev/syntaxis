@@ -18,7 +18,6 @@ const INVALID_PATH_ERROR: &str = "Use no more than one leading slash in the fold
 pub(super) fn WorkspaceFolderDialog(
     mut dialog: Signal<HomeDialog>,
     runtime: RuntimePresentation,
-    on_notice: EventHandler<String>,
     on_changed: EventHandler<()>,
 ) -> Element {
     let mut workspace_path = use_signal(|| "/".to_owned());
@@ -133,7 +132,6 @@ pub(super) fn WorkspaceFolderDialog(
                                 match register_workspace(path).await {
                                     Ok(_) => {
                                         dialog.set(HomeDialog::None);
-                                        on_notice.call("Workspace registered".into());
                                         on_changed.call(());
                                     }
                                     Err(error) => {

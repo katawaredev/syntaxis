@@ -187,7 +187,6 @@ fn PromptEditor(
                                     Ok(()) => {
                                         editing.set(None);
                                         revision.with_mut(|value| *value += 1);
-                                        toast.set(Some(("Prompt template saved".into(), Tone::Success)));
                                     }
                                     Err(error) => toast.set(Some((error.to_string(), Tone::Destructive))),
                                 }
@@ -233,7 +232,6 @@ fn DeletePromptDialog(
                                 match api::delete_prompt_template(workspace_id, name, template.scope).await {
                                     Ok(()) => {
                                         revision.with_mut(|value| *value += 1);
-                                        toast.set(Some(("Prompt template deleted".into(), Tone::Success)));
                                     }
                                     Err(error) => toast.set(Some((error.to_string(), Tone::Destructive))),
                                 }

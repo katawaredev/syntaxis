@@ -9,10 +9,10 @@ use super::{
     History, HistoryAction, HunkAction, Icon, InputExtension, LinkExtension, MenuContent,
     MenuTrigger, Mutation, OptionExtension, Props, ReadableExt, ReadableHashMapExt,
     ReadableHashSetExt, ReadableOptionExt, ReadableResultExt, ReadableStrExt, ReadableVecExt,
-    RepositoryStatus, Result, SelectExtension, SelectedChange, ServerFnError, SidebarView, Signal,
-    Storage, StyleExtension, SvgAttributesExtension, TrackExtension, UnifiedDiff, UnifiedDiffView,
-    WritableExt, component, diff_line_class, dioxus_core, dioxus_elements, dioxus_signals,
-    language_slug_for_path, parse_diff_hunks, rsx, use_signal,
+    RebaseStatus, RepositoryStatus, Result, SelectExtension, SelectedChange, ServerFnError,
+    SidebarView, Signal, Storage, StyleExtension, SvgAttributesExtension, TrackExtension,
+    UnifiedDiff, UnifiedDiffView, WritableExt, component, diff_line_class, dioxus_core,
+    dioxus_elements, dioxus_signals, language_slug_for_path, parse_diff_hunks, rsx, use_signal,
 };
 
 const DIFF_TITLEBAR_CLASS: &str = "sticky top-0 z-10 flex min-h-14 min-w-165 items-center justify-between gap-3 border-b border-border bg-background/95 p-3 font-sans backdrop-blur-sm max-md:min-h-13 max-md:min-w-0 max-md:gap-1.5 max-md:px-2 max-md:py-2";
@@ -26,6 +26,7 @@ pub(super) fn GitSidebar(
     history_error: Option<String>,
     mut selected_commit: Signal<Option<String>>,
     selected: Signal<Option<SelectedChange>>,
+    rebase_active: bool,
     pending: bool,
     on_select: EventHandler<()>,
     on_history_action: EventHandler<(HistoryAction, String)>,
@@ -52,21 +53,31 @@ pub(super) fn GitSidebar(
 
     rsx! {
         div { class: "flex h-full min-h-0 flex-col bg-background",
-            div { class: "grid h-12 min-h-12 grid-cols-2 items-center gap-1 border-b border-border p-1.25",
-                button {
-                    class: if view() == SidebarView::Changes { "h-8.5 rounded-md bg-muted text-[11px] font-medium text-foreground" } else { "h-8.5 rounded-md bg-transparent text-[11px] text-muted-foreground hover:bg-muted/60 hover:text-foreground" },
-                    onclick: move |_| view.set(SidebarView::Changes),
-                    "Changes ({repository.changes.len()})"
-                }
-                button {
-                    class: if view() == SidebarView::History { "h-8.5 rounded-md bg-muted text-[11px] font-medium text-foreground" } else { "h-8.5 rounded-md bg-transparent text-[11px] text-muted-foreground hover:bg-muted/60 hover:text-foreground" },
-                    onclick: move |_| view.set(SidebarView::History),
-                    "History"
+            div { class: if rebase_active { "grid h-12 min-h-12 grid-cols-1 items-center gap-1 border-b border-border p-1.25" } else { "grid h-12 min-h-12 grid-cols-2 items-center gap-1 border-b border-border p-1.25" },
+                if rebase_active {
+                    strong { class: "px-2 text-[11px] font-medium text-foreground",
+                        "Rebase conflicts ({conflicts.len()})"
+                    }
+                } else {
+                    button {
+                        class: if view() == SidebarView::Changes { "h-8.5 rounded-md bg-muted text-[11px] font-medium text-foreground" } else { "h-8.5 rounded-md bg-transparent text-[11px] text-muted-foreground hover:bg-muted/60 hover:text-foreground" },
+                        onclick: move |_| view.set(SidebarView::Changes),
+                        "Changes ({repository.changes.len()})"
+                    }
+                    button {
+                        class: if view() == SidebarView::History { "h-8.5 rounded-md bg-muted text-[11px] font-medium text-foreground" } else { "h-8.5 rounded-md bg-transparent text-[11px] text-muted-foreground hover:bg-muted/60 hover:text-foreground" },
+                        onclick: move |_| view.set(SidebarView::History),
+                        "History"
+                    }
                 }
             }
-            if view() == SidebarView::Changes {
+            if view() == SidebarView::Changes || rebase_active {
                 div { class: "touch-scroll-region min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain p-2",
-                    if repository.changes.is_empty() {
+                    if rebase_active && conflicts.is_empty() {
+                        div { class: "grid h-full min-h-40 place-items-center p-4 text-center text-xs text-success",
+                            "This commit is resolved and ready to continue."
+                        }
+                    } else if repository.changes.is_empty() {
                         div { class: "grid h-full min-h-40 place-items-center p-4 text-center text-xs text-muted-foreground",
                             "Working tree clean."
                         }
@@ -83,27 +94,29 @@ pub(super) fn GitSidebar(
                                 on_select,
                                 on_mutation,
                             }
-                            ChangeSection {
-                                title: "Staged",
-                                changes: staged,
-                                kind: DiffKind::Staged,
-                                selected,
-                                pending,
-                                batch_label: Some("Unstage".into()),
-                                collapsible: true,
-                                on_select,
-                                on_mutation,
-                            }
-                            ChangeSection {
-                                title: "Changes",
-                                changes: unstaged,
-                                kind: DiffKind::Worktree,
-                                selected,
-                                pending,
-                                batch_label: Some("Stage".into()),
-                                collapsible: true,
-                                on_select,
-                                on_mutation,
+                            if !rebase_active {
+                                ChangeSection {
+                                    title: "Staged",
+                                    changes: staged,
+                                    kind: DiffKind::Staged,
+                                    selected,
+                                    pending,
+                                    batch_label: Some("Unstage".into()),
+                                    collapsible: true,
+                                    on_select,
+                                    on_mutation,
+                                }
+                                ChangeSection {
+                                    title: "Changes",
+                                    changes: unstaged,
+                                    kind: DiffKind::Worktree,
+                                    selected,
+                                    pending,
+                                    batch_label: Some("Stage".into()),
+                                    collapsible: true,
+                                    on_select,
+                                    on_mutation,
+                                }
                             }
                         }
                     }
@@ -377,6 +390,7 @@ pub(super) fn ChangeDetail(
     change: Option<FileChange>,
     diff: Option<Result<UnifiedDiff, ServerFnError>>,
     conflict: Option<Result<ConflictFile, ServerFnError>>,
+    rebase: Option<RebaseStatus>,
     expanded: bool,
     pending: bool,
     on_expand: EventHandler<()>,
@@ -394,6 +408,7 @@ pub(super) fn ChangeDetail(
             ConflictDetail {
                 selection,
                 conflict,
+                rebase,
                 pending,
                 on_mutation,
             }
@@ -543,6 +558,7 @@ pub(super) fn ChangeDetail(
 pub(super) fn ConflictDetail(
     selection: SelectedChange,
     conflict: Option<Result<ConflictFile, ServerFnError>>,
+    rebase: Option<RebaseStatus>,
     pending: bool,
     on_mutation: EventHandler<Mutation>,
 ) -> Element {
@@ -572,7 +588,11 @@ pub(super) fn ConflictDetail(
                         div { class: "max-w-lg rounded-md border border-warning/40 bg-warning/10 p-4",
                             h2 { class: "text-sm font-semibold text-warning", "Block resolution unavailable" }
                             p { class: "mt-2 text-xs leading-relaxed text-muted-foreground",
-                                "{error} The file was left unchanged; resolve it with an external Git tool, then stage it here, or abort the merge."
+                                if rebase.is_some() {
+                                    "{error} The file was left unchanged. Resolve it in the terminal, stage it there, then return here to continue—or abort the rebase."
+                                } else {
+                                    "{error} The file was left unchanged; resolve it with an external Git tool, then stage it here, or abort the merge."
+                                }
                             }
                         }
                     }
@@ -581,14 +601,20 @@ pub(super) fn ConflictDetail(
                     div { class: "space-y-3 p-3",
                         for block in file.blocks {
                             section { class: "overflow-hidden rounded-md border border-border bg-card",
-                                header { class: "flex min-h-9 items-center justify-between gap-2 border-b border-border bg-muted/45 px-3 py-1.5 text-[10px] text-muted-foreground",
-                                    div { class: "flex min-w-0 items-center gap-2",
+                                header { class: "flex min-h-9 items-center justify-between gap-2 border-b border-border bg-muted/45 px-3 py-1.5 text-[10px] text-muted-foreground max-md:flex-col max-md:items-stretch max-md:py-2",
+                                    div { class: "flex min-w-0 items-center gap-2 max-md:flex-wrap",
                                         strong { class: "font-medium text-foreground", "Conflict {block.index + 1}" }
-                                        span { class: "truncate", "{block.current_label} → {block.incoming_label}" }
+                                        if let Some(rebase) = rebase.as_ref() {
+                                            span { class: "truncate",
+                                                "Upstream version ↔ rebased commit version · {rebase.commit_subject}"
+                                            }
+                                        } else {
+                                            span { class: "truncate", "{block.current_label} → {block.incoming_label}" }
+                                        }
                                         span { class: "text-red-400", "−{block.current.lines().count()}" }
                                         span { class: "text-emerald-400", "+{block.incoming.lines().count()}" }
                                     }
-                                    div { class: "flex gap-1",
+                                    div { class: "flex gap-1 max-md:grid max-md:grid-cols-1",
                                         button {
                                             class: "rounded-md border border-border bg-background px-2 py-1 text-[10px] text-foreground hover:bg-muted",
                                             disabled: pending,
@@ -606,10 +632,14 @@ pub(super) fn ConflictDetail(
                                                         });
                                                 }
                                             },
-                                            "Accept"
+                                            if rebase.is_some() {
+                                                "Use rebased commit"
+                                            } else {
+                                                "Accept"
+                                            }
                                         }
                                         button {
-                                            class: "rounded-md bg-destructive/12 px-2 py-1 text-[10px] text-destructive hover:bg-destructive/20",
+                                            class: if rebase.is_some() { "rounded-md border border-border bg-background px-2 py-1 text-[10px] text-foreground hover:bg-muted" } else { "rounded-md bg-destructive/12 px-2 py-1 text-[10px] text-destructive hover:bg-destructive/20" },
                                             disabled: pending,
                                             onclick: {
                                                 let path = selection.path.clone();
@@ -625,7 +655,11 @@ pub(super) fn ConflictDetail(
                                                         });
                                                 }
                                             },
-                                            "Reject"
+                                            if rebase.is_some() {
+                                                "Use upstream"
+                                            } else {
+                                                "Reject"
+                                            }
                                         }
                                         button {
                                             class: "rounded-md bg-secondary px-2 py-1 text-[10px] text-secondary-foreground hover:bg-muted",
@@ -644,7 +678,11 @@ pub(super) fn ConflictDetail(
                                                         });
                                                 }
                                             },
-                                            "Merge"
+                                            if rebase.is_some() {
+                                                "Keep both"
+                                            } else {
+                                                "Merge"
+                                            }
                                         }
                                     }
                                 }

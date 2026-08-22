@@ -3,7 +3,7 @@ use std::{ffi::OsString, fmt::Write as _, fs, path::Path, process::Command};
 use syntaxis_git::{
     BranchRequest, ChangeKind, CloneMode, ClonePhase, CloneRequest, CommitOutcome, CommitRequest,
     ConflictChoice, ConflictRequest, DiffKind, GitErrorCode, GitOperations, HunkAction,
-    HunkRequest, MergeOutcome, PushOutcome, TagRequest, parse_diff_hunks,
+    HunkRequest, MergeOutcome, PushOutcome, RebaseOutcome, TagRequest, parse_diff_hunks,
 };
 use syntaxis_workspace::{
     RelativePath, WorkspaceAvailability, WorkspaceIcon, WorkspaceId, WorkspaceRecord,
@@ -70,6 +70,116 @@ async fn initializes_a_workspace_once_with_a_main_branch() {
     assert_eq!(
         host.initialize(&workspace).await.unwrap_err().code,
         GitErrorCode::Conflict
+    );
+}
+
+#[tokio::test]
+async fn pull_rebase_persists_conflicts_and_continues_after_resolution() {
+    let remote = TempDir::new().unwrap();
+    git(remote.path(), &["init", "--bare", "-b", "main"]);
+    let upstream = init_repository();
+    fs::write(upstream.path().join("shared.txt"), "base\n").unwrap();
+    git(upstream.path(), &["add", "shared.txt"]);
+    git(upstream.path(), &["commit", "-m", "base"]);
+    git(
+        upstream.path(),
+        &["remote", "add", "origin", remote.path().to_str().unwrap()],
+    );
+    git(upstream.path(), &["push", "-u", "origin", "main"]);
+
+    let local = TempDir::new().unwrap();
+    git(
+        local.path(),
+        &["clone", remote.path().to_str().unwrap(), "."],
+    );
+    git(local.path(), &["config", "user.name", "Syntaxis Test"]);
+    git(
+        local.path(),
+        &["config", "user.email", "syntaxis@example.invalid"],
+    );
+    git(local.path(), &["config", "commit.gpgsign", "false"]);
+    fs::write(local.path().join("shared.txt"), "local\n").unwrap();
+    git(local.path(), &["commit", "-am", "local change"]);
+    fs::write(upstream.path().join("shared.txt"), "upstream\n").unwrap();
+    git(upstream.path(), &["commit", "-am", "upstream change"]);
+    git(upstream.path(), &["push"]);
+
+    let host = HostGit::default();
+    let workspace = workspace(local.path());
+    let outcome = host.pull_rebase(&workspace).await.unwrap();
+    assert!(matches!(
+        outcome,
+        RebaseOutcome::Stopped { conflicts: 1, .. }
+    ));
+    let status = host.status(&workspace).await.unwrap();
+    let rebase = status.rebase.unwrap();
+    assert_eq!(rebase.current, 1);
+    assert_eq!(rebase.total, 1);
+    assert_eq!(rebase.commit_subject, "local change");
+
+    let path = RelativePath::try_from("shared.txt").unwrap();
+    let conflict = host.conflict_file(&workspace, &path).await.unwrap();
+    let block = &conflict.blocks[0];
+    assert_eq!(
+        host.continue_rebase(&workspace).await.unwrap_err().code,
+        GitErrorCode::Conflict
+    );
+    host.resolve_conflict(
+        &workspace,
+        ConflictRequest {
+            path,
+            block_index: block.index,
+            expected_fingerprint: block.fingerprint,
+            choice: ConflictChoice::Incoming,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        host.continue_rebase(&workspace).await.unwrap(),
+        RebaseOutcome::Complete {
+            message: "Rebase completed.".into()
+        }
+    );
+    assert!(host.status(&workspace).await.unwrap().rebase.is_none());
+    assert_eq!(
+        fs::read_to_string(local.path().join("shared.txt")).unwrap(),
+        "local\n"
+    );
+}
+
+#[tokio::test]
+async fn abort_rebase_restores_the_pre_rebase_checkout() {
+    let repository = conflicting_rebase();
+    let host = HostGit::default();
+    let workspace = workspace(repository.path());
+
+    assert!(host.status(&workspace).await.unwrap().rebase.is_some());
+    host.abort_rebase(&workspace).await.unwrap();
+
+    assert!(host.status(&workspace).await.unwrap().rebase.is_none());
+    assert_eq!(
+        fs::read_to_string(repository.path().join("shared.txt")).unwrap(),
+        "local\n"
+    );
+}
+
+#[tokio::test]
+async fn skip_rebase_drops_the_stopped_commit_and_finishes() {
+    let repository = conflicting_rebase();
+    let host = HostGit::default();
+    let workspace = workspace(repository.path());
+
+    assert_eq!(
+        host.skip_rebase(&workspace).await.unwrap(),
+        RebaseOutcome::Complete {
+            message: "Rebase completed after skipping the commit.".into()
+        }
+    );
+    assert!(host.status(&workspace).await.unwrap().rebase.is_none());
+    assert_eq!(
+        fs::read_to_string(repository.path().join("shared.txt")).unwrap(),
+        "upstream\n"
     );
 }
 
@@ -901,6 +1011,26 @@ fn init_repository() -> TempDir {
     );
     git(directory.path(), &["config", "commit.gpgsign", "false"]);
     directory
+}
+
+fn conflicting_rebase() -> TempDir {
+    let repository = init_repository();
+    fs::write(repository.path().join("shared.txt"), "base\n").unwrap();
+    git(repository.path(), &["add", "shared.txt"]);
+    git(repository.path(), &["commit", "-m", "base"]);
+    git(repository.path(), &["checkout", "-b", "upstream"]);
+    fs::write(repository.path().join("shared.txt"), "upstream\n").unwrap();
+    git(repository.path(), &["commit", "-am", "upstream change"]);
+    git(repository.path(), &["checkout", "main"]);
+    fs::write(repository.path().join("shared.txt"), "local\n").unwrap();
+    git(repository.path(), &["commit", "-am", "local change"]);
+    let output = Command::new("git")
+        .args(["rebase", "upstream"])
+        .current_dir(repository.path())
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    repository
 }
 
 fn git(root: &Path, arguments: &[&str]) {

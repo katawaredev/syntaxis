@@ -149,6 +149,7 @@ pub(super) fn BranchWorktreeMenu(
 
     rsx! {
         DropdownMenu {
+            class: "min-w-0 @max-[520px]:flex-1",
             open: menu_open(),
             disabled: trigger_disabled,
             on_open_change: move |open: bool| {
@@ -159,7 +160,7 @@ pub(super) fn BranchWorktreeMenu(
             },
             div { class: "relative min-w-0 @max-[520px]:flex-1",
                 MenuButtonTrigger {
-                    class: "touch-target inline-flex h-7 min-w-0 max-w-52 items-center gap-1.5 rounded-md bg-transparent px-1.5 text-xs text-foreground hover:bg-accent disabled:opacity-50 @max-[520px]:w-full",
+                    class: "touch-target inline-flex h-7 min-w-0 max-w-52 items-center gap-1.5 overflow-hidden rounded-md bg-transparent px-1.5 text-xs text-foreground hover:bg-accent disabled:opacity-50 @max-[520px]:w-full",
                     label: "Branches and worktrees",
                     title: current_branch.clone(),
                     on_toggle: move |()| menu_open.toggle(),

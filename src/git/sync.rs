@@ -8,14 +8,17 @@ pub(super) enum GitSyncAction {
     AddRemote,
     Publish(String),
     Pull,
+    PullRebase,
     Push,
     Fetch,
+    MergeUpstream(String),
     AbortMerge,
 }
 
 #[component]
 pub(super) fn GitSyncButton(
     current_branch: Option<String>,
+    upstream: Option<String>,
     remotes: Vec<RemoteInfo>,
     has_upstream: bool,
     ahead: u32,
@@ -85,7 +88,12 @@ pub(super) fn GitSyncButton(
                 AppIcon::Refresh,
                 None,
             ),
-            Some(GitSyncAction::AbortMerge) | None => (
+            Some(
+                GitSyncAction::PullRebase
+                | GitSyncAction::MergeUpstream(_)
+                | GitSyncAction::AbortMerge,
+            )
+            | None => (
                 "Diverged",
                 "The local and upstream branches have diverged",
                 AppIcon::Fetch,
@@ -142,9 +150,36 @@ pub(super) fn GitSyncButton(
             MenuContent { class: "right-0 w-56",
                 if diverged {
                     div { class: "px-2 py-1.5 text-[10px] leading-relaxed text-muted-foreground",
-                        "Local and upstream commits have diverged. Rebase or merge in the terminal before syncing."
+                        "Local and upstream commits have diverged. Choose how to bring in the upstream commits."
                     }
                     hr {}
+                    DropdownMenuItem::<GitSyncAction> {
+                        value: GitSyncAction::PullRebase,
+                        index: 0_usize,
+                        on_select: move |action| {
+                            open.set(false);
+                            on_action.call(action);
+                        },
+                        span { class: "flex min-w-0 items-center gap-2",
+                            Icon { icon: AppIcon::Fetch, size: 14 }
+                            span { "Pull with rebase…" }
+                        }
+                    }
+                    if let Some(upstream) = upstream.clone() {
+                        DropdownMenuItem::<GitSyncAction> {
+                            value: GitSyncAction::MergeUpstream(upstream.clone()),
+                            index: 1_usize,
+                            on_select: move |action| {
+                                open.set(false);
+                                on_action.call(action);
+                            },
+                            span { class: "flex min-w-0 items-center gap-2",
+                                Icon { icon: AppIcon::GitBranch, size: 14 }
+                                span { class: "truncate", "Merge upstream…" }
+                            }
+                        }
+                        hr {}
+                    }
                 }
                 if remotes.is_empty() {
                     DropdownMenuItem::<GitSyncAction> {
@@ -181,7 +216,7 @@ pub(super) fn GitSyncButton(
                             }
                         }
                     }
-                } else {
+                } else if !diverged {
                     DropdownMenuItem::<GitSyncAction> {
                         class: recommended_class(&GitSyncAction::Pull),
                         value: GitSyncAction::Pull,

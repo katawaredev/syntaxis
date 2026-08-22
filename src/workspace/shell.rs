@@ -31,13 +31,22 @@ pub fn WorkspaceShell() -> Element {
     let mut ai_drawer = use_signal(|| false);
     use_context_provider(|| crate::ai::AiDrawerState { open: ai_drawer });
     let route = use_route::<Route>();
-    let (slug, active) = match route {
-        Route::Files { slug, .. } => (slug, WorkspaceSection::Files),
-        Route::Terminal { slug, .. } => (slug, WorkspaceSection::Terminal),
-        Route::Git { slug } => (slug, WorkspaceSection::Git),
-        Route::Preview { slug } => (slug, WorkspaceSection::Preview),
-        Route::Ai { slug, .. } | Route::AiSettings { slug, .. } => (slug, WorkspaceSection::Ai),
-        Route::Home {} => ("syntaxis".into(), WorkspaceSection::Files),
+    let (slug, active, section_title) = match route {
+        Route::Files { slug, .. } => (slug, WorkspaceSection::Files, "Files".to_owned()),
+        Route::Terminal { slug, .. } => (slug, WorkspaceSection::Terminal, "Terminal".to_owned()),
+        Route::Git { slug } => (slug, WorkspaceSection::Git, "Git".to_owned()),
+        Route::Preview { slug } => (slug, WorkspaceSection::Preview, "Preview".to_owned()),
+        Route::Ai { slug, .. } => (slug, WorkspaceSection::Ai, "AI".to_owned()),
+        Route::AiSettings { slug, section } => (
+            slug,
+            WorkspaceSection::Ai,
+            format!("AI Settings · {}", section.label()),
+        ),
+        Route::Home {} => (
+            "syntaxis".into(),
+            WorkspaceSection::Files,
+            "Files".to_owned(),
+        ),
     };
     let mut drawer_workspace = use_signal(|| None::<String>);
     use_effect(use_reactive((&active, &slug), move |(active, slug)| {
@@ -115,6 +124,7 @@ pub fn WorkspaceShell() -> Element {
         },
         |workspace| workspace.name.as_str(),
     );
+    let page_title = format!("{project_name} · {section_title}");
     let runtime_snapshot = runtime()
         .as_ref()
         .and_then(|result| result.as_ref().ok())
@@ -147,6 +157,9 @@ pub fn WorkspaceShell() -> Element {
     };
 
     rsx! {
+        if active != WorkspaceSection::Ai {
+            document::Title { "{page_title}" }
+        }
         main { class: "app-viewport flex w-full flex-col overflow-hidden",
             if let (Some(workspace), Some(location)) = (
                 active_workspace.current(),
