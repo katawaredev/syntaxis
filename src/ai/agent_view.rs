@@ -262,16 +262,18 @@ fn RemoteAgent(
         && (active_id.is_some() || draft_session())
         && !creating_session()
         && pending_new_prompt().is_none();
+    let title_detail = if let Some(section) = settings_section {
+        format!("AI Settings · {}", section.label())
+    } else {
+        current
+            .extension_title
+            .clone()
+            .unwrap_or_else(|| session_title.clone())
+    };
+    let page_title = format!("{workspace_name} · {title_detail}");
     rsx! {
         document::Stylesheet { href: AI_CHAT_CSS }
-        document::Title {
-            {
-                current
-                    .extension_title
-                    .clone()
-                    .unwrap_or_else(|| format!("{session_title} · Syntaxis"))
-            }
-        }
+        document::Title { "{page_title}" }
         div { class: if sidebar_open() { "grid size-full min-h-0 min-w-0 grid-cols-[260px_minmax(0,1fr)] overflow-hidden max-md:block" } else { "grid size-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] overflow-hidden max-md:block" },
             if sidebar_open() {
                 aside { class: "flex min-h-0 min-w-0 flex-col border-r border-border bg-sidebar max-md:hidden",

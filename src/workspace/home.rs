@@ -106,6 +106,7 @@ pub fn Home() -> Element {
     let runtime_presentation = RuntimePresentation::from_state(runtime_snapshot.as_ref());
 
     rsx! {
+        document::Title { "Home" }
         main { class: "app-viewport relative w-full overflow-x-hidden overflow-y-auto overscroll-contain bg-background",
             section { class: "mx-auto flex min-h-full w-[calc(100%-2.5rem)] max-w-205 flex-col pt-[max(9vh,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] max-md:w-[calc(100%-1.5rem)] max-md:max-w-155 max-md:pt-[max(2.125rem,env(safe-area-inset-top))]",
                 header { class: "mb-9.5 flex items-start justify-between gap-4 max-md:mb-6.5",
