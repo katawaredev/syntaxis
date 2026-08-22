@@ -647,12 +647,18 @@ async fn clones_from_a_real_git_transport_into_a_new_destination() {
         .stderr(std::process::Stdio::null())
         .spawn()
         .unwrap();
-    for _ in 0..20 {
-        if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
+    let mut daemon_ready = false;
+    for _ in 0..100 {
+        if daemon.try_wait().unwrap().is_some() {
             break;
         }
-        std::thread::sleep(std::time::Duration::from_millis(10));
+        if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
+            daemon_ready = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
     }
+    assert!(daemon_ready, "git daemon did not become ready");
 
     let projects = TempDir::new().unwrap();
     let (progress_tx, mut progress_rx) = tokio::sync::mpsc::channel(64);
@@ -667,10 +673,10 @@ async fn clones_from_a_real_git_transport_into_a_new_destination() {
             CancellationToken::new(),
             progress_tx,
         )
-        .await
-        .unwrap();
+        .await;
     let _ = daemon.kill();
     let _ = daemon.wait();
+    let result = result.unwrap();
 
     assert_eq!(
         fs::read_to_string(Path::new(&result.absolute_path).join("README.md")).unwrap(),
