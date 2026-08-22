@@ -28,8 +28,6 @@ pub(super) enum Mutation {
 }
 
 pub(super) struct MutationSuccess {
-    pub message: &'static str,
-    pub show_message: bool,
     pub closes_dialog: bool,
     pub selection: Option<SelectedChange>,
 }
@@ -39,15 +37,6 @@ pub(super) async fn run_mutation(
     mutation: Mutation,
 ) -> Result<MutationSuccess, ServerFnError> {
     let closes_dialog = matches!(&mutation, Mutation::DiscardAll(_));
-    let show_message = !matches!(
-        &mutation,
-        Mutation::Stage(_)
-            | Mutation::Unstage(_)
-            | Mutation::Hunk {
-                action: HunkAction::Stage | HunkAction::Unstage,
-                ..
-            }
-    );
     let selection = match &mutation {
         Mutation::Hunk { path, kind, .. } => Some(SelectedChange {
             path: path.clone(),
@@ -56,51 +45,32 @@ pub(super) async fn run_mutation(
         }),
         _ => None,
     };
-    let (message, result) = match mutation {
-        Mutation::Stage(paths) => ("Staged changes", api::stage_paths(slug, paths).await),
-        Mutation::Unstage(paths) => ("Unstaged changes", api::unstage_paths(slug, paths).await),
-        Mutation::Discard(paths) => ("Discarded changes", api::discard_paths(slug, paths).await),
-        Mutation::DiscardAll(paths) => {
-            let result = match api::unstage_paths(slug.clone(), paths.clone()).await {
-                Ok(()) => api::discard_paths(slug, paths).await,
-                Err(error) => Err(error),
-            };
-            ("Discarded all changes", result)
-        }
+    let result = match mutation {
+        Mutation::Stage(paths) => api::stage_paths(slug, paths).await,
+        Mutation::Unstage(paths) => api::unstage_paths(slug, paths).await,
+        Mutation::Discard(paths) => api::discard_paths(slug, paths).await,
+        Mutation::DiscardAll(paths) => match api::unstage_paths(slug.clone(), paths.clone()).await {
+            Ok(()) => api::discard_paths(slug, paths).await,
+            Err(error) => Err(error),
+        },
         Mutation::Hunk {
             path,
             kind,
             index,
             fingerprint,
             action,
-        } => (
-            match action {
-                HunkAction::Stage => "Staged hunk",
-                HunkAction::Unstage => "Unstaged hunk",
-                HunkAction::Discard => "Discarded hunk",
-            },
-            api::apply_hunk(slug, path, kind, index, fingerprint, action).await,
-        ),
+        } => api::apply_hunk(slug, path, kind, index, fingerprint, action).await,
         Mutation::ResolveConflict {
             path,
             index,
             fingerprint,
             choice,
-        } => (
-            match choice {
-                ConflictChoice::Current => "Kept current conflict block",
-                ConflictChoice::Incoming => "Accepted incoming conflict block",
-                ConflictChoice::Both => "Merged both conflict blocks",
-            },
-            api::resolve_conflict(slug, path, index, fingerprint, choice)
-                .await
-                .map(|_| ()),
-        ),
+        } => api::resolve_conflict(slug, path, index, fingerprint, choice)
+            .await
+            .map(|_| ()),
     };
     result?;
     Ok(MutationSuccess {
-        message,
-        show_message,
         closes_dialog,
         selection,
     })
@@ -136,6 +106,19 @@ pub(super) enum RepositoryAction {
 impl RepositoryAction {
     pub(super) fn refresh_only(&self) -> bool {
         matches!(self, Self::Refresh)
+    }
+
+    pub(super) fn shows_success_message(&self) -> bool {
+        !matches!(
+            self,
+            Self::RenameBranch(_)
+                | Self::DeleteBranch(_)
+                | Self::CreateTag(_)
+                | Self::DeleteTag(_)
+                | Self::AddRemote(_)
+                | Self::UpdateRemote { .. }
+                | Self::RemoveRemote(_)
+        )
     }
 }
 

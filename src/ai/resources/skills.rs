@@ -330,7 +330,6 @@ fn SkillEditor(
                                     Ok(()) => {
                                         editing.set(None);
                                         revision.with_mut(|value| *value += 1);
-                                        toast.set(Some(("Skill saved".into(), Tone::Success)));
                                     }
                                     Err(error) => toast.set(Some((error.to_string(), Tone::Destructive))),
                                 }
@@ -380,7 +379,6 @@ fn DeleteSkillDialog(
                                 {
                                     Ok(()) => {
                                         revision.with_mut(|value| *value += 1);
-                                        toast.set(Some(("Skill deleted".into(), Tone::Success)));
                                     }
                                     Err(error) => toast.set(Some((error.to_string(), Tone::Destructive))),
                                 }

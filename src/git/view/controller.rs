@@ -29,7 +29,6 @@ pub(super) fn mutation_handler(
     mut selected: Signal<Option<SelectedChange>>,
     mut dialog: Signal<GitDialog>,
     mut refresh_key: Signal<u64>,
-    mut toast: Signal<Option<(String, Tone)>>,
 ) -> EventHandler<Mutation> {
     EventHandler::new(move |mutation| {
         let slug = slug.clone();
@@ -45,9 +44,6 @@ pub(super) fn mutation_handler(
                         dialog.set(GitDialog::None);
                     }
                     *refresh_key.write() += 1;
-                    if success.show_message {
-                        toast.set(Some((success.message.into(), Tone::Success)));
-                    }
                 }
                 Err(error) => operation_error.set(Some(server_error_message(error))),
             }
@@ -71,6 +67,7 @@ pub(super) fn repository_action_handler(
     EventHandler::new(move |action: RepositoryAction| {
         let slug = slug.clone();
         let refresh_action = action.refresh_only();
+        let show_success = action.shows_success_message();
         pending.set(true);
         if refresh_action {
             refreshing.set(true);
@@ -90,7 +87,9 @@ pub(super) fn repository_action_handler(
                         selected.set(None);
                         *refresh_key.write() += 1;
                     }
-                    toast.set(Some((message, Tone::Success)));
+                    if show_success {
+                        toast.set(Some((message, Tone::Success)));
+                    }
                 }
                 Ok(RepositoryActionSuccess::MergeConflicts(count)) => {
                     dialog.set(GitDialog::None);

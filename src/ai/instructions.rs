@@ -127,20 +127,8 @@ pub(super) fn GlobalInstructionsPanel(
                                     spawn(async move {
                                         match api::save_pi_global_instructions(workspace_id, content).await {
                                             Ok(saved_content) => {
-                                                let cleared = saved_content.is_empty();
                                                 saved.set(Some(saved_content.clone()));
                                                 draft.set(saved_content);
-                                                toast
-                                                    .set(
-                                                        Some((
-                                                            if cleared {
-                                                                "Global instructions cleared".into()
-                                                            } else {
-                                                                "Global instructions saved".into()
-                                                            },
-                                                            Tone::Success,
-                                                        )),
-                                                    );
                                             }
                                             Err(error) => {
                                                 toast.set(Some((error.to_string(), Tone::Destructive)));

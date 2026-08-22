@@ -197,7 +197,6 @@ fn WorkspaceGit(slug: String) -> Element {
         selected,
         dialog,
         refresh_key,
-        toast,
     );
     let on_repository_action = repository_action_handler(
         slug.clone(),
@@ -621,6 +620,7 @@ fn WorkspaceGit(slug: String) -> Element {
                             }
                             GitSyncButton {
                                 current_branch: repository.branch.head.clone(),
+                                upstream: repository.branch.upstream.clone(),
                                 remotes: remote_list.clone(),
                                 has_upstream: repository.branch.upstream.is_some(),
                                 ahead: commits_to_push,
@@ -647,6 +647,15 @@ fn WorkspaceGit(slug: String) -> Element {
                                     }
                                     GitSyncAction::Fetch => {
                                         on_repository_action.call(RepositoryAction::Refresh);
+                                    }
+                                    GitSyncAction::MergeUpstream(upstream) => {
+                                        if let Some(base) = repository.branch.head.clone() {
+                                            operation_error.set(None);
+                                            comparison.set(None);
+                                            compare_target.set(Some(upstream.clone()));
+                                            dialog.set(GitDialog::CompareMerge);
+                                            on_compare.call((base, upstream));
+                                        }
                                     }
                                     GitSyncAction::AbortMerge => {
                                         operation_error.set(None);

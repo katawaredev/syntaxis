@@ -39,7 +39,6 @@ pub(super) fn HomeDialogs(
             WorkspaceFolderDialog {
                 dialog,
                 runtime,
-                on_notice,
                 on_changed,
             }
         }
@@ -71,7 +70,6 @@ pub(super) fn HomeDialogs(
                 index,
                 dialog,
                 workspaces: workspaces.clone(),
-                on_notice,
             }
         }
         if let HomeDialog::Cleanup(index) = dialog() {

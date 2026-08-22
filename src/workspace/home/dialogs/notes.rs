@@ -14,7 +14,6 @@ pub(super) fn WorkspaceNotesDialog(
     index: usize,
     mut dialog: Signal<HomeDialog>,
     workspaces: Vec<WorkspaceRecord>,
-    on_notice: EventHandler<String>,
 ) -> Element {
     let workspace = workspaces[index].clone();
     let workspace_id = workspace.id.0.clone();
@@ -97,7 +96,6 @@ pub(super) fn WorkspaceNotesDialog(
                                 match save_workspace_notes(workspace_id, value).await {
                                     Ok(()) => {
                                         dialog.set(HomeDialog::None);
-                                        on_notice.call("Workspace notes saved".into());
                                     }
                                     Err(message) => {
                                         error.set(Some(message));

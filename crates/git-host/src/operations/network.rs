@@ -53,7 +53,7 @@ impl HostGit {
             {
                 Err(GitError::new(
                     GitErrorCode::Conflict,
-                    "The local and upstream branches have diverged. Rebase or merge them in the terminal before pulling.",
+                    "The local and upstream branches have diverged. Merge the upstream branch from Git actions, or rebase in the terminal before pulling.",
                 ))
             }
             Err(error) => Err(error),
