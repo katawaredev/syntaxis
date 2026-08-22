@@ -4,6 +4,7 @@ ARG NODE_VERSION=26.7.0
 ARG BUN_VERSION=1.3.14
 ARG DIOXUS_VERSION=0.7.10
 ARG JUST_VERSION=1.58.0
+ARG RUST_VERSION=1.98.0
 
 FROM docker.io/oven/bun:${BUN_VERSION} AS bun
 
@@ -22,10 +23,12 @@ FROM docker.io/library/node:${NODE_VERSION}-trixie AS development
 
 ARG DIOXUS_VERSION
 ARG JUST_VERSION
+ARG RUST_VERSION
 
 ENV DEBIAN_FRONTEND=noninteractive \
     CARGO_HOME=/usr/local/cargo \
-    RUSTUP_HOME=/usr/local/rustup
+    RUSTUP_HOME=/usr/local/rustup \
+    RUSTUP_PERMIT_COPY_RENAME=1
 ENV PATH="${CARGO_HOME}/bin:${PATH}"
 
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
@@ -49,8 +52,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     tini
 
 RUN rustup set profile minimal \
-    && rustup default stable \
-    && rustup target add wasm32-unknown-unknown \
+    && rustup default "${RUST_VERSION}" \
+    && rustup component add --toolchain "${RUST_VERSION}" \
+    clippy rust-analyzer rust-src rustfmt \
+    && rustup target add --toolchain "${RUST_VERSION}" wasm32-unknown-unknown \
     && cargo install --locked --version "${DIOXUS_VERSION}" dioxus-cli \
     && cargo install --locked --version "${JUST_VERSION}" just
 
