@@ -9,14 +9,19 @@ pub(crate) fn PullRebaseDialog(
     on_close: EventHandler<()>,
     on_confirm: EventHandler<()>,
 ) -> Element {
+    let commit_label = if local_commits == 1 {
+        "commit"
+    } else {
+        "commits"
+    };
     rsx! {
         Modal {
             title: "Pull with rebase?",
-            description: "Replay your local commits on top of the upstream branch.",
+            description: "Replay local commits on top of the upstream branch.",
             on_close,
             DialogForm {
                 p { class: "rounded-md border border-border bg-muted/35 p-3 text-xs leading-relaxed text-muted-foreground",
-                    "Syntaxis will fetch {upstream}, then replay {local_commits} local commit(s) in order. If a commit conflicts, the rebase will pause so you can resolve it."
+                    "Fetch {upstream} and replay {local_commits} local {commit_label} on top of it. If a conflict occurs, the rebase pauses for resolution."
                 }
                 if let Some(error) = error {
                     p { class: "text-xs text-destructive", role: "alert", "{error}" }
