@@ -1,6 +1,8 @@
 use std::ffi::OsString;
 
-use syntaxis_git::{GitError, GitErrorCode, GitOperations, GitResult, PushOutcome, RemoteResult};
+use syntaxis_git::{
+    GitError, GitErrorCode, GitOperations, GitResult, PushOutcome, RebaseOutcome, RemoteResult,
+};
 use syntaxis_workspace::WorkspaceRecord;
 use tokio_util::sync::CancellationToken;
 
@@ -58,6 +60,29 @@ impl HostGit {
             }
             Err(error) => Err(error),
         }
+    }
+
+    pub(super) async fn pull_with_rebase(
+        &self,
+        workspace: &WorkspaceRecord,
+    ) -> GitResult<RebaseOutcome> {
+        if self.status(workspace).await?.rebase.is_some() {
+            return Err(GitError::new(
+                GitErrorCode::Conflict,
+                "A rebase is already in progress.",
+            ));
+        }
+        self.run_rebase_step(
+            workspace,
+            &[
+                "pull".into(),
+                "--rebase".into(),
+                "--no-autostash".into(),
+                "--prune".into(),
+            ],
+            "Pull with rebase completed.",
+        )
+        .await
     }
 
     pub(super) async fn push_upstream(

@@ -5,8 +5,8 @@ use syntaxis_editor::language_slug_for_path;
 use syntaxis_git::{
     BranchComparison, BranchInfo, ChangeKind, CommitDetail, CommitInfo, CommitOutcome,
     CommitRequest, ConflictChoice, ConflictFile, DiffHunk, DiffKind, FileChange, HunkAction,
-    RemoteInfo, RemoteRequest, RepositoryState, RepositoryStatus, TagInfo, TagRequest, UnifiedDiff,
-    parse_diff_hunks,
+    RebaseStatus, RemoteInfo, RemoteRequest, RepositoryState, RepositoryStatus, TagInfo,
+    TagRequest, UnifiedDiff, parse_diff_hunks,
 };
 use syntaxis_ui::prelude::{
     AppIcon, Button, ButtonKind, Checkbox, ControlSize, DialogActions, DialogForm, Drawer, Field,
@@ -38,8 +38,9 @@ use self::controller::{
     RepositoryActionSignals, compare_handler, mutation_handler, repository_action_handler,
 };
 use self::dialogs::{
-    AbortMergeDialog, BranchDialog, CommitDialog, CommitHistoryActionDialog, CompareMergeDialog,
-    DiscardAllDialog, ForcePushDialog, RemoteDialog, RemoveRemoteDialog, SigningDialog, TagDialog,
+    AbortMergeDialog, AbortRebaseDialog, BranchDialog, CommitDialog, CommitHistoryActionDialog,
+    CompareMergeDialog, DiscardAllDialog, ForcePushDialog, PullRebaseDialog, RemoteDialog,
+    RemoveRemoteDialog, SigningDialog, SkipRebaseDialog, TagDialog,
 };
 use self::history::HistoryDetail;
 use self::remotes::RemoteManager;
@@ -67,6 +68,9 @@ pub(super) enum GitDialog {
     RevertCommit,
     CompareMerge,
     AbortMerge,
+    PullRebase,
+    AbortRebase,
+    SkipRebase,
     ForcePush,
     DiscardAll,
     AddRemote,
@@ -79,6 +83,109 @@ enum SidebarView {
     #[default]
     Changes,
     History,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RebaseMenuAction {
+    Refresh,
+    Skip,
+}
+
+#[component]
+fn RebaseBar(
+    rebase: RebaseStatus,
+    conflicts: Vec<String>,
+    pending: bool,
+    on_continue: EventHandler<()>,
+    on_abort: EventHandler<()>,
+    on_skip: EventHandler<()>,
+    on_show_conflicts: EventHandler<()>,
+    on_refresh: EventHandler<()>,
+) -> Element {
+    let mut menu = use_signal(|| false);
+    let ready = conflicts.is_empty();
+    let conflict_summary = conflicts.join(", ");
+    rsx! {
+        section {
+            class: "flex shrink-0 flex-col gap-2 border-b border-primary/30 bg-primary/6 px-3 py-2.5 max-md:px-2",
+            role: "status",
+            div { class: "flex min-w-0 items-start justify-between gap-3 max-md:flex-col",
+                div { class: "min-w-0",
+                    strong { class: "block text-xs text-foreground",
+                        "Rebasing commit {rebase.current} of {rebase.total}"
+                    }
+                    p { class: "mt-0.5 truncate text-[11px] text-muted-foreground",
+                        "{rebase.commit_subject}"
+                    }
+                }
+                div { class: "flex shrink-0 items-center gap-1.5 max-md:w-full",
+                    button {
+                        class: "touch-target inline-flex h-8 items-center justify-center rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 max-md:flex-1",
+                        disabled: pending || !ready,
+                        title: if ready { "Continue replaying local commits" } else { "Resolve every conflict before continuing" },
+                        onclick: move |_| on_continue.call(()),
+                        if pending {
+                            "Working…"
+                        } else {
+                            "Continue rebase"
+                        }
+                    }
+                    button {
+                        class: "touch-target h-8 rounded-md border border-destructive/40 px-2.5 text-xs text-destructive hover:bg-destructive/10 disabled:opacity-50",
+                        disabled: pending,
+                        onclick: move |_| on_abort.call(()),
+                        "Abort rebase"
+                    }
+                    DropdownMenu {
+                        class: "relative",
+                        open: menu(),
+                        disabled: pending,
+                        on_open_change: move |open: bool| menu.set(open),
+                        MenuTrigger {
+                            label: "More rebase actions",
+                            icon: AppIcon::MoreVertical,
+                            open: menu(),
+                            size: ControlSize::Small,
+                            on_toggle: move |()| menu.toggle(),
+                        }
+                        MenuContent { class: "right-0 w-44",
+                            DropdownMenuItem::<RebaseMenuAction> {
+                                value: RebaseMenuAction::Refresh,
+                                index: 0_usize,
+                                on_select: move |_| {
+                                    menu.set(false);
+                                    on_refresh.call(());
+                                },
+                                "Refresh status"
+                            }
+                            hr {}
+                            DropdownMenuItem::<RebaseMenuAction> {
+                                value: RebaseMenuAction::Skip,
+                                index: 1_usize,
+                                on_select: move |_| {
+                                    menu.set(false);
+                                    on_skip.call(());
+                                },
+                                "Skip commit…"
+                            }
+                        }
+                    }
+                }
+            }
+            if !conflicts.is_empty() {
+                button {
+                    class: "flex min-w-0 items-center gap-2 self-start text-left text-[11px] text-destructive hover:underline md:pointer-events-none",
+                    onclick: move |_| on_show_conflicts.call(()),
+                    Icon { icon: AppIcon::ShieldAlert, size: 13 }
+                    span { class: "truncate", "Needs attention: {conflict_summary}" }
+                }
+            } else {
+                p { class: "text-[11px] text-success",
+                    "No unresolved files remain for this commit. Continue the rebase when ready."
+                }
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -373,9 +480,13 @@ fn WorkspaceGit(slug: String) -> Element {
         .unwrap_or("No upstream");
     let commits_to_pull = repository.branch.behind;
     let commits_to_push = repository.branch.ahead;
+    let branch_head = repository.branch.head.clone();
+    let branch_head_for_sync = branch_head.clone();
     let diff_loading = diff.state() == UseResourceState::Pending;
     let conflict_loading = conflict.state() == UseResourceState::Pending;
     let commit_detail_loading = commit_detail.state() == UseResourceState::Pending;
+    let rebase = repository.rebase.clone();
+    let rebase_active = rebase.is_some();
 
     rsx! {
         if status_loading {
@@ -412,6 +523,7 @@ fn WorkspaceGit(slug: String) -> Element {
                             history_error: history_error.clone(),
                             selected_commit,
                             selected,
+                            rebase_active,
                             pending: pending(),
                             on_select: move |()| {},
                             on_history_action,
@@ -437,100 +549,103 @@ fn WorkspaceGit(slug: String) -> Element {
                                     onclick: move |_| drawer.set(true),
                                 }
                             }
-                            div { class: "flex min-w-0 flex-1 items-center gap-1",
-                                BranchWorktreeMenu {
-                                    branches: branch_list.clone(),
-                                    current_branch: branch.to_owned(),
-                                    pending: pending(),
-                                    repository_revision: refresh_key,
-                                    on_action: move |action| {
-                                        match action {
-                                            BranchWorktreeAction::Switch(name) => {
-                                                on_repository_action.call(RepositoryAction::SwitchBranch(name));
-                                            }
-                                            BranchWorktreeAction::Compare(name) => {
-                                                operation_error.set(None);
-                                                comparison.set(None);
-                                                compare_target.set(Some(name));
-                                                dialog.set(GitDialog::CompareMerge);
-                                            }
-                                            BranchWorktreeAction::NewBranch(name) => {
-                                                branch_dialog_target.set(None);
-                                                branch_start_point.set(Some(name));
-                                                dialog.set(GitDialog::CreateBranch);
-                                            }
-                                            BranchWorktreeAction::Tags(name) => {
-                                                tag_target.set(Some(name));
-                                                dialog.set(GitDialog::Tags);
-                                            }
-                                            BranchWorktreeAction::Delete(name) => {
-                                                branch_dialog_target.set(Some(name));
-                                                dialog.set(GitDialog::DeleteBranch);
-                                            }
-                                        }
-                                    },
-                                }
-                                DropdownMenu {
-                                    open: branch_menu(),
-                                    on_open_change: move |open: bool| branch_menu.set(open),
-                                    div { class: "relative",
-                                        MenuTrigger {
-                                            label: "Branch actions",
-                                            icon: AppIcon::MoreVertical,
-                                            open: branch_menu(),
-                                            size: ControlSize::Small,
-                                            on_toggle: move |()| branch_menu.toggle(),
-                                        }
-                                        MenuContent { class: "left-0 w-46",
-                                            DropdownMenuItem::<GitDialog> {
-                                                value: GitDialog::CompareMerge,
-                                                index: 0_usize,
-                                                disabled: pending() || repository.branch.head.is_none() || branch_list.len() < 2,
-                                                on_select: move |_| {
+                            if !rebase_active {
+                                div { class: "flex min-w-0 flex-1 items-center gap-1",
+                                    BranchWorktreeMenu {
+                                        branches: branch_list.clone(),
+                                        current_branch: branch.to_owned(),
+                                        pending: pending() || rebase_active,
+                                        repository_revision: refresh_key,
+                                        on_action: move |action| {
+                                            match action {
+                                                BranchWorktreeAction::Switch(name) => {
+                                                    on_repository_action.call(RepositoryAction::SwitchBranch(name));
+                                                }
+                                                BranchWorktreeAction::Compare(name) => {
                                                     operation_error.set(None);
                                                     comparison.set(None);
-                                                    compare_target.set(None);
+                                                    compare_target.set(Some(name));
                                                     dialog.set(GitDialog::CompareMerge);
-                                                },
-                                                "Compare branch"
-                                            }
-                                            DropdownMenuItem::<GitDialog> {
-                                                value: GitDialog::CreateBranch,
-                                                index: 1_usize,
-                                                disabled: pending(),
-                                                on_select: move |_| {
+                                                }
+                                                BranchWorktreeAction::NewBranch(name) => {
                                                     branch_dialog_target.set(None);
-                                                    branch_start_point.set(None);
+                                                    branch_start_point.set(Some(name));
                                                     dialog.set(GitDialog::CreateBranch);
-                                                },
-                                                "New branch"
-                                            }
-                                            DropdownMenuItem::<GitDialog> {
-                                                value: GitDialog::RenameBranch,
-                                                index: 2_usize,
-                                                disabled: pending() || repository.branch.head.is_none(),
-                                                on_select: move |_| dialog.set(GitDialog::RenameBranch),
-                                                "Rename branch"
-                                            }
-                                            DropdownMenuItem::<GitDialog> {
-                                                value: GitDialog::Tags,
-                                                index: 3_usize,
-                                                disabled: pending(),
-                                                on_select: move |_| {
-                                                    operation_error.set(None);
-                                                    tag_target.set(None);
+                                                }
+                                                BranchWorktreeAction::Tags(name) => {
+                                                    tag_target.set(Some(name));
                                                     dialog.set(GitDialog::Tags);
-                                                },
-                                                "Tags ({tag_list.len()})"
+                                                }
+                                                BranchWorktreeAction::Delete(name) => {
+                                                    branch_dialog_target.set(Some(name));
+                                                    dialog.set(GitDialog::DeleteBranch);
+                                                }
                                             }
-                                            hr {}
-                                            DropdownMenuItem::<GitDialog> {
-                                                class: "!text-destructive",
-                                                value: GitDialog::DiscardAll,
-                                                index: 4_usize,
-                                                disabled: pending() || repository.changes.is_empty(),
-                                                on_select: move |_| dialog.set(GitDialog::DiscardAll),
-                                                "Discard all changes"
+                                        },
+                                    }
+                                    DropdownMenu {
+                                        open: branch_menu(),
+                                        disabled: rebase_active,
+                                        on_open_change: move |open: bool| branch_menu.set(open),
+                                        div { class: "relative",
+                                            MenuTrigger {
+                                                label: "Branch actions",
+                                                icon: AppIcon::MoreVertical,
+                                                open: branch_menu(),
+                                                size: ControlSize::Small,
+                                                on_toggle: move |()| branch_menu.toggle(),
+                                            }
+                                            MenuContent { class: "left-0 w-46",
+                                                DropdownMenuItem::<GitDialog> {
+                                                    value: GitDialog::CompareMerge,
+                                                    index: 0_usize,
+                                                    disabled: pending() || repository.branch.head.is_none() || branch_list.len() < 2,
+                                                    on_select: move |_| {
+                                                        operation_error.set(None);
+                                                        comparison.set(None);
+                                                        compare_target.set(None);
+                                                        dialog.set(GitDialog::CompareMerge);
+                                                    },
+                                                    "Compare branch"
+                                                }
+                                                DropdownMenuItem::<GitDialog> {
+                                                    value: GitDialog::CreateBranch,
+                                                    index: 1_usize,
+                                                    disabled: pending(),
+                                                    on_select: move |_| {
+                                                        branch_dialog_target.set(None);
+                                                        branch_start_point.set(None);
+                                                        dialog.set(GitDialog::CreateBranch);
+                                                    },
+                                                    "New branch"
+                                                }
+                                                DropdownMenuItem::<GitDialog> {
+                                                    value: GitDialog::RenameBranch,
+                                                    index: 2_usize,
+                                                    disabled: pending() || repository.branch.head.is_none(),
+                                                    on_select: move |_| dialog.set(GitDialog::RenameBranch),
+                                                    "Rename branch"
+                                                }
+                                                DropdownMenuItem::<GitDialog> {
+                                                    value: GitDialog::Tags,
+                                                    index: 3_usize,
+                                                    disabled: pending(),
+                                                    on_select: move |_| {
+                                                        operation_error.set(None);
+                                                        tag_target.set(None);
+                                                        dialog.set(GitDialog::Tags);
+                                                    },
+                                                    "Tags ({tag_list.len()})"
+                                                }
+                                                hr {}
+                                                DropdownMenuItem::<GitDialog> {
+                                                    class: "!text-destructive",
+                                                    value: GitDialog::DiscardAll,
+                                                    index: 4_usize,
+                                                    disabled: pending() || repository.changes.is_empty(),
+                                                    on_select: move |_| dialog.set(GitDialog::DiscardAll),
+                                                    "Discard all changes"
+                                                }
                                             }
                                         }
                                     }
@@ -552,121 +667,157 @@ fn WorkspaceGit(slug: String) -> Element {
                                     {format!("{} conflicts", repository.conflict_count())}
                                 }
                             }
-                            div { class: "min-w-0 max-[520px]:hidden @max-[640px]:hidden",
-                                RemoteManager {
-                                    remotes: remote_list.clone(),
-                                    upstream: upstream.to_owned(),
-                                    loading: remotes_loading,
-                                    pending: pending(),
-                                    on_add: move |()| {
-                                        remote_target.set(None);
-                                        operation_error.set(None);
-                                        dialog.set(GitDialog::AddRemote);
-                                    },
-                                    on_edit: move |remote| {
-                                        remote_target.set(Some(remote));
-                                        operation_error.set(None);
-                                        dialog.set(GitDialog::EditRemote);
-                                    },
-                                    on_remove: move |remote| {
-                                        remote_target.set(Some(remote));
-                                        operation_error.set(None);
-                                        dialog.set(GitDialog::RemoveRemote);
-                                    },
-                                    on_fetch: move |name| {
-                                        on_repository_action.call(RepositoryAction::FetchRemote(name));
-                                    },
+                            if !rebase_active {
+                                div { class: "min-w-0 max-[520px]:hidden @max-[640px]:hidden",
+                                    RemoteManager {
+                                        remotes: remote_list.clone(),
+                                        upstream: upstream.to_owned(),
+                                        loading: remotes_loading,
+                                        pending: pending() || rebase_active,
+                                        on_add: move |()| {
+                                            remote_target.set(None);
+                                            operation_error.set(None);
+                                            dialog.set(GitDialog::AddRemote);
+                                        },
+                                        on_edit: move |remote| {
+                                            remote_target.set(Some(remote));
+                                            operation_error.set(None);
+                                            dialog.set(GitDialog::EditRemote);
+                                        },
+                                        on_remove: move |remote| {
+                                            remote_target.set(Some(remote));
+                                            operation_error.set(None);
+                                            dialog.set(GitDialog::RemoveRemote);
+                                        },
+                                        on_fetch: move |name| {
+                                            on_repository_action.call(RepositoryAction::FetchRemote(name));
+                                        },
+                                    }
                                 }
                             }
                         }
-                        div { class: "git-toolbar flex shrink-0 items-center gap-1",
-                            if pending() {
-                                span {
-                                    class: "flex items-center gap-1.5 px-1 text-[10px] text-muted-foreground @max-[640px]:hidden",
-                                    role: "status",
+                        if !rebase_active {
+                            div { class: "git-toolbar flex shrink-0 items-center gap-1",
+                                if pending() {
                                     span {
-                                        class: "size-3 animate-spin rounded-full border-2 border-border border-t-primary",
-                                        aria_hidden: "true",
-                                    }
-                                    if refreshing() {
-                                        "Refreshing…"
-                                    } else {
-                                        "Working…"
-                                    }
-                                }
-                            }
-                            if repository.conflict_count() > 0 {
-                                button {
-                                    class: "h-7 rounded-md bg-destructive/10 px-2 text-[11px] text-destructive hover:bg-destructive/20 @max-[520px]:hidden",
-                                    disabled: pending(),
-                                    onclick: move |_| {
-                                        operation_error.set(None);
-                                        dialog.set(GitDialog::AbortMerge);
-                                    },
-                                    "Abort merge"
-                                }
-                            }
-                            button {
-                                class: "inline-flex h-7 items-center gap-1.5 rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50",
-                                title: "Commit staged changes",
-                                "aria-label": "Commit staged changes",
-                                disabled: pending() || repository.staged_count() == 0,
-                                onclick: move |_| {
-                                    operation_error.set(None);
-                                    dialog.set(GitDialog::Commit);
-                                },
-                                Icon { icon: AppIcon::Commit, size: 14 }
-                                span { "Commit" }
-                            }
-                            GitSyncButton {
-                                current_branch: repository.branch.head.clone(),
-                                upstream: repository.branch.upstream.clone(),
-                                remotes: remote_list.clone(),
-                                has_upstream: repository.branch.upstream.is_some(),
-                                ahead: commits_to_push,
-                                behind: commits_to_pull,
-                                conflicts: repository.conflict_count(),
-                                pending: pending(),
-                                refreshing: refreshing(),
-                                on_action: move |action| match action {
-                                    GitSyncAction::AddRemote => {
-                                        operation_error.set(None);
-                                        dialog.set(GitDialog::AddRemote);
-                                    }
-                                    GitSyncAction::Publish(remote) => {
-                                        on_repository_action.call(RepositoryAction::Publish(remote));
-                                    }
-                                    GitSyncAction::Pull => {
-                                        on_repository_action.call(RepositoryAction::Pull);
-                                    }
-                                    GitSyncAction::Push => {
-                                        on_repository_action
-                                            .call(RepositoryAction::Push {
-                                                force_with_lease: false,
-                                            });
-                                    }
-                                    GitSyncAction::Fetch => {
-                                        on_repository_action.call(RepositoryAction::Refresh);
-                                    }
-                                    GitSyncAction::MergeUpstream(upstream) => {
-                                        if let Some(base) = repository.branch.head.clone() {
-                                            operation_error.set(None);
-                                            comparison.set(None);
-                                            compare_target.set(Some(upstream.clone()));
-                                            dialog.set(GitDialog::CompareMerge);
-                                            on_compare.call((base, upstream));
+                                        class: "flex items-center gap-1.5 px-1 text-[10px] text-muted-foreground @max-[640px]:hidden",
+                                        role: "status",
+                                        span {
+                                            class: "size-3 animate-spin rounded-full border-2 border-border border-t-primary",
+                                            aria_hidden: "true",
+                                        }
+                                        if refreshing() {
+                                            "Refreshing…"
+                                        } else {
+                                            "Working…"
                                         }
                                     }
-                                    GitSyncAction::AbortMerge => {
-                                        operation_error.set(None);
-                                        dialog.set(GitDialog::AbortMerge);
+                                }
+                                if repository.conflict_count() > 0 {
+                                    button {
+                                        class: "h-7 rounded-md bg-destructive/10 px-2 text-[11px] text-destructive hover:bg-destructive/20 @max-[520px]:hidden",
+                                        disabled: pending(),
+                                        onclick: move |_| {
+                                            operation_error.set(None);
+                                            dialog.set(GitDialog::AbortMerge);
+                                        },
+                                        "Abort merge"
                                     }
-                                },
+                                }
+                                button {
+                                    class: "inline-flex h-7 items-center gap-1.5 rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50",
+                                    title: "Commit staged changes",
+                                    "aria-label": "Commit staged changes",
+                                    disabled: pending() || repository.staged_count() == 0,
+                                    onclick: move |_| {
+                                        operation_error.set(None);
+                                        dialog.set(GitDialog::Commit);
+                                    },
+                                    Icon { icon: AppIcon::Commit, size: 14 }
+                                    span { "Commit" }
+                                }
+                                GitSyncButton {
+                                    current_branch: repository.branch.head.clone(),
+                                    upstream: repository.branch.upstream.clone(),
+                                    remotes: remote_list.clone(),
+                                    has_upstream: repository.branch.upstream.is_some(),
+                                    ahead: commits_to_push,
+                                    behind: commits_to_pull,
+                                    conflicts: repository.conflict_count(),
+                                    pending: pending(),
+                                    refreshing: refreshing(),
+                                    on_action: move |action| match action {
+                                        GitSyncAction::AddRemote => {
+                                            operation_error.set(None);
+                                            dialog.set(GitDialog::AddRemote);
+                                        }
+                                        GitSyncAction::Publish(remote) => {
+                                            on_repository_action.call(RepositoryAction::Publish(remote));
+                                        }
+                                        GitSyncAction::Pull => {
+                                            on_repository_action.call(RepositoryAction::Pull);
+                                        }
+                                        GitSyncAction::PullRebase => {
+                                            operation_error.set(None);
+                                            dialog.set(GitDialog::PullRebase);
+                                        }
+                                        GitSyncAction::Push => {
+                                            on_repository_action
+                                                .call(RepositoryAction::Push {
+                                                    force_with_lease: false,
+                                                });
+                                        }
+                                        GitSyncAction::Fetch => {
+                                            on_repository_action.call(RepositoryAction::Refresh);
+                                        }
+                                        GitSyncAction::MergeUpstream(upstream) => {
+                                            if let Some(base) = branch_head_for_sync.clone() {
+                                                operation_error.set(None);
+                                                comparison.set(None);
+                                                compare_target.set(Some(upstream.clone()));
+                                                dialog.set(GitDialog::CompareMerge);
+                                                on_compare.call((base, upstream));
+                                            }
+                                        }
+                                        GitSyncAction::AbortMerge => {
+                                            operation_error.set(None);
+                                            dialog.set(GitDialog::AbortMerge);
+                                        }
+                                    },
+                                }
                             }
                         }
                     }
+                    if let Some(rebase) = rebase.clone() {
+                        RebaseBar {
+                            rebase,
+                            conflicts: repository
+                                .changes
+                                .iter()
+                                .filter(|change| change.conflicted)
+                                .map(|change| change.path.as_str().to_owned())
+                                .collect::<Vec<_>>(),
+                            pending: pending(),
+                            on_continue: move |()| {
+                                on_repository_action.call(RepositoryAction::ContinueRebase);
+                            },
+                            on_abort: move |()| {
+                                operation_error.set(None);
+                                dialog.set(GitDialog::AbortRebase);
+                            },
+                            on_skip: move |()| {
+                                operation_error.set(None);
+                                dialog.set(GitDialog::SkipRebase);
+                            },
+                            on_show_conflicts: move |()| drawer.set(true),
+                            on_refresh: move |()| {
+                                selected.set(None);
+                                *refresh_key.write() += 1;
+                            },
+                        }
+                    }
                     div { class: "touch-scroll-region min-h-0 min-w-0 flex-1 touch-auto overflow-auto bg-background",
-                        if view() == SidebarView::History {
+                        if view() == SidebarView::History && !rebase_active {
                             HistoryDetail {
                                 detail: if commit_detail_loading { None } else { commit_detail().flatten() },
                                 selected: selected_commit().is_some(),
@@ -686,6 +837,7 @@ fn WorkspaceGit(slug: String) -> Element {
                                 change: selected_file_change,
                                 diff: if diff_loading { None } else { diff().flatten() },
                                 conflict: if conflict_loading { None } else { conflict().flatten() },
+                                rebase: rebase.clone(),
                                 expanded: expanded_diff(),
                                 pending: pending(),
                                 on_expand: move |()| expanded_diff.toggle(),
@@ -709,6 +861,7 @@ fn WorkspaceGit(slug: String) -> Element {
                             history_error: history_error.clone(),
                             selected_commit,
                             selected,
+                            rebase_active,
                             pending: pending(),
                             on_select: move |()| drawer.set(false),
                             on_history_action,
@@ -755,7 +908,7 @@ fn WorkspaceGit(slug: String) -> Element {
         {
             BranchDialog {
                 action: dialog(),
-                current_branch: repository.branch.head.clone().unwrap_or_default(),
+                current_branch: branch_head.unwrap_or_default(),
                 branches: branch_list.clone(),
                 initial_name: branch_dialog_target(),
                 start_point: branch_start_point(),
@@ -936,6 +1089,56 @@ fn WorkspaceGit(slug: String) -> Element {
                 on_confirm: move |()| {
                     on_repository_action.call(RepositoryAction::AbortMerge);
                 },
+            }
+        }
+        if dialog() == GitDialog::PullRebase {
+            PullRebaseDialog {
+                upstream: repository.branch.upstream.clone().unwrap_or_else(|| "the upstream branch".into()),
+                local_commits: repository.branch.ahead,
+                pending: pending(),
+                error: operation_error(),
+                on_close: move |()| {
+                    if !pending() {
+                        dialog.set(GitDialog::None);
+                        operation_error.set(None);
+                    }
+                },
+                on_confirm: move |()| {
+                    on_repository_action.call(RepositoryAction::PullRebase);
+                },
+            }
+        }
+        if dialog() == GitDialog::AbortRebase {
+            AbortRebaseDialog {
+                pending: pending(),
+                error: operation_error(),
+                on_close: move |()| {
+                    if !pending() {
+                        dialog.set(GitDialog::None);
+                        operation_error.set(None);
+                    }
+                },
+                on_confirm: move |()| {
+                    on_repository_action.call(RepositoryAction::AbortRebase);
+                },
+            }
+        }
+        if dialog() == GitDialog::SkipRebase {
+            if let Some(rebase) = rebase.clone() {
+                SkipRebaseDialog {
+                    commit_subject: rebase.commit_subject,
+                    pending: pending(),
+                    error: operation_error(),
+                    on_close: move |()| {
+                        if !pending() {
+                            dialog.set(GitDialog::None);
+                            operation_error.set(None);
+                        }
+                    },
+                    on_confirm: move |()| {
+                        on_repository_action.call(RepositoryAction::SkipRebase);
+                    },
+                }
             }
         }
         if matches!(dialog(), GitDialog::CheckoutCommit | GitDialog::RevertCommit) {

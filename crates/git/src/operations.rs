@@ -4,7 +4,7 @@ use syntaxis_workspace::{RelativePath, WorkspaceRecord};
 use crate::{
     BranchComparison, BranchInfo, BranchRequest, CloneRequest, CloneResult, CommitDetail,
     CommitInfo, CommitOutcome, CommitRequest, ConflictFile, ConflictRequest, DiffKind, GitResult,
-    HunkRequest, MergeOutcome, PushOutcome, RemoteInfo, RemoteRequest, RemoteResult,
+    HunkRequest, MergeOutcome, PushOutcome, RebaseOutcome, RemoteInfo, RemoteRequest, RemoteResult,
     RepositoryStatus, TagInfo, TagRequest, UnifiedDiff, WorktreeCreateRequest, WorktreeInfo,
 };
 
@@ -129,6 +129,14 @@ pub trait GitOperations: Send + Sync {
     async fn fetch(&self, workspace: &WorkspaceRecord) -> GitResult<RemoteResult>;
 
     async fn pull(&self, workspace: &WorkspaceRecord) -> GitResult<RemoteResult>;
+
+    async fn pull_rebase(&self, workspace: &WorkspaceRecord) -> GitResult<RebaseOutcome>;
+
+    async fn continue_rebase(&self, workspace: &WorkspaceRecord) -> GitResult<RebaseOutcome>;
+
+    async fn skip_rebase(&self, workspace: &WorkspaceRecord) -> GitResult<RebaseOutcome>;
+
+    async fn abort_rebase(&self, workspace: &WorkspaceRecord) -> GitResult<()>;
 
     async fn publish_branch(
         &self,

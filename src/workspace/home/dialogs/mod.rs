@@ -36,11 +36,7 @@ pub(super) fn HomeDialogs(
 ) -> Element {
     rsx! {
         if dialog() == HomeDialog::WorkspaceFolder {
-            WorkspaceFolderDialog {
-                dialog,
-                runtime,
-                on_changed,
-            }
+            WorkspaceFolderDialog { dialog, runtime, on_changed }
         }
         if dialog() == HomeDialog::Git {
             GitUrlDialog { dialog, on_notice, on_changed }
@@ -66,11 +62,7 @@ pub(super) fn HomeDialogs(
             }
         }
         if let HomeDialog::Notes(index) = dialog() {
-            WorkspaceNotesDialog {
-                index,
-                dialog,
-                workspaces: workspaces.clone(),
-            }
+            WorkspaceNotesDialog { index, dialog, workspaces: workspaces.clone() }
         }
         if let HomeDialog::Cleanup(index) = dialog() {
             CleanupWorkspaceDialog {

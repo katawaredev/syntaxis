@@ -22,6 +22,8 @@ use super::{
 mod commit;
 #[path = "dialogs/merge.rs"]
 mod merge;
+#[path = "dialogs/rebase.rs"]
+mod rebase;
 #[path = "dialogs/refs.rs"]
 mod refs;
 #[path = "dialogs/remotes.rs"]
@@ -32,5 +34,6 @@ pub(super) use merge::{
     AbortMergeDialog, CommitHistoryActionDialog, CompareMergeDialog, DiscardAllDialog,
     ForcePushDialog,
 };
+pub(super) use rebase::{AbortRebaseDialog, PullRebaseDialog, SkipRebaseDialog};
 pub(super) use refs::{BranchDialog, TagDialog};
 pub(super) use remotes::{RemoteDialog, RemoveRemoteDialog};

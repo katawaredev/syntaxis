@@ -98,6 +98,21 @@ pub(super) fn repository_action_handler(
                         "Merge stopped with conflicts in {count} file(s). Resolve the highlighted files or abort the merge."
                     )));
                 }
+                Ok(RepositoryActionSuccess::RebaseStopped { conflicts, message }) => {
+                    dialog.set(GitDialog::None);
+                    selected.set(None);
+                    *refresh_key.write() += 1;
+                    let message = if conflicts == 0 {
+                        format!(
+                            "{message} The rebase remains paused; continue, skip this commit, use the terminal, or abort."
+                        )
+                    } else {
+                        format!(
+                            "Rebase stopped with conflicts in {conflicts} file(s). Resolve the highlighted files, then continue or abort the rebase."
+                        )
+                    };
+                    toast.set(Some((message, Tone::Warning)));
+                }
                 Ok(RepositoryActionSuccess::ForceWithLeaseRequired(message)) => {
                     operation_error.set(Some(message));
                     dialog.set(GitDialog::ForcePush);

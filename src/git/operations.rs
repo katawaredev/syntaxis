@@ -1,7 +1,7 @@
 use dioxus::prelude::ServerFnError;
 use syntaxis_git::{
-    BranchRequest, ConflictChoice, DiffKind, HunkAction, MergeOutcome, PushOutcome, RemoteRequest,
-    TagRequest,
+    BranchRequest, ConflictChoice, DiffKind, HunkAction, MergeOutcome, PushOutcome, RebaseOutcome,
+    RemoteRequest, TagRequest,
 };
 
 use super::{api, repository::SelectedChange};
@@ -37,7 +37,7 @@ pub(super) async fn run_mutation(
     mutation: Mutation,
 ) -> Result<MutationSuccess, ServerFnError> {
     let closes_dialog = matches!(&mutation, Mutation::DiscardAll(_));
-    let selection = match &mutation {
+    let mut selection = match &mutation {
         Mutation::Hunk { path, kind, .. } => Some(SelectedChange {
             path: path.clone(),
             kind: *kind,
@@ -49,10 +49,12 @@ pub(super) async fn run_mutation(
         Mutation::Stage(paths) => api::stage_paths(slug, paths).await,
         Mutation::Unstage(paths) => api::unstage_paths(slug, paths).await,
         Mutation::Discard(paths) => api::discard_paths(slug, paths).await,
-        Mutation::DiscardAll(paths) => match api::unstage_paths(slug.clone(), paths.clone()).await {
-            Ok(()) => api::discard_paths(slug, paths).await,
-            Err(error) => Err(error),
-        },
+        Mutation::DiscardAll(paths) => {
+            match api::unstage_paths(slug.clone(), paths.clone()).await {
+                Ok(()) => api::discard_paths(slug, paths).await,
+                Err(error) => Err(error),
+            }
+        }
         Mutation::Hunk {
             path,
             kind,
@@ -65,9 +67,17 @@ pub(super) async fn run_mutation(
             index,
             fingerprint,
             choice,
-        } => api::resolve_conflict(slug, path, index, fingerprint, choice)
-            .await
-            .map(|_| ()),
+        } => match api::resolve_conflict(slug, path.clone(), index, fingerprint, choice).await {
+            Ok(complete) => {
+                selection = (!complete).then_some(SelectedChange {
+                    path,
+                    kind: DiffKind::Worktree,
+                    conflicted: true,
+                });
+                Ok(())
+            }
+            Err(error) => Err(error),
+        },
     };
     result?;
     Ok(MutationSuccess {
@@ -89,6 +99,10 @@ pub(super) enum RepositoryAction {
     Merge(String),
     AbortMerge,
     Pull,
+    PullRebase,
+    ContinueRebase,
+    SkipRebase,
+    AbortRebase,
     Publish(String),
     Refresh,
     FetchRemote(String),
@@ -125,6 +139,7 @@ impl RepositoryAction {
 pub(super) enum RepositoryActionSuccess {
     Complete(String),
     MergeConflicts(usize),
+    RebaseStopped { conflicts: usize, message: String },
     ForceWithLeaseRequired(String),
 }
 
@@ -167,6 +182,18 @@ pub(super) async fn run_repository_action(
             .await
             .map(|()| "Aborted merge".to_owned()),
         RepositoryAction::Pull => api::pull(slug).await.map(|result| result.message),
+        RepositoryAction::PullRebase => {
+            return Ok(rebase_result(api::pull_rebase(slug).await?));
+        }
+        RepositoryAction::ContinueRebase => {
+            return Ok(rebase_result(api::continue_rebase(slug).await?));
+        }
+        RepositoryAction::SkipRebase => {
+            return Ok(rebase_result(api::skip_rebase(slug).await?));
+        }
+        RepositoryAction::AbortRebase => api::abort_rebase(slug)
+            .await
+            .map(|()| "Aborted rebase".to_owned()),
         RepositoryAction::Publish(remote) => api::publish_branch(slug, remote)
             .await
             .map(|result| result.message),
@@ -196,4 +223,13 @@ pub(super) async fn run_repository_action(
         }
     }?;
     Ok(RepositoryActionSuccess::Complete(result))
+}
+
+fn rebase_result(outcome: RebaseOutcome) -> RepositoryActionSuccess {
+    match outcome {
+        RebaseOutcome::Complete { message } => RepositoryActionSuccess::Complete(message),
+        RebaseOutcome::Stopped { conflicts, message } => {
+            RepositoryActionSuccess::RebaseStopped { conflicts, message }
+        }
+    }
 }

@@ -1,13 +1,17 @@
-use std::{ffi::OsString, path::Path};
+use std::{
+    ffi::OsString,
+    fs,
+    path::{Path, PathBuf},
+};
 
 use async_trait::async_trait;
 use syntaxis_git::{
     BranchComparison, BranchInfo, BranchRequest, CloneMode, ClonePhase, CloneProgress,
     CloneRequest, CloneResult, CommitDetail, CommitInfo, CommitOutcome, CommitRequest,
     CommitResult, ConflictFile, ConflictRequest, DiffKind, GitError, GitErrorCode, GitOperations,
-    GitResult, HunkAction, HunkRequest, MergeOutcome, PushOutcome, RemoteInfo, RemoteRequest,
-    RemoteResult, RepositoryStatus, TagInfo, TagRequest, UnifiedDiff, parse_conflict_file,
-    parse_diff_hunks, resolve_conflict_block,
+    GitResult, HunkAction, HunkRequest, MergeOutcome, PushOutcome, RebaseOutcome, RebaseStatus,
+    RemoteInfo, RemoteRequest, RemoteResult, RepositoryStatus, TagInfo, TagRequest, UnifiedDiff,
+    parse_conflict_file, parse_diff_hunks, resolve_conflict_block,
 };
 use syntaxis_workspace::{
     ErrorCode as WorkspaceErrorCode, RelativePath, WorkspaceFiles, WorkspaceRecord,
@@ -139,6 +143,7 @@ impl GitOperations for HostGit {
             apply_path_stats(&mut status, &parse_path_numstat(&output.stdout)?, staged);
         }
         apply_untracked_stats(&root, &mut status, self.config.max_output_bytes);
+        status.rebase = self.rebase_status(&root).await?;
         Ok(status)
     }
 
@@ -800,6 +805,44 @@ impl GitOperations for HostGit {
         self.pull_fast_forward(workspace).await
     }
 
+    async fn pull_rebase(&self, workspace: &WorkspaceRecord) -> GitResult<RebaseOutcome> {
+        self.pull_with_rebase(workspace).await
+    }
+
+    async fn continue_rebase(&self, workspace: &WorkspaceRecord) -> GitResult<RebaseOutcome> {
+        let status = self.require_rebase(workspace).await?;
+        if status.conflict_count() > 0 {
+            return Err(GitError::new(
+                GitErrorCode::Conflict,
+                "Resolve every conflict for the current commit before continuing the rebase.",
+            ));
+        }
+        self.run_rebase_step(
+            workspace,
+            &["rebase".into(), "--continue".into()],
+            "Rebase completed.",
+        )
+        .await
+    }
+
+    async fn skip_rebase(&self, workspace: &WorkspaceRecord) -> GitResult<RebaseOutcome> {
+        self.require_rebase(workspace).await?;
+        self.run_rebase_step(
+            workspace,
+            &["rebase".into(), "--skip".into()],
+            "Rebase completed after skipping the commit.",
+        )
+        .await
+    }
+
+    async fn abort_rebase(&self, workspace: &WorkspaceRecord) -> GitResult<()> {
+        self.require_rebase(workspace).await?;
+        let root = validated_root(workspace)?;
+        self.run_default(&root, &["rebase".into(), "--abort".into()])
+            .await?;
+        Ok(())
+    }
+
     async fn publish_branch(
         &self,
         workspace: &WorkspaceRecord,
@@ -818,6 +861,88 @@ impl GitOperations for HostGit {
 }
 
 impl HostGit {
+    async fn require_rebase(&self, workspace: &WorkspaceRecord) -> GitResult<RepositoryStatus> {
+        let status = self.status(workspace).await?;
+        if status.rebase.is_some() {
+            Ok(status)
+        } else {
+            Err(GitError::new(
+                GitErrorCode::Conflict,
+                "No rebase is currently in progress.",
+            ))
+        }
+    }
+
+    pub(super) async fn run_rebase_step(
+        &self,
+        workspace: &WorkspaceRecord,
+        arguments: &[OsString],
+        complete_message: &str,
+    ) -> GitResult<RebaseOutcome> {
+        let root = validated_root(workspace)?;
+        let mut rebase_host = self.clone();
+        rebase_host.config.timeout = rebase_host.config.commit_timeout;
+        let result = rebase_host
+            .run(
+                &root,
+                arguments,
+                None,
+                &[
+                    ("GIT_EDITOR", "true".into()),
+                    ("GIT_SEQUENCE_EDITOR", "true".into()),
+                    ("GIT_TERMINAL_PROMPT", "0".into()),
+                ],
+                &[0],
+                CancellationToken::new(),
+            )
+            .await;
+        match result {
+            Ok(_) => Ok(RebaseOutcome::Complete {
+                message: complete_message.to_owned(),
+            }),
+            Err(error) => {
+                let status = self.status(workspace).await?;
+                if status.rebase.is_some() {
+                    Ok(RebaseOutcome::Stopped {
+                        conflicts: status.conflict_count(),
+                        message: error.message,
+                    })
+                } else {
+                    Err(error)
+                }
+            }
+        }
+    }
+
+    async fn rebase_status(&self, root: &Path) -> GitResult<Option<RebaseStatus>> {
+        let output = self
+            .run_default(root, &["rev-parse".into(), "--absolute-git-dir".into()])
+            .await?;
+        let git_dir = PathBuf::from(parse_utf8(trim_ascii_end(&output.stdout))?);
+        for (directory, current_file, total_file) in [
+            ("rebase-merge", "msgnum", "end"),
+            ("rebase-apply", "next", "last"),
+        ] {
+            let path = git_dir.join(directory);
+            if !path.is_dir() {
+                continue;
+            }
+            let current = read_rebase_number(&path.join(current_file))?;
+            let total = read_rebase_number(&path.join(total_file))?;
+            let commit_subject = fs::read_to_string(path.join("message"))
+                .ok()
+                .and_then(|message| message.lines().next().map(str::to_owned))
+                .filter(|subject| !subject.trim().is_empty())
+                .unwrap_or_else(|| "Current commit".to_owned());
+            return Ok(Some(RebaseStatus {
+                current,
+                total,
+                commit_subject,
+            }));
+        }
+        Ok(None)
+    }
+
     /// Returns a Git patch with the requested number of unchanged context lines.
     ///
     /// # Errors
@@ -1037,6 +1162,19 @@ impl HostGit {
             .map(|value| value.trim().to_owned())
             .map_err(|_| GitError::new(GitErrorCode::Parse, "Git returned an invalid commit ID."))
     }
+}
+
+fn read_rebase_number(path: &Path) -> GitResult<u32> {
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|value| value.trim().parse::<u32>().ok())
+        .filter(|value| *value > 0)
+        .ok_or_else(|| {
+            GitError::new(
+                GitErrorCode::Parse,
+                "Git returned invalid rebase progress information.",
+            )
+        })
 }
 
 async fn require_conflicted_path(

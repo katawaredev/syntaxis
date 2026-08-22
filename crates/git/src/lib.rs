@@ -24,7 +24,9 @@ pub use error::{GitError, GitErrorCode, GitResult};
 pub use operations::{GitOperations, WorktreeOperations};
 pub use repository::{
     BranchComparison, BranchInfo, BranchRequest, CommitDetail, CommitInfo, MergeOutcome,
-    PushOutcome, RemoteInfo, RemoteRequest, RemoteResult, RepositorySnapshot, TagInfo, TagRequest,
-    WorktreeCreateRequest, WorktreeInfo, WorktreeKind,
+    PushOutcome, RebaseOutcome, RemoteInfo, RemoteRequest, RemoteResult, RepositorySnapshot,
+    TagInfo, TagRequest, WorktreeCreateRequest, WorktreeInfo, WorktreeKind,
 };
-pub use status::{BranchStatus, ChangeKind, FileChange, RepositoryState, RepositoryStatus};
+pub use status::{
+    BranchStatus, ChangeKind, FileChange, RebaseStatus, RepositoryState, RepositoryStatus,
+};

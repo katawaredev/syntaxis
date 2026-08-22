@@ -5,7 +5,7 @@ use dioxus::{
 use syntaxis_git::{
     BranchComparison, BranchInfo, BranchRequest, CloneClientMessage, CloneServerMessage,
     CommitDetail, CommitInfo, CommitOutcome, CommitRequest, ConflictChoice, ConflictFile, DiffKind,
-    HunkAction, MergeOutcome, PushOutcome, RemoteInfo, RemoteRequest, RemoteResult,
+    HunkAction, MergeOutcome, PushOutcome, RebaseOutcome, RemoteInfo, RemoteRequest, RemoteResult,
     RepositorySnapshot, RepositoryState, RepositoryStatus, TagInfo, TagRequest, UnifiedDiff,
     WorktreeCreateRequest, WorktreeInfo,
 };
@@ -303,6 +303,26 @@ pub async fn fetch(workspace_slug: String) -> Result<RemoteResult, ServerFnError
 #[post("/api/git/pull")]
 pub async fn pull(workspace_slug: String) -> Result<RemoteResult, ServerFnError> {
     server::pull(&workspace_slug).await
+}
+
+#[post("/api/git/pull/rebase")]
+pub async fn pull_rebase(workspace_slug: String) -> Result<RebaseOutcome, ServerFnError> {
+    server::pull_rebase(&workspace_slug).await
+}
+
+#[post("/api/git/rebase/continue")]
+pub async fn continue_rebase(workspace_slug: String) -> Result<RebaseOutcome, ServerFnError> {
+    server::continue_rebase(&workspace_slug).await
+}
+
+#[post("/api/git/rebase/skip")]
+pub async fn skip_rebase(workspace_slug: String) -> Result<RebaseOutcome, ServerFnError> {
+    server::skip_rebase(&workspace_slug).await
+}
+
+#[post("/api/git/rebase/abort")]
+pub async fn abort_rebase(workspace_slug: String) -> Result<(), ServerFnError> {
+    server::abort_rebase(&workspace_slug).await
 }
 
 #[post("/api/git/publish")]
