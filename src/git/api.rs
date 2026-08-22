@@ -305,6 +305,14 @@ pub async fn pull(workspace_slug: String) -> Result<RemoteResult, ServerFnError>
     server::pull(&workspace_slug).await
 }
 
+#[post("/api/git/publish")]
+pub async fn publish_branch(
+    workspace_slug: String,
+    remote: String,
+) -> Result<RemoteResult, ServerFnError> {
+    server::publish_branch(&workspace_slug, &remote).await
+}
+
 #[post("/api/git/push")]
 pub async fn push(
     workspace_slug: String,

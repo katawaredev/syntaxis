@@ -2,7 +2,6 @@ use std::collections::BTreeSet;
 
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use dioxus::prelude::*;
-use dioxus_code::Language;
 use dioxus_code_editor::{
     CodeEditor, EditorCommand, EditorCommandKind, EditorEdit, EditorRange, EditorSearchQuery,
     EditorSearchStatus, EditorSelection, LanguageServiceConfig, LanguageServiceState,
@@ -73,7 +72,7 @@ use editor_pane::{EditorPane, EditorPaneState};
 use editor_ui::{
     EditorMenuItem, EditorShortcutState, MobileTabs, SearchOptions, SearchPanel,
     copy_editor_reference, find_matches, format_editor_reference, handle_editor_shortcut,
-    issue_command, language_for_path, render_tab, replace_all_search_matches, replace_search_match,
+    issue_command, render_tab, replace_all_search_matches, replace_search_match,
     text_document_contents,
 };
 use explorer::{Explorer, ExplorerView, expand_directory};

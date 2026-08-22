@@ -111,6 +111,67 @@ impl HostGit {
             Err(error) => Err(error),
         }
     }
+
+    pub(super) async fn publish_current_branch(
+        &self,
+        workspace: &WorkspaceRecord,
+        remote: &str,
+    ) -> GitResult<RemoteResult> {
+        let root = validated_root(workspace)?;
+        let remote = super::validation::validate_remote_name(remote)?;
+        self.run_default(
+            &root,
+            &[
+                "remote".into(),
+                "get-url".into(),
+                "--push".into(),
+                "--".into(),
+                remote.clone().into(),
+            ],
+        )
+        .await
+        .map_err(|error| {
+            if error.code == GitErrorCode::CommandFailed {
+                GitError::new(
+                    GitErrorCode::Conflict,
+                    "The selected Git remote does not exist.",
+                )
+            } else {
+                error
+            }
+        })?;
+
+        let environment = [("GIT_TERMINAL_PROMPT", "0".into())];
+        let mut result = self
+            .run(
+                &root,
+                &publish_arguments(&remote, false),
+                None,
+                &environment,
+                &[0],
+                CancellationToken::new(),
+            )
+            .await;
+        if result
+            .as_ref()
+            .is_err_and(|error| error.code == GitErrorCode::Authentication)
+        {
+            result = self
+                .run(
+                    &root,
+                    &publish_arguments(&remote, true),
+                    None,
+                    &environment,
+                    &[0],
+                    CancellationToken::new(),
+                )
+                .await;
+        }
+        result?;
+        Ok(RemoteResult {
+            message: format!("Published branch to {remote}."),
+        })
+    }
 }
 
 pub(super) fn push_arguments(force_with_lease: bool, github_ssh_fallback: bool) -> Vec<OsString> {
@@ -122,5 +183,19 @@ pub(super) fn push_arguments(force_with_lease: bool, github_ssh_fallback: bool) 
     if force_with_lease {
         arguments.push("--force-with-lease".into());
     }
+    arguments
+}
+
+pub(super) fn publish_arguments(remote: &str, github_ssh_fallback: bool) -> Vec<OsString> {
+    let mut arguments = Vec::with_capacity(usize::from(github_ssh_fallback) * 2 + 5);
+    if github_ssh_fallback {
+        arguments.extend(["-c".into(), GITHUB_SSH_PUSH_REWRITE.into()]);
+    }
+    arguments.extend([
+        "push".into(),
+        "--set-upstream".into(),
+        remote.into(),
+        "HEAD".into(),
+    ]);
     arguments
 }

@@ -128,11 +128,7 @@ pub(super) fn InteractiveCodeEditor(editor_props: CodeEditorProps) -> Element {
     let configuration = EditorConfiguration {
         id: editor_id.clone(),
         value: props.value.clone(),
-        language: if props.language_name.is_empty() {
-            props.language.slug().to_owned()
-        } else {
-            props.language_name.clone()
-        },
+        language: props.language_name.clone(),
         filename: props.filename.clone(),
         line_numbers: props.line_numbers,
         word_wrap: props.word_wrap,
@@ -160,7 +156,12 @@ pub(super) fn InteractiveCodeEditor(editor_props: CodeEditorProps) -> Element {
         let configuration = configuration.clone();
         let last_configuration = Rc::clone(&last_configuration);
         move || {
-            let mut events = document::eval(EDITOR_BRIDGE);
+            let mut events = document::eval(&format!(
+                r"
+                const module = await import('{EDITOR_BRIDGE}');
+                await module.startEditor(dioxus);
+                ",
+            ));
             drop(events.send(configuration.clone()));
             *last_configuration.borrow_mut() = Some(configuration.clone());
             event_bridge.set(Some(events));
@@ -267,19 +268,13 @@ pub(super) fn InteractiveCodeEditor(editor_props: CodeEditorProps) -> Element {
     {
         *last_search_configuration.borrow_mut() = Some(search_configuration);
     }
-    let class = editor_class(
-        props.theme,
-        props.line_numbers,
-        props.word_wrap,
-        &props.class,
-    );
+    let class = editor_class(props.line_numbers, props.word_wrap, &props.class);
     let diff_class = if props.diff_original.is_some() {
         "dxc-codemirror-diff"
     } else {
         Default::default()
     };
     rsx! {
-        CodeThemeStyles { theme: props.theme }
         document::Stylesheet { href: CODE_EDITOR_CSS }
         div {
             id: editor_id,

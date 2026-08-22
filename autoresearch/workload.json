@@ -1,0 +1,47 @@
+{
+  "name": "mobile-cold-start-recent-projects",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "deviceScaleFactor": 2,
+    "formFactor": "mobile"
+  },
+  "fixtureDirectory": "autoresearch/fixture",
+  "homeUrl": "http://127.0.0.1:4173/",
+  "editorUrl": "http://127.0.0.1:4173/workspaces/fixture/files?path=src%2Fmain.rs",
+  "recentProjectsReady": {
+    "section": "section[aria-labelledby=\"recent-title\"]",
+    "loadingState": "[aria-label=\"Loading recent projects\"]",
+    "readyRule": "section exists and loadingState is absent"
+  },
+  "editorReady": {
+    "mount": "#syntaxis-active-editor",
+    "editable": "#syntaxis-active-editor [role=\"textbox\"][aria-label=\"Code editor\"]",
+    "readyRule": "editor mount and editable CodeMirror textbox both exist"
+  },
+  "homeInteraction": {
+    "trigger": "button",
+    "triggerText": "New project",
+    "ready": "[role=\"dialog\"] #new-project-path",
+    "readyRule": "New project action opens its interactive dialog and paints it"
+  },
+  "responsiveViewports": [
+    {
+      "name": "narrow-mobile",
+      "width": 320,
+      "height": 700,
+      "deviceScaleFactor": 2,
+      "formFactor": "mobile"
+    },
+    {
+      "name": "desktop",
+      "width": 1440,
+      "height": 900,
+      "deviceScaleFactor": 1,
+      "formFactor": "desktop"
+    }
+  ],
+  "repetitions": 5,
+  "navigationTimeoutMs": 120000,
+  "readinessTimeoutMs": 30000
+}

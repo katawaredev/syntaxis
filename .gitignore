@@ -5,6 +5,10 @@
 /node_modules
 /.lighthouseci
 /lighthouse-reports
+/autoresearch/results/
+/autoresearch/runtime/
+/autoresearch/profiles/
+/autoresearch/baseline.json
 /mise.local.toml
 /mise.local.lock
 .DS_Store

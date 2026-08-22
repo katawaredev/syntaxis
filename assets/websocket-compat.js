@@ -3,9 +3,7 @@
 
   function CompatibleWebSocket(url, protocols) {
     if (!new.target) {
-      throw new TypeError(
-        "Failed to construct 'WebSocket': Please use the 'new' operator.",
-      );
+      throw new TypeError("Failed to construct 'WebSocket': Please use the 'new' operator.");
     }
 
     if (typeof url === "string" && url.startsWith("/")) {
@@ -14,9 +12,7 @@
       url = `${scheme}//${window.location.host}${url}`;
     }
 
-    return protocols === undefined
-      ? new NativeWebSocket(url)
-      : new NativeWebSocket(url, protocols);
+    return protocols === undefined ? new NativeWebSocket(url) : new NativeWebSocket(url, protocols);
   }
 
   CompatibleWebSocket.prototype = NativeWebSocket.prototype;

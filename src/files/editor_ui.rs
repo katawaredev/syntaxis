@@ -8,16 +8,16 @@ use super::{
     EditorCommand, EditorCommandKind, EditorSelection, Element, EmbedExtension, EventHandler,
     FieldsetExtension, FormEvent, GlobalAttributesExtension, HasAttributes, HasFormData,
     HasKeyboardData, HasPointerData, History, Icon, IframeExtension, ImgExtension, InputExtension,
-    Key, KeyboardEvent, Language, LiExtension, LinkExtension, MenuButtonTrigger, MenuContent,
-    MeterExtension, Modifiers, ModifiersInteraction, MountedData, MpaddedExtension,
-    MspaceExtension, ObjectExtension, OlExtension, OpenDocument, OpenTab, OptgroupExtension,
-    OptionExtension, PanelTab, PanelTabIndicator, PanelTabWidth, ParamExtension, ProgressExtension,
-    Props, ReadableExt, ReadableHashMapExt, ReadableHashSetExt, ReadableOptionExt,
-    ReadableResultExt, ReadableStrExt, ReadableVecExt, SelectExtension, Signal, Storage,
-    SvgAttributesExtension, TextInput, TextInputType, TextareaExtension, ToastState,
-    TrackExtension, UnifiedDiff, VideoExtension, WorkspaceRecord, WritableExt, WritableStringExt,
-    WritableVecExt, component, dioxus_core, dioxus_elements, dioxus_signals, file_glyph,
-    language_slug_for_path, request_close, rsx, save_path, set_error, set_success, spawn, use_drop,
+    Key, KeyboardEvent, LiExtension, LinkExtension, MenuButtonTrigger, MenuContent, MeterExtension,
+    Modifiers, ModifiersInteraction, MountedData, MpaddedExtension, MspaceExtension,
+    ObjectExtension, OlExtension, OpenDocument, OpenTab, OptgroupExtension, OptionExtension,
+    PanelTab, PanelTabIndicator, PanelTabWidth, ParamExtension, ProgressExtension, Props,
+    ReadableExt, ReadableHashMapExt, ReadableHashSetExt, ReadableOptionExt, ReadableResultExt,
+    ReadableStrExt, ReadableVecExt, SelectExtension, Signal, Storage, SvgAttributesExtension,
+    TextInput, TextInputType, TextareaExtension, ToastState, TrackExtension, UnifiedDiff,
+    VideoExtension, WorkspaceRecord, WritableExt, WritableStringExt, WritableVecExt, component,
+    dioxus_core, dioxus_elements, dioxus_signals, file_glyph, language_slug_for_path,
+    request_close, rsx, save_path, set_error, set_success, spawn, use_drop,
 };
 use regex::RegexBuilder;
 use std::rc::Rc;
@@ -591,10 +591,6 @@ fn is_whole_word(source: &str, start: usize, end: usize) -> bool {
 
 fn is_word_character(character: char) -> bool {
     character.is_alphanumeric() || character == '_'
-}
-
-pub(super) fn language_for_path(path: &str) -> Language {
-    Language::from_slug(language_slug_for_path(path)).unwrap_or(Language::Rust)
 }
 
 #[cfg(test)]

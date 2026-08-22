@@ -33,6 +33,21 @@ pub(super) fn validate_remote_request(request: &RemoteRequest) -> GitResult<()> 
     Ok(())
 }
 
+pub(super) fn validate_remote_name(name: &str) -> GitResult<String> {
+    let name = name.trim();
+    if name.is_empty()
+        || name.starts_with('-')
+        || name.len() > 1024
+        || name.chars().any(char::is_control)
+    {
+        return Err(GitError::new(
+            GitErrorCode::Conflict,
+            "Enter a valid Git remote name.",
+        ));
+    }
+    Ok(name.to_owned())
+}
+
 pub(super) fn validate_commit_request(request: &CommitRequest) -> GitResult<()> {
     if request.message.trim().is_empty() {
         return Err(GitError::new(

@@ -1,5 +1,4 @@
 use dioxus::prelude::*;
-use dioxus_code::Language;
 use dioxus_code_editor::{DiffLayout, UnifiedDiffView};
 use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
 use syntaxis_editor::language_slug_for_path;
@@ -29,6 +28,8 @@ mod history;
 mod remotes;
 #[path = "view/support.rs"]
 mod support;
+#[path = "sync.rs"]
+mod sync;
 #[path = "worktrees.rs"]
 mod worktrees;
 
@@ -46,6 +47,7 @@ use self::support::{
     RepositoryWelcome, branch_request, copy_commit_hash, diff_line_class, display_remote_url,
     remote_request, short_oid,
 };
+use self::sync::{GitSyncAction, GitSyncButton};
 use self::worktrees::{BranchWorktreeAction, BranchWorktreeMenu};
 use super::api;
 use super::operations::{Mutation, RepositoryAction};
@@ -129,7 +131,6 @@ fn WorkspaceGit(slug: String) -> Element {
     let mut branch_start_point = use_signal(|| None::<String>);
     let mut tag_target = use_signal(|| None::<String>);
     let mut branch_menu = use_signal(|| false);
-    let mut toolbar_menu = use_signal(|| false);
     let mut remote_target = use_signal(|| None::<RemoteInfo>);
     let mut pending = use_signal(|| false);
     let refreshing = use_signal(|| false);
@@ -373,8 +374,6 @@ fn WorkspaceGit(slug: String) -> Element {
         .unwrap_or("No upstream");
     let commits_to_pull = repository.branch.behind;
     let commits_to_push = repository.branch.ahead;
-    let pull_disabled = pending() || repository.branch.upstream.is_none() || commits_to_pull == 0;
-    let push_disabled = pending() || repository.branch.upstream.is_none() || commits_to_push == 0;
     let diff_loading = diff.state() == UseResourceState::Pending;
     let conflict_loading = conflict.state() == UseResourceState::Pending;
     let commit_detail_loading = commit_detail.state() == UseResourceState::Pending;
@@ -609,7 +608,7 @@ fn WorkspaceGit(slug: String) -> Element {
                                 }
                             }
                             button {
-                                class: "inline-flex h-7 items-center gap-1.5 rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 @max-[520px]:size-7 @max-[520px]:justify-center @max-[520px]:px-0",
+                                class: "inline-flex h-7 items-center gap-1.5 rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50",
                                 title: "Commit staged changes",
                                 "aria-label": "Commit staged changes",
                                 disabled: pending() || repository.staged_count() == 0,
@@ -618,149 +617,42 @@ fn WorkspaceGit(slug: String) -> Element {
                                     dialog.set(GitDialog::Commit);
                                 },
                                 Icon { icon: AppIcon::Commit, size: 14 }
-                                span { class: "@max-[520px]:hidden", "Commit" }
+                                span { "Commit" }
                             }
-                            button {
-                                class: "inline-flex h-7 items-center gap-1 rounded-md bg-transparent px-2 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50 max-lg:px-1.5 @max-[520px]:hidden",
-                                title: "Pull remote changes",
-                                "aria-label": "Pull remote changes",
-                                disabled: pull_disabled,
-                                onclick: move |_| on_repository_action.call(RepositoryAction::Pull),
-                                Icon { icon: AppIcon::Fetch, size: 14 }
-                                span { class: "max-lg:hidden", "Pull" }
-                                if repository.branch.upstream.is_some() {
-                                    span {
-                                        class: "grid min-w-4.5 place-items-center rounded-full bg-secondary px-1 text-[9px] font-semibold text-foreground",
-                                        "aria-label": "{commits_to_pull} commits to pull",
-                                        title: "{commits_to_pull} commits behind upstream",
-                                        "{commits_to_pull}"
+                            GitSyncButton {
+                                current_branch: repository.branch.head.clone(),
+                                remotes: remote_list.clone(),
+                                has_upstream: repository.branch.upstream.is_some(),
+                                ahead: commits_to_push,
+                                behind: commits_to_pull,
+                                conflicts: repository.conflict_count(),
+                                pending: pending(),
+                                refreshing: refreshing(),
+                                on_action: move |action| match action {
+                                    GitSyncAction::AddRemote => {
+                                        operation_error.set(None);
+                                        dialog.set(GitDialog::AddRemote);
                                     }
-                                }
-                            }
-                            button {
-                                class: "inline-flex h-7 items-center gap-1 rounded-md bg-transparent px-2 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50 max-lg:px-1.5 @max-[520px]:hidden",
-                                title: "Push commits",
-                                "aria-label": "Push commits",
-                                disabled: push_disabled,
-                                onclick: move |_| {
-                                    on_repository_action
-                                        .call(RepositoryAction::Push {
-                                            force_with_lease: false,
-                                        });
+                                    GitSyncAction::Publish(remote) => {
+                                        on_repository_action.call(RepositoryAction::Publish(remote));
+                                    }
+                                    GitSyncAction::Pull => {
+                                        on_repository_action.call(RepositoryAction::Pull);
+                                    }
+                                    GitSyncAction::Push => {
+                                        on_repository_action
+                                            .call(RepositoryAction::Push {
+                                                force_with_lease: false,
+                                            });
+                                    }
+                                    GitSyncAction::Fetch => {
+                                        on_repository_action.call(RepositoryAction::Refresh);
+                                    }
+                                    GitSyncAction::AbortMerge => {
+                                        operation_error.set(None);
+                                        dialog.set(GitDialog::AbortMerge);
+                                    }
                                 },
-                                Icon { icon: AppIcon::Push, size: 14 }
-                                span { class: "max-lg:hidden", "Push" }
-                                if repository.branch.upstream.is_some() {
-                                    span {
-                                        class: "grid min-w-4.5 place-items-center rounded-full bg-secondary px-1 text-[9px] font-semibold text-foreground",
-                                        "aria-label": "{commits_to_push} commits to push",
-                                        title: "{commits_to_push} commits ahead of upstream",
-                                        "{commits_to_push}"
-                                    }
-                                }
-                            }
-                            button {
-                                class: "inline-flex h-7 items-center gap-1 rounded-md bg-transparent px-2 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50 max-lg:px-1.5 @max-[520px]:hidden",
-                                title: "Fetch remotes and refresh repository",
-                                "aria-label": "Fetch remotes and refresh repository",
-                                disabled: pending(),
-                                onclick: move |_| on_repository_action.call(RepositoryAction::Refresh),
-                                Icon { icon: AppIcon::Refresh, size: 14 }
-                                span { class: "max-lg:hidden",
-                                    if refreshing() {
-                                        "Refreshing…"
-                                    } else {
-                                        "Refresh"
-                                    }
-                                }
-                            }
-                            DropdownMenu {
-                                class: "relative hidden shrink-0 @max-[520px]:block",
-                                open: toolbar_menu(),
-                                disabled: pending(),
-                                on_open_change: move |open: bool| toolbar_menu.set(open),
-                                MenuTrigger {
-                                    label: "Repository actions",
-                                    icon: AppIcon::More,
-                                    open: toolbar_menu(),
-                                    size: ControlSize::Small,
-                                    on_toggle: move |()| toolbar_menu.toggle(),
-                                }
-                                MenuContent { class: "right-0 w-48",
-                                    DropdownMenuItem::<usize> {
-                                        value: 0_usize,
-                                        index: 0_usize,
-                                        disabled: pull_disabled,
-                                        on_select: move |_| {
-                                            toolbar_menu.set(false);
-                                            on_repository_action.call(RepositoryAction::Pull);
-                                        },
-                                        span { class: "flex items-center gap-2",
-                                            Icon {
-                                                icon: AppIcon::Fetch,
-                                                size: 14,
-                                            }
-                                            "Pull"
-                                        }
-                                        span { class: "tabular-nums text-[10px] text-muted-foreground",
-                                            "{commits_to_pull}"
-                                        }
-                                    }
-                                    DropdownMenuItem::<usize> {
-                                        value: 1_usize,
-                                        index: 1_usize,
-                                        disabled: push_disabled,
-                                        on_select: move |_| {
-                                            toolbar_menu.set(false);
-                                            on_repository_action
-                                                .call(RepositoryAction::Push {
-                                                    force_with_lease: false,
-                                                });
-                                        },
-                                        span { class: "flex items-center gap-2",
-                                            Icon { icon: AppIcon::Push, size: 14 }
-                                            "Push"
-                                        }
-                                        span { class: "tabular-nums text-[10px] text-muted-foreground",
-                                            "{commits_to_push}"
-                                        }
-                                    }
-                                    DropdownMenuItem::<usize> {
-                                        value: 2_usize,
-                                        index: 2_usize,
-                                        disabled: pending(),
-                                        on_select: move |_| {
-                                            toolbar_menu.set(false);
-                                            on_repository_action.call(RepositoryAction::Refresh);
-                                        },
-                                        span { class: "flex items-center gap-2",
-                                            Icon {
-                                                icon: AppIcon::Refresh,
-                                                size: 14,
-                                            }
-                                            if refreshing() {
-                                                "Refreshing…"
-                                            } else {
-                                                "Refresh"
-                                            }
-                                        }
-                                    }
-                                    if repository.conflict_count() > 0 {
-                                        hr {}
-                                        DropdownMenuItem::<GitDialog> {
-                                            class: "!text-destructive",
-                                            value: GitDialog::AbortMerge,
-                                            index: 3_usize,
-                                            disabled: pending(),
-                                            on_select: move |_| {
-                                                toolbar_menu.set(false);
-                                                operation_error.set(None);
-                                                dialog.set(GitDialog::AbortMerge);
-                                            },
-                                            "Abort Merge"
-                                        }
-                                    }
-                                }
                             }
                         }
                     }

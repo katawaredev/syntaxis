@@ -27,7 +27,7 @@ mod signing;
 mod validation;
 
 #[cfg(test)]
-use network::{GITHUB_SSH_PUSH_REWRITE, push_arguments};
+use network::{GITHUB_SSH_PUSH_REWRITE, publish_arguments, push_arguments};
 use parsing::{
     apply_path_stats, apply_untracked_stats, parse_branches, parse_commit_record,
     parse_comparison_counts, parse_error, parse_history, parse_numstat, parse_path_numstat,
@@ -798,6 +798,14 @@ impl GitOperations for HostGit {
 
     async fn pull(&self, workspace: &WorkspaceRecord) -> GitResult<RemoteResult> {
         self.pull_fast_forward(workspace).await
+    }
+
+    async fn publish_branch(
+        &self,
+        workspace: &WorkspaceRecord,
+        remote: &str,
+    ) -> GitResult<RemoteResult> {
+        self.publish_current_branch(workspace, remote).await
     }
 
     async fn push(

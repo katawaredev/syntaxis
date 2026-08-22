@@ -5,8 +5,11 @@
       "startServerCommand": "bash scripts/lighthouse-server.sh",
       "startServerReadyPattern": "Lighthouse server ready",
       "startServerReadyTimeout": 30000,
-      "numberOfRuns": 3,
+      "numberOfRuns": 5,
       "settings": {
+        "extraHeaders": {
+          "Authorization": "Bearer syntaxis-local-lighthouse-token-0001"
+        },
         "maxWaitForFcp": 120000,
         "maxWaitForLoad": 120000,
         "formFactor": "mobile",

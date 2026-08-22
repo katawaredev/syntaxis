@@ -1,8 +1,9 @@
 //! Syntaxis-maintained fork of `dioxus-code-editor`.
 //!
 //! Editable documents and editor diff mode are backed by a bundled `CodeMirror` 6
-//! view with imperative commands and typed Dioxus events. Arborium/tree-sitter
-//! remains available for the Git page's read-only unified diff renderer.
+//! view with imperative commands and typed Dioxus events. Git diff syntax
+//! highlighting uses the same route-local JavaScript language modules so parser
+//! grammars do not inflate the application WASM.
 
 use std::{
     cell::RefCell,
@@ -11,17 +12,11 @@ use std::{
 };
 
 use dioxus::prelude::*;
-use dioxus_code::advanced::CodeThemeStyles;
-use dioxus_code::{CodeTheme, Language, Theme};
 use serde::{Deserialize, Serialize};
 
 pub const CODE_EDITOR_CSS: Asset = asset!("/assets/dioxus-code-editor.css");
 const LSP_MODULE: Asset = asset!("/assets/lsp.bundle.js");
-#[expect(
-    clippy::large_include_file,
-    reason = "the generated CodeMirror bundle must execute inside Dioxus' eval channel"
-)]
-const EDITOR_BRIDGE: &str = include_str!("../assets/editor.bundle.js");
+const EDITOR_BRIDGE: Asset = asset!("/assets/editor.bundle.js");
 static EDITOR_ID_NEXT: AtomicU64 = AtomicU64::new(0);
 
 mod bridge;
@@ -30,11 +25,6 @@ mod diff;
 pub use diff::{DiffLayout, UnifiedDiffView};
 
 use bridge::InteractiveCodeEditor;
-
-/// The syntax theme shared by editable and diff surfaces.
-pub fn shared_code_theme() -> CodeTheme {
-    CodeTheme::fixed(Theme::TOKYO_NIGHT)
-}
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct EditorRange {
@@ -168,14 +158,10 @@ pub struct EditorCommand {
 pub struct CodeEditorProps {
     #[props(into)]
     pub value: String,
-    #[props(default = Language::Rust)]
-    pub language: Language,
-    #[props(into, default)]
+    #[props(into, default = "plaintext".to_owned())]
     pub language_name: String,
     #[props(into, default)]
     pub filename: String,
-    #[props(default = shared_code_theme(), into)]
-    pub theme: CodeTheme,
     #[props(default = true)]
     pub line_numbers: bool,
     #[props(default = false)]
@@ -234,8 +220,8 @@ pub fn CodeEditor(props: CodeEditorProps) -> Element {
     }
 }
 
-fn editor_class(theme: CodeTheme, line_numbers: bool, word_wrap: bool, extra: &str) -> String {
-    let mut class = format!("dxc-editor {}", theme.classes());
+fn editor_class(line_numbers: bool, word_wrap: bool, extra: &str) -> String {
+    let mut class = "dxc-editor".to_owned();
     if !line_numbers {
         class.push_str(" dxc-editor-no-gutter");
     }

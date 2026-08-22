@@ -104,7 +104,6 @@ pub(super) fn EditorPane(
                     CsvPreview { source: contents, path }
                 },
                 Some(ActiveDocumentView::Text { path, contents, status, config }) => {
-                    let language = language_for_path(&path);
                     let language_slug = language_slug_for_path(&path);
                     let configured_language_services = if let Some(workspace) = workspace() {
                         let servers = language_servers_for_language(
@@ -147,7 +146,6 @@ pub(super) fn EditorPane(
                                 id: "syntaxis-active-editor",
                                 class: "size-full min-h-full rounded-none",
                                 value: contents,
-                                language,
                                 language_name: language_slug,
                                 filename: path.clone(),
                                 line_numbers: line_numbers(),
