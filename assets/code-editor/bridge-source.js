@@ -12,6 +12,9 @@ import {
   history,
   historyKeymap,
   indentWithTab,
+  redo,
+  selectAll,
+  undo,
 } from "@codemirror/commands";
 import {
   bracketMatching,
@@ -621,6 +624,15 @@ export async function startEditor(dioxus) {
     } else if (command.type === "configure_search") {
       configureSearch(command.query);
     } else if (command.type === "focus") {
+      view.focus();
+    } else if (command.type === "undo") {
+      undo(view);
+      view.focus();
+    } else if (command.type === "redo") {
+      redo(view);
+      view.focus();
+    } else if (command.type === "select_all") {
+      selectAll(view);
       view.focus();
     } else if (command.type === "trigger_completion") {
       startCompletion(view);

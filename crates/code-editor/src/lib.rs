@@ -122,6 +122,9 @@ impl Default for EditorSearchStatus {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum EditorCommandKind {
     Focus,
+    Undo,
+    Redo,
+    SelectAll,
     TriggerCompletion,
     GoToDefinition,
     FindReferences,

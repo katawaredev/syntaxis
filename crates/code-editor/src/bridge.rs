@@ -37,6 +37,9 @@ enum EditorBridgeCommand {
         query: Option<EditorSearchQuery>,
     },
     Focus,
+    Undo,
+    Redo,
+    SelectAll,
     TriggerCompletion,
     GoToDefinition,
     FindReferences,
@@ -62,6 +65,9 @@ impl From<EditorCommandKind> for EditorBridgeCommand {
     fn from(command: EditorCommandKind) -> Self {
         match command {
             EditorCommandKind::Focus => Self::Focus,
+            EditorCommandKind::Undo => Self::Undo,
+            EditorCommandKind::Redo => Self::Redo,
+            EditorCommandKind::SelectAll => Self::SelectAll,
             EditorCommandKind::TriggerCompletion => Self::TriggerCompletion,
             EditorCommandKind::GoToDefinition => Self::GoToDefinition,
             EditorCommandKind::FindReferences => Self::FindReferences,

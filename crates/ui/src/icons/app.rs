@@ -77,6 +77,9 @@ pub enum AppIcon {
     NewChat,
     Next,
     ToggleReplace,
+    Undo,
+    Redo,
+    SelectAll,
     WordWrap,
     Expand,
 }
@@ -401,6 +404,21 @@ pub fn Icon(icon: AppIcon, #[props(default = 16)] size: u32) -> Element {
         AppIcon::ToggleReplace => {
             rsx! {
                 Replace { size }
+            }
+        }
+        AppIcon::Undo => {
+            rsx! {
+                RotateCcw { size }
+            }
+        }
+        AppIcon::Redo => {
+            rsx! {
+                RefreshCw { size }
+            }
+        }
+        AppIcon::SelectAll => {
+            rsx! {
+                TextCursorInput { size }
             }
         }
         AppIcon::WordWrap => {
