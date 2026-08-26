@@ -239,13 +239,10 @@ pub(super) fn BranchWorktreeMenu(
                                                 let option_key = option_key.clone();
                                                 move |event: MouseEvent| {
                                                     event.stop_propagation();
-                                                    branch_options.set(
-                                                        (!options_expanded).then(|| option_key.clone()),
-                                                    );
+                                                    branch_options.set((!options_expanded).then(|| option_key.clone()));
                                                 }
                                             },
-                                            span {
-                                                class: if options_expanded { "transition-transform" } else { "-rotate-90 transition-transform" },
+                                            span { class: if options_expanded { "transition-transform" } else { "-rotate-90 transition-transform" },
                                                 Icon { icon: AppIcon::ChevronDown, size: 14 }
                                             }
                                         }

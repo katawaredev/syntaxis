@@ -683,11 +683,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                     label: "Undo",
                                     suffix: "Mod Z",
                                     disabled: !editor_interactive,
-                                    onclick: move |()| issue_command(
-                                        command_revision,
-                                        editor_command,
-                                        EditorCommandKind::Undo,
-                                    ),
+                                    onclick: move |()| issue_command(command_revision, editor_command, EditorCommandKind::Undo),
                                 }
                                 EditorMenuItem {
                                     index: 1,
@@ -695,11 +691,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                                     label: "Redo",
                                     suffix: "Mod Shift Z",
                                     disabled: !editor_interactive,
-                                    onclick: move |()| issue_command(
-                                        command_revision,
-                                        editor_command,
-                                        EditorCommandKind::Redo,
-                                    ),
+                                    onclick: move |()| issue_command(command_revision, editor_command, EditorCommandKind::Redo),
                                 }
                                 EditorMenuItem {
                                     index: 2,

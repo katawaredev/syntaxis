@@ -389,9 +389,7 @@ async fn tag_operations_preserve_lightweight_and_annotated_targets() {
     git(repository.path(), &["commit", "-m", "base"]);
     let host = HostGit::default();
     let workspace = workspace(repository.path());
-    let base_oid = host.history(&workspace, 0, 1).await.unwrap()[0]
-        .oid
-        .clone();
+    let base_oid = host.history(&workspace, 0, 1).await.unwrap()[0].oid.clone();
 
     host.create_tag(
         &workspace,

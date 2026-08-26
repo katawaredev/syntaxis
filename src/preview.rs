@@ -155,11 +155,15 @@ pub(crate) fn Preview(slug: String) -> Element {
     match active.current() {
         Some(workspace) => rsx! {
             SuspenseBoundary {
-                fallback: |_| rsx! { PreviewLoading {} },
+                fallback: |_| rsx! {
+                    PreviewLoading {}
+                },
                 WorkspacePreview { key: "{workspace.id.0}", workspace_id: workspace.id.0 }
             }
         },
-        None => rsx! { PreviewLoading {} },
+        None => rsx! {
+            PreviewLoading {}
+        },
     }
 }
 
