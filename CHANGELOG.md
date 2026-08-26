@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.11.1](https://github.com/katawaredev/syntaxis/compare/v0.11.0...v0.11.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* **ai:** new chat is now primary ([b1d94e7](https://github.com/katawaredev/syntaxis/commit/b1d94e76b5d8bbc586b5cb21f7b71a0e0094f3c3))
+* **ai:** search pi settings ([52f131a](https://github.com/katawaredev/syntaxis/commit/52f131a696da97ff3ac9ca1f83a14bf6efa75b6c))
+* **ai:** use volume2 icon to speak ([0ccd9bc](https://github.com/katawaredev/syntaxis/commit/0ccd9bc554911629a510dafef9b4905bd4c49320))
+* build ([5eb11fd](https://github.com/katawaredev/syntaxis/commit/5eb11fdee3b3dd0b1518549a0c6f5649883bfe25))
+* build ([fac1a92](https://github.com/katawaredev/syntaxis/commit/fac1a92483a80dba53071e2d286e267c58293f9f))
+* **git:** branches menu render disclosure ([09bc6df](https://github.com/katawaredev/syntaxis/commit/09bc6df7872b4727c29156082df796859bae8090))
+* **git:** load more commits from history ([ee89794](https://github.com/katawaredev/syntaxis/commit/ee897947fae8c9f91f9ef6eae6d1a2d99e837f15))
+* **preview:** navigating no longer re-renders the whole page ([252de16](https://github.com/katawaredev/syntaxis/commit/252de16707711bbbb45b91a3a446fc3c16c9c13f))
+* **preview:** remove extra padding from settings button ([32bb711](https://github.com/katawaredev/syntaxis/commit/32bb71124546696bbd7542c7b59f313477ab093b))
+
 ## [0.11.0](https://github.com/katawaredev/syntaxis/compare/v0.10.0...v0.11.0) (2026-08-26)
 
 
