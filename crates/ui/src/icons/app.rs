@@ -9,7 +9,7 @@ use dioxus_icons::lucide::{
     Info, ListChevronsDownUp, ListChevronsUpDown, ListOrdered, LogOut, Menu, Mic, PanelLeftOpen,
     Paperclip, Play, Plus, RefreshCw, Regex, Repeat1, Replace, ReplaceAll, RotateCcw, Save,
     ScanSearch, Search, Send, Settings, Share2, ShieldAlert, Sparkles, Square, SquarePen,
-    SquareTerminal, Star, TextCursorInput, TextWrap, Trash2, WandSparkles, WholeWord, X,
+    SquareTerminal, Star, TextCursorInput, TextWrap, Trash2, Volume2, WandSparkles, WholeWord, X,
 };
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum AppIcon {
@@ -80,6 +80,7 @@ pub enum AppIcon {
     NewChat,
     Next,
     ToggleReplace,
+    Volume2,
     Undo,
     Redo,
     SelectAll,
@@ -422,6 +423,11 @@ pub fn Icon(icon: AppIcon, #[props(default = 16)] size: u32) -> Element {
         AppIcon::ToggleReplace => {
             rsx! {
                 Replace { size }
+            }
+        }
+        AppIcon::Volume2 => {
+            rsx! {
+                Volume2 { size }
             }
         }
         AppIcon::Undo => {

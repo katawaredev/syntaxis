@@ -261,7 +261,7 @@ fn AgentTimelineItem(
                             if read_aloud_available {
                                 IconButton {
                                     label: if speaking_item.as_deref() == Some(item_id.as_str()) { "Stop reading response" } else { "Read response aloud" },
-                                    icon: if speaking_item.as_deref() == Some(item_id.as_str()) { AppIcon::Stop } else { AppIcon::Play },
+                                    icon: if speaking_item.as_deref() == Some(item_id.as_str()) { AppIcon::Stop } else { AppIcon::Volume2 },
                                     pressed: speaking_item.as_deref() == Some(item_id.as_str()),
                                     onclick: {
                                         let item_id = item_id.clone();
