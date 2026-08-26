@@ -70,7 +70,7 @@ async fn settings_snapshot(root: &Path) -> Result<PiSettingsSnapshot, ServerFnEr
             "This settings interface was generated from Pi {PI_SETTINGS_SCHEMA_VERSION}; the server's Pi {pi_version} has a different major version. Update the application before editing settings."
         ))
     } else if !manager_available {
-        Some("This Pi installation does not expose the SettingsManager module required for locked writes. Reading remains available.".into())
+        Some("This Pi installation's internal settings API could not be located, so editing is disabled to avoid conflicting writes. Reading remains available.".into())
     } else {
         None
     };

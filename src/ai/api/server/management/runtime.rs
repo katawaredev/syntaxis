@@ -60,16 +60,15 @@ fn pi_package_module(
     })?;
     let command = fs::canonicalize(command)
         .map_err(|error| server_error(format!("Could not resolve the Pi executable: {error}")))?;
-    let package_root = command
-        .parent()
-        .and_then(Path::parent)
-        .ok_or_else(|| server_error("Pi is not installed from a loadable npm package"))?;
-    let module = package_root.join(relative_path);
-    if !module.is_file() {
-        return Err(server_error(format!(
-            "This Pi installation does not expose its {module_name} module"
-        )));
-    }
+    let module = command
+        .ancestors()
+        .map(|ancestor| ancestor.join(relative_path))
+        .find(|candidate| candidate.is_file())
+        .ok_or_else(|| {
+            server_error(format!(
+                "This Pi installation does not expose its {module_name} module"
+            ))
+        })?;
     let node = resolve_command(Path::new("node"))
         .ok_or_else(|| server_error("Node.js is unavailable for Pi integration"))?;
     Ok((node, module))
