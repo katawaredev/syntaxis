@@ -9,10 +9,12 @@ contain benchmark-only behavior in the application.
 - **Runtime:** Syntaxis is a Dioxus 0.7 fullstack application. The browser client
   is Rust compiled to WebAssembly; the server owns authentication, filesystem,
   workspaces, Git, terminals, previews, language servers, and Pi integration.
-- **Document path:** `index.html` supplies the viewport. Dioxus renders
-  `src/app.rs`, which installs global links, the Tailwind stylesheet, the UI and
-  websocket compatibility scripts, then mounts the router. The AI helper is
-  installed only by AI routes.
+- **Document path:** `index.html` supplies the viewport. Its `maximum-scale=1`
+  setting is an intentional mobile Safari workaround that prevents the focused
+  code editor from auto-zooming; do not remove it to improve Lighthouse scores.
+  Dioxus renders `src/app.rs`, which installs global links, the Tailwind
+  stylesheet, the UI and websocket compatibility scripts, then mounts the
+  router. The AI helper is installed only by AI routes.
 - **Startup/UI path:** the home route (`src/workspace/home.rs`) immediately starts
   the workspace-list cache and runtime-state resource. Workspace routes use
   `src/workspace/shell.rs`; files/editor UI is under `src/files/` and
