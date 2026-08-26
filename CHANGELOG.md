@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.11.0](https://github.com/katawaredev/syntaxis/compare/v0.10.0...v0.11.0) (2026-08-26)
+
+
+### Features
+
+* **editor:** undo/redo/selectAll operations ([95e36b7](https://github.com/katawaredev/syntaxis/commit/95e36b7fdb144064399870fe2ea3a08a8a59d6c0))
+* **ui:** overhaul ([d71f8a7](https://github.com/katawaredev/syntaxis/commit/d71f8a7313697b2abe5fc96af5bbcbb8c3ffee73))
+
+
+### Bug Fixes
+
+* **editor:** disable mobile auto zoom ([b90548b](https://github.com/katawaredev/syntaxis/commit/b90548b8cadbb0ff851d9dcc1afd99f109df1efa))
+* **editor:** disable safari auto zoom ([e07cd36](https://github.com/katawaredev/syntaxis/commit/e07cd36af8e841b6f85b14c53e416b2bfe50e780))
+
 ## [0.10.0](https://github.com/katawaredev/syntaxis/compare/v0.9.3...v0.10.0) (2026-08-22)
 
 
