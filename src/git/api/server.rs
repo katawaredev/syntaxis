@@ -260,7 +260,7 @@ pub(super) async fn repository_snapshot(
         git.branches(&workspace),
         git.remotes(&workspace),
         git.tags(&workspace),
-        git.history(&workspace, 100),
+        git.history(&workspace, 0, 100),
     );
     Ok(RepositorySnapshot {
         state,
@@ -566,11 +566,12 @@ pub(super) async fn resolve_conflict(
 
 pub(super) async fn history(
     workspace_slug: &str,
+    offset: u32,
     limit: u32,
 ) -> Result<Vec<CommitInfo>, ServerFnError> {
     let workspace = workspace(workspace_slug).await?;
     HostGit::default()
-        .history(&workspace, limit)
+        .history(&workspace, offset, limit)
         .await
         .map_err(server_error)
 }

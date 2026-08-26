@@ -266,9 +266,13 @@ pub async fn resolve_conflict(
     .await
 }
 
-#[get("/api/git/history/{workspace_slug}/{limit}")]
-pub async fn history(workspace_slug: String, limit: u32) -> Result<Vec<CommitInfo>, ServerFnError> {
-    server::history(&workspace_slug, limit).await
+#[get("/api/git/history/{workspace_slug}/{offset}/{limit}")]
+pub async fn history(
+    workspace_slug: String,
+    offset: u32,
+    limit: u32,
+) -> Result<Vec<CommitInfo>, ServerFnError> {
+    server::history(&workspace_slug, offset, limit).await
 }
 
 #[post("/api/git/history/message")]

@@ -24,14 +24,19 @@ pub(super) fn GitSidebar(
     commits: Vec<CommitInfo>,
     history_loading: bool,
     history_error: Option<String>,
+    history_loading_more: bool,
+    history_has_more: bool,
+    history_page_error: Option<String>,
     mut selected_commit: Signal<Option<String>>,
     selected: Signal<Option<SelectedChange>>,
     rebase_active: bool,
     pending: bool,
     on_select: EventHandler<()>,
     on_history_action: EventHandler<(HistoryAction, String)>,
+    on_load_more: EventHandler<usize>,
     on_mutation: EventHandler<Mutation>,
 ) -> Element {
+    let commit_count = commits.len();
     let conflicts = repository
         .changes
         .iter()
@@ -153,6 +158,23 @@ pub(super) fn GitSidebar(
                                     on_select.call(());
                                 },
                                 on_action: on_history_action,
+                            }
+                        }
+                        if let Some(error) = history_page_error {
+                            div { class: "m-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive",
+                                "Could not load more commits: {error}"
+                            }
+                        }
+                        if history_has_more {
+                            button {
+                                class: "mt-2 flex h-9 w-full items-center justify-center rounded-md border border-border text-xs font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground disabled:cursor-wait disabled:opacity-60",
+                                disabled: history_loading_more,
+                                onclick: move |_| on_load_more.call(commit_count),
+                                if history_loading_more {
+                                    "Loading…"
+                                } else {
+                                    "Load older commits"
+                                }
                             }
                         }
                     }

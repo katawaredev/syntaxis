@@ -343,9 +343,12 @@ async fn branch_and_history_operations_use_real_repository_state() {
 
     fs::write(repository.path().join("tracked.txt"), "base\nsecond\n").unwrap();
     git(repository.path(), &["commit", "-am", "second commit"]);
-    let history = host.history(&workspace, 20).await.unwrap();
+    let history = host.history(&workspace, 0, 20).await.unwrap();
     assert_eq!(history.len(), 2);
     assert_eq!(history[0].subject, "second commit");
+    let older_history = host.history(&workspace, 1, 1).await.unwrap();
+    assert_eq!(older_history.len(), 1);
+    assert_eq!(older_history[0].subject, "base commit");
     let detail = host
         .commit_detail(&workspace, &history[0].oid)
         .await
@@ -371,7 +374,9 @@ async fn branch_and_history_operations_use_real_repository_state() {
         "base\n"
     );
     assert_eq!(
-        host.history(&workspace, 1).await.unwrap()[0].parents.len(),
+        host.history(&workspace, 0, 1).await.unwrap()[0]
+            .parents
+            .len(),
         1
     );
 }
@@ -384,7 +389,9 @@ async fn tag_operations_preserve_lightweight_and_annotated_targets() {
     git(repository.path(), &["commit", "-m", "base"]);
     let host = HostGit::default();
     let workspace = workspace(repository.path());
-    let base_oid = host.history(&workspace, 1).await.unwrap()[0].oid.clone();
+    let base_oid = host.history(&workspace, 0, 1).await.unwrap()[0]
+        .oid
+        .clone();
 
     host.create_tag(
         &workspace,

@@ -10,6 +10,7 @@ impl HostGit {
     pub(super) async fn load_history(
         &self,
         workspace: &WorkspaceRecord,
+        offset: u32,
         limit: u32,
     ) -> GitResult<Vec<CommitInfo>> {
         let root = validated_root(workspace)?;
@@ -19,6 +20,7 @@ impl HostGit {
             "-z".into(),
             "--no-show-signature".into(),
             "--format=%H%x1f%h%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%s".into(),
+            format!("--skip={offset}").into(),
             format!("-n{limit}").into(),
         ];
         let output = self.run_default(&root, &arguments).await?;

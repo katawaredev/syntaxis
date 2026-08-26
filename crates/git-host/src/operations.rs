@@ -771,8 +771,13 @@ impl GitOperations for HostGit {
         Ok(resolved.complete)
     }
 
-    async fn history(&self, workspace: &WorkspaceRecord, limit: u32) -> GitResult<Vec<CommitInfo>> {
-        self.load_history(workspace, limit).await
+    async fn history(
+        &self,
+        workspace: &WorkspaceRecord,
+        offset: u32,
+        limit: u32,
+    ) -> GitResult<Vec<CommitInfo>> {
+        self.load_history(workspace, offset, limit).await
     }
 
     async fn commit_message(

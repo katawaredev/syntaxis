@@ -108,7 +108,12 @@ pub trait GitOperations: Send + Sync {
         request: ConflictRequest,
     ) -> GitResult<bool>;
 
-    async fn history(&self, workspace: &WorkspaceRecord, limit: u32) -> GitResult<Vec<CommitInfo>>;
+    async fn history(
+        &self,
+        workspace: &WorkspaceRecord,
+        offset: u32,
+        limit: u32,
+    ) -> GitResult<Vec<CommitInfo>>;
 
     async fn commit_message(
         &self,

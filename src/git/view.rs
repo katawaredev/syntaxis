@@ -85,6 +85,9 @@ enum SidebarView {
     History,
 }
 
+const HISTORY_PAGE_SIZE: usize = 100;
+const HISTORY_PAGE_FETCH_LIMIT: u32 = 101;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum RebaseMenuAction {
     Refresh,
@@ -247,6 +250,10 @@ fn WorkspaceGit(slug: String) -> Element {
     let mut retry_commit = use_signal(|| None::<CommitRequest>);
     let mut comparison = use_signal(|| None::<BranchComparison>);
     let mut compare_target = use_signal(|| None::<String>);
+    let mut additional_history = use_signal(Vec::<CommitInfo>::new);
+    let mut history_loading_more = use_signal(|| false);
+    let mut history_has_more = use_signal(|| true);
+    let mut history_page_error = use_signal(|| None::<String>);
 
     let drawer_blocked = dialog() != GitDialog::None;
     use_effect(move || {
@@ -257,6 +264,13 @@ fn WorkspaceGit(slug: String) -> Element {
     use_effect(move || {
         let _ = selected();
         expanded_diff.set(false);
+    });
+    use_effect(move || {
+        let _ = refresh_key();
+        additional_history.write().clear();
+        history_loading_more.set(false);
+        history_has_more.set(true);
+        history_page_error.set(None);
     });
 
     use_effect(move || {
@@ -374,6 +388,36 @@ fn WorkspaceGit(slug: String) -> Element {
         }
     });
 
+    let history_slug = slug.clone();
+    let on_load_more_history = EventHandler::new(move |offset: usize| {
+        if history_loading_more() {
+            return;
+        }
+        let Ok(offset) = u32::try_from(offset) else {
+            history_page_error.set(Some("Commit history is too large to paginate.".into()));
+            return;
+        };
+        let slug = history_slug.clone();
+        let refresh_generation = refresh_key();
+        history_loading_more.set(true);
+        history_page_error.set(None);
+        spawn(async move {
+            let result = api::history(slug, offset, HISTORY_PAGE_FETCH_LIMIT).await;
+            if refresh_key() != refresh_generation {
+                return;
+            }
+            history_loading_more.set(false);
+            match result {
+                Ok(mut commits) => {
+                    history_has_more.set(commits.len() > HISTORY_PAGE_SIZE);
+                    commits.truncate(HISTORY_PAGE_SIZE);
+                    additional_history.write().extend(commits);
+                }
+                Err(error) => history_page_error.set(Some(server_error_message(error))),
+            }
+        });
+    });
+
     let signing_slug = slug.clone();
     let on_signing_retry = move |passphrase: String| {
         let Some(mut request) = retry_commit() else {
@@ -457,10 +501,12 @@ fn WorkspaceGit(slug: String) -> Element {
         .and_then(|snapshot| snapshot.history.as_ref().err())
         .map(ToString::to_string)
         .or_else(|| status_error.clone());
-    let commit_list = loaded_snapshot
+    let mut commit_list = loaded_snapshot
         .and_then(|snapshot| snapshot.history.as_ref().ok())
         .cloned()
         .unwrap_or_default();
+    let initial_history_is_full = commit_list.len() >= HISTORY_PAGE_SIZE;
+    commit_list.extend(additional_history());
     let tag_list = loaded_snapshot
         .and_then(|snapshot| snapshot.tags.as_ref().ok())
         .cloned()
@@ -521,12 +567,16 @@ fn WorkspaceGit(slug: String) -> Element {
                             commits: commit_list.clone(),
                             history_loading,
                             history_error: history_error.clone(),
+                            history_loading_more: history_loading_more(),
+                            history_has_more: initial_history_is_full && history_has_more(),
+                            history_page_error: history_page_error(),
                             selected_commit,
                             selected,
                             rebase_active,
                             pending: pending(),
                             on_select: move |()| {},
                             on_history_action,
+                            on_load_more: on_load_more_history,
                             on_mutation,
                         }
                     }
@@ -859,12 +909,16 @@ fn WorkspaceGit(slug: String) -> Element {
                             commits: commit_list.clone(),
                             history_loading,
                             history_error: history_error.clone(),
+                            history_loading_more: history_loading_more(),
+                            history_has_more: initial_history_is_full && history_has_more(),
+                            history_page_error: history_page_error(),
                             selected_commit,
                             selected,
                             rebase_active,
                             pending: pending(),
                             on_select: move |()| drawer.set(false),
                             on_history_action,
+                            on_load_more: on_load_more_history,
                             on_mutation,
                         }
                     }
