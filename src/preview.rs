@@ -563,7 +563,7 @@ fn WorkspacePreview(workspace_id: String) -> Element {
                     label: "Preview settings",
                     open: settings_open(),
                     on_open_change: move |next| settings_open.set(next),
-                    trigger_class: if settings_open() { "touch-target inline-flex h-7 items-center gap-1.5 rounded-md bg-accent px-2 text-[11px] font-medium text-foreground" } else { "touch-target inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground" },
+                    trigger_class: if settings_open() { "touch-target inline-flex h-7 items-center gap-1.5 rounded-md bg-accent px-2 text-[11px] font-medium text-foreground max-[520px]:gap-0 max-[520px]:px-0" } else { "touch-target inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground max-[520px]:gap-0 max-[520px]:px-0" },
                     content_class: "absolute top-[calc(100%+6px)] right-0 z-80 max-h-[calc(var(--app-height,100dvh)-4rem)] w-[min(390px,calc(100vw-1rem))] overflow-y-auto rounded-xl border border-border bg-popover p-3 shadow-2xl",
                     trigger: rsx! {
                         Icon { icon: AppIcon::Settings, size: 14 }
