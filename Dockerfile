@@ -28,7 +28,8 @@ ARG RUST_VERSION
 ENV DEBIAN_FRONTEND=noninteractive \
     CARGO_HOME=/usr/local/cargo \
     RUSTUP_HOME=/usr/local/rustup \
-    RUSTUP_PERMIT_COPY_RENAME=1
+    RUSTUP_PERMIT_COPY_RENAME=1 \
+    CC_wasm32_unknown_unknown=clang
 ENV PATH="${CARGO_HOME}/bin:${PATH}"
 
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
@@ -40,6 +41,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     bash \
     build-essential \
     ca-certificates \
+    clang \
     curl \
     git \
     gnupg \
@@ -133,6 +135,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     bash \
     build-essential \
     ca-certificates \
+    clang \
     curl \
     git \
     gnupg \
