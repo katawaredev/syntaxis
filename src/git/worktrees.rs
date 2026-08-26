@@ -185,6 +185,8 @@ pub(super) fn BranchWorktreeMenu(
                                     current_workspace_id.as_deref() == Some(worktree.workspace.id.0.as_str())
                                 });
                             let attached_elsewhere = attached.is_some() && !active_here;
+                            let options_expanded = branch_options().as_deref()
+                                == Some(option_key.as_str());
                             let row_icon = if attached
                                 .as_ref()
                                 .is_some_and(|worktree| !worktree.is_primary())
@@ -228,23 +230,27 @@ pub(super) fn BranchWorktreeMenu(
                                             }
                                         }
                                         button {
-                                            class: "grid size-7 shrink-0 place-items-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground",
-                                            "aria-label": "Branch actions for {row.branch.name}",
-                                            title: "Branch actions for {row.branch.name}",
+                                            class: "touch-target grid size-7 shrink-0 place-items-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground",
+                                            "aria-expanded": options_expanded,
+                                            "aria-label": if options_expanded { "Hide actions for branch {row.branch.name}" } else { "Show actions for branch {row.branch.name}" },
+                                            title: if options_expanded { "Hide branch actions" } else { "Show branch actions" },
+                                            onpointerdown: move |event: PointerEvent| event.stop_propagation(),
                                             onclick: {
                                                 let option_key = option_key.clone();
                                                 move |event: MouseEvent| {
                                                     event.stop_propagation();
-                                                    let next = (branch_options().as_deref()
-                                                        != Some(option_key.as_str()))
-                                                        .then(|| option_key.clone());
-                                                    branch_options.set(next);
+                                                    branch_options.set(
+                                                        (!options_expanded).then(|| option_key.clone()),
+                                                    );
                                                 }
                                             },
-                                            Icon { icon: AppIcon::MoreVertical, size: 14 }
+                                            span {
+                                                class: if options_expanded { "transition-transform" } else { "-rotate-90 transition-transform" },
+                                                Icon { icon: AppIcon::ChevronDown, size: 14 }
+                                            }
                                         }
                                     }
-                                    if branch_options().as_deref() == Some(option_key.as_str()) {
+                                    if options_expanded {
                                         div { class: "mx-1 mb-1 grid gap-0.5 border-l border-border pl-2",
                                             button {
                                                 class: "min-h-7 rounded-sm px-2 text-left text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground",
