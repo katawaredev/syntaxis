@@ -25,6 +25,7 @@ pub(crate) fn AgentSessionSidebar(
     on_delete: EventHandler<String>,
 ) -> Element {
     let mut query = use_signal(String::new);
+    let mut search_open = use_signal(|| false);
     let search_workspace_id = workspace_id.clone();
     let search_results = use_resource(move || {
         let workspace_id = search_workspace_id.clone();
@@ -44,39 +45,59 @@ pub(crate) fn AgentSessionSidebar(
         nav {
             class: "flex h-full min-h-0 flex-col bg-sidebar",
             aria_label: "Agent chats",
-            div { class: "flex min-h-12 items-center gap-1 border-b border-border px-2",
-                div { class: "flex min-w-0 flex-1 items-center gap-2 rounded-md border border-input bg-background/70 px-2 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/35",
-                    Icon { icon: AppIcon::Search, size: 14 }
-                    input {
-                        class: "h-8 min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground",
-                        r#type: "search",
-                        value: query(),
-                        placeholder: "Search conversations…",
-                        aria_label: "Search conversations",
-                        maxlength: 200,
-                        oninput: move |event| query.set(event.value()),
-                        onkeydown: move |event| {
-                            if event.key() == Key::Escape {
+            div { class: "border-b border-border p-2",
+                div { class: "flex items-center gap-1",
+                    div { class: "min-w-0 flex-1 [&>button]:w-full",
+                        Button {
+                            label: "New chat",
+                            kind: ButtonKind::Primary,
+                            disabled: !connected,
+                            onclick: move |_| on_new.call(()),
+                        }
+                    }
+                    IconButton {
+                        label: if search_open() { "Close conversation search" } else { "Search conversations" },
+                        icon: AppIcon::Search,
+                        pressed: search_open(),
+                        onclick: move |_| {
+                            let next = !search_open();
+                            search_open.set(next);
+                            if !next {
                                 query.set(String::new());
                             }
                         },
                     }
-                    if !query().is_empty() {
-                        button {
-                            class: "grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground",
-                            r#type: "button",
-                            aria_label: "Clear conversation search",
-                            title: "Clear search",
-                            onclick: move |_| query.set(String::new()),
-                            Icon { icon: AppIcon::Close, size: 12 }
+                }
+                if search_open() {
+                    div { class: "mt-2 flex min-w-0 items-center gap-2 rounded-md border border-input bg-background/70 px-2 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/35",
+                        Icon { icon: AppIcon::Search, size: 14 }
+                        input {
+                            class: "h-8 min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground",
+                            r#type: "search",
+                            value: query(),
+                            placeholder: "Search conversations…",
+                            aria_label: "Search conversations",
+                            maxlength: 200,
+                            autofocus: true,
+                            oninput: move |event| query.set(event.value()),
+                            onkeydown: move |event| {
+                                if event.key() == Key::Escape {
+                                    query.set(String::new());
+                                    search_open.set(false);
+                                }
+                            },
+                        }
+                        if !query().is_empty() {
+                            button {
+                                class: "grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground",
+                                r#type: "button",
+                                aria_label: "Clear conversation search",
+                                title: "Clear search",
+                                onclick: move |_| query.set(String::new()),
+                                Icon { icon: AppIcon::Close, size: 12 }
+                            }
                         }
                     }
-                }
-                IconButton {
-                    label: "New chat",
-                    icon: AppIcon::NewChat,
-                    disabled: !connected,
-                    onclick: move |_| on_new.call(()),
                 }
             }
             div { class: "min-h-0 flex-1 overflow-y-auto p-2",
@@ -107,6 +128,7 @@ pub(crate) fn AgentSessionSidebar(
                                         connected,
                                         on_select: move |session_id| {
                                             query.set(String::new());
+                                            search_open.set(false);
                                             on_select.call(session_id);
                                         },
                                     }
