@@ -322,6 +322,7 @@ pub(super) fn assistant_item_from_message(
         text,
         thinking,
         status,
+        truncated: message.get("stopReason").and_then(Value::as_str) == Some("length"),
     }
 }
 pub(super) fn extract_message_text(message: &Value) -> String {

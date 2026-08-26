@@ -11,16 +11,15 @@ pub(super) fn UsageMenu(
     let percent = stats.as_ref().map_or(0, context_percent);
     let remaining = 100_u8.saturating_sub(percent);
     rsx! {
-        PopoverRoot {
-            class: "relative shrink-0",
-            is_modal: false,
+        InteractivePopover {
+            id: "ai-session-usage",
+            label: "Session usage",
+            title: format!("Session usage · {percent}% context"),
             open: open(),
             on_open_change: move |next| open.set(next),
-            PopoverTrigger {
-                class: if open() { "relative grid size-8 place-items-center rounded-lg bg-accent text-foreground max-[520px]:size-10" } else { "relative grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground max-[520px]:size-10" },
-                aria_label: "Session usage",
-                aria_expanded: open(),
-                title: "Session usage · {percent}% context",
+            trigger_class: if open() { "relative grid size-8 place-items-center rounded-lg bg-accent text-foreground max-[520px]:size-10" } else { "relative grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground max-[520px]:size-10" },
+            content_class: "absolute top-[calc(100%+6px)] right-0 z-80 w-76 rounded-xl border border-border bg-popover p-3 shadow-2xl",
+            trigger: rsx! {
                 span { class: "relative grid size-6 place-items-center",
                     svg {
                         key: "usage-ring-{percent}",
@@ -51,17 +50,15 @@ pub(super) fn UsageMenu(
                         Icon { icon: AppIcon::Usage, size: 11 }
                     }
                 }
-            }
-            PopoverContent { class: "touch-popover absolute top-[calc(100%+6px)] right-0 z-80 w-76 rounded-xl border border-border bg-popover p-3 shadow-2xl",
-                UsagePopover {
-                    stats,
-                    statuses,
-                    compact_disabled,
-                    on_compact: move |()| {
-                        open.set(false);
-                        on_compact.call(());
-                    },
-                }
+            },
+            UsagePopover {
+                stats,
+                statuses,
+                compact_disabled,
+                on_compact: move |()| {
+                    open.set(false);
+                    on_compact.call(());
+                },
             }
         }
     }

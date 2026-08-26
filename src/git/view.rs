@@ -968,6 +968,7 @@ fn WorkspaceGit(slug: String) -> Element {
         }
         if matches!(dialog(), GitDialog::AddRemote | GitDialog::EditRemote) {
             RemoteDialog {
+                workspace_slug: slug.clone(),
                 remote: remote_target(),
                 pending: pending(),
                 error: operation_error(),

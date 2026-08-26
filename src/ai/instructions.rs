@@ -1,6 +1,5 @@
 use dioxus::prelude::*;
-use dioxus_primitives::popover::{PopoverContent, PopoverRoot, PopoverTrigger};
-use syntaxis_ui::prelude::{AppIcon, Button, ButtonKind, Icon, Tone};
+use syntaxis_ui::prelude::{AppIcon, Button, ButtonKind, Icon, InteractivePopover, Tone};
 
 use super::{api, management::ManagementSidebarButton};
 
@@ -75,6 +74,7 @@ pub(super) fn GlobalInstructionsPanel(
                             }
                             div { class: "flex shrink-0 items-center gap-0.5",
                                 InstructionNote {
+                                    id: "global-instructions-application-note",
                                     icon: AppIcon::Info,
                                     label: "How global instructions apply",
                                     title: "Shared by every workspace",
@@ -82,6 +82,7 @@ pub(super) fn GlobalInstructionsPanel(
                                     warning: false,
                                 }
                                 InstructionNote {
+                                    id: "global-instructions-enforcement-note",
                                     icon: AppIcon::ShieldAlert,
                                     label: "Instruction enforcement limitations",
                                     title: "Guidance, not enforcement",
@@ -148,6 +149,7 @@ pub(super) fn GlobalInstructionsPanel(
 
 #[component]
 fn InstructionNote(
+    id: String,
     icon: AppIcon,
     label: &'static str,
     title: &'static str,
@@ -156,26 +158,21 @@ fn InstructionNote(
 ) -> Element {
     let mut open = use_signal(|| false);
     rsx! {
-        PopoverRoot {
-            class: "relative shrink-0",
-            is_modal: false,
+        InteractivePopover {
+            id,
+            label,
+            title: label,
             open: open(),
             on_open_change: move |next| open.set(next),
-            PopoverTrigger {
-                class: if open() { "grid size-7 place-items-center rounded-md bg-accent text-foreground" } else if warning { "grid size-7 place-items-center rounded-md text-warning/80 hover:bg-warning/10 hover:text-warning" } else { "grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground" },
-                aria_label: label,
-                aria_expanded: open(),
-                title: label,
+            trigger_class: if open() { "grid size-7 place-items-center rounded-md bg-accent text-foreground" } else if warning { "grid size-7 place-items-center rounded-md text-warning/80 hover:bg-warning/10 hover:text-warning" } else { "grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground" },
+            content_class: "absolute top-[calc(100%+4px)] right-0 z-80 w-[min(300px,calc(100vw-1rem))] rounded-xl border border-border bg-popover p-3 shadow-2xl",
+            trigger: rsx! {
                 Icon { icon, size: 14 }
+            },
+            strong { class: if warning { "block text-xs text-warning" } else { "block text-xs" },
+                "{title}"
             }
-            PopoverContent { class: "touch-popover absolute top-[calc(100%+4px)] right-0 z-80 w-[min(300px,calc(100vw-1rem))] rounded-xl border border-border bg-popover p-3 shadow-2xl",
-                strong { class: if warning { "block text-xs text-warning" } else { "block text-xs" },
-                    "{title}"
-                }
-                p { class: "mt-1 text-[10px] leading-relaxed text-muted-foreground",
-                    "{message}"
-                }
-            }
+            p { class: "mt-1 text-[10px] leading-relaxed text-muted-foreground", "{message}" }
         }
     }
 }

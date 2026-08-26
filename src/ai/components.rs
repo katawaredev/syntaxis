@@ -1,8 +1,7 @@
 use dioxus::prelude::*;
 use dioxus_primitives::collapsible::{Collapsible, CollapsibleContent, CollapsibleTrigger};
-use dioxus_primitives::popover::{PopoverContent, PopoverRoot, PopoverTrigger};
 use syntaxis_agent::{AgentSnapshot, ModelSummary, SessionStats, ThinkingLevel};
-use syntaxis_ui::prelude::{AppIcon, Icon, IconButton, ProviderIcon};
+use syntaxis_ui::prelude::{AppIcon, Icon, IconButton, InteractivePopover, ProviderIcon};
 
 mod composer;
 mod extension_dialog;
@@ -22,6 +21,7 @@ use usage::UsageMenu;
 
 #[component]
 pub(super) fn AgentHeader(
+    workspace_id: String,
     workspace_name: String,
     connection: String,
     session_title: String,
@@ -76,6 +76,7 @@ pub(super) fn AgentHeader(
                     on_new_worktree,
                 }
                 ModelPicker {
+                    workspace_id,
                     selected: snapshot.model.clone(),
                     models: snapshot.models.clone(),
                     thinking_level: snapshot.thinking_level,
@@ -106,52 +107,51 @@ fn WorkspacePicker(
         .clone()
         .unwrap_or_else(|| "Choose workspace".to_owned());
     rsx! {
-        PopoverRoot {
-            class: "relative min-w-0",
-            is_modal: false,
+        InteractivePopover {
+            id: "ai-workspace-picker",
+            label: format!("Workspace: {workspace_name}"),
+            title,
+            class: "min-w-0",
             open: open(),
             on_open_change: move |next| open.set(next),
-            PopoverTrigger {
-                class: "flex h-8 max-w-44 items-center gap-1.5 rounded-lg px-2 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 max-[520px]:size-10 max-[520px]:max-w-none max-[520px]:justify-center max-[520px]:p-0",
-                disabled: locked_reason.is_some(),
-                title,
-                aria_label: "Workspace: {workspace_name}",
+            disabled: locked_reason.is_some(),
+            trigger_class: "flex h-8 max-w-44 items-center gap-1.5 rounded-lg px-2 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 max-[520px]:size-10 max-[520px]:max-w-none max-[520px]:justify-center max-[520px]:p-0",
+            content_class: "absolute top-[calc(100%+6px)] left-0 z-80 w-52 rounded-xl border border-border bg-popover p-1.5 shadow-2xl",
+            trigger: rsx! {
                 Icon { icon: AppIcon::Worktree, size: 13 }
                 span { class: "truncate max-[520px]:hidden", "Current checkout" }
                 span { class: "max-[520px]:hidden",
                     Icon { icon: AppIcon::ChevronDown, size: 11 }
                 }
+            },
+            div { class: "px-2 py-1.5 text-[9px] font-semibold tracking-wider text-muted-foreground uppercase",
+                "Workspace"
             }
-            PopoverContent { class: "touch-popover absolute top-[calc(100%+6px)] left-0 z-80 w-52 rounded-xl border border-border bg-popover p-1.5 shadow-2xl",
-                div { class: "px-2 py-1.5 text-[9px] font-semibold tracking-wider text-muted-foreground uppercase",
-                    "Workspace"
-                }
-                button {
-                    class: "flex min-h-9 w-full items-center gap-2 rounded-lg bg-accent/60 px-2.5 text-left text-xs",
-                    disabled: true,
-                    Icon { icon: AppIcon::Check, size: 13 }
-                    span { class: "min-w-0 flex-1",
-                        strong { class: "block truncate font-medium", "Current checkout" }
-                        small { class: "block truncate text-[9px] text-muted-foreground",
-                            "{workspace_name}"
-                        }
+            button {
+                class: "flex min-h-9 w-full items-center gap-2 rounded-lg bg-accent/60 px-2.5 text-left text-xs",
+                disabled: true,
+                Icon { icon: AppIcon::Check, size: 13 }
+                span { class: "min-w-0 flex-1",
+                    strong { class: "block truncate font-medium", "Current checkout" }
+                    small { class: "block truncate text-[9px] text-muted-foreground",
+                        "{workspace_name}"
                     }
                 }
-                button {
-                    class: "mt-1 flex min-h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40",
-                    disabled: new_worktree_disabled_reason.is_some(),
-                    title: new_worktree_disabled_reason.clone().unwrap_or_default(),
-                    onclick: move |_| {
-                        open.set(false);
-                        on_new_worktree.call(());
-                    },
-                    Icon { icon: AppIcon::Worktree, size: 13 }
-                    "New worktree"
-                }
-                if let Some(reason) = new_worktree_disabled_reason.as_deref() {
-                    p { class: "px-2.5 py-1.5 text-[9px] leading-relaxed text-muted-foreground",
-                        "{reason}"
-                    }
+            }
+            button {
+                class: "mt-1 flex min-h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40",
+                disabled: new_worktree_disabled_reason.is_some(),
+                title: new_worktree_disabled_reason.clone().unwrap_or_default(),
+                onclick: move |_| {
+                    open.set(false);
+                    on_new_worktree.call(());
+                },
+                Icon { icon: AppIcon::Worktree, size: 13 }
+                "New worktree"
+            }
+            if let Some(reason) = new_worktree_disabled_reason.as_deref() {
+                p { class: "px-2.5 py-1.5 text-[9px] leading-relaxed text-muted-foreground",
+                    "{reason}"
                 }
             }
         }

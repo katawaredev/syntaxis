@@ -126,6 +126,8 @@ pub enum ChatItem {
         text: String,
         thinking: String,
         status: ItemStatus,
+        #[serde(default)]
+        truncated: bool,
     },
     Tool {
         id: String,

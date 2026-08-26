@@ -11,6 +11,7 @@ use super::{
 };
 
 mod gateway;
+mod process;
 mod state;
 mod target;
 
@@ -25,10 +26,90 @@ use target::{
 };
 
 pub(crate) fn retire_workspace(workspace_id: &WorkspaceId) -> Result<(), ServerFnError> {
+    process::retire(workspace_id);
     configs()?
         .remove_workspace(&workspace_id.0)
         .map_err(internal)?;
     leases()?.retain(|_, lease| lease.workspace_id != *workspace_id);
+    Ok(())
+}
+
+pub(super) async fn preview_process_status(
+    workspace_id: String,
+) -> Result<super::PreviewProcessStatus, ServerFnError> {
+    let workspace_id = WorkspaceId::new(workspace_id);
+    let workspace = crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
+    process::status(&workspace).await
+}
+
+pub(super) async fn update_preview_config(
+    workspace_id: String,
+    mut config: PreviewConfig,
+) -> Result<(), ServerFnError> {
+    process::validate_command(&config.start_command, true)?;
+    process::validate_command(&config.stop_command, true)?;
+    if let Some(target) = config.target.as_ref() {
+        let validated = validate_target(target)?;
+        if matches!(target, PreviewTarget::Url { .. }) {
+            config.target = Some(PreviewTarget::Url {
+                url: validated.as_str().to_owned(),
+            });
+        }
+    }
+    config.port = None;
+    let workspace_id = WorkspaceId::new(workspace_id);
+    crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
+    save_config(&workspace_id, config)
+}
+
+pub(super) async fn start_preview_process(
+    workspace_id: String,
+    start_command: String,
+    stop_command: String,
+) -> Result<super::PreviewProcessStatus, ServerFnError> {
+    process::validate_command(&stop_command, true)?;
+    let workspace_id = WorkspaceId::new(workspace_id);
+    let workspace = crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
+    save_commands(&workspace_id, start_command.clone(), stop_command)?;
+    process::start(&workspace, &start_command).await
+}
+
+pub(super) async fn stop_preview_process(
+    workspace_id: String,
+    stop_command: String,
+) -> Result<super::PreviewProcessStatus, ServerFnError> {
+    let workspace_id = WorkspaceId::new(workspace_id);
+    let workspace = crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
+    process::stop(&workspace, &stop_command).await
+}
+
+fn save_commands(
+    workspace_id: &WorkspaceId,
+    start_command: String,
+    stop_command: String,
+) -> Result<(), ServerFnError> {
+    let mut store = configs()?;
+    let mut config = store.workspace_config(&workspace_id.0);
+    config.start_command = start_command;
+    config.stop_command = stop_command;
+    save_config_locked(&mut store, workspace_id, config)
+}
+
+fn save_config(workspace_id: &WorkspaceId, config: PreviewConfig) -> Result<(), ServerFnError> {
+    let mut store = configs()?;
+    save_config_locked(&mut store, workspace_id, config)
+}
+
+fn save_config_locked(
+    store: &mut state::ConfigStore,
+    workspace_id: &WorkspaceId,
+    config: PreviewConfig,
+) -> Result<(), ServerFnError> {
+    let previous = store.replace_workspace_config(workspace_id.0.clone(), config);
+    if let Err(error) = store.save() {
+        store.restore_workspace_config(workspace_id.0.clone(), previous);
+        return Err(internal(error));
+    }
     Ok(())
 }
 
@@ -121,13 +202,10 @@ pub(super) async fn create_preview_lease(
     {
         let mut store = configs()?;
         let workspace_id = lease.workspace_id.0.clone();
-        let previous = store.replace_workspace_config(
-            workspace_id.clone(),
-            PreviewConfig {
-                target: Some(saved_target),
-                port: None,
-            },
-        );
+        let mut config = store.workspace_config(&workspace_id);
+        config.target = Some(saved_target);
+        config.port = None;
+        let previous = store.replace_workspace_config(workspace_id.clone(), config);
         if let Err(error) = store.save() {
             store.restore_workspace_config(workspace_id, previous);
             return Err(internal(error));

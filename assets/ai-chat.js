@@ -2,6 +2,7 @@
   const mounted = new WeakSet();
   const mountedEditors = new WeakSet();
   const recognitions = new Map();
+  let readAloud = null;
 
   const mount = (container) => {
     if (mounted.has(container)) return;
@@ -193,5 +194,92 @@
     }
   };
 
-  window.SyntaxisAiChat = { toggleSpeech };
+  const emitReadAloud = (detail) => {
+    window.dispatchEvent(new CustomEvent("syntaxis-ai-read-aloud", { detail }));
+  };
+
+  const speechSynthesisAvailable = () =>
+    "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+
+  const responseText = (id) =>
+    Array.from(document.querySelectorAll("[data-agent-response]"))
+      .find((element) => element.dataset.agentResponse === id)
+      ?.textContent?.trim() ?? "";
+
+  const speechChunks = (text) => {
+    const limit = 3_000;
+    const chunks = [];
+    let current = "";
+    for (const sentence of text.match(/[^.!?\n]+(?:[.!?\n]+|$)/g) ?? [text]) {
+      if (sentence.length > limit) {
+        if (current.trim()) chunks.push(current.trim());
+        current = "";
+        for (let offset = 0; offset < sentence.length; offset += limit) {
+          chunks.push(sentence.slice(offset, offset + limit).trim());
+        }
+      } else if (current.length + sentence.length > limit) {
+        chunks.push(current.trim());
+        current = sentence;
+      } else {
+        current += sentence;
+      }
+    }
+    if (current.trim()) chunks.push(current.trim());
+    return chunks.filter(Boolean);
+  };
+
+  const finishReadAloud = (state) => {
+    if (readAloud !== state) return;
+    readAloud = null;
+    emitReadAloud({ kind: "end", id: state.id });
+  };
+
+  const stopReadAloud = () => {
+    if (!readAloud) return;
+    const previous = readAloud;
+    readAloud = null;
+    window.speechSynthesis.cancel();
+    emitReadAloud({ kind: "end", id: previous.id });
+  };
+
+  const speakNextChunk = (state) => {
+    if (readAloud !== state) return;
+    const text = state.chunks[state.index];
+    if (!text) {
+      finishReadAloud(state);
+      return;
+    }
+    state.index += 1;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = document.documentElement.lang || navigator.language || "en-US";
+    utterance.onend = () => speakNextChunk(state);
+    utterance.onerror = () => finishReadAloud(state);
+    state.utterance = utterance;
+    try {
+      window.speechSynthesis.speak(utterance);
+    } catch {
+      finishReadAloud(state);
+    }
+  };
+
+  const toggleReadAloud = (id) => {
+    if (!speechSynthesisAvailable()) {
+      emitReadAloud({ kind: "availability", available: false });
+      return;
+    }
+    if (readAloud) {
+      const previousId = readAloud.id;
+      stopReadAloud();
+      if (previousId === id) return;
+    }
+    const chunks = speechChunks(responseText(id));
+    if (!chunks.length) return;
+    const state = { id, chunks, index: 0, utterance: null };
+    readAloud = state;
+    emitReadAloud({ kind: "start", id });
+    speakNextChunk(state);
+  };
+
+  window.SyntaxisAiChat = { toggleSpeech, toggleReadAloud, stopReadAloud };
+  emitReadAloud({ kind: "availability", available: speechSynthesisAvailable() });
 })();

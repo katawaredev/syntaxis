@@ -16,6 +16,7 @@ use syntaxis_workspace::WorkspaceId;
 use super::AgentEncoding;
 
 mod management;
+mod model_preferences;
 pub(super) use management::{
     browse_pi_skills, cancel_pi_provider_login, delete_pi_skill, delete_prompt_template,
     install_pi_skill, logout_pi_provider, manage_pi_package, pi_global_instructions, pi_packages,
@@ -24,6 +25,31 @@ pub(super) use management::{
     search_pi_skills, skill_catalog_available, start_pi_provider_login, update_pi,
     update_pi_setting,
 };
+pub(super) async fn sync_model_preferences(
+    workspace_id: WorkspaceId,
+    available_models: Vec<String>,
+) -> Result<super::ModelPreferences, ServerFnError> {
+    crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
+    model_preferences::sync(workspace_id, available_models)
+}
+
+pub(super) async fn set_favourite_model(
+    workspace_id: WorkspaceId,
+    model_key: String,
+    favourite: bool,
+) -> Result<super::ModelPreferences, ServerFnError> {
+    crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
+    model_preferences::set_favourite(workspace_id, model_key, favourite)
+}
+
+pub(super) async fn set_model_effort(
+    workspace_id: WorkspaceId,
+    model_key: String,
+    effort: syntaxis_agent::ThinkingLevel,
+) -> Result<super::ModelPreferences, ServerFnError> {
+    crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
+    model_preferences::set_effort(workspace_id, model_key, effort)
+}
 
 const HANDSHAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 static AGENTS: OnceLock<HostAgentManager> = OnceLock::new();

@@ -1,5 +1,22 @@
 {
   "format_on_save": "on",
+  "languages": {
+    "Rust": {
+      "formatter": [
+        {
+          "language_server": {
+            "name": "rust-analyzer"
+          }
+        },
+        {
+          "external": {
+            "command": "dx",
+            "arguments": ["fmt", "--file", "-"]
+          }
+        }
+      ]
+    }
+  },
   "inlay_hints": {
     "enabled": true,
     "show_type_hints": true,

@@ -716,6 +716,7 @@ pub(super) fn ensure_current_assistant(
         text: String::new(),
         thinking: String::new(),
         status: ItemStatus::Streaming,
+        truncated: false,
     };
     state.current_assistant = Some(id.clone());
     state.accept_initial_history = false;

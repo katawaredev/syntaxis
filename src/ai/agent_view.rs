@@ -399,6 +399,7 @@ fn RemoteAgent(
             section { class: "flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-card max-md:h-full",
                 if panel() == AiPanel::Chat {
                     AgentHeader {
+                        workspace_id: workspace_id.clone(),
                         workspace_name: workspace_name.clone(),
                         connection: connection.read().label(),
                         session_title,

@@ -10,7 +10,7 @@ use syntaxis_git::{
     RemoteRequest, RemoteResult, RepositorySnapshot, RepositoryState, RepositoryStatus, TagInfo,
     TagRequest, UnifiedDiff, WorktreeCreateRequest, WorktreeInfo, WorktreeOperations,
 };
-use syntaxis_git_host::HostGit;
+use syntaxis_git_host::{HostGit, HostGitConfig};
 use syntaxis_workspace::RelativePath;
 use tokio_util::sync::CancellationToken;
 
@@ -420,6 +420,15 @@ pub(super) async fn remotes(workspace_slug: &str) -> Result<Vec<RemoteInfo>, Ser
         .remotes(&workspace)
         .await
         .map_err(server_error)
+}
+
+pub(super) async fn check_remote(workspace_slug: &str, url: String) -> Result<bool, ServerFnError> {
+    let workspace = workspace(workspace_slug).await?;
+    let git = HostGit::new(HostGitConfig {
+        timeout: std::time::Duration::from_secs(10),
+        ..HostGitConfig::default()
+    });
+    Ok(git.check_remote(&workspace, &url).await.is_ok())
 }
 
 pub(super) async fn add_remote(

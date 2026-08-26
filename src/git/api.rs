@@ -171,6 +171,11 @@ pub async fn remotes(workspace_slug: String) -> Result<Vec<RemoteInfo>, ServerFn
     server::remotes(&workspace_slug).await
 }
 
+#[post("/api/git/remotes/check")]
+pub async fn check_remote(workspace_slug: String, url: String) -> Result<bool, ServerFnError> {
+    server::check_remote(&workspace_slug, url).await
+}
+
 #[post("/api/git/remotes/add")]
 pub async fn add_remote(
     workspace_slug: String,

@@ -8,8 +8,8 @@ use dioxus_icons::lucide::{
     FilePlus, FolderGit2, FolderOpen, FolderPlus, GitBranch, GitCommitHorizontal, GitFork, Hash,
     Info, ListChevronsDownUp, ListChevronsUpDown, ListOrdered, LogOut, Menu, Mic, PanelLeftOpen,
     Paperclip, Play, Plus, RefreshCw, Regex, Repeat1, Replace, ReplaceAll, RotateCcw, Save,
-    ScanSearch, Search, Send, Share2, ShieldAlert, Sparkles, Square, SquarePen, SquareTerminal,
-    TextCursorInput, TextWrap, Trash2, WandSparkles, WholeWord, X,
+    ScanSearch, Search, Send, Settings, Share2, ShieldAlert, Sparkles, Square, SquarePen,
+    SquareTerminal, Star, TextCursorInput, TextWrap, Trash2, WandSparkles, WholeWord, X,
 };
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum AppIcon {
@@ -35,6 +35,8 @@ pub enum AppIcon {
     ExternalLink,
     Eye,
     Fetch,
+    Favourite,
+    FavouriteFilled,
     FileDiff,
     FileMinus,
     FileMove,
@@ -68,6 +70,7 @@ pub enum AppIcon {
     Revert,
     Save,
     Search,
+    Settings,
     Send,
     Share,
     ShieldAlert,
@@ -194,6 +197,16 @@ pub fn Icon(icon: AppIcon, #[props(default = 16)] size: u32) -> Element {
         AppIcon::Fetch => {
             rsx! {
                 ArrowDown { size }
+            }
+        }
+        AppIcon::Favourite => {
+            rsx! {
+                Star { size }
+            }
+        }
+        AppIcon::FavouriteFilled => {
+            rsx! {
+                Star { size, fill: "currentColor" }
             }
         }
         AppIcon::FileDiff => {
@@ -359,6 +372,11 @@ pub fn Icon(icon: AppIcon, #[props(default = 16)] size: u32) -> Element {
         AppIcon::Search => {
             rsx! {
                 Search { size }
+            }
+        }
+        AppIcon::Settings => {
+            rsx! {
+                Settings { size }
             }
         }
         AppIcon::Send => {

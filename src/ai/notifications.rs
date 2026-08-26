@@ -1,11 +1,10 @@
 use dioxus::prelude::*;
-use dioxus_primitives::popover::{PopoverContent, PopoverRoot, PopoverTrigger};
 use futures_util::{StreamExt, future::FutureExt};
 use syntaxis_notifications::{
     AppNotification, NotificationClientMessage, NotificationKind, NotificationServerMessage,
     NotificationTarget, PROTOCOL_VERSION,
 };
-use syntaxis_ui::prelude::{AppIcon, Icon};
+use syntaxis_ui::prelude::{AppIcon, Icon, InteractivePopover};
 
 use crate::{
     app::Route,
@@ -179,53 +178,51 @@ pub(crate) fn NotificationMenu() -> Element {
     let count = notifications.len();
     let badge_count = count.min(99).to_string();
     rsx! {
-        PopoverRoot {
-            class: "relative shrink-0",
-            is_modal: false,
+        InteractivePopover {
+            id: "ai-notifications",
+            label: if count == 0 { "Notifications".to_owned() } else { format!("Notifications, {count} unread") },
+            title: "Notifications",
             open: open(),
             on_open_change: move |next| open.set(next),
-            PopoverTrigger {
-                class: if open() { "relative grid size-8 place-items-center rounded-lg bg-accent text-foreground" } else { "relative grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground" },
-                aria_label: if count == 0 { "Notifications".to_owned() } else { format!("Notifications, {count} unread") },
-                title: "Notifications",
+            trigger_class: if open() { "relative grid size-8 place-items-center rounded-lg bg-accent text-foreground" } else { "relative grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground" },
+            content_class: "absolute top-[calc(100%+6px)] right-0 z-90 w-[min(360px,calc(100vw-1rem))] overflow-hidden rounded-xl border border-border bg-popover shadow-2xl",
+            trigger: rsx! {
                 Icon { icon: AppIcon::Bell, size: 15 }
                 if count > 0 {
                     span { class: "absolute -top-0.5 -right-0.5 grid min-w-4 h-4 place-items-center rounded-full bg-primary px-1 text-[8px] font-semibold leading-none text-primary-foreground ring-2 ring-background",
                         "{badge_count}"
                     }
                 }
-            }
-            PopoverContent { class: "touch-popover absolute top-[calc(100%+6px)] right-0 z-90 w-[min(360px,calc(100vw-1rem))] overflow-hidden rounded-xl border border-border bg-popover shadow-2xl",
-                div { class: "flex items-center justify-between border-b border-border px-3 py-2.5",
-                    strong { class: "text-xs", "Notifications" }
-                    if count > 0 {
-                        button {
-                            class: "rounded-md px-2 py-1 text-[9px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground",
-                            r#type: "button",
-                            aria_label: "Clear all notifications",
-                            onclick: move |_| center.clear_all(),
-                            "Clear all"
-                        }
+            },
+            div { class: "flex items-center justify-between border-b border-border px-3 py-2.5",
+                strong { class: "text-xs", "Notifications" }
+                if count > 0 {
+                    button {
+                        class: "rounded-md px-2 py-1 text-[9px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground",
+                        r#type: "button",
+                        aria_label: "Clear all notifications",
+                        onclick: move |_| center.clear_all(),
+                        "Clear all"
                     }
                 }
-                div { class: "max-h-[min(420px,70vh)] overflow-y-auto p-1.5",
-                    if notifications.is_empty() {
-                        div { class: "px-4 py-8 text-center",
-                            div { class: "mx-auto grid size-8 place-items-center rounded-full bg-secondary text-muted-foreground",
-                                Icon { icon: AppIcon::Bell, size: 14 }
-                            }
-                            p { class: "mt-2 text-xs font-medium", "Nothing needs attention" }
+            }
+            div { class: "max-h-[min(420px,70vh)] overflow-y-auto p-1.5",
+                if notifications.is_empty() {
+                    div { class: "px-4 py-8 text-center",
+                        div { class: "mx-auto grid size-8 place-items-center rounded-full bg-secondary text-muted-foreground",
+                            Icon { icon: AppIcon::Bell, size: 14 }
                         }
+                        p { class: "mt-2 text-xs font-medium", "Nothing needs attention" }
                     }
-                    for notification in notifications {
-                        NotificationRow {
-                            key: "{notification.workspace_id}:{notification.target.session_id()}",
-                            notification,
-                            on_open: move |(workspace_id, target)| {
-                                center.clear(workspace_id, target);
-                                open.set(false);
-                            },
-                        }
+                }
+                for notification in notifications {
+                    NotificationRow {
+                        key: "{notification.workspace_id}:{notification.target.session_id()}",
+                        notification,
+                        on_open: move |(workspace_id, target)| {
+                            center.clear(workspace_id, target);
+                            open.set(false);
+                        },
                     }
                 }
             }

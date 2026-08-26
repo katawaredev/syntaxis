@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
-use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
+use dioxus_primitives::dropdown_menu::DropdownMenuItem;
 use serde::{Deserialize, Serialize};
-use syntaxis_ui::prelude::{AppIcon, ControlSize, Icon, MenuContent, MenuTrigger, Toast, Tone};
+use syntaxis_ui::prelude::{AppIcon, ComboButton, Icon, InteractivePopover, Toast, Tone};
 
 use crate::client_error::server_error_message;
 
@@ -15,6 +15,10 @@ pub(crate) struct PreviewConfig {
     // Kept for config files written before explicit URL targets were supported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub port: Option<u16>,
+    #[serde(default)]
+    pub start_command: String,
+    #[serde(default)]
+    pub stop_command: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -47,6 +51,11 @@ pub(crate) struct PreviewCandidate {
     pub process: String,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub(crate) struct PreviewProcessStatus {
+    pub running: bool,
+}
+
 #[derive(Clone, Copy)]
 struct PreviewConnectionState {
     lease: Signal<Option<PreviewLease>>,
@@ -54,6 +63,13 @@ struct PreviewConnectionState {
     toast: Signal<Option<(String, Tone)>>,
     connecting: Signal<bool>,
     reload_key: Signal<u64>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PreviewAction {
+    Connect,
+    Start,
+    Stop,
 }
 
 #[get("/api/previews/{workspace_id}")]
@@ -64,6 +80,38 @@ async fn preview_config(workspace_id: String) -> Result<PreviewConfig, ServerFnE
 #[get("/api/previews/{workspace_id}/candidates")]
 async fn preview_candidates(workspace_id: String) -> Result<Vec<PreviewCandidate>, ServerFnError> {
     server::preview_candidates(workspace_id).await
+}
+
+#[get("/api/previews/{workspace_id}/process")]
+async fn preview_process_status(
+    workspace_id: String,
+) -> Result<PreviewProcessStatus, ServerFnError> {
+    server::preview_process_status(workspace_id).await
+}
+
+#[post("/api/previews/{workspace_id}/settings")]
+async fn update_preview_config(
+    workspace_id: String,
+    config: PreviewConfig,
+) -> Result<(), ServerFnError> {
+    server::update_preview_config(workspace_id, config).await
+}
+
+#[post("/api/previews/{workspace_id}/process/start")]
+async fn start_preview_process(
+    workspace_id: String,
+    start_command: String,
+    stop_command: String,
+) -> Result<PreviewProcessStatus, ServerFnError> {
+    server::start_preview_process(workspace_id, start_command, stop_command).await
+}
+
+#[post("/api/previews/{workspace_id}/process/stop")]
+async fn stop_preview_process(
+    workspace_id: String,
+    stop_command: String,
+) -> Result<PreviewProcessStatus, ServerFnError> {
+    server::stop_preview_process(workspace_id, stop_command).await
 }
 
 #[post(
@@ -134,6 +182,16 @@ fn WorkspacePreview(workspace_id: String) -> Element {
         let workspace_id = candidates_workspace_id.clone();
         async move { preview_candidates(workspace_id).await }
     })?;
+    let commands_workspace_id = workspace_id.clone();
+    let commands = use_server_future(move || {
+        let workspace_id = commands_workspace_id.clone();
+        async move { crate::terminal::api::list_run_commands(workspace_id).await }
+    })?;
+    let process_workspace_id = workspace_id.clone();
+    let process_status = use_server_future(move || {
+        let workspace_id = process_workspace_id.clone();
+        async move { preview_process_status(workspace_id).await }
+    })?;
     let session_workspace_id = workspace_id.clone();
     let session = use_server_future(move || {
         let workspace_id = session_workspace_id.clone();
@@ -142,6 +200,8 @@ fn WorkspacePreview(workspace_id: String) -> Element {
     let mut config_applied = use_signal(|| false);
     let mut session_applied = use_signal(|| false);
     let mut auto_connect_applied = use_signal(|| false);
+    let mut process_status_applied = use_signal(|| false);
+    let mut detection_requested = use_signal(|| false);
     let mut configured_target = use_signal(|| None::<PreviewTarget>);
     let mut url_target = use_signal(|| false);
     let mut port = use_signal(String::new);
@@ -149,7 +209,12 @@ fn WorkspacePreview(workspace_id: String) -> Element {
     let mut lease = use_signal(|| None::<PreviewLease>);
     let mut share = use_signal(|| None::<PreviewShare>);
     let mut sharing = use_signal(|| false);
-    let mut actions_open = use_signal(|| false);
+    let mut combo_open = use_signal(|| false);
+    let mut settings_open = use_signal(|| false);
+    let mut start_command = use_signal(String::new);
+    let mut stop_command = use_signal(String::new);
+    let mut process_running = use_signal(|| false);
+    let mut process_busy = use_signal(|| false);
     let mut toast = use_signal(|| None::<(String, Tone)>);
     let connecting = use_signal(|| false);
     let mut frame_loading = use_signal(|| false);
@@ -162,11 +227,15 @@ fn WorkspacePreview(workspace_id: String) -> Element {
         reload_key,
     };
     let detected = candidates().and_then(Result::ok).unwrap_or_default();
+    let detected_commands = commands().and_then(Result::ok).unwrap_or_default();
+    let (suggested_start_command, suggested_stop_command) =
+        suggest_preview_commands(&detected_commands);
     let detected_target = single_candidate_target(&detected);
     let config_loading = config.state() == UseResourceState::Pending;
     let candidates_loading = candidates.state() == UseResourceState::Pending;
+    let process_status_loading = process_status.state() == UseResourceState::Pending;
     let restoring = session.state() == UseResourceState::Pending;
-    let initializing = config_loading || restoring;
+    let initializing = config_loading || process_status_loading || restoring;
     let controls_busy = connecting() || sharing() || initializing;
     let access_busy = connecting() || sharing();
     let target_missing = if url_target() {
@@ -174,14 +243,33 @@ fn WorkspacePreview(workspace_id: String) -> Element {
     } else {
         port().trim().is_empty()
     };
-    let connect_label = if config_loading {
-        "Preparing…"
-    } else if restoring {
-        "Restoring…"
+    let primary_action = default_preview_action(process_running(), &start_command());
+    let controls_disabled = initializing
+        || connecting()
+        || process_busy()
+        || (primary_action == PreviewAction::Connect && target_missing);
+    let start_disabled =
+        process_busy() || (!process_running() && start_command().trim().is_empty());
+    let (primary_label, primary_title, primary_icon) = if initializing {
+        ("Preparing…", "Preparing preview controls", AppIcon::Refresh)
     } else if connecting() {
-        "Connecting…"
+        ("Connecting…", "Connecting to preview", AppIcon::Refresh)
+    } else if process_busy() {
+        (
+            "Working…",
+            "Preview command is changing state",
+            AppIcon::Refresh,
+        )
     } else {
-        "Connect"
+        match primary_action {
+            PreviewAction::Connect => ("Connect", "Connect to the preview target", AppIcon::Eye),
+            PreviewAction::Start => (
+                "Start",
+                "Start the configured preview command",
+                AppIcon::Play,
+            ),
+            PreviewAction::Stop => ("Stop", "Stop the preview command", AppIcon::Stop),
+        }
     };
 
     use_effect(move || {
@@ -200,6 +288,8 @@ fn WorkspacePreview(workspace_id: String) -> Element {
         config_applied.set(true);
         match result {
             Ok(config) => {
+                start_command.set(config.start_command.clone());
+                stop_command.set(config.stop_command.clone());
                 let target = config
                     .target
                     .or_else(|| config.port.map(|port| PreviewTarget::Loopback { port }));
@@ -221,6 +311,46 @@ fn WorkspacePreview(workspace_id: String) -> Element {
                 port.set("5173".into());
                 set_preview_error(toast, server_error_message(problem));
             }
+        }
+    });
+
+    use_effect(move || {
+        if !detection_requested() {
+            return;
+        }
+        let Some(result) = candidates() else {
+            return;
+        };
+        detection_requested.set(false);
+        match result {
+            Ok(available) if available.is_empty() => {
+                set_preview_error(toast, "No running preview server was detected.");
+            }
+            Ok(available) => {
+                if let Some(candidate) = available.first() {
+                    url_target.set(false);
+                    port.set(candidate.port.to_string());
+                    toast.set(Some((
+                        format!("Detected {} on port {}", candidate.process, candidate.port),
+                        Tone::Success,
+                    )));
+                }
+            }
+            Err(problem) => set_preview_error(toast, server_error_message(problem)),
+        }
+    });
+
+    use_effect(move || {
+        if process_status_applied() {
+            return;
+        }
+        let Some(result) = process_status() else {
+            return;
+        };
+        process_status_applied.set(true);
+        match result {
+            Ok(status) => process_running.set(status.running),
+            Err(problem) => set_preview_error(toast, server_error_message(problem)),
         }
     });
 
@@ -315,54 +445,218 @@ fn WorkspacePreview(workspace_id: String) -> Element {
         });
     };
 
+    let manage_workspace_id = workspace_id.clone();
+    let toggle_process = move || {
+        if process_busy() {
+            return;
+        }
+        if !process_running() && start_command().trim().is_empty() {
+            settings_open.set(true);
+            set_preview_error(toast, "Enter a start command for this preview.");
+            return;
+        }
+        process_busy.set(true);
+        toast.set(None);
+        let workspace_id = manage_workspace_id.clone();
+        let start = start_command().trim().to_owned();
+        let stop = stop_command().trim().to_owned();
+        let stopping = process_running();
+        spawn(async move {
+            let status_workspace_id = workspace_id.clone();
+            let result = if stopping {
+                stop_preview_process(workspace_id, stop).await
+            } else {
+                start_preview_process(workspace_id, start, stop).await
+            };
+            match result {
+                Ok(status) => {
+                    process_running.set(status.running);
+                    if status.running {
+                        toast.set(Some(("Preview command started".into(), Tone::Success)));
+                        dioxus_sdk_time::sleep(std::time::Duration::from_millis(700)).await;
+                        if let Ok(status) = preview_process_status(status_workspace_id).await
+                            && !status.running
+                        {
+                            process_running.set(false);
+                            set_preview_error(
+                                toast,
+                                "The preview command exited before a server became available.",
+                            );
+                        }
+                        candidates.restart();
+                    } else {
+                        lease.set(None);
+                        share.set(None);
+                        toast.set(Some(("Preview command stopped".into(), Tone::Success)));
+                    }
+                }
+                Err(problem) => {
+                    if stopping {
+                        process_running.set(false);
+                        lease.set(None);
+                        share.set(None);
+                    }
+                    set_preview_error(toast, server_error_message(problem));
+                }
+            }
+            process_busy.set(false);
+        });
+    };
+
+    let save_settings_workspace_id = workspace_id.clone();
+    let persist_settings = move || {
+        if process_busy() {
+            return;
+        }
+        let target = match selected_preview_target(url_target(), &port(), &url()) {
+            Ok(target) => target,
+            Err(message) => {
+                set_preview_error(toast, message);
+                return;
+            }
+        };
+        process_busy.set(true);
+        toast.set(None);
+        let workspace_id = save_settings_workspace_id.clone();
+        let start = start_command().trim().to_owned();
+        let stop = stop_command().trim().to_owned();
+        let saved_target = target.clone();
+        spawn(async move {
+            let config = PreviewConfig {
+                target: Some(target),
+                port: None,
+                start_command: start,
+                stop_command: stop,
+            };
+            match update_preview_config(workspace_id, config).await {
+                Ok(()) => {
+                    configured_target.set(Some(saved_target));
+                    settings_open.set(false);
+                    toast.set(Some(("Preview settings saved".into(), Tone::Success)));
+                }
+                Err(problem) => set_preview_error(toast, server_error_message(problem)),
+            }
+            process_busy.set(false);
+        });
+    };
+
     rsx! {
         section { class: "flex size-full min-h-0 flex-col bg-card",
             header { class: "flex min-h-12 flex-nowrap items-center gap-2 border-b border-border bg-background px-3 py-2",
-                form {
-                    class: "flex min-w-0 flex-1 items-center gap-2",
-                    onsubmit: move |event| {
-                        event.prevent_default();
-                        connect();
-                    },
-                    label {
-                        class: "shrink-0 text-xs font-semibold text-muted-foreground max-md:hidden",
-                        r#for: "preview-target-kind",
-                        "Target"
+                div { class: "flex min-w-0 flex-1 items-center gap-2",
+                    span { class: "grid size-7 shrink-0 place-items-center rounded-md bg-primary/10 text-primary",
+                        Icon { icon: AppIcon::Eye, size: 14 }
                     }
-                    select {
-                        id: "preview-target-kind",
-                        class: "h-8 shrink-0 rounded-md border border-input bg-background px-2 text-xs font-semibold text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/35 max-md:w-18 max-md:px-1.5",
-                        "aria-label": "Preview target type",
-                        value: if url_target() { "url" } else { "port" },
-                        disabled: controls_busy,
-                        onchange: move |event| url_target.set(event.value() == "url"),
-                        option { value: "port", "Port" }
-                        option { value: "url", "URL" }
-                    }
-                    if url_target() {
-                        input {
-                            id: "preview-url",
-                            class: "h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/35",
-                            r#type: "url",
-                            placeholder: "http://service:3000",
-                            "aria-label": "Preview target URL",
-                            value: url,
-                            disabled: controls_busy,
-                            oninput: move |event| url.set(event.value()),
+                    span { class: "min-w-0",
+                        strong { class: "block truncate text-xs font-semibold", "Preview" }
+                        small { class: "block truncate text-[9px] text-muted-foreground",
+                            if url_target() {
+                                "{url}"
+                            } else {
+                                "Port {port}"
+                            }
                         }
-                    } else {
-                        input {
-                            id: "preview-port",
-                            class: "h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/35 md:w-24 md:flex-none",
-                            r#type: "number",
-                            list: "preview-detected-ports",
-                            min: "1",
-                            max: "65535",
-                            inputmode: "numeric",
-                            "aria-label": "Preview runtime port",
-                            value: port,
-                            disabled: controls_busy,
-                            oninput: move |event| port.set(event.value()),
+                    }
+                }
+                InteractivePopover {
+                    id: "preview-settings",
+                    label: "Preview settings",
+                    open: settings_open(),
+                    on_open_change: move |next| settings_open.set(next),
+                    trigger_class: if settings_open() { "touch-target inline-flex h-7 items-center gap-1.5 rounded-md bg-accent px-2 text-[11px] font-medium text-foreground" } else { "touch-target inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground" },
+                    content_class: "absolute top-[calc(100%+6px)] right-0 z-80 max-h-[calc(var(--app-height,100dvh)-4rem)] w-[min(390px,calc(100vw-1rem))] overflow-y-auto rounded-xl border border-border bg-popover p-3 shadow-2xl",
+                    trigger: rsx! {
+                        Icon { icon: AppIcon::Settings, size: 14 }
+                        span { class: "max-[520px]:hidden", "Settings" }
+                    },
+                    div { class: "mb-3",
+                        strong { class: "block text-xs font-semibold", "Preview settings" }
+                        p { class: "mt-1 text-[10px] leading-relaxed text-muted-foreground",
+                            "Configure how the preview starts and where it connects."
+                        }
+                    }
+                    div { class: "grid gap-3",
+                        label { class: "min-w-0 text-[10px] font-semibold text-muted-foreground",
+                            "Start command"
+                            input {
+                                class: "mt-1 h-9 w-full rounded-md border border-input bg-background px-2.5 font-mono text-xs text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/35",
+                                r#type: "text",
+                                list: "preview-start-commands",
+                                placeholder: suggested_start_command.as_deref().unwrap_or("npm run dev"),
+                                value: start_command,
+                                disabled: process_busy() || process_running(),
+                                oninput: move |event| start_command.set(event.value()),
+                            }
+                        }
+                        datalist { id: "preview-start-commands",
+                            for command in &detected_commands {
+                                option {
+                                    value: command.command.clone(),
+                                    label: command.label.clone(),
+                                }
+                            }
+                        }
+                        label { class: "min-w-0 text-[10px] font-semibold text-muted-foreground",
+                            "Stop command (optional)"
+                            input {
+                                class: "mt-1 h-9 w-full rounded-md border border-input bg-background px-2.5 font-mono text-xs text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/35",
+                                r#type: "text",
+                                list: "preview-stop-commands",
+                                placeholder: suggested_stop_command.as_deref().unwrap_or("docker compose down"),
+                                value: stop_command,
+                                disabled: process_busy(),
+                                oninput: move |event| stop_command.set(event.value()),
+                            }
+                        }
+                        datalist { id: "preview-stop-commands",
+                            for command in &detected_commands {
+                                option {
+                                    value: command.command.clone(),
+                                    label: command.label.clone(),
+                                }
+                            }
+                        }
+                        div { class: "grid grid-cols-[6.5rem_minmax(0,1fr)] gap-2",
+                            label { class: "text-[10px] font-semibold text-muted-foreground",
+                                "Target"
+                                select {
+                                    class: "mt-1 h-9 w-full rounded-md border border-input bg-background px-2 text-xs font-semibold text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/35",
+                                    "aria-label": "Preview target type",
+                                    value: if url_target() { "url" } else { "port" },
+                                    disabled: controls_busy,
+                                    onchange: move |event| url_target.set(event.value() == "url"),
+                                    option { value: "port", "Port" }
+                                    option { value: "url", "URL" }
+                                }
+                            }
+                            if url_target() {
+                                label { class: "min-w-0 text-[10px] font-semibold text-muted-foreground",
+                                    "URL"
+                                    input {
+                                        class: "mt-1 h-9 w-full rounded-md border border-input bg-background px-2.5 text-xs text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/35",
+                                        r#type: "url",
+                                        placeholder: "http://service:3000",
+                                        value: url,
+                                        disabled: controls_busy,
+                                        oninput: move |event| url.set(event.value()),
+                                    }
+                                }
+                            } else {
+                                label { class: "min-w-0 text-[10px] font-semibold text-muted-foreground",
+                                    "Port"
+                                    input {
+                                        class: "mt-1 h-9 w-full rounded-md border border-input bg-background px-2.5 text-xs text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/35",
+                                        r#type: "number",
+                                        list: "preview-detected-ports",
+                                        min: "1",
+                                        max: "65535",
+                                        inputmode: "numeric",
+                                        value: port,
+                                        disabled: controls_busy,
+                                        oninput: move |event| port.set(event.value()),
+                                    }
+                                }
+                            }
                         }
                         datalist { id: "preview-detected-ports",
                             for candidate in &detected {
@@ -372,86 +666,136 @@ fn WorkspacePreview(workspace_id: String) -> Element {
                                 }
                             }
                         }
-                    }
-                    button {
-                        class: "inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-wait disabled:opacity-60",
-                        r#type: "button",
-                        title: "Detect preview servers again",
-                        "aria-label": "Detect preview servers again",
-                        disabled: candidates_loading,
-                        onclick: move |_| candidates.restart(),
-                        span { class: if candidates_loading { "animate-spin" } else { "" },
-                            Icon { icon: AppIcon::Refresh, size: 14 }
+                        if !url_target() {
+                            button {
+                                class: "inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-border bg-secondary px-2 text-[11px] font-medium text-secondary-foreground hover:bg-accent disabled:cursor-wait disabled:opacity-50",
+                                r#type: "button",
+                                disabled: candidates_loading || detection_requested(),
+                                onclick: move |_| {
+                                    candidates.restart();
+                                    detection_requested.set(true);
+                                },
+                                span { class: if candidates_loading || detection_requested() { "animate-spin" } else { "" },
+                                    Icon { icon: AppIcon::Refresh, size: 13 }
+                                }
+                                if candidates_loading || detection_requested() {
+                                    "Detecting…"
+                                } else {
+                                    "Detect preview server"
+                                }
+                            }
+                        }
+                        p { class: "text-[9px] leading-relaxed text-muted-foreground",
+                            "Stop terminates the started process first, then runs the optional stop command."
+                        }
+                        button {
+                            class: "inline-flex h-9 items-center justify-center rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:cursor-wait disabled:opacity-60",
+                            r#type: "button",
+                            disabled: process_busy() || target_missing,
+                            onclick: {
+                                let mut persist_settings = persist_settings.clone();
+                                move |_| persist_settings()
+                            },
+                            if process_busy() {
+                                "Saving…"
+                            } else {
+                                "Save settings"
+                            }
                         }
                     }
-                    button {
-                        class: "inline-flex h-8 shrink-0 items-center justify-center rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-wait disabled:opacity-60 max-md:w-8 max-md:px-0",
-                        r#type: "submit",
-                        title: connect_label,
-                        "aria-label": connect_label,
-                        disabled: controls_busy || target_missing,
-                        span { class: "max-md:hidden", "{connect_label}" }
-                        span { class: "md:hidden",
-                            if initializing || connecting() {
-                                span { class: "animate-spin",
-                                    Icon { icon: AppIcon::Refresh, size: 14 }
+                    if let Some(active_lease) = lease() {
+                        div { class: "mt-3 grid gap-1 border-t border-border pt-2",
+                            button {
+                                class: "flex h-8 items-center gap-2 rounded-md px-2 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground",
+                                r#type: "button",
+                                disabled: connecting(),
+                                onclick: move |_| *reload_key.write() += 1,
+                                Icon { icon: AppIcon::Refresh, size: 14 }
+                                "Reload preview"
+                            }
+                            button {
+                                class: "flex h-8 items-center gap-2 rounded-md px-2 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground",
+                                r#type: "button",
+                                onclick: {
+                                    let url = active_lease.url.clone();
+                                    move |_| open_preview_window(&url)
+                                },
+                                Icon { icon: AppIcon::ExternalLink, size: 14 }
+                                "Open in new tab"
+                            }
+                            if share().is_none() {
+                                button {
+                                    class: "flex h-8 items-center gap-2 rounded-md px-2 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50",
+                                    r#type: "button",
+                                    disabled: access_busy,
+                                    onclick: move |_| enable_sharing(),
+                                    Icon { icon: AppIcon::Share, size: 14 }
+                                    if sharing() {
+                                        "Sharing…"
+                                    } else {
+                                        "Share preview"
+                                    }
                                 }
-                            } else {
-                                Icon { icon: AppIcon::Play, size: 14 }
                             }
                         }
                     }
                 }
-                if let Some(active_lease) = lease() {
-                    DropdownMenu {
-                        class: "relative shrink-0",
-                        open: actions_open(),
-                        on_open_change: move |open: bool| actions_open.set(open),
-                        MenuTrigger {
-                            label: "Preview actions",
-                            icon: AppIcon::Menu,
-                            size: ControlSize::Small,
-                            open: actions_open(),
-                            on_toggle: move |()| actions_open.toggle(),
+                ComboButton {
+                    label: primary_label,
+                    title: primary_title,
+                    icon: primary_icon,
+                    danger: primary_action == PreviewAction::Stop && !process_busy(),
+                    disabled: controls_disabled,
+                    open: combo_open(),
+                    menu_label: "Preview actions",
+                    menu_class: "w-48",
+                    on_click: {
+                        let connect = connect.clone();
+                        let mut toggle_process = toggle_process.clone();
+                        move |()| match primary_action {
+                            PreviewAction::Connect => connect(),
+                            PreviewAction::Start | PreviewAction::Stop => toggle_process(),
                         }
-                        MenuContent { class: "right-0 w-48",
-                            DropdownMenuItem::<usize> {
-                                value: 0_usize,
-                                index: 0_usize,
-                                disabled: connecting(),
-                                on_select: move |_| *reload_key.write() += 1,
-                                span { class: "flex items-center gap-2",
-                                    Icon { icon: AppIcon::Refresh, size: 14 }
-                                    "Reload preview"
-                                }
+                    },
+                    on_open_change: move |next| combo_open.set(next),
+                    DropdownMenuItem::<PreviewAction> {
+                        class: if primary_action == PreviewAction::Connect { "!bg-accent !text-foreground" } else { "" },
+                        value: PreviewAction::Connect,
+                        index: 0_usize,
+                        disabled: controls_busy || target_missing,
+                        on_select: {
+                            let connect = connect.clone();
+                            move |_| {
+                                combo_open.set(false);
+                                connect();
                             }
-                            DropdownMenuItem::<usize> {
-                                value: 1_usize,
-                                index: 1_usize,
-                                on_select: {
-                                    let url = active_lease.url.clone();
-                                    move |_| open_preview_window(&url)
-                                },
-                                span { class: "flex items-center gap-2",
-                                    Icon { icon: AppIcon::ExternalLink, size: 14 }
-                                    "Open in new tab"
-                                }
+                        },
+                        span { class: "flex items-center gap-2",
+                            Icon { icon: AppIcon::Eye, size: 14 }
+                            "Connect"
+                        }
+                    }
+                    DropdownMenuItem::<PreviewAction> {
+                        class: if primary_action == PreviewAction::Connect { "" } else { "!bg-accent !text-foreground" },
+                        value: if process_running() { PreviewAction::Stop } else { PreviewAction::Start },
+                        index: 1_usize,
+                        disabled: start_disabled,
+                        on_select: {
+                            let mut toggle_process = toggle_process.clone();
+                            move |_| {
+                                combo_open.set(false);
+                                toggle_process();
                             }
-                            if share().is_none() {
-                                DropdownMenuItem::<usize> {
-                                    value: 2_usize,
-                                    index: 2_usize,
-                                    disabled: access_busy,
-                                    on_select: move |_| enable_sharing(),
-                                    span { class: "flex items-center gap-2",
-                                        Icon { icon: AppIcon::Share, size: 14 }
-                                        if sharing() {
-                                            "Sharing…"
-                                        } else {
-                                            "Share preview"
-                                        }
-                                    }
-                                }
+                        },
+                        span { class: "flex items-center gap-2",
+                            Icon {
+                                icon: if process_running() { AppIcon::Stop } else { AppIcon::Play },
+                                size: 14,
+                            }
+                            if process_running() {
+                                "Stop"
+                            } else {
+                                "Start"
                             }
                         }
                     }
@@ -498,6 +842,8 @@ fn WorkspacePreview(workspace_id: String) -> Element {
                         }
                         if config_loading {
                             "Loading preview settings…"
+                        } else if process_status_loading {
+                            "Checking preview command…"
                         } else {
                             "Restoring active preview…"
                         }
@@ -558,7 +904,7 @@ fn WorkspacePreview(workspace_id: String) -> Element {
                                 "Connect a web preview"
                             }
                             p { class: "mt-2 max-w-md leading-relaxed text-muted-foreground",
-                                "Start the project dev server in Terminal, bind it to 127.0.0.1, then enter its runtime port here."
+                                "Configure the target and optional commands in Settings, then use the action button to start or connect."
                             }
                             p { class: "mt-2 text-xs text-muted-foreground",
                                 "The port remains private; browser traffic passes through an authenticated gateway."
@@ -601,10 +947,67 @@ fn selected_preview_target(
     }
 }
 
+fn default_preview_action(process_running: bool, start_command: &str) -> PreviewAction {
+    if process_running {
+        PreviewAction::Stop
+    } else if start_command.trim().is_empty() {
+        PreviewAction::Connect
+    } else {
+        PreviewAction::Start
+    }
+}
+
 fn single_candidate_target(candidates: &[PreviewCandidate]) -> Option<PreviewTarget> {
     (candidates.len() == 1).then(|| PreviewTarget::Loopback {
         port: candidates[0].port,
     })
+}
+
+fn suggest_preview_commands(
+    commands: &[crate::terminal::api::RunCommand],
+) -> (Option<String>, Option<String>) {
+    let start = commands
+        .iter()
+        .filter_map(|command| {
+            let value = format!("{} {}", command.label, command.command).to_ascii_lowercase();
+            let excluded = [" test", "check", "lint", "build", "format"]
+                .iter()
+                .any(|term| value.contains(term));
+            let score = if excluded {
+                0
+            } else if value.contains("dx serve") || value.contains("runserver") {
+                100
+            } else if value.contains(" dev") || value.contains("serve") {
+                80
+            } else if value.contains(" start") || value.contains(" preview") {
+                60
+            } else if value.contains("docker compose up") || value.contains(" web") {
+                40
+            } else {
+                0
+            };
+            (score > 0).then_some((score, command.command.clone()))
+        })
+        .max_by_key(|(score, _)| *score)
+        .map(|(_, command)| command);
+    let stop = commands
+        .iter()
+        .filter_map(|command| {
+            let value = format!("{} {}", command.label, command.command).to_ascii_lowercase();
+            let score = if value.contains("docker compose down") {
+                100
+            } else if value.contains(" stop") || value.ends_with("stop") {
+                60
+            } else if value.contains(" down") || value.ends_with("down") {
+                40
+            } else {
+                0
+            };
+            (score > 0).then_some((score, command.command.clone()))
+        })
+        .max_by_key(|(score, _)| *score)
+        .map(|(_, command)| command);
+    (start, stop)
 }
 
 fn apply_preview_target(
@@ -686,5 +1089,47 @@ mod tests {
         selected_preview_target(false, "0", "").unwrap_err();
         selected_preview_target(false, "65536", "").unwrap_err();
         selected_preview_target(true, "", " ").unwrap_err();
+    }
+
+    #[test]
+    fn default_action_follows_preview_configuration_and_process_state() {
+        assert_eq!(default_preview_action(false, ""), PreviewAction::Connect);
+        assert_eq!(
+            default_preview_action(false, "npm run dev"),
+            PreviewAction::Start
+        );
+        assert_eq!(default_preview_action(true, ""), PreviewAction::Stop);
+    }
+
+    #[test]
+    fn preview_command_suggestions_prefer_servers_and_optional_cleanup() {
+        let commands = vec![
+            crate::terminal::api::RunCommand {
+                id: "test".into(),
+                label: "cargo · test".into(),
+                command: "cargo test".into(),
+                custom: false,
+            },
+            crate::terminal::api::RunCommand {
+                id: "dev".into(),
+                label: "npm · dev".into(),
+                command: "npm run dev".into(),
+                custom: false,
+            },
+            crate::terminal::api::RunCommand {
+                id: "down".into(),
+                label: "compose · down".into(),
+                command: "docker compose down".into(),
+                custom: false,
+            },
+        ];
+
+        assert_eq!(
+            suggest_preview_commands(&commands),
+            (
+                Some("npm run dev".into()),
+                Some("docker compose down".into())
+            )
+        );
     }
 }

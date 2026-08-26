@@ -40,7 +40,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     bash \
     build-essential \
     ca-certificates \
-    clang \
     curl \
     git \
     gnupg \
@@ -126,13 +125,14 @@ FROM docker.io/library/node:${NODE_VERSION}-trixie-slim AS production
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# The production image is also the trusted workspace runtime. Keep GCC and the native build tools so
+# a checked-out Syntaxis workspace can run `mise run qa` after Mise installs its project toolchain.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     bash \
     build-essential \
     ca-certificates \
-    clang \
     curl \
     git \
     gnupg \

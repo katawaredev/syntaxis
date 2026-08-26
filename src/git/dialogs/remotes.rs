@@ -2,6 +2,7 @@ use super::*;
 
 #[component]
 pub(crate) fn RemoteDialog(
+    workspace_slug: String,
     remote: Option<RemoteInfo>,
     pending: bool,
     error: Option<String>,
@@ -23,9 +24,12 @@ pub(crate) fn RemoteDialog(
             remote.push_url.clone()
         }
     });
+    let unchanged_fetch_url = initial_fetch_url.clone();
     let mut name = use_signal(|| initial_name);
     let mut fetch_url = use_signal(|| initial_fetch_url);
     let mut push_url = use_signal(|| initial_push_url);
+    let mut checking = use_signal(|| false);
+    let mut unverified_url = use_signal(|| None::<String>);
     rsx! {
         Modal {
             title: if editing { "Edit remote" } else { "Add remote" },
@@ -36,7 +40,7 @@ pub(crate) fn RemoteDialog(
                     TextInput {
                         value: name(),
                         autofocus: true,
-                        disabled: pending,
+                        disabled: pending || checking(),
                         placeholder: "origin",
                         oninput: move |event: FormEvent| name.set(event.value()),
                     }
@@ -44,9 +48,12 @@ pub(crate) fn RemoteDialog(
                 Field { control_id: "remote-fetch-url", label: "Fetch URL",
                     TextInput {
                         value: fetch_url(),
-                        disabled: pending,
+                        disabled: pending || checking(),
                         placeholder: "https://example.com/owner/repository.git",
-                        oninput: move |event: FormEvent| fetch_url.set(event.value()),
+                        oninput: move |event: FormEvent| {
+                            fetch_url.set(event.value());
+                            unverified_url.set(None);
+                        },
                     }
                 }
                 Field {
@@ -54,7 +61,7 @@ pub(crate) fn RemoteDialog(
                     label: "Push URL (optional)",
                     TextInput {
                         value: push_url(),
-                        disabled: pending,
+                        disabled: pending || checking(),
                         placeholder: "Uses the fetch URL when empty",
                         oninput: move |event: FormEvent| push_url.set(event.value()),
                     }
@@ -62,27 +69,47 @@ pub(crate) fn RemoteDialog(
                 if let Some(error) = error {
                     p { class: "text-xs text-destructive", role: "alert", "{error}" }
                 }
+                if unverified_url().is_some() {
+                    p {
+                        class: "rounded-md border border-warning/30 bg-warning/8 p-3 text-xs leading-relaxed text-warning",
+                        role: "alert",
+                        "This repository could not be verified. It may not exist, require authentication, or be temporarily unreachable. You can still save the remote."
+                    }
+                }
                 DialogActions {
                     Button {
                         label: "Cancel",
                         kind: ButtonKind::Ghost,
-                        disabled: pending,
+                        disabled: pending || checking(),
                         onclick: move |_| on_close.call(()),
                     }
                     Button {
-                        label: if pending { "Saving…" } else if editing { "Save remote" } else { "Add remote" },
+                        label: if pending { "Saving…" } else if checking() { "Checking…" } else if unverified_url().is_some() { "Save anyway" } else if editing { "Save remote" } else { "Add remote" },
                         kind: ButtonKind::Primary,
-                        disabled: pending || name().trim().is_empty() || fetch_url().trim().is_empty(),
+                        disabled: pending || checking() || name().trim().is_empty() || fetch_url().trim().is_empty(),
                         onclick: move |_| {
                             let push = push_url();
-                            on_submit
-                                .call(
-                                    remote_request(
-                                        name().trim().to_owned(),
-                                        fetch_url().trim().to_owned(),
-                                        (!push.trim().is_empty()).then(|| push.trim().to_owned()),
-                                    ),
-                                );
+                            let request = remote_request(
+                                name().trim().to_owned(),
+                                fetch_url().trim().to_owned(),
+                                (!push.trim().is_empty()).then(|| push.trim().to_owned()),
+                            );
+                            let url = request.fetch_url.clone();
+                            let already_verified_or_approved = (editing && url == unchanged_fetch_url)
+                                || unverified_url().as_deref() == Some(url.as_str());
+                            if already_verified_or_approved {
+                                on_submit.call(request);
+                                return;
+                            }
+                            checking.set(true);
+                            let workspace_slug = workspace_slug.clone();
+                            spawn(async move {
+                                match api::check_remote(workspace_slug, url.clone()).await {
+                                    Ok(true) => on_submit.call(request),
+                                    Ok(false) | Err(_) => unverified_url.set(Some(url)),
+                                }
+                                checking.set(false);
+                            });
                         },
                     }
                 }

@@ -82,6 +82,38 @@ impl HostGit {
             })
             .collect()
     }
+
+    /// Checks whether a remote repository advertises refs without changing local configuration.
+    ///
+    /// Empty repositories are considered reachable because `git ls-remote` exits successfully
+    /// even when it prints no refs.
+    ///
+    /// # Errors
+    ///
+    /// Returns a structured Git error when the URL cannot be contacted or authenticated.
+    pub async fn check_remote(&self, workspace: &WorkspaceRecord, url: &str) -> GitResult<()> {
+        if url.trim().is_empty() || url.len() > 64 * 1024 || url.chars().any(char::is_control) {
+            return Err(GitError::new(
+                GitErrorCode::Conflict,
+                "Enter a valid Git remote URL.",
+            ));
+        }
+        let root = validated_root(workspace)?;
+        let arguments = ["ls-remote".into(), "--".into(), url.into()];
+        self.run(
+            &root,
+            &arguments,
+            None,
+            &[
+                ("GIT_TERMINAL_PROMPT", "0".into()),
+                ("GCM_INTERACTIVE", "Never".into()),
+            ],
+            &[0],
+            CancellationToken::new(),
+        )
+        .await?;
+        Ok(())
+    }
 }
 
 #[async_trait(?Send)]

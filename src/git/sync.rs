@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
-use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
+use dioxus_primitives::dropdown_menu::DropdownMenuItem;
 use syntaxis_git::RemoteInfo;
-use syntaxis_ui::prelude::{AppIcon, Icon, MenuButtonTrigger, MenuContent};
+use syntaxis_ui::prelude::{AppIcon, ComboButton, Icon};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum GitSyncAction {
@@ -110,179 +110,154 @@ pub(super) fn GitSyncButton(
     };
 
     rsx! {
-        DropdownMenu {
-            class: "relative shrink-0",
+        ComboButton {
+            label,
+            title,
+            icon,
+            count,
+            primary_action: primary.is_some(),
             open: open(),
             disabled: pending,
-            on_open_change: move |next: bool| open.set(next),
-            div { class: "flex items-stretch",
-                button {
-                    class: "touch-target inline-flex h-7 items-center gap-1.5 rounded-l-md border border-border bg-secondary px-2 text-[11px] font-medium text-secondary-foreground hover:bg-accent disabled:opacity-50",
-                    title,
-                    "aria-label": title,
-                    disabled: pending,
-                    onclick: {
-                        let primary = primary.clone();
-                        move |_| {
-                            if let Some(action) = primary.clone() {
-                                on_action.call(action);
-                            } else {
-                                open.set(true);
-                            }
-                        }
+            menu_label: "Git actions",
+            on_click: {
+                let primary = primary.clone();
+                move |()| {
+                    if let Some(action) = primary.clone() {
+                        on_action.call(action);
+                    }
+                }
+            },
+            on_open_change: move |next| open.set(next),
+            if diverged {
+                div { class: "px-2 py-1.5 text-[10px] leading-relaxed text-muted-foreground",
+                    "Local and upstream commits have diverged. Choose how to bring in the upstream commits."
+                }
+                hr {}
+                DropdownMenuItem::<GitSyncAction> {
+                    value: GitSyncAction::PullRebase,
+                    index: 0_usize,
+                    on_select: move |action| {
+                        open.set(false);
+                        on_action.call(action);
                     },
-                    Icon { icon, size: 14 }
-                    "{label}"
-                    if let Some(count) = count.as_deref() {
-                        span { class: "max-w-20 truncate rounded-sm bg-background/70 px-1 text-[9px] font-normal text-muted-foreground",
-                            "{count}"
-                        }
+                    span { class: "flex min-w-0 items-center gap-2",
+                        Icon { icon: AppIcon::Fetch, size: 14 }
+                        span { "Pull with rebase…" }
                     }
                 }
-                MenuButtonTrigger {
-                    class: "touch-target inline-flex h-7 items-center justify-center rounded-r-md border border-l-0 border-border bg-secondary px-1 text-muted-foreground hover:bg-accent hover:text-foreground @max-[520px]:px-3",
-                    label: "Git actions",
-                    title: "Git actions",
-                    on_toggle: move |()| open.toggle(),
-                    Icon { icon: AppIcon::ChevronDown, size: 12 }
-                }
-            }
-            MenuContent { class: "right-0 w-56",
-                if diverged {
-                    div { class: "px-2 py-1.5 text-[10px] leading-relaxed text-muted-foreground",
-                        "Local and upstream commits have diverged. Choose how to bring in the upstream commits."
-                    }
-                    hr {}
+                if let Some(upstream) = upstream.clone() {
                     DropdownMenuItem::<GitSyncAction> {
-                        value: GitSyncAction::PullRebase,
-                        index: 0_usize,
+                        value: GitSyncAction::MergeUpstream(upstream.clone()),
+                        index: 1_usize,
                         on_select: move |action| {
                             open.set(false);
                             on_action.call(action);
                         },
                         span { class: "flex min-w-0 items-center gap-2",
-                            Icon { icon: AppIcon::Fetch, size: 14 }
-                            span { "Pull with rebase…" }
+                            Icon { icon: AppIcon::GitBranch, size: 14 }
+                            span { class: "truncate", "Merge upstream…" }
                         }
                     }
-                    if let Some(upstream) = upstream.clone() {
-                        DropdownMenuItem::<GitSyncAction> {
-                            value: GitSyncAction::MergeUpstream(upstream.clone()),
-                            index: 1_usize,
-                            on_select: move |action| {
-                                open.set(false);
-                                on_action.call(action);
-                            },
-                            span { class: "flex min-w-0 items-center gap-2",
-                                Icon { icon: AppIcon::GitBranch, size: 14 }
-                                span { class: "truncate", "Merge upstream…" }
-                            }
-                        }
-                        hr {}
+                    hr {}
+                }
+            }
+            if remotes.is_empty() {
+                DropdownMenuItem::<GitSyncAction> {
+                    class: recommended_class(&GitSyncAction::AddRemote),
+                    value: GitSyncAction::AddRemote,
+                    index: 0_usize,
+                    on_select: move |action| {
+                        open.set(false);
+                        on_action.call(action);
+                    },
+                    span { class: "flex items-center gap-2",
+                        Icon { icon: AppIcon::Plus, size: 14 }
+                        "Add remote"
                     }
                 }
-                if remotes.is_empty() {
-                    DropdownMenuItem::<GitSyncAction> {
-                        class: recommended_class(&GitSyncAction::AddRemote),
-                        value: GitSyncAction::AddRemote,
-                        index: 0_usize,
-                        on_select: move |action| {
-                            open.set(false);
-                            on_action.call(action);
-                        },
-                        span { class: "flex items-center gap-2",
-                            Icon { icon: AppIcon::Plus, size: 14 }
-                            "Add remote"
-                        }
-                    }
-                } else if !has_upstream && current_branch.is_some() {
-                    for (index, remote) in remotes.iter().enumerate() {
-                        {
-                            let action = GitSyncAction::Publish(remote.name.clone());
-                            rsx! {
-                                DropdownMenuItem::<GitSyncAction> {
-                                    class: recommended_class(&action),
-                                    value: action,
-                                    index,
-                                    on_select: move |action| {
-                                        open.set(false);
-                                        on_action.call(action);
-                                    },
-                                    span { class: "flex min-w-0 items-center gap-2",
-                                        Icon { icon: AppIcon::Push, size: 14 }
-                                        span { class: "truncate", "Publish to {remote.name}" }
-                                    }
+            } else if !has_upstream && current_branch.is_some() {
+                for (index, remote) in remotes.iter().enumerate() {
+                    {
+                        let action = GitSyncAction::Publish(remote.name.clone());
+                        rsx! {
+                            DropdownMenuItem::<GitSyncAction> {
+                                class: recommended_class(&action),
+                                value: action,
+                                index,
+                                on_select: move |action| {
+                                    open.set(false);
+                                    on_action.call(action);
+                                },
+                                span { class: "flex min-w-0 items-center gap-2",
+                                    Icon { icon: AppIcon::Push, size: 14 }
+                                    span { class: "truncate", "Publish to {remote.name}" }
                                 }
                             }
                         }
                     }
-                } else if !diverged {
-                    DropdownMenuItem::<GitSyncAction> {
-                        class: recommended_class(&GitSyncAction::Pull),
-                        value: GitSyncAction::Pull,
-                        index: 0_usize,
-                        disabled: behind == 0 || diverged,
-                        on_select: move |action| {
-                            open.set(false);
-                            on_action.call(action);
-                        },
-                        span { class: "flex items-center gap-2",
-                            Icon { icon: AppIcon::Fetch, size: 14 }
-                            "Pull"
-                        }
-                        span { class: "tabular-nums text-[10px] text-muted-foreground",
-                            "{behind}"
-                        }
+                }
+            } else if !diverged {
+                DropdownMenuItem::<GitSyncAction> {
+                    class: recommended_class(&GitSyncAction::Pull),
+                    value: GitSyncAction::Pull,
+                    index: 0_usize,
+                    disabled: behind == 0 || diverged,
+                    on_select: move |action| {
+                        open.set(false);
+                        on_action.call(action);
+                    },
+                    span { class: "flex items-center gap-2",
+                        Icon { icon: AppIcon::Fetch, size: 14 }
+                        "Pull"
                     }
-                    DropdownMenuItem::<GitSyncAction> {
-                        class: recommended_class(&GitSyncAction::Push),
-                        value: GitSyncAction::Push,
-                        index: 1_usize,
-                        disabled: ahead == 0 || diverged,
-                        on_select: move |action| {
-                            open.set(false);
-                            on_action.call(action);
-                        },
-                        span { class: "flex items-center gap-2",
-                            Icon { icon: AppIcon::Push, size: 14 }
-                            "Push"
-                        }
-                        span { class: "tabular-nums text-[10px] text-muted-foreground",
-                            "{ahead}"
+                    span { class: "tabular-nums text-[10px] text-muted-foreground", "{behind}" }
+                }
+                DropdownMenuItem::<GitSyncAction> {
+                    class: recommended_class(&GitSyncAction::Push),
+                    value: GitSyncAction::Push,
+                    index: 1_usize,
+                    disabled: ahead == 0 || diverged,
+                    on_select: move |action| {
+                        open.set(false);
+                        on_action.call(action);
+                    },
+                    span { class: "flex items-center gap-2",
+                        Icon { icon: AppIcon::Push, size: 14 }
+                        "Push"
+                    }
+                    span { class: "tabular-nums text-[10px] text-muted-foreground", "{ahead}" }
+                }
+            }
+            if !remotes.is_empty() {
+                DropdownMenuItem::<GitSyncAction> {
+                    class: recommended_class(&GitSyncAction::Fetch),
+                    value: GitSyncAction::Fetch,
+                    index: remotes.len() + 2,
+                    on_select: move |action| {
+                        open.set(false);
+                        on_action.call(action);
+                    },
+                    span { class: "flex items-center gap-2",
+                        Icon { icon: AppIcon::Refresh, size: 14 }
+                        if refreshing {
+                            "Fetching…"
+                        } else {
+                            "Fetch"
                         }
                     }
                 }
-                if !remotes.is_empty() {
-                    DropdownMenuItem::<GitSyncAction> {
-                        class: recommended_class(&GitSyncAction::Fetch),
-                        value: GitSyncAction::Fetch,
-                        index: remotes.len() + 2,
-                        on_select: move |action| {
-                            open.set(false);
-                            on_action.call(action);
-                        },
-                        span { class: "flex items-center gap-2",
-                            Icon { icon: AppIcon::Refresh, size: 14 }
-                            if refreshing {
-                                "Fetching…"
-                            } else {
-                                "Fetch"
-                            }
-                        }
-                    }
-                }
-                if conflicts > 0 {
-                    hr {}
-                    DropdownMenuItem::<GitSyncAction> {
-                        class: "!text-destructive",
-                        value: GitSyncAction::AbortMerge,
-                        index: remotes.len() + 3,
-                        on_select: move |action| {
-                            open.set(false);
-                            on_action.call(action);
-                        },
-                        "Abort merge"
-                    }
+            }
+            if conflicts > 0 {
+                hr {}
+                DropdownMenuItem::<GitSyncAction> {
+                    class: "!text-destructive",
+                    value: GitSyncAction::AbortMerge,
+                    index: remotes.len() + 3,
+                    on_select: move |action| {
+                        open.set(false);
+                        on_action.call(action);
+                    },
+                    "Abort merge"
                 }
             }
         }

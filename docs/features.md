@@ -37,6 +37,11 @@ The editor supports focused work from a small screen. It does not provide a gene
 marketplace, integrated debugging, notebooks, a test explorer, or the full refactoring surface of a
 mature desktop IDE.
 
+Editor-owned CodeMirror features can be enabled or replaced while an editor is open. Loading
+arbitrary third-party CodeMirror packages at runtime is intentionally not supported; those packages
+would need a reviewed registry and browser-side dependency boundary rather than a simple settings
+toggle.
+
 ### Code intelligence
 
 Code intelligence starts only while enabled for a supported document. Syntaxis runs at most one
@@ -84,6 +89,11 @@ The Git module supports:
 - fetch, pull, push, and guarded force-push flows;
 - comparison and common merge operations.
 
+Before saving a new or changed remote URL, Syntaxis performs a short, non-interactive reachability
+check. A failed check is advisory because private repositories, missing credentials, and temporary
+network failures are indistinguishable from a nonexistent repository; **Save anyway** remains
+available.
+
 Git uses the runtime user's environment. The supplied Compose deployment mounts host SSH
 configuration read-only and GnuPG configuration read/write. Pull requests, protected branches, and
 server-side policy remain the responsibility of the Git provider.
@@ -93,6 +103,10 @@ server-side policy remain the responsibility of the Git provider.
 Preview can connect to either a runtime port or an HTTP(S) origin reachable from the runtime. On
 Linux, Syntaxis suggests listening HTTP processes whose working directory is inside the current
 workspace.
+
+The compact play/stop control can run an auto-suggested or custom workspace command. Stopping first
+terminates the process started by Syntaxis and then runs the optional cleanup command. Commands are
+saved per workspace.
 
 The gateway proxies HTTP and WebSocket traffic. A preview can open inside Syntaxis or in a separate
 window.
@@ -112,6 +126,13 @@ real `pi --mode rpc` process, and saved chats remain Pi sessions.
 The interface supports multiple chats, streaming tool activity, attachments, message editing,
 steering, follow-ups, and selected Pi resource management. Working chats continue when you navigate
 away; settled sessions may be stopped and resumed to limit idle resource use.
+
+Completed assistant responses have a read-aloud control when the browser exposes speech synthesis.
+Speech uses the browser and device voice directly; Syntaxis does not upload or store generated audio.
+
+Favourite models and each model's last reasoning effort are stored globally on the Syntaxis server,
+so they follow the user between devices. Models removed from the current Pi catalog are pruned from
+those preferences automatically.
 
 Syntaxis does not provide model access. Pi authentication and use are optional. See
 [Pi integration](pi-management.md).

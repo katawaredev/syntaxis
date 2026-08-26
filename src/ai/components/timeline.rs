@@ -23,6 +23,7 @@ pub(crate) fn AgentTimeline(
     let is_empty = items.is_empty();
     let mut visible_count = use_signal(|| INITIAL_RENDER_ITEMS);
     let mut viewed_image = use_signal(|| None::<ImageAttachment>);
+    let (read_aloud_available, speaking_item) = use_read_aloud_bridge();
     let hidden_count = items.len().saturating_sub(visible_count());
     let visible_items = items.into_iter().skip(hidden_count).collect::<Vec<_>>();
     rsx! {
@@ -85,6 +86,8 @@ pub(crate) fn AgentTimeline(
                             on_image: move |image| viewed_image.set(Some(image)),
                             on_edit,
                             on_copy,
+                            read_aloud_available: read_aloud_available(),
+                            speaking_item: speaking_item(),
                         }
                     }
                     if matches!(status, AgentStatus::Working | AgentStatus::Compacting) {
@@ -128,7 +131,10 @@ fn AgentTimelineItem(
     on_image: EventHandler<ImageAttachment>,
     on_edit: EventHandler<(String, String, Vec<ImageAttachment>)>,
     on_copy: EventHandler<String>,
+    read_aloud_available: bool,
+    speaking_item: Option<String>,
 ) -> Element {
+    let item_id = item.id().to_owned();
     match item {
         ChatItem::User {
             entry_id,
@@ -202,6 +208,7 @@ fn AgentTimelineItem(
             text,
             thinking,
             status,
+            truncated,
             ..
         } => {
             let has_thinking = !thinking.trim().is_empty();
@@ -228,6 +235,7 @@ fn AgentTimelineItem(
                     if !text.is_empty() {
                         div {
                             class: "ai-markdown",
+                            "data-agent-response": item_id.clone(),
                             dir: "auto",
                             dangerous_inner_html: rendered,
                         }
@@ -241,8 +249,26 @@ fn AgentTimelineItem(
                             }
                         }
                     }
+                    if truncated {
+                        small {
+                            class: "mt-2 block rounded-md border border-warning/30 bg-warning/8 px-2.5 py-2 text-[10px] leading-relaxed text-warning",
+                            role: "status",
+                            "This response reached the model's output limit and may be incomplete."
+                        }
+                    }
                     if !copy_text.is_empty() && status != ItemStatus::Streaming {
                         div { class: "flex min-h-9 items-center pt-0.5 opacity-0 transition-opacity group-hover/message:opacity-100 focus-within:opacity-100 max-[520px]:opacity-100",
+                            if read_aloud_available {
+                                IconButton {
+                                    label: if speaking_item.as_deref() == Some(item_id.as_str()) { "Stop reading response" } else { "Read response aloud" },
+                                    icon: if speaking_item.as_deref() == Some(item_id.as_str()) { AppIcon::Stop } else { AppIcon::Play },
+                                    pressed: speaking_item.as_deref() == Some(item_id.as_str()),
+                                    onclick: {
+                                        let item_id = item_id.clone();
+                                        move |_| toggle_read_aloud(&item_id)
+                                    },
+                                }
+                            }
                             IconButton {
                                 label: "Copy response",
                                 icon: AppIcon::Copy,
@@ -381,6 +407,62 @@ fn AgentTimelineItem(
             }
         },
     }
+}
+
+#[derive(serde::Deserialize)]
+struct ReadAloudEvent {
+    kind: String,
+    id: Option<String>,
+    available: Option<bool>,
+}
+
+fn use_read_aloud_bridge() -> (Signal<bool>, Signal<Option<String>>) {
+    let mut available = use_signal(|| false);
+    let mut speaking_item = use_signal(|| None::<String>);
+    let mut bridge = use_signal(|| None::<dioxus::document::Eval>);
+    use_effect(move || {
+        let mut events = document::eval(
+            r#"
+            const listener = event => dioxus.send(event.detail);
+            window.addEventListener("syntaxis-ai-read-aloud", listener);
+            dioxus.send({
+                kind: "availability",
+                available: Boolean(window.SyntaxisAiChat?.toggleReadAloud)
+                    && "speechSynthesis" in window
+                    && "SpeechSynthesisUtterance" in window,
+            });
+            await dioxus.recv();
+            window.removeEventListener("syntaxis-ai-read-aloud", listener);
+            "#,
+        );
+        bridge.set(Some(events));
+        spawn(async move {
+            while let Ok(event) = events.recv::<ReadAloudEvent>().await {
+                match event.kind.as_str() {
+                    "availability" => available.set(event.available.unwrap_or(false)),
+                    "start" => speaking_item.set(event.id),
+                    "end" if speaking_item().as_deref() == event.id.as_deref() => {
+                        speaking_item.set(None);
+                    }
+                    _ => {}
+                }
+            }
+        });
+    });
+    use_drop(move || {
+        if let Some(events) = bridge() {
+            let _ = events.send(true);
+        }
+        let _ = document::eval("window.SyntaxisAiChat?.stopReadAloud();");
+    });
+    (available, speaking_item)
+}
+
+fn toggle_read_aloud(item_id: &str) {
+    let item_id = serde_json::to_string(item_id).expect("agent item IDs serialize as JSON strings");
+    let _ = document::eval(&format!(
+        "window.SyntaxisAiChat?.toggleReadAloud({item_id});"
+    ));
 }
 
 fn pretty_json(value: &serde_json::Value) -> String {

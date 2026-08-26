@@ -1,8 +1,10 @@
 use bytes::Bytes;
 use dioxus::fullstack::{CborEncoding, Encoding, WebSocketOptions, Websocket};
 use dioxus::prelude::*;
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use syntaxis_agent::{ClientMessage, ConversationSearchResult, ServerMessage};
+use syntaxis_agent::{ClientMessage, ConversationSearchResult, ServerMessage, ThinkingLevel};
 use syntaxis_notifications::{NotificationClientMessage, NotificationServerMessage};
 
 const MAX_AGENT_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
@@ -47,6 +49,12 @@ pub(crate) struct PiSettingsSnapshot {
     pub compatible: bool,
     pub compatibility_message: Option<String>,
     pub values: serde_json::Value,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub(crate) struct ModelPreferences {
+    pub favourites: Vec<String>,
+    pub efforts: BTreeMap<String, ThinkingLevel>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -257,6 +265,32 @@ pub(crate) async fn update_pi_setting(
     value: serde_json::Value,
 ) -> Result<PiSettingsSnapshot, ServerFnError> {
     server::update_pi_setting(WorkspaceId::new(workspace_id), path, value).await
+}
+
+#[post("/api/pi/model-preferences/sync")]
+pub(crate) async fn sync_model_preferences(
+    workspace_id: String,
+    available_models: Vec<String>,
+) -> Result<ModelPreferences, ServerFnError> {
+    server::sync_model_preferences(WorkspaceId::new(workspace_id), available_models).await
+}
+
+#[post("/api/pi/model-preferences/favourite")]
+pub(crate) async fn set_favourite_model(
+    workspace_id: String,
+    model_key: String,
+    favourite: bool,
+) -> Result<ModelPreferences, ServerFnError> {
+    server::set_favourite_model(WorkspaceId::new(workspace_id), model_key, favourite).await
+}
+
+#[post("/api/pi/model-preferences/effort")]
+pub(crate) async fn set_model_effort(
+    workspace_id: String,
+    model_key: String,
+    effort: ThinkingLevel,
+) -> Result<ModelPreferences, ServerFnError> {
+    server::set_model_effort(WorkspaceId::new(workspace_id), model_key, effort).await
 }
 
 #[post("/api/pi/instructions")]

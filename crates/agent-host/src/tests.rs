@@ -26,6 +26,67 @@ async fn shutdown_succeeds_when_pi_has_already_stopped() {
     session.shutdown().await.unwrap();
 }
 
+#[tokio::test]
+async fn setting_a_model_updates_the_snapshot_with_its_requested_effort() {
+    let (commands, mut command_rx) = mpsc::channel(COMMAND_CAPACITY);
+    let (shutdown, _shutdown_rx) = mpsc::channel(1);
+    let (events, _) = broadcast::channel(EVENT_CAPACITY);
+    let (event_input, mut event_rx) = mpsc::unbounded_channel();
+    let model = ModelSummary {
+        provider: "openai-codex".into(),
+        id: "gpt-5.6-luna".into(),
+        name: "GPT 5.6 Luna".into(),
+        reasoning: true,
+        thinking_levels: ThinkingLevel::STANDARD.to_vec(),
+        supports_images: true,
+        context_window: 128_000,
+        max_tokens: 0x4000, // 16,384 tokens
+        cost: ModelCost::default(),
+    };
+    let snapshot = AgentSnapshot {
+        models: vec![model.clone()],
+        ..Default::default()
+    };
+    let session = HostAgentSession {
+        commands,
+        shutdown,
+        events,
+        event_input,
+        state: Arc::new(Mutex::new(RuntimeState {
+            snapshot,
+            session_file: None,
+            current_assistant: None,
+            accept_initial_history: true,
+            fork_messages: Vec::new(),
+            extension_requests: VecDeque::new(),
+        })),
+    };
+
+    session
+        .handle(ClientMessage::SetModel {
+            provider: model.provider.clone(),
+            model_id: model.id.clone(),
+            thinking_level: ThinkingLevel::High,
+        })
+        .await
+        .unwrap();
+
+    let set_model = command_rx.recv().await.unwrap();
+    let set_effort = command_rx.recv().await.unwrap();
+    assert_eq!(set_model["type"], "set_model");
+    assert_eq!(set_effort["type"], "set_thinking_level");
+    assert_eq!(set_effort["level"], "high");
+    assert_eq!(session.snapshot().model, Some(model.clone()));
+    assert_eq!(session.snapshot().thinking_level, ThinkingLevel::High);
+    assert!(matches!(
+        event_rx.recv().await,
+        Some(ServerMessage::ModelChanged {
+            model: Some(changed),
+            thinking_level: ThinkingLevel::High,
+        }) if changed == model
+    ));
+}
+
 #[test]
 #[allow(
     clippy::panic_in_result_fn,
@@ -102,7 +163,7 @@ fn history_maps_pi_messages_and_tool_results() {
             { "role" : "assistant", "content" : [{ "type" : "thinking", "thinking" :
             "I should inspect." }, { "type" : "text", "text" : "I found it." }, {
             "type" : "toolCall", "id" : "tool-1", "name" : "read", "arguments" : {
-            "path" : "src/main.rs" } }] }
+            "path" : "src/main.rs" } }], "stopReason": "length" }
         ),
         json!(
             { "role" : "toolResult", "toolCallId" : "tool-1", "toolName" : "read",
@@ -115,7 +176,7 @@ fn history_maps_pi_messages_and_tool_results() {
     assert!(matches!(&items[0], ChatItem::User { text, .. } if text == "Inspect src"),);
     assert!(matches!(
         &items[1],
-        ChatItem::Assistant { text, thinking, .. }
+        ChatItem::Assistant { text, thinking, truncated: true, .. }
         if text == "I found it." && thinking == "I should inspect."
     ),);
     assert!(matches!(

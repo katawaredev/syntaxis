@@ -1,8 +1,7 @@
 use std::collections::BTreeMap;
 
 use dioxus::prelude::*;
-use dioxus_primitives::popover::{PopoverContent, PopoverRoot, PopoverTrigger};
-use syntaxis_ui::prelude::{AppIcon, Icon, StatusBadge, Tone};
+use syntaxis_ui::prelude::{AppIcon, Icon, InteractivePopover, StatusBadge, Tone};
 
 use crate::{
     app::{LogoutButton, Route},
@@ -264,26 +263,20 @@ fn RuntimeStatusIndicator(message: String, tone: Tone) -> Element {
         Tone::Neutral => "bg-muted-foreground",
     };
     rsx! {
-        PopoverRoot {
-            class: "relative shrink-0",
-            is_modal: false,
+        InteractivePopover {
+            id: "runtime-status",
+            label: message.clone(),
+            title: message.clone(),
             open: open(),
             on_open_change: move |next| open.set(next),
-            PopoverTrigger {
-                class: if open() { "grid size-8 place-items-center rounded-lg bg-accent" } else { "grid size-8 place-items-center rounded-lg hover:bg-accent" },
-                aria_label: message.clone(),
-                aria_expanded: open(),
-                title: message.clone(),
-                span {
-                    class: "size-2 rounded-full {dot_class}",
-                    "aria-hidden": "true",
-                }
-            }
-            PopoverContent { class: "touch-popover absolute top-[calc(100%+6px)] right-0 z-90 w-[min(280px,calc(100vw-1rem))] rounded-xl border border-border bg-popover p-3 shadow-2xl",
-                strong { class: "block text-xs text-foreground", "Runtime status" }
-                p { class: "mt-1 break-words text-[10px] leading-relaxed text-muted-foreground",
-                    "{message}"
-                }
+            trigger_class: if open() { "grid size-8 place-items-center rounded-lg bg-accent" } else { "grid size-8 place-items-center rounded-lg hover:bg-accent" },
+            content_class: "absolute top-[calc(100%+6px)] right-0 z-90 w-[min(280px,calc(100vw-1rem))] rounded-xl border border-border bg-popover p-3 shadow-2xl",
+            trigger: rsx! {
+                span { class: "size-2 rounded-full {dot_class}", "aria-hidden": "true" }
+            },
+            strong { class: "block text-xs text-foreground", "Runtime status" }
+            p { class: "mt-1 break-words text-[10px] leading-relaxed text-muted-foreground",
+                "{message}"
             }
         }
     }

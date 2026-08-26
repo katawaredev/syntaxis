@@ -192,6 +192,7 @@ mod tests {
             PreviewConfig {
                 target: Some(PreviewTarget::Loopback { port: 3000 }),
                 port: None,
+                ..PreviewConfig::default()
             },
         );
         store.save().unwrap();
@@ -247,6 +248,7 @@ mod tests {
             PreviewConfig {
                 target: Some(PreviewTarget::Loopback { port: 5_173 }),
                 port: None,
+                ..PreviewConfig::default()
             }
         );
     }

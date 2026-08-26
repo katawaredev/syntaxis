@@ -763,14 +763,19 @@ impl HostAgentSession {
                 model_id,
                 thinking_level,
             } => {
-                let thinking_level = lock(&self.state)
-                    .snapshot
-                    .models
-                    .iter()
-                    .find(|model| model.provider == provider && model.id == model_id)
-                    .map_or(thinking_level, |model| {
+                let (model, thinking_level) = {
+                    let state = lock(&self.state);
+                    let model = state
+                        .snapshot
+                        .models
+                        .iter()
+                        .find(|model| model.provider == provider && model.id == model_id)
+                        .cloned();
+                    let thinking_level = model.as_ref().map_or(thinking_level, |model| {
                         model.effective_thinking_level(thinking_level)
                     });
+                    (model, thinking_level)
+                };
                 self.send(json!(
                     { "type" : "set_model", "provider" : provider, "modelId" :
                     model_id, }
@@ -779,7 +784,20 @@ impl HostAgentSession {
                 self.send(json!(
                     { "type" : "set_thinking_level", "level" : thinking_level.as_str(), }
                 ))
-                .await
+                .await?;
+                let model = {
+                    let mut state = lock(&self.state);
+                    if let Some(model) = model {
+                        state.snapshot.model = Some(model);
+                    }
+                    state.snapshot.thinking_level = thinking_level;
+                    state.snapshot.model.clone()
+                };
+                let _ = self.event_input.send(ServerMessage::ModelChanged {
+                    model,
+                    thinking_level,
+                });
+                Ok(())
             }
             ClientMessage::SetThinkingLevel { level } => {
                 let level = {
