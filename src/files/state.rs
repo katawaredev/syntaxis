@@ -174,6 +174,7 @@ pub(super) struct OpenDiffRequest {
 pub(super) struct FileActionDialog {
     pub action: FileAction,
     pub source: Option<String>,
+    pub destination_parent: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

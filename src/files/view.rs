@@ -524,9 +524,15 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
         expand_directory(entry, workspace(), tree, editor_configs, toast);
     });
     let explorer_action = EventHandler::new(move |action| {
+        let selected = selected_entry();
         file_dialog.set(Some(FileActionDialog {
             action,
-            source: selected_entry().map(|entry| entry.path.as_str().to_owned()),
+            source: selected
+                .as_ref()
+                .map(|entry| entry.path.as_str().to_owned()),
+            destination_parent: selected
+                .filter(|entry| entry.kind == EntryKind::Directory)
+                .map(|entry| entry.path.as_str().to_owned()),
         }));
     });
     let explorer_refresh = EventHandler::new(move |()| refresh += 1);

@@ -93,8 +93,8 @@ pub(super) fn FileMutationDialog(
 
 pub(super) fn suggested_destination(dialog: &FileActionDialog) -> String {
     match dialog.action {
-        FileAction::CreateFile => "new_file.txt".into(),
-        FileAction::CreateFolder => "new_folder".into(),
+        FileAction::CreateFile => suggested_child_path(dialog, "new_file.txt"),
+        FileAction::CreateFolder => suggested_child_path(dialog, "new_folder"),
         FileAction::Move => dialog.source.clone().unwrap_or_default(),
         FileAction::Duplicate => dialog.source.as_deref().map_or_else(
             || "copy".into(),
@@ -109,6 +109,13 @@ pub(super) fn suggested_destination(dialog: &FileActionDialog) -> String {
         ),
         FileAction::Delete => String::new(),
     }
+}
+
+fn suggested_child_path(dialog: &FileActionDialog, name: &str) -> String {
+    dialog.destination_parent.as_deref().map_or_else(
+        || name.to_owned(),
+        |parent| format!("{parent}/{name}"),
+    )
 }
 
 #[component]
