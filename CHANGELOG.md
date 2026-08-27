@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.2](https://github.com/katawaredev/syntaxis/compare/v0.11.1...v0.11.2) (2026-08-27)
+
+
+### Bug Fixes
+
+* **ai:** pi session and settings ([13259bb](https://github.com/katawaredev/syntaxis/commit/13259bbf271fe944401f2589ead2ced07fbcf175))
+
 ## [0.11.1](https://github.com/katawaredev/syntaxis/compare/v0.11.0...v0.11.1) (2026-08-26)
 
 
