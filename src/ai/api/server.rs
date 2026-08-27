@@ -19,11 +19,11 @@ mod management;
 mod model_preferences;
 pub(super) use management::{
     browse_pi_skills, cancel_pi_provider_login, delete_pi_skill, delete_prompt_template,
-    install_pi_skill, logout_pi_provider, manage_pi_package, pi_global_instructions, pi_packages,
-    pi_provider_login_status, pi_providers, pi_settings, pi_skills, prompt_templates,
-    respond_to_pi_provider_login, save_pi_global_instructions, save_pi_skill, save_prompt_template,
-    search_pi_skills, skill_catalog_available, start_pi_provider_login, update_pi,
-    update_pi_setting,
+    install_pi_skill, logout_pi_provider, manage_pi_package, pi_advanced_settings,
+    pi_global_instructions, pi_packages, pi_provider_login_status, pi_providers, pi_settings,
+    pi_skills, prompt_templates, respond_to_pi_provider_login, save_pi_advanced_settings,
+    save_pi_global_instructions, save_pi_skill, save_prompt_template, search_pi_skills,
+    skill_catalog_available, start_pi_provider_login, update_pi, update_pi_setting,
 };
 pub(super) async fn sync_model_preferences(
     workspace_id: WorkspaceId,

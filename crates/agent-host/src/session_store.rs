@@ -151,10 +151,7 @@ pub(crate) fn delete(workspace_root: &Path, session_id: &str, path: &Path) -> st
 
 fn session_root(workspace_root: &Path) -> PathBuf {
     let home = env::var_os("HOME").map(PathBuf::from);
-    let agent_dir = env::var_os("PI_CODING_AGENT_DIR")
-        .map(PathBuf::from)
-        .or_else(|| home.as_ref().map(|home| home.join(".pi/agent")))
-        .unwrap_or_else(|| PathBuf::from(".pi/agent"));
+    let agent_dir = agent_dir(workspace_root);
     if let Some(path) = env::var_os("PI_CODING_AGENT_SESSION_DIR") {
         return resolve_path(Path::new(&path), workspace_root, home.as_deref());
     }
@@ -167,6 +164,22 @@ fn session_root(workspace_root: &Path) -> PathBuf {
         }
     }
     agent_dir.join("sessions")
+}
+
+pub(crate) fn agent_dir(workspace_root: &Path) -> PathBuf {
+    let directory = env::var_os("PI_CODING_AGENT_DIR").map_or_else(
+        || {
+            env::var_os("HOME")
+                .map_or_else(|| PathBuf::from("."), PathBuf::from)
+                .join(".pi/agent")
+        },
+        PathBuf::from,
+    );
+    if directory.is_absolute() {
+        directory
+    } else {
+        workspace_root.join(directory)
+    }
 }
 
 fn configured_session_dir(path: &Path) -> Option<String> {

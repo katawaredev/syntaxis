@@ -14,11 +14,11 @@ use syntaxis_workspace::WorkspaceId;
 
 use crate::ai::{
     api::{
-        PiOperationResult, PiPackageAction, PiPackageSearch, PiPackageSummary, PiResourceScope,
-        PiSettingsSnapshot, PiSkill, PromptTemplate, SkillCatalogView, SkillSearchPage,
-        SkillSearchResult,
+        PiAdvancedSettingsSnapshot, PiOperationResult, PiPackageAction, PiPackageSearch,
+        PiPackageSummary, PiResourceScope, PiSettingsSnapshot, PiSkill, PromptTemplate,
+        SkillCatalogView, SkillSearchPage, SkillSearchResult,
     },
-    generated_settings::{PI_SETTING_DEFINITIONS, PI_SETTINGS_SCHEMA_VERSION, PiSettingKind},
+    generated_settings::{PI_SETTING_DEFINITIONS, PiSettingKind},
 };
 
 mod auth;
@@ -39,7 +39,9 @@ pub(crate) use packages::{manage_pi_package, pi_packages};
 pub(crate) use prompts::{delete_prompt_template, prompt_templates, save_prompt_template};
 use resources::*;
 use runtime::*;
-pub(crate) use settings::{pi_settings, update_pi_setting};
+pub(crate) use settings::{
+    pi_advanced_settings, pi_settings, save_pi_advanced_settings, update_pi_setting,
+};
 pub(crate) use skills::{
     browse_pi_skills, delete_pi_skill, install_pi_skill, pi_skills, save_pi_skill,
     search_pi_skills, skill_catalog_available, update_tracked_pi_skills,
@@ -50,6 +52,7 @@ pub(crate) async fn update_pi(
 ) -> Result<PiOperationResult, ServerFnError> {
     let workspace = crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
     let output = run_pi(&workspace.root, &["update", "--all", "--no-approve"], false).await?;
+    let version = verify_pi_integration(Path::new(&workspace.root)).await?;
     let updated_skills = update_tracked_pi_skills(Path::new(&workspace.root)).await?;
     let skill_message = match updated_skills {
         0 => "No tracked skills.sh skills needed refreshing.".to_owned(),
@@ -58,9 +61,12 @@ pub(crate) async fn update_pi(
     };
     Ok(PiOperationResult {
         message: if output.is_empty() {
-            skill_message
+            format!("Pi {version} is ready.\n{skill_message}")
         } else {
-            format!("{}\n{skill_message}", output.trim())
+            format!(
+                "{}\nPi {version} integration verified.\n{skill_message}",
+                output.trim()
+            )
         },
     })
 }

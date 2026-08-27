@@ -62,7 +62,10 @@ just build-assets
 ```
 
 This builds the CodeMirror and terminal bundles and regenerates Pi settings metadata. The settings
-generator reads the pinned Pi package and writes `src/ai/generated_settings.rs`.
+generator reads the pinned Pi package and writes `src/ai/generated_settings.rs`. It validates every
+curated setting and setter on each run and hashes only the extracted metadata, so unrelated Pi
+documentation changes do not churn the generated Rust file. Runtime capability checks are per setter,
+not tied to Pi's version number.
 
 The pre-commit task refreshes generated assets and checks formatting. Compilation and tests remain
 explicit tasks and run in pull-request CI.
@@ -128,8 +131,8 @@ just update latest   # include major updates
 ```
 
 Updates are interactive. Review the diff, align duplicate version declarations, and validate web and
-server builds. Updating Pi may make the generated settings form read-only until its schema is
-regenerated and pinned.
+server builds. Regenerate curated setting metadata when the pinned Pi package changes; deployed Pi
+updates use its public SDK and per-setting capability detection.
 
 ## Releases
 

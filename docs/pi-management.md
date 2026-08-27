@@ -23,6 +23,8 @@ pi
 ```
 
 Set `SYNTAXIS_PI_COMMAND` if the executable is not available as `pi` on the server's `PATH`.
+Syntaxis resolves this executable once for each operation and passes its resolved Pi agent directory
+to chat processes, so management actions and RPC sessions use the same credentials.
 
 ## Chats and persistence
 
@@ -70,12 +72,16 @@ browser. Pi's session file remains the complete record.
 
 ## Settings and instructions
 
-Syntaxis exposes a curated set of agent-relevant Pi settings. Global settings apply to the runtime
-user's Pi installation; running chats keep the values they loaded until they reload or restart.
+Syntaxis keeps an **Essentials** view for common agent-relevant settings and an **Advanced JSON**
+view for the complete global or project settings file. Essentials uses Pi's public settings manager
+and enables each control only when the installed Pi exposes its setter; an unrelated Pi change no
+longer disables the whole page. Advanced includes searchable documentation from the installed Pi,
+validates JSON, detects concurrent changes, writes atomically, and keeps one rolling
+`settings.json.syntaxis-backup` beside a file that it replaces.
 
-The form is generated for the Pi version pinned by Syntaxis. Minor and patch updates remain editable.
-If the installed Pi major version differs, settings become read-only rather than risking incompatible
-writes. Other settings remain available through the Pi command-line client.
+Global settings apply to the runtime user's Pi installation. Project settings live in `.pi` and Pi
+applies them according to project trust. Running chats keep the values they loaded until they reload
+or restart. Advanced editing intentionally accepts strict JSON, matching Pi's settings parser.
 
 Global instructions manage Pi's instance-wide `AGENTS.md`, normally `~/.pi/agent/AGENTS.md`. Saving
 an empty document removes it. New sessions load the updated instructions; existing processes may
@@ -130,8 +136,14 @@ Extensions execute code as the runtime user. Syntaxis does not audit or sandbox 
 ## Updates and data
 
 **Check for updates** runs Pi's self-update command and may install an update. Existing chats continue
-with their current Pi process; new chats use the updated installation. A version mismatch may leave
-the generated settings form read-only until Syntaxis supports the new schema.
+with their current Pi process; new chats use the updated installation. After updating, Syntaxis checks
+the executable, Pi's public `SettingsManager` and `ModelRuntime` exports, and configured provider
+credentials before reporting success. If Pi removes one curated setter, only that Essentials control
+becomes unavailable; Advanced JSON remains available.
+
+Container deployments keep the image's pinned Pi installation as a recovery copy. The entrypoint
+uses the persisted, self-updated Pi when it starts successfully and restores the image copy if that
+installation can no longer launch. This is one fixed fallback, not an accumulating version archive.
 
 Syntaxis does not keep a second authoritative copy of Pi data. Sessions, settings, prompts, skills,
 and packages remain in Pi's directories under the runtime home.

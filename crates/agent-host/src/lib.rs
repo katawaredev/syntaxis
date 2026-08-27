@@ -566,7 +566,7 @@ struct RuntimeState {
 }
 impl HostAgentSession {
     fn start(workspace: &WorkspaceRecord, target: LaunchTarget) -> Result<Self, AgentError> {
-        let command = env::var_os("SYNTAXIS_PI_COMMAND").unwrap_or_else(|| "pi".into());
+        let command = pi_command();
         let mut process = Command::new(&command);
         process.args(["--mode", "rpc"]);
         match target {
@@ -579,6 +579,10 @@ impl HostAgentSession {
         }
         let mut child = process
             .current_dir(&workspace.root)
+            .env(
+                "PI_CODING_AGENT_DIR",
+                session_store::agent_dir(Path::new(&workspace.root)),
+            )
             .env("PI_SKIP_VERSION_CHECK", "1")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -894,6 +898,25 @@ impl HostAgentSession {
             AgentError::new(AgentErrorCode::Unavailable, "The Pi process is not running")
         })
     }
+}
+
+fn pi_command() -> PathBuf {
+    if let Some(command) = env::var_os("SYNTAXIS_PI_COMMAND") {
+        return PathBuf::from(command);
+    }
+    env::var_os("PATH")
+        .and_then(|paths| {
+            env::split_paths(&paths)
+                .map(|path| path.join("pi"))
+                .find(|candidate| candidate.is_file())
+        })
+        .or_else(|| {
+            env::var_os("HOME")
+                .map(PathBuf::from)
+                .map(|home| home.join(".local/bin/pi"))
+                .filter(|candidate| candidate.is_file())
+        })
+        .unwrap_or_else(|| PathBuf::from("pi"))
 }
 async fn batch_session_events(
     mut input: mpsc::UnboundedReceiver<ServerMessage>,

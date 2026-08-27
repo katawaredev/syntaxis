@@ -60,8 +60,11 @@ RUN rustup set profile minimal \
     && cargo install --locked --version "${DIOXUS_VERSION}" dioxus-cli \
     && cargo install --locked --version "${JUST_VERSION}" just
 
-RUN npm install --global --prefix /opt/syntaxis-pi \
-    @earendil-works/pi-coding-agent \
+COPY package.json /tmp/syntaxis-package.json
+
+RUN PI_VERSION="$(node --print 'require("/tmp/syntaxis-package.json").devDependencies["@earendil-works/pi-coding-agent"]')" \
+    && npm install --global --prefix /opt/syntaxis-pi \
+    "@earendil-works/pi-coding-agent@${PI_VERSION}" \
     && npm cache clean --force \
     && for binary in cargo dx just rustc rustdoc rustfmt rustup; do \
     ln -s "/usr/local/cargo/bin/${binary}" "/usr/local/bin/${binary}"; \
@@ -81,7 +84,9 @@ RUN usermod --login dev --home /home/dev --move-home node \
 ENV HOME=/home/dev \
     SHELL=/bin/bash \
     CARGO_HOME=/home/dev/.cargo \
-    NPM_CONFIG_PREFIX=/home/dev/.local
+    NPM_CONFIG_PREFIX=/home/dev/.local \
+    PI_CODING_AGENT_DIR=/home/dev/.pi/agent \
+    SYNTAXIS_PI_COMMAND=/home/dev/.local/bin/pi
 ENV PATH="${CARGO_HOME}/bin:/usr/local/cargo/bin:${PATH}"
 ENV PATH="${HOME}/.local/share/mise/shims:${HOME}/.local/bin:${PATH}"
 
@@ -142,9 +147,13 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     libicu76 \
     openssh-client \
     ripgrep \
-    tini \
+    tini
+
+COPY --from=build /build/package.json /tmp/syntaxis-package.json
+
+RUN PI_VERSION="$(node --print 'require("/tmp/syntaxis-package.json").devDependencies["@earendil-works/pi-coding-agent"]')" \
     && npm install --global --prefix /opt/syntaxis-pi \
-    @earendil-works/pi-coding-agent \
+    "@earendil-works/pi-coding-agent@${PI_VERSION}" \
     && npm cache clean --force
 
 RUN usermod --login dev --home /home/dev --move-home node \
@@ -163,6 +172,8 @@ ENV HOME=/home/dev \
     IP=0.0.0.0 \
     PORT=8080 \
     NPM_CONFIG_PREFIX=/home/dev/.local \
+    PI_CODING_AGENT_DIR=/home/dev/.pi/agent \
+    SYNTAXIS_PI_COMMAND=/home/dev/.local/bin/pi \
     SYNTAXIS_PROJECTS_ROOT=/Projects
 ENV PATH="${HOME}/.local/share/mise/shims:${HOME}/.local/bin:${PATH}"
 

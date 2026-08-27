@@ -45,10 +45,17 @@ pub(crate) struct PiOperationResult {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub(crate) struct PiSettingsSnapshot {
     pub pi_version: String,
-    pub schema_version: String,
-    pub compatible: bool,
-    pub compatibility_message: Option<String>,
+    pub available_setters: Vec<String>,
     pub values: serde_json::Value,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub(crate) struct PiAdvancedSettingsSnapshot {
+    pub scope: PiResourceScope,
+    pub path: String,
+    pub content: String,
+    pub revision: String,
+    pub documentation: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -265,6 +272,30 @@ pub(crate) async fn update_pi_setting(
     value: serde_json::Value,
 ) -> Result<PiSettingsSnapshot, ServerFnError> {
     server::update_pi_setting(WorkspaceId::new(workspace_id), path, value).await
+}
+
+#[post("/api/pi/settings/advanced")]
+pub(crate) async fn pi_advanced_settings(
+    workspace_id: String,
+    scope: PiResourceScope,
+) -> Result<PiAdvancedSettingsSnapshot, ServerFnError> {
+    server::pi_advanced_settings(WorkspaceId::new(workspace_id), scope).await
+}
+
+#[post("/api/pi/settings/advanced/save")]
+pub(crate) async fn save_pi_advanced_settings(
+    workspace_id: String,
+    scope: PiResourceScope,
+    content: String,
+    expected_revision: String,
+) -> Result<PiAdvancedSettingsSnapshot, ServerFnError> {
+    server::save_pi_advanced_settings(
+        WorkspaceId::new(workspace_id),
+        scope,
+        content,
+        expected_revision,
+    )
+    .await
 }
 
 #[post("/api/pi/model-preferences/sync")]

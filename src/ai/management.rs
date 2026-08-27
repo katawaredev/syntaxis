@@ -6,7 +6,10 @@ use syntaxis_ui::prelude::{
 
 use super::{
     AiSettingsSection,
-    api::{self, PiAuthFlow, PiAuthPrompt, PiAuthType, PiSettingsSnapshot},
+    api::{
+        self, PiAdvancedSettingsSnapshot, PiAuthFlow, PiAuthPrompt, PiAuthType, PiResourceScope,
+        PiSettingsSnapshot,
+    },
     generated_settings::{PI_SETTING_DEFINITIONS, PiSettingDefinition, PiSettingKind},
 };
 
