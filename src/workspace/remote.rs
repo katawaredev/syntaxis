@@ -200,6 +200,28 @@ impl WorkspaceFiles for RemoteWorkspaceOperations {
         .await
         .map_err(map_server_error)
     }
+
+    async fn write_binary(
+        &self,
+        workspace: &WorkspaceRecord,
+        path: &RelativePath,
+        content: &[u8],
+        max_bytes: u64,
+    ) -> WorkspaceResult<FileVersion> {
+        if u64::try_from(content.len()).unwrap_or(u64::MAX) > max_bytes {
+            return Err(WorkspaceError::new(
+                ErrorCode::TooLarge,
+                "The remote write exceeds the requested limit.",
+            ));
+        }
+        api::write_workspace_binary(
+            workspace.id.0.clone(),
+            path.as_str().to_owned(),
+            content.to_vec(),
+        )
+        .await
+        .map_err(map_server_error)
+    }
 }
 
 fn map_server_error(error: ServerFnError) -> WorkspaceError {

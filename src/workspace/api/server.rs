@@ -369,6 +369,18 @@ pub(super) async fn write_text(
         .map_err(server_error)
 }
 
+pub(super) async fn write_binary(
+    id: &WorkspaceId,
+    path: RelativePath,
+    content: &[u8],
+    max_bytes: u64,
+) -> Result<FileVersion, ServerFnError> {
+    HostWorkspaceFiles
+        .write_binary(&workspace_by_id(id).await?, &path, content, max_bytes)
+        .await
+        .map_err(server_error)
+}
+
 pub(super) async fn workspace_events(
     workspace_id: WorkspaceId,
     options: WebSocketOptions,

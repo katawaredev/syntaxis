@@ -7,7 +7,7 @@ use dioxus_icons::lucide::{
     CornerDownRight, Ellipsis, EllipsisVertical, ExternalLink, Eye, FileDiff, FileInput, FileMinus,
     FilePlus, FolderGit2, FolderOpen, FolderPlus, GitBranch, GitCommitHorizontal, GitFork, Hash,
     Info, ListChevronsDownUp, ListChevronsUpDown, ListOrdered, LogOut, Menu, Mic, PanelLeftOpen,
-    Paperclip, Play, Plus, RefreshCw, Regex, Repeat1, Replace, ReplaceAll, RotateCcw, Save,
+    Paperclip, Play, Plus, RefreshCw, Regex, Repeat1, Replace, ReplaceAll, RotateCcw, Save, FileUp,
     ScanSearch, Search, Send, Settings, Share2, ShieldAlert, Sparkles, Square, SquarePen,
     SquareTerminal, Star, TextCursorInput, TextWrap, Trash2, Volume2, WandSparkles, WholeWord, X,
 };
@@ -82,6 +82,7 @@ pub enum AppIcon {
     ToggleReplace,
     Volume2,
     Undo,
+    Upload,
     Redo,
     SelectAll,
     WordWrap,
@@ -433,6 +434,11 @@ pub fn Icon(icon: AppIcon, #[props(default = 16)] size: u32) -> Element {
         AppIcon::Undo => {
             rsx! {
                 RotateCcw { size }
+            }
+        }
+        AppIcon::Upload => {
+            rsx! {
+                FileUp { size }
             }
         }
         AppIcon::Redo => {

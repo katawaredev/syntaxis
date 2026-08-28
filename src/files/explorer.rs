@@ -53,6 +53,7 @@ pub(super) fn Explorer(
     on_search_open: EventHandler<WorkspaceSearchResult>,
     on_expand: EventHandler<FileEntry>,
     on_action: EventHandler<FileAction>,
+    on_upload: EventHandler<Vec<dioxus::html::FileData>>,
     on_refresh: EventHandler<()>,
 ) -> Element {
     let mut search_options = use_signal(WorkspaceSearchOptions::default);
@@ -137,6 +138,19 @@ pub(super) fn Explorer(
                         size: ControlSize::Small,
                         disabled: pending,
                         onclick: move |_| on_action.call(FileAction::CreateFolder),
+                    }
+                    label {
+                        class: if pending { "touch-target inline-flex size-7.25 min-w-7.25 cursor-not-allowed items-center justify-center rounded-md bg-transparent text-muted-foreground opacity-50" } else { "touch-target inline-flex size-7.25 min-w-7.25 cursor-pointer items-center justify-center rounded-md bg-transparent text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" },
+                        aria_label: "Upload files",
+                        title: "Upload files",
+                        input {
+                            class: "hidden",
+                            r#type: "file",
+                            multiple: true,
+                            disabled: pending,
+                            onchange: move |event: FormEvent| on_upload.call(event.files()),
+                        }
+                        Icon { icon: AppIcon::Upload, size: 14 }
                     }
                     span { class: "flex-1" }
                     IconButton {

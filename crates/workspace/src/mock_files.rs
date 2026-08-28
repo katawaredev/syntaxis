@@ -11,6 +11,7 @@ use crate::{
 enum MockNode {
     Directory,
     Text { content: String, revision: u128 },
+    Binary { content: Vec<u8>, revision: u128 },
 }
 
 #[derive(Default)]
@@ -118,6 +119,16 @@ impl WorkspaceFiles for MockWorkspaceFiles {
                     version: version(content, *revision),
                 })
             }
+            Some(MockNode::Binary { content, revision }) => {
+                let content = String::from_utf8(content.clone()).map_err(|_| {
+                    WorkspaceError::invalid_path("The mock file is not valid UTF-8.")
+                })?;
+                require_size(content.len(), max_bytes)?;
+                Ok(TextFile {
+                    version: version(&content, *revision),
+                    content,
+                })
+            }
             Some(MockNode::Directory) => Err(WorkspaceError::invalid_path(
                 "The mock path is a directory.",
             )),
@@ -131,11 +142,26 @@ impl WorkspaceFiles for MockWorkspaceFiles {
         path: &RelativePath,
         max_bytes: u64,
     ) -> WorkspaceResult<BinaryFile> {
-        let text = self.read_text(workspace, path, max_bytes).await?;
-        Ok(BinaryFile {
-            content: text.content.into_bytes(),
-            version: text.version,
-        })
+        match self.lock()?.get(&key(workspace, path)) {
+            Some(MockNode::Text { content, revision }) => {
+                require_size(content.len(), max_bytes)?;
+                Ok(BinaryFile {
+                    content: content.as_bytes().to_vec(),
+                    version: version(content, *revision),
+                })
+            }
+            Some(MockNode::Binary { content, revision }) => {
+                require_size(content.len(), max_bytes)?;
+                Ok(BinaryFile {
+                    content: content.clone(),
+                    version: binary_version(content, *revision),
+                })
+            }
+            Some(MockNode::Directory) => Err(WorkspaceError::invalid_path(
+                "The mock path is a directory.",
+            )),
+            None => Err(not_found()),
+        }
     }
 
     async fn create_file(
@@ -210,24 +236,76 @@ impl WorkspaceFiles for MockWorkspaceFiles {
         require_size(content.len(), max_bytes)?;
         let mut nodes = self.lock()?;
         let node = nodes.get_mut(&key(workspace, path)).ok_or_else(not_found)?;
-        let MockNode::Text {
-            content: current,
-            revision,
-        } = node
-        else {
-            return Err(WorkspaceError::invalid_path(
+        match node {
+            MockNode::Text {
+                content: current,
+                revision,
+            } => {
+                if expected.is_some_and(|expected| &version(current, *revision) != expected) {
+                    return Err(WorkspaceError::new(
+                        ErrorCode::Conflict,
+                        "The mock file changed.",
+                    ));
+                }
+                *revision = revision.saturating_add(1);
+                content.clone_into(current);
+                Ok(version(current, *revision))
+            }
+            MockNode::Binary {
+                content: current,
+                revision,
+            } => {
+                if expected
+                    .is_some_and(|expected| &binary_version(current, *revision) != expected)
+                {
+                    return Err(WorkspaceError::new(
+                        ErrorCode::Conflict,
+                        "The mock file changed.",
+                    ));
+                }
+                let revision = revision.saturating_add(1);
+                *node = MockNode::Text {
+                    content: content.to_owned(),
+                    revision,
+                };
+                Ok(version(content, revision))
+            }
+            MockNode::Directory => Err(WorkspaceError::invalid_path(
                 "The mock path is a directory.",
-            ));
-        };
-        if expected.is_some_and(|expected| &version(current, *revision) != expected) {
-            return Err(WorkspaceError::new(
-                ErrorCode::Conflict,
-                "The mock file changed.",
-            ));
+            )),
         }
-        *revision = revision.saturating_add(1);
-        content.clone_into(current);
-        Ok(version(current, *revision))
+    }
+
+    async fn write_binary(
+        &self,
+        workspace: &WorkspaceRecord,
+        path: &RelativePath,
+        content: &[u8],
+        max_bytes: u64,
+    ) -> WorkspaceResult<FileVersion> {
+        reject_root(path)?;
+        require_size(content.len(), max_bytes)?;
+        let mut nodes = self.lock()?;
+        require_parent(&nodes, workspace, path)?;
+        let revision = match nodes.get(&key(workspace, path)) {
+            Some(MockNode::Directory) => {
+                return Err(WorkspaceError::invalid_path(
+                    "The mock path is a directory.",
+                ));
+            }
+            Some(MockNode::Text { revision, .. } | MockNode::Binary { revision, .. }) => {
+                revision.saturating_add(1)
+            }
+            None => 1,
+        };
+        nodes.insert(
+            key(workspace, path),
+            MockNode::Binary {
+                content: content.to_vec(),
+                revision,
+            },
+        );
+        Ok(binary_version(content, revision))
     }
 }
 
@@ -324,9 +402,9 @@ fn require_directory(
     }
     match nodes.get(&key(workspace, path)) {
         Some(MockNode::Directory) => Ok(()),
-        Some(MockNode::Text { .. }) => Err(WorkspaceError::invalid_path(
-            "The mock path is not a directory.",
-        )),
+        Some(MockNode::Text { .. } | MockNode::Binary { .. }) => Err(
+            WorkspaceError::invalid_path("The mock path is not a directory."),
+        ),
         None => Err(not_found()),
     }
 }
@@ -348,12 +426,27 @@ fn entry(path: RelativePath, node: &MockNode) -> FileEntry {
             size: u64::try_from(content.len()).unwrap_or(u64::MAX),
             version: Some(version(content, *revision)),
         },
+        MockNode::Binary { content, revision } => FileEntry {
+            path,
+            name,
+            kind: EntryKind::File,
+            size: u64::try_from(content.len()).unwrap_or(u64::MAX),
+            version: Some(binary_version(content, *revision)),
+        },
     }
 }
 
 fn version(content: &str, revision: u128) -> FileVersion {
+    version_for_length(content.len(), revision)
+}
+
+fn binary_version(content: &[u8], revision: u128) -> FileVersion {
+    version_for_length(content.len(), revision)
+}
+
+fn version_for_length(length: usize, revision: u128) -> FileVersion {
     FileVersion {
-        length: u64::try_from(content.len()).unwrap_or(u64::MAX),
+        length: u64::try_from(length).unwrap_or(u64::MAX),
         modified_unix_nanos: revision,
     }
 }

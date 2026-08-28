@@ -449,6 +449,26 @@ pub async fn write_text(
     }
 }
 
+pub async fn write_binary(
+    workspace: WorkspaceRecord,
+    path: RelativePath,
+    content: Vec<u8>,
+    max_bytes: u64,
+) -> Result<FileVersion, String> {
+    use syntaxis_workspace::WorkspaceFiles;
+    match selected_runtime() {
+        RuntimeTarget::Remote => super::remote::RemoteWorkspaceOperations
+            .write_binary(&workspace, &path, &content, max_bytes)
+            .await
+            .map_err(|error| error.message),
+        #[cfg(feature = "desktop")]
+        RuntimeTarget::DesktopLocal => syntaxis_workspace_host::HostWorkspaceFiles
+            .write_binary(&workspace, &path, &content, max_bytes)
+            .await
+            .map_err(|error| error.message),
+    }
+}
+
 pub async fn register_workspace(absolute_path: String) -> Result<WorkspaceRecord, String> {
     use syntaxis_workspace::WorkspaceRegistry;
 

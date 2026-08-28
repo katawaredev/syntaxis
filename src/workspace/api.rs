@@ -261,6 +261,20 @@ pub async fn write_workspace_text(
     )
     .await
 }
+#[post("/api/workspace-files/write-binary")]
+pub async fn write_workspace_binary(
+    workspace_id: String,
+    path: String,
+    content: Vec<u8>,
+) -> Result<FileVersion, ServerFnError> {
+    server::write_binary(
+        &WorkspaceId::new(workspace_id),
+        parse_path(path)?,
+        &content,
+        DEFAULT_TEXT_LIMIT,
+    )
+    .await
+}
 #[get("/api/workspace-events/{workspace_id}")]
 pub async fn workspace_events(
     workspace_id: String,

@@ -93,6 +93,7 @@ use workspace_sync::{WorkspaceSyncState, use_workspace_sync};
 
 const MAX_TEXT_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_PREVIEW_BYTES: u64 = 4 * 1024 * 1024;
+const MAX_UPLOAD_BYTES: u64 = 4 * 1024 * 1024;
 
 #[component]
 pub fn Files(slug: String, query: FilesQuery) -> Element {
@@ -535,6 +536,17 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                 .map(|entry| entry.path.as_str().to_owned()),
         }));
     });
+    let explorer_upload = EventHandler::new(move |files| {
+        let destination = upload_destination(selected_entry().as_ref());
+        spawn(upload_files(
+            files,
+            workspace(),
+            destination,
+            pending,
+            refresh,
+            toast,
+        ));
+    });
     let explorer_refresh = EventHandler::new(move |()| refresh += 1);
 
     rsx! {
@@ -558,6 +570,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                         on_search_open: explorer_search_open,
                         on_expand: explorer_expand,
                         on_action: explorer_action,
+                        on_upload: explorer_upload,
                         on_refresh: explorer_refresh,
                     }
                 }
@@ -596,6 +609,7 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
                             drawer.set(false);
                             explorer_action.call(action);
                         },
+                        on_upload: explorer_upload,
                         on_refresh: explorer_refresh,
                     }
                 }
@@ -1068,6 +1082,113 @@ fn WorkspaceFiles(target: WorkspaceRecord, route_slug: String, query: FilesQuery
             editor_command,
             discard_slug,
         }
+    }
+}
+
+fn upload_destination(selected: Option<&FileEntry>) -> String {
+    let Some(selected) = selected else {
+        return String::new();
+    };
+    if selected.kind == EntryKind::Directory {
+        selected.path.as_str().to_owned()
+    } else {
+        selected
+            .path
+            .as_str()
+            .rsplit_once('/')
+            .map_or_else(String::new, |(parent, _)| parent.to_owned())
+    }
+}
+
+async fn upload_files(
+    files: Vec<dioxus::html::FileData>,
+    workspace: Option<WorkspaceRecord>,
+    destination: String,
+    mut pending: Signal<bool>,
+    mut refresh: Signal<u64>,
+    toast: Signal<Option<ToastState>>,
+) {
+    let Some(workspace) = workspace else {
+        set_error(toast, "The workspace is not ready.");
+        return;
+    };
+    if files.is_empty() {
+        return;
+    }
+
+    pending.set(true);
+    let total = files.len();
+    let mut uploaded = 0_usize;
+    let mut first_error = None;
+    for file in files {
+        let name = file
+            .name()
+            .rsplit(['/', '\\'])
+            .next()
+            .unwrap_or_default()
+            .to_owned();
+        if name.is_empty() || name == "." || name == ".." {
+            first_error.get_or_insert_with(|| "A selected file has an invalid name.".to_owned());
+            continue;
+        }
+        if file.size() > MAX_UPLOAD_BYTES {
+            first_error.get_or_insert_with(|| {
+                format!("{name} exceeds the 4 MiB upload limit.")
+            });
+            continue;
+        }
+        let path = if destination.is_empty() {
+            name.clone()
+        } else {
+            format!("{destination}/{name}")
+        };
+        let path = match RelativePath::try_from(path) {
+            Ok(path) => path,
+            Err(error) => {
+                first_error.get_or_insert(error.message);
+                continue;
+            }
+        };
+        let content = match file.read_bytes().await {
+            Ok(content) => content,
+            Err(_) => {
+                first_error.get_or_insert_with(|| format!("Could not read {name}."));
+                continue;
+            }
+        };
+        match workspace_client::write_binary(
+            workspace.clone(),
+            path,
+            content,
+            MAX_UPLOAD_BYTES,
+        )
+        .await
+        {
+            Ok(_) => uploaded += 1,
+            Err(error) => {
+                first_error.get_or_insert_with(|| format!("Could not upload {name}: {error}"));
+            }
+        }
+    }
+    pending.set(false);
+
+    if uploaded > 0 {
+        refresh += 1;
+    }
+    if let Some(error) = first_error {
+        set_error(
+            toast,
+            format!("Uploaded {uploaded} of {total} files. {error}"),
+        );
+    } else {
+        set_success(
+            toast,
+            if uploaded == 1 {
+                "Uploaded 1 file.".to_owned()
+            } else {
+                format!("Uploaded {uploaded} files.")
+            },
+        );
     }
 }
 

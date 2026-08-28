@@ -76,6 +76,19 @@ fn atomic_write_replaces_content_and_advances_the_version() {
 }
 
 #[test]
+fn binary_write_creates_an_uploaded_file() {
+    let directory = tempdir().unwrap();
+    let workspace = record(directory.path());
+    let path = RelativePath::try_from("image.bin").unwrap();
+    let content = [0_u8, 159, 146, 150];
+
+    block_on(HostWorkspaceFiles.write_binary(&workspace, &path, &content, 1024)).unwrap();
+    let uploaded = block_on(HostWorkspaceFiles.read_binary(&workspace, &path, 1024)).unwrap();
+
+    assert_eq!(uploaded.content, content);
+}
+
+#[test]
 fn rejected_write_preserves_the_existing_file() {
     let directory = tempdir().unwrap();
     let file = directory.path().join("notes.txt");

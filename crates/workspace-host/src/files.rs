@@ -201,6 +201,39 @@ impl HostWorkspaceFiles {
         }
     }
 
+    fn write_binary_file(
+        workspace: &WorkspaceRecord,
+        relative: &RelativePath,
+        content: &[u8],
+        max_bytes: u64,
+    ) -> WorkspaceResult<FileVersion> {
+        let size = u64::try_from(content.len()).map_err(|_| too_large(max_bytes))?;
+        require_size(size, max_bytes)?;
+        let scope = PathScope::for_workspace(workspace)?;
+        let path = scope.destination(relative)?;
+        let permissions = if path.exists() {
+            let metadata = path.metadata().map_err(map_io_error)?;
+            require_regular_file(&metadata)?;
+            Some(metadata.permissions())
+        } else {
+            None
+        };
+        let parent = path.parent().ok_or_else(WorkspaceError::internal)?;
+        let mut temporary = NamedTempFile::new_in(parent).map_err(map_io_error)?;
+        temporary.write_all(content).map_err(map_io_error)?;
+        temporary.as_file().sync_all().map_err(map_io_error)?;
+        if let Some(permissions) = permissions {
+            temporary
+                .as_file()
+                .set_permissions(permissions)
+                .map_err(map_io_error)?;
+        }
+        temporary
+            .persist(&path)
+            .map_err(|error| map_io_error(error.error))?;
+        version_from_metadata(&path.metadata().map_err(map_io_error)?)
+    }
+
     fn write_text_file(
         workspace: &WorkspaceRecord,
         relative: &RelativePath,
@@ -328,6 +361,16 @@ impl WorkspaceFiles for HostWorkspaceFiles {
         max_bytes: u64,
     ) -> WorkspaceResult<FileVersion> {
         Self::write_text_file(workspace, path, content, expected, max_bytes)
+    }
+
+    async fn write_binary(
+        &self,
+        workspace: &WorkspaceRecord,
+        path: &RelativePath,
+        content: &[u8],
+        max_bytes: u64,
+    ) -> WorkspaceResult<FileVersion> {
+        Self::write_binary_file(workspace, path, content, max_bytes)
     }
 }
 

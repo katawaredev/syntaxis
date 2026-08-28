@@ -79,4 +79,12 @@ pub trait WorkspaceFiles: Send + Sync {
         expected: Option<&FileVersion>,
         max_bytes: u64,
     ) -> WorkspaceResult<FileVersion>;
+
+    async fn write_binary(
+        &self,
+        workspace: &WorkspaceRecord,
+        path: &RelativePath,
+        content: &[u8],
+        max_bytes: u64,
+    ) -> WorkspaceResult<FileVersion>;
 }
