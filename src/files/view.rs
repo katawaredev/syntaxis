@@ -1132,9 +1132,7 @@ async fn upload_files(
             continue;
         }
         if file.size() > MAX_UPLOAD_BYTES {
-            first_error.get_or_insert_with(|| {
-                format!("{name} exceeds the 4 MiB upload limit.")
-            });
+            first_error.get_or_insert_with(|| format!("{name} exceeds the 4 MiB upload limit."));
             continue;
         }
         let path = if destination.is_empty() {
@@ -1149,24 +1147,21 @@ async fn upload_files(
                 continue;
             }
         };
-        let content = match file.read_bytes().await {
-            Ok(content) => content,
-            Err(_) => {
-                first_error.get_or_insert_with(|| format!("Could not read {name}."));
-                continue;
-            }
+        let Ok(content) = file.read_bytes().await else {
+            first_error.get_or_insert_with(|| format!("Could not read {name}."));
+            continue;
         };
         match workspace_client::write_binary(
             workspace.clone(),
             path,
-            content,
+            content.to_vec(),
             MAX_UPLOAD_BYTES,
         )
         .await
         {
             Ok(_) => uploaded += 1,
             Err(error) => {
-                first_error.get_or_insert_with(|| format!("Could not upload {name}: {error}"));
+                first_error.get_or_insert_with(|| upload_error_message(&name, &error));
             }
         }
     }
@@ -1189,6 +1184,14 @@ async fn upload_files(
                 format!("Uploaded {uploaded} files.")
             },
         );
+    }
+}
+
+fn upload_error_message(name: &str, error: &str) -> String {
+    if error.contains("LengthLimitError") || error.contains("HTTP 413") {
+        format!("Could not upload {name}: the server rejected the request as too large.")
+    } else {
+        format!("Could not upload {name}: {error}")
     }
 }
 

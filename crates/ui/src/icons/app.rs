@@ -5,11 +5,12 @@ use dioxus_icons::lucide::{
     ArrowDown, ArrowUp, Bell, Blocks, Bot, BrainCog, BrushCleaning, CaseSensitive,
     ChartNoAxesColumn, Check, ChevronDown, ChevronLeft, ChevronRight, Code, Command, Copy, CopyX,
     CornerDownRight, Ellipsis, EllipsisVertical, ExternalLink, Eye, FileDiff, FileInput, FileMinus,
-    FilePlus, FolderGit2, FolderOpen, FolderPlus, GitBranch, GitCommitHorizontal, GitFork, Hash,
-    Info, ListChevronsDownUp, ListChevronsUpDown, ListOrdered, LogOut, Menu, Mic, PanelLeftOpen,
-    Paperclip, Play, Plus, RefreshCw, Regex, Repeat1, Replace, ReplaceAll, RotateCcw, Save, FileUp,
-    ScanSearch, Search, Send, Settings, Share2, ShieldAlert, Sparkles, Square, SquarePen,
-    SquareTerminal, Star, TextCursorInput, TextWrap, Trash2, Volume2, WandSparkles, WholeWord, X,
+    FilePlus, FileUp, FolderGit2, FolderOpen, FolderPlus, GitBranch, GitCommitHorizontal, GitFork,
+    Hash, Info, ListChevronsDownUp, ListChevronsUpDown, ListOrdered, LogOut, Menu, Mic,
+    PanelLeftOpen, Paperclip, Play, Plus, RefreshCw, Regex, Repeat1, Replace, ReplaceAll,
+    RotateCcw, Save, ScanSearch, Search, Send, Settings, Share2, ShieldAlert, Sparkles, Square,
+    SquarePen, SquareTerminal, Star, TextCursorInput, TextWrap, Trash2, Volume2, WandSparkles,
+    WholeWord, X,
 };
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum AppIcon {

@@ -112,10 +112,10 @@ pub(super) fn suggested_destination(dialog: &FileActionDialog) -> String {
 }
 
 fn suggested_child_path(dialog: &FileActionDialog, name: &str) -> String {
-    dialog.destination_parent.as_deref().map_or_else(
-        || name.to_owned(),
-        |parent| format!("{parent}/{name}"),
-    )
+    dialog
+        .destination_parent
+        .as_deref()
+        .map_or_else(|| name.to_owned(), |parent| format!("{parent}/{name}"))
 }
 
 #[component]

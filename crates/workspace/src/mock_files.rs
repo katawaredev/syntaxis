@@ -255,8 +255,7 @@ impl WorkspaceFiles for MockWorkspaceFiles {
                 content: current,
                 revision,
             } => {
-                if expected
-                    .is_some_and(|expected| &binary_version(current, *revision) != expected)
+                if expected.is_some_and(|expected| &binary_version(current, *revision) != expected)
                 {
                     return Err(WorkspaceError::new(
                         ErrorCode::Conflict,
@@ -402,9 +401,9 @@ fn require_directory(
     }
     match nodes.get(&key(workspace, path)) {
         Some(MockNode::Directory) => Ok(()),
-        Some(MockNode::Text { .. } | MockNode::Binary { .. }) => Err(
-            WorkspaceError::invalid_path("The mock path is not a directory."),
-        ),
+        Some(MockNode::Text { .. } | MockNode::Binary { .. }) => Err(WorkspaceError::invalid_path(
+            "The mock path is not a directory.",
+        )),
         None => Err(not_found()),
     }
 }

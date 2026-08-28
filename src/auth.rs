@@ -31,6 +31,10 @@ const SESSION_LIFETIME: Duration = Duration::from_hours(720);
 const LOGIN_WINDOW: Duration = Duration::from_mins(5);
 const MAX_LOGIN_FAILURES: u8 = 5;
 const LOGIN_HTML: &str = include_str!("auth/login.html");
+// Binary server-function arguments use JSON, where each byte can occupy four
+// characters including its separator. Leave enough room for a 4 MiB upload and
+// the other request fields.
+const MAX_SERVER_FUNCTION_BODY_BYTES: usize = 20 * 1024 * 1024;
 
 #[derive(Clone)]
 struct AuthState {
@@ -83,7 +87,10 @@ pub(crate) fn serve() -> ! {
                     "/auth/logout",
                     post(move |headers| logout(logout_state.clone(), headers)),
                 )
-                .merge(dioxus::server::router(crate::app::App))
+                .merge(
+                    dioxus::server::router(crate::app::App)
+                        .layer(DefaultBodyLimit::max(MAX_SERVER_FUNCTION_BODY_BYTES)),
+                )
                 .layer(auth_layer)
                 .layer(preview_layer);
             Ok(router)
