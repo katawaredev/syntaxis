@@ -234,7 +234,10 @@ pub(super) fn BranchWorktreeMenu(
                                             "aria-expanded": options_expanded,
                                             "aria-label": if options_expanded { "Hide actions for branch {row.branch.name}" } else { "Show actions for branch {row.branch.name}" },
                                             title: if options_expanded { "Hide branch actions" } else { "Show branch actions" },
-                                            onpointerdown: move |event: PointerEvent| event.stop_propagation(),
+                                            onpointerdown: move |event: PointerEvent| {
+                                                event.prevent_default();
+                                                event.stop_propagation();
+                                            },
                                             onclick: {
                                                 let option_key = option_key.clone();
                                                 move |event: MouseEvent| {
