@@ -748,21 +748,6 @@ fn WorkspaceGit(slug: String) -> Element {
                         }
                         if !rebase_active {
                             div { class: "git-toolbar flex shrink-0 items-center gap-1",
-                                if pending() {
-                                    span {
-                                        class: "flex items-center gap-1.5 px-1 text-[10px] text-muted-foreground @max-[640px]:hidden",
-                                        role: "status",
-                                        span {
-                                            class: "size-3 animate-spin rounded-full border-2 border-border border-t-primary",
-                                            aria_hidden: "true",
-                                        }
-                                        if refreshing() {
-                                            "Refreshing…"
-                                        } else {
-                                            "Working…"
-                                        }
-                                    }
-                                }
                                 if repository.conflict_count() > 0 {
                                     button {
                                         class: "h-7 rounded-md bg-destructive/10 px-2 text-[11px] text-destructive hover:bg-destructive/20 @max-[520px]:hidden",
