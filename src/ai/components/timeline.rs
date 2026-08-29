@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 use syntaxis_agent::{AgentStatus, ChatItem, ImageAttachment, ItemStatus};
 use syntaxis_ui::prelude::{AppIcon, Icon, IconButton, Modal};
 
-use crate::files::preview::render_markdown;
+use crate::files::preview::{render_markdown, render_markdown_preserving_newlines};
 
 const INITIAL_RENDER_ITEMS: usize = 150;
 const RENDER_PAGE_ITEMS: usize = 100;
@@ -142,7 +142,7 @@ fn AgentTimelineItem(
             images,
             ..
         } => {
-            let rendered = render_markdown(&text);
+            let rendered = render_markdown_preserving_newlines(&text);
             let copy_text = text.clone();
             let edit_text = text.clone();
             let edit_images = images.clone();
