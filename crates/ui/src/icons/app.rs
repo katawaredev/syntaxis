@@ -15,6 +15,7 @@ use dioxus_icons::lucide::{
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum AppIcon {
     Bell,
+    Branch,
     BrainCog,
     Check,
     ChevronDown,
@@ -95,6 +96,11 @@ pub fn Icon(icon: AppIcon, #[props(default = 16)] size: u32) -> Element {
         AppIcon::Bell => {
             rsx! {
                 Bell { size }
+            }
+        }
+        AppIcon::Branch => {
+            rsx! {
+                GitFork { size }
             }
         }
         AppIcon::BrainCog => {
