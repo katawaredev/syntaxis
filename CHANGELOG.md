@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.12.0](https://github.com/katawaredev/syntaxis/compare/v0.11.2...v0.12.0) (2026-08-31)
+
+
+### Features
+
+* **editor:** upload files ([905ff56](https://github.com/katawaredev/syntaxis/commit/905ff5607421a99794ef84ef79c2b814ce8ec88d))
+
+
+### Bug Fixes
+
+* **ai:** change branch history icon ([a8b2b88](https://github.com/katawaredev/syntaxis/commit/a8b2b88b16dad1d16a20f0e71582af7bcbae107c))
+* **ai:** render soft line breaks ([72de1d7](https://github.com/katawaredev/syntaxis/commit/72de1d72b94b36bdebb9e3991450550cb3c0318a))
+* **editor:** folder aware new file/folder ([127ce53](https://github.com/katawaredev/syntaxis/commit/127ce5328c05e10d7e9c70f8210e7a0381a38151))
+* **editor:** upload binary files limit ([1ba1f22](https://github.com/katawaredev/syntaxis/commit/1ba1f2262e4b2834f632fbb65f706136848de8dd))
+* **git:** handle submenus ([73bdd09](https://github.com/katawaredev/syntaxis/commit/73bdd09faa5fd8ee8092baebe1083c2c02a38900))
+* **git:** remove redundant working indicator on desktop ([8dc113d](https://github.com/katawaredev/syntaxis/commit/8dc113d3383c12cdaddcd9a8a8f5f2fe1bb96e67))
+
 ## [0.11.2](https://github.com/katawaredev/syntaxis/compare/v0.11.1...v0.11.2) (2026-08-27)
 
 
