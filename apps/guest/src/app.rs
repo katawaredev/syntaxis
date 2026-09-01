@@ -451,20 +451,20 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
     let directory_workspace = workspace.clone();
     let entries: Resource<Result<(RelativePath, Vec<FileEntry>), WorkspaceError>> =
         use_resource(move || {
-        let path = current_directory();
-        let _revision = revision();
-        let ready = startup_complete();
-        let workspace = directory_workspace.clone();
-        async move {
-            let mut entries = if ready {
-                files.list(&workspace, &path).await?
-            } else {
-                Vec::new()
-            };
-            entries.retain(|entry| entry.path.as_str() != GUEST_HISTORY_PATH);
-            Ok((path, entries))
-        }
-    });
+            let path = current_directory();
+            let _revision = revision();
+            let ready = startup_complete();
+            let workspace = directory_workspace.clone();
+            async move {
+                let mut entries = if ready {
+                    files.list(&workspace, &path).await?
+                } else {
+                    Vec::new()
+                };
+                entries.retain(|entry| entry.path.as_str() != GUEST_HISTORY_PATH);
+                Ok((path, entries))
+            }
+        });
     use_effect(move || {
         let Some(Ok((path, items))) = entries() else {
             return;
@@ -490,9 +490,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                 hits.retain(|hit| {
                     hit.entry.path.as_str() != GUEST_HISTORY_PATH
                         && (include_generated
-                            || !path_contains_bulky_generated_directory(
-                                hit.entry.path.as_str(),
-                            ))
+                            || !path_contains_bulky_generated_directory(hit.entry.path.as_str()))
                 });
                 Ok(hits)
             }
@@ -572,9 +570,10 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
         .iter()
         .map(|name| (*name).to_owned())
         .collect::<BTreeSet<_>>();
-    let explorer_nodes = explorer_tree
-        .read()
-        .flattened("", None, &generated_paths, show_generated());
+    let explorer_nodes =
+        explorer_tree
+            .read()
+            .flattened("", None, &generated_paths, show_generated());
     let section_title = match active_view() {
         GuestView::Editor => "Files",
         GuestView::Terminal => "Terminal",
@@ -653,8 +652,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
             }
 
             div { class: "min-h-0 flex-1 overflow-hidden",
-                section {
-                    class: if active_view() == GuestView::Editor { "grid size-full min-h-0 min-w-0 grid-cols-[248px_minmax(0,1fr)] overflow-hidden max-md:block" } else { "flex size-full min-h-0 min-w-0 flex-col overflow-hidden bg-background" },
+                section { class: if active_view() == GuestView::Editor { "grid size-full min-h-0 min-w-0 grid-cols-[248px_minmax(0,1fr)] overflow-hidden max-md:block" } else { "flex size-full min-h-0 min-w-0 flex-col overflow-hidden bg-background" },
                     if active_view() == GuestView::Editor {
                         aside { class: if mobile_explorer_open() { "min-h-0 min-w-0 border-r border-border bg-sidebar max-md:fixed max-md:inset-x-0 max-md:top-[calc(3rem+env(safe-area-inset-top))] max-md:bottom-[calc(3.875rem+env(safe-area-inset-bottom))] max-md:z-30" } else { "min-h-0 min-w-0 border-r border-border bg-sidebar max-md:hidden" },
                             div { class: "grid h-12 min-h-12 grid-cols-2 items-center gap-1 border-b border-border p-1.25",
@@ -761,11 +759,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                             }
                                         }
                                         IconButton {
-                                            label: if show_generated() {
-                                                "Hide generated folders"
-                                            } else {
-                                                "Show generated folders"
-                                            },
+                                            label: if show_generated() { "Hide generated folders" } else { "Show generated folders" },
                                             icon: AppIcon::Eye,
                                             size: ControlSize::Small,
                                             pressed: show_generated(),
@@ -1041,13 +1035,8 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                             notice.set(None);
                                                             let workspace = workspace.clone();
                                                             spawn(async move {
-                                                                populate_tree_to_file(
-                                                                    &files,
-                                                                    &workspace,
-                                                                    &entry_path,
-                                                                    explorer_tree,
-                                                                )
-                                                                .await;
+                                                                populate_tree_to_file(&files, &workspace, &entry_path, explorer_tree)
+                                                                    .await;
                                                                 match files.read_text(&workspace, &entry_path, MAX_TEXT_BYTES).await {
                                                                     Ok(text) => {
                                                                         remember_tab(open_tabs, entry_path.as_str());
@@ -1203,7 +1192,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                             });
                                                         }
                                                     },
-                                                    confirm_delete: pending_delete().as_ref() == Some(&entry.path),
+                                                    confirm_delete: pending_delete().as_ref() == Some(&node.entry.path),
                                                     on_delete: {
                                                         let workspace = workspace.clone();
                                                         let active_path = active_path.clone();
@@ -2961,7 +2950,11 @@ fn FileRow(
                 },
                 span { class: "w-2.25 shrink-0 text-[9px] text-muted-foreground",
                     if is_directory {
-                        if node.expanded { "▾" } else { "▸" }
+                        if node.expanded {
+                            "▾"
+                        } else {
+                            "▸"
+                        }
                     }
                 }
                 FileIcon {
