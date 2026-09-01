@@ -65,7 +65,7 @@ pub(super) fn GuestAi(active_path: Option<String>, active_contents: Option<Strin
                     "New chat"
                 }
             }
-            details { class: "guest-ai-settings",
+            details { class: "guest-ai-settings", open: true,
                 summary { "Provider settings" }
                 label {
                     span { "OpenAI-compatible endpoint" }

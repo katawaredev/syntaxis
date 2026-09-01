@@ -4,12 +4,13 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use syntaxis_workspace::{
     EntryKind, ErrorCode, RelativePath, WorkspaceError, WorkspaceFiles, WorkspaceRecord,
-    WorkspaceResult,
+    WorkspaceResult, is_bulky_generated_directory_name,
 };
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 use wasm_bindgen_futures::JsFuture;
 const MAX_WORKSPACE_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_FILE_BYTES: u64 = 8 * 1024 * 1024;
+const GUEST_HISTORY_PATH: &str = ".syntaxis-guest-history.json";
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(
@@ -65,6 +66,8 @@ pub struct BrowserCommandResult {
 struct WorkspaceSnapshot {
     directories: Vec<String>,
     files: Vec<SnapshotFile>,
+    #[serde(skip)]
+    protected_paths: Vec<String>,
 }
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct SnapshotFile {
@@ -108,6 +111,12 @@ where
     let result = serde_wasm_bindgen::from_value::<BridgeResult>(value)
         .map_err(|error| format!("Could not read the browser shell result: {error}"))?;
     validate_snapshot(&result.snapshot).map_err(error_message)?;
+    if protected_paths_modified(&before, &result.snapshot) {
+        return Err(
+            "Generated or internal workspace paths are read-only in the browser command console."
+                .to_owned(),
+        );
+    }
     let changes = snapshot_changes(&before, &result.snapshot);
     let workspace_changed = !changes.is_empty();
     if workspace_changed {
@@ -202,6 +211,27 @@ enum SnapshotEntryKind {
     Directory,
     File,
 }
+fn protected_paths_modified(before: &WorkspaceSnapshot, after: &WorkspaceSnapshot) -> bool {
+    before.protected_paths.iter().any(|protected| {
+        let root_missing = before.directories.iter().any(|path| path == protected)
+            && !after.directories.iter().any(|path| path == protected);
+        let before_contains_root = before.directories.iter().any(|path| path == protected)
+            || before.files.iter().any(|file| file.path == *protected);
+        let after_contains_root = after.directories.iter().any(|path| path == protected)
+            || after.files.iter().any(|file| file.path == *protected);
+        let unexpected_root = !before_contains_root && after_contains_root;
+        let descendant_added = after
+            .directories
+            .iter()
+            .chain(after.files.iter().map(|file| &file.path))
+            .any(|path| {
+                path.strip_prefix(protected)
+                    .is_some_and(|suffix| suffix.starts_with('/'))
+            });
+        root_missing || unexpected_root || descendant_added
+    })
+}
+
 fn snapshot_changes(before: &WorkspaceSnapshot, after: &WorkspaceSnapshot) -> Vec<WorkspaceChange> {
     let before_kinds = snapshot_entry_kinds(before);
     let after_kinds = snapshot_entry_kinds(after);
@@ -214,6 +244,7 @@ fn snapshot_changes(before: &WorkspaceSnapshot, after: &WorkspaceSnapshot) -> Ve
     paths.dedup();
     paths
         .into_iter()
+        .filter(|path| !is_protected_path(path, &before.protected_paths))
         .filter_map(
             |path| match (before_kinds.get(path), after_kinds.get(path)) {
                 (None, Some(_)) => Some(WorkspaceChange {
@@ -279,9 +310,21 @@ where
             match entry.kind {
                 EntryKind::Directory => {
                     snapshot.directories.push(entry.path.as_str().to_owned());
-                    pending.push(entry.path);
+                    if excluded_directory(&entry.path) {
+                        snapshot
+                            .protected_paths
+                            .push(entry.path.as_str().to_owned());
+                    } else {
+                        pending.push(entry.path);
+                    }
                 }
                 EntryKind::File => {
+                    if entry.path.as_str() == GUEST_HISTORY_PATH {
+                        snapshot
+                            .protected_paths
+                            .push(entry.path.as_str().to_owned());
+                        continue;
+                    }
                     total_bytes = total_bytes.saturating_add(entry.size);
                     if total_bytes > MAX_WORKSPACE_BYTES {
                         return Err(syntaxis_workspace::WorkspaceError::new(
@@ -305,7 +348,24 @@ where
     snapshot
         .files
         .sort_by(|left, right| left.path.cmp(&right.path));
+    snapshot.protected_paths.sort();
     Ok(snapshot)
+}
+
+fn excluded_directory(path: &RelativePath) -> bool {
+    path.as_str()
+        .rsplit('/')
+        .next()
+        .is_some_and(|name| name == ".git" || is_bulky_generated_directory_name(name))
+}
+
+fn is_protected_path(path: &str, protected_paths: &[String]) -> bool {
+    protected_paths.iter().any(|protected| {
+        path == protected
+            || path
+                .strip_prefix(protected)
+                .is_some_and(|suffix| suffix.starts_with('/'))
+    })
 }
 async fn apply_snapshot<F>(
     files: &F,
@@ -329,6 +389,7 @@ where
     for path in before_files
         .keys()
         .filter(|path| !after_files.contains(**path))
+        .filter(|path| !is_protected_path(path, &before.protected_paths))
     {
         files.delete(workspace, &checked_path(path)?).await?;
     }
@@ -345,6 +406,7 @@ where
     let mut removed_directories = before_directories
         .difference(&after_directories)
         .copied()
+        .filter(|path| !is_protected_path(path, &before.protected_paths))
         .collect::<Vec<_>>();
     removed_directories.sort_by_key(|path| std::cmp::Reverse(path.matches('/').count()));
     for path in removed_directories {
@@ -353,6 +415,7 @@ where
     let mut added_directories = after_directories
         .difference(&before_directories)
         .copied()
+        .filter(|path| !is_protected_path(path, &before.protected_paths))
         .collect::<Vec<_>>();
     added_directories.sort_by_key(|path| path.matches('/').count());
     for path in added_directories {
@@ -361,6 +424,9 @@ where
             .await?;
     }
     for file in &after.files {
+        if is_protected_path(&file.path, &before.protected_paths) {
+            continue;
+        }
         if before_files
             .get(file.path.as_str())
             .is_some_and(|content| *content == file.content)

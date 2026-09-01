@@ -38,7 +38,8 @@ the same script in CI and deploy the resulting static directory.
 
 ## Current scope
 
-- Browse OPFS directories.
+- Browse a lazy, expandable file tree backed by the shared editor tree model.
+- Hide bulky generated folders by default with an explicit explorer toggle.
 - Open a real local directory in supporting browsers.
 - Remember selected directory handles in IndexedDB and restore access when the
   browser permits it.
@@ -56,10 +57,12 @@ the same script in CI and deploy the resulting static directory.
 - Use optional BYOK AI chat through a user-configured OpenAI-compatible HTTPS endpoint.
 - Access the file explorer on desktop and mobile layouts.
 
-The browser terminal snapshots at most 32 MiB total and 8 MiB per file. It is a
-command console rather than a PTY: shell variables and working-directory state
-reset between commands, interactive processes are unavailable, and network
-access is disabled.
+The browser terminal snapshots at most 32 MiB total and 8 MiB per file. Common
+generated directories (`node_modules`, `target`, `dist`, `.git`, and similar)
+remain visible but their contents are protected and omitted from the bounded
+snapshot. It is a command console rather than a PTY: shell variables and
+working-directory state reset between commands, interactive processes are
+unavailable, and network access is disabled.
 
 Browser source history intentionally does not claim `.git` compatibility:
 branches, remotes, signing, rebase, and worktrees require the native/server Git

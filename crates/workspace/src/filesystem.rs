@@ -4,6 +4,25 @@ use serde::{Deserialize, Serialize};
 
 use crate::{WorkspaceError, WorkspaceResult};
 
+/// Common dependency, build, and report directories that browser-only tools
+/// omit by default to stay responsive on large workspaces.
+pub const BULKY_GENERATED_DIRECTORY_NAMES: &[&str] = &[
+    ".next",
+    "build",
+    "coverage",
+    "dist",
+    "node_modules",
+    "target",
+    "test-results",
+];
+
+/// Returns whether a single directory name is a conventional bulky artifact.
+pub fn is_bulky_generated_directory_name(name: &str) -> bool {
+    BULKY_GENERATED_DIRECTORY_NAMES
+        .iter()
+        .any(|candidate| *candidate == name)
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct RelativePath(String);
@@ -105,7 +124,7 @@ pub struct BinaryFile {
 
 #[cfg(test)]
 mod tests {
-    use super::RelativePath;
+    use super::{RelativePath, is_bulky_generated_directory_name};
 
     #[test]
     fn relative_paths_reject_escape_attempts() {
@@ -113,6 +132,13 @@ mod tests {
         RelativePath::try_from("folder/../../secret")
             .expect_err("nested parent traversal must be rejected");
         RelativePath::try_from("/etc/passwd").expect_err("absolute paths must be rejected");
+    }
+
+    #[test]
+    fn bulky_generated_directory_names_cover_common_browser_costs() {
+        assert!(is_bulky_generated_directory_name("node_modules"));
+        assert!(is_bulky_generated_directory_name("target"));
+        assert!(!is_bulky_generated_directory_name("src"));
     }
 
     #[test]

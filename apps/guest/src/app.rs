@@ -1,7 +1,11 @@
 mod ai;
 mod git;
 
-use std::{collections::HashSet, fmt, rc::Rc};
+use std::{
+    collections::{BTreeSet, HashSet},
+    fmt,
+    rc::Rc,
+};
 
 use self::{
     ai::GuestAi,
@@ -16,7 +20,9 @@ use dioxus::html::{ScrollBehavior, geometry::PixelsVector2D};
 use dioxus::prelude::*;
 use dioxus_code_editor::{CODE_EDITOR_CSS, CodeEditor, EditorEdit};
 use serde::{Deserialize, Serialize};
-use syntaxis_editor::{EditorBuffer, EditorConfig, ExternalChange, language_slug_for_path};
+use syntaxis_editor::{
+    EditorBuffer, EditorConfig, ExplorerNode, ExplorerTree, ExternalChange, language_slug_for_path,
+};
 use syntaxis_terminal_browser::{
     WorkspaceChange, WorkspaceChangeKind, cancel as cancel_browser_command,
     execute as execute_browser_command, wait_for_bridge,
@@ -26,9 +32,10 @@ use syntaxis_ui::prelude::{
     PanelTabList, PanelTabWidth, StatusBadge, Tone,
 };
 use syntaxis_workspace::{
-    EntryKind, ErrorCode, FileEntry, RelativePath, WorkspaceAvailability, WorkspaceError,
-    WorkspaceFiles, WorkspaceIcon, WorkspaceIconSymbol, WorkspaceId, WorkspaceProfile,
-    WorkspaceRecord, WorkspaceSection,
+    BULKY_GENERATED_DIRECTORY_NAMES, EntryKind, ErrorCode, FileEntry, RelativePath,
+    WorkspaceAvailability, WorkspaceError, WorkspaceFiles, WorkspaceIcon, WorkspaceIconSymbol,
+    WorkspaceId, WorkspaceProfile, WorkspaceRecord, WorkspaceSection,
+    is_bulky_generated_directory_name,
 };
 use syntaxis_workspace_browser::{
     BrowserSearchHit, OpfsWorkspaceFiles, SavedDirectory, local_directory_picker_supported,
@@ -361,12 +368,11 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
     let requested_path = initial_path
         .and_then(|path| RelativePath::try_from(path).ok())
         .filter(|path| !path.is_root());
-    let initial_directory = requested_path
-        .as_ref()
-        .map(parent_path)
-        .unwrap_or_else(RelativePath::root);
-    let mut current_directory = use_signal(move || initial_directory.clone());
+    let mut current_directory = use_signal(RelativePath::root);
     let mut explorer_search_open = use_signal(|| false);
+    let mut explorer_tree = use_signal(ExplorerTree::default);
+    let mut selected_tree_path = use_signal(|| None::<String>);
+    let mut show_generated = use_signal(|| false);
     let mut mobile_explorer_open = use_signal(|| false);
     let mut workspace_menu_open = use_signal(|| false);
     let mut new_entry_open = use_signal(|| false);
@@ -443,7 +449,8 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
     });
 
     let directory_workspace = workspace.clone();
-    let entries: Resource<Result<Vec<FileEntry>, WorkspaceError>> = use_resource(move || {
+    let entries: Resource<Result<(RelativePath, Vec<FileEntry>), WorkspaceError>> =
+        use_resource(move || {
         let path = current_directory();
         let _revision = revision();
         let ready = startup_complete();
@@ -455,14 +462,23 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                 Vec::new()
             };
             entries.retain(|entry| entry.path.as_str() != GUEST_HISTORY_PATH);
-            Ok(entries)
+            Ok((path, entries))
         }
+    });
+    use_effect(move || {
+        let Some(Ok((path, items))) = entries() else {
+            return;
+        };
+        explorer_tree
+            .write()
+            .replace_directory(path.as_str(), items);
     });
     let search_workspace_record = workspace.clone();
     let search_results: Resource<Result<Vec<BrowserSearchHit>, String>> = use_resource(move || {
         let query = search_query();
         let ready = startup_complete();
         let _revision = revision();
+        let include_generated = show_generated();
         let workspace = search_workspace_record.clone();
         async move {
             if !ready || query.trim().is_empty() {
@@ -471,7 +487,13 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                 let mut hits = search_workspace(&files, &workspace, &query)
                     .await
                     .map_err(|error| error.message)?;
-                hits.retain(|hit| hit.entry.path.as_str() != GUEST_HISTORY_PATH);
+                hits.retain(|hit| {
+                    hit.entry.path.as_str() != GUEST_HISTORY_PATH
+                        && (include_generated
+                            || !path_contains_bulky_generated_directory(
+                                hit.entry.path.as_str(),
+                            ))
+                });
                 Ok(hits)
             }
         }
@@ -492,6 +514,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
         notice.set(None);
         let workspace = initial_file_workspace.clone();
         spawn(async move {
+            populate_tree_to_file(&files, &workspace, &path, explorer_tree).await;
             match files.read_text(&workspace, &path, MAX_TEXT_BYTES).await {
                 Ok(text) => {
                     remember_tab(open_tabs, path.as_str());
@@ -545,9 +568,24 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
     let has_html_preview = active_buffer
         .as_ref()
         .is_some_and(|open| is_html_path(&open.path));
+    let generated_paths = BULKY_GENERATED_DIRECTORY_NAMES
+        .iter()
+        .map(|name| (*name).to_owned())
+        .collect::<BTreeSet<_>>();
+    let explorer_nodes = explorer_tree
+        .read()
+        .flattened("", None, &generated_paths, show_generated());
+    let section_title = match active_view() {
+        GuestView::Editor => "Files",
+        GuestView::Terminal => "Terminal",
+        GuestView::Git => "Source control",
+        GuestView::Preview => "Preview",
+        GuestView::Ai => "AI",
+    };
+    let page_title = format!("{} · {section_title}", workspace.name);
     let save_workspace = workspace.clone();
     rsx! {
-        document::Title { "Syntaxis Guest" }
+        document::Title { "{page_title}" }
         document::Script { src: GUEST_ARCHIVE_SCRIPT }
         document::Script { src: GUEST_TERMINAL_SCRIPT }
 
@@ -570,13 +608,15 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                     },
                     "←"
                 }
-                button {
-                    class: "hidden size-8.5 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground max-md:inline-flex",
-                    r#type: "button",
-                    title: "Open file explorer",
-                    aria_label: "Open file explorer",
-                    onclick: move |_| mobile_explorer_open.set(true),
-                    Icon { icon: AppIcon::Folder, size: 17 }
+                if active_view() == GuestView::Editor {
+                    button {
+                        class: "hidden size-8.5 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground max-md:inline-flex",
+                        r#type: "button",
+                        title: "Open file explorer",
+                        aria_label: "Open file explorer",
+                        onclick: move |_| mobile_explorer_open.set(true),
+                        Icon { icon: AppIcon::Folder, size: 17 }
+                    }
                 }
                 GuestProjectIcon { name: workspace.name.clone() }
                 div { class: "flex min-w-0 items-center gap-2",
@@ -613,9 +653,10 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
             }
 
             div { class: "min-h-0 flex-1 overflow-hidden",
-                section { class: if active_view() == GuestView::Terminal { "flex size-full min-h-0 min-w-0 flex-col overflow-hidden bg-background" } else { "grid size-full min-h-0 min-w-0 grid-cols-[248px_minmax(0,1fr)] overflow-hidden max-md:block" },
-                    if active_view() != GuestView::Terminal {
-                        aside { class: if mobile_explorer_open() { "min-h-0 min-w-0 border-r border-border bg-background max-md:fixed max-md:inset-x-0 max-md:top-[calc(3rem+env(safe-area-inset-top))] max-md:bottom-[calc(3.875rem+env(safe-area-inset-bottom))] max-md:z-30" } else { "min-h-0 min-w-0 border-r border-border bg-background max-md:hidden" },
+                section {
+                    class: if active_view() == GuestView::Editor { "grid size-full min-h-0 min-w-0 grid-cols-[248px_minmax(0,1fr)] overflow-hidden max-md:block" } else { "flex size-full min-h-0 min-w-0 flex-col overflow-hidden bg-background" },
+                    if active_view() == GuestView::Editor {
+                        aside { class: if mobile_explorer_open() { "min-h-0 min-w-0 border-r border-border bg-sidebar max-md:fixed max-md:inset-x-0 max-md:top-[calc(3rem+env(safe-area-inset-top))] max-md:bottom-[calc(3.875rem+env(safe-area-inset-bottom))] max-md:z-30" } else { "min-h-0 min-w-0 border-r border-border bg-sidebar max-md:hidden" },
                             div { class: "grid h-12 min-h-12 grid-cols-2 items-center gap-1 border-b border-border p-1.25",
                                 button {
                                     class: if !explorer_search_open() { "guest-explorer-tab guest-explorer-tab-active" } else { "guest-explorer-tab" },
@@ -697,7 +738,11 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                         icon: AppIcon::Refresh,
                                         size: ControlSize::Small,
                                         disabled: busy(),
-                                        onclick: move |_| revision += 1,
+                                        onclick: move |_| {
+                                            explorer_tree.set(ExplorerTree::default());
+                                            current_directory.set(RelativePath::root());
+                                            revision += 1;
+                                        },
                                     }
                                     IconButton {
                                         label: "Workspace actions",
@@ -716,6 +761,17 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                             }
                                         }
                                         IconButton {
+                                            label: if show_generated() {
+                                                "Hide generated folders"
+                                            } else {
+                                                "Show generated folders"
+                                            },
+                                            icon: AppIcon::Eye,
+                                            size: ControlSize::Small,
+                                            pressed: show_generated(),
+                                            onclick: move |_| show_generated.toggle(),
+                                        }
+                                        IconButton {
                                             label: "Open local folder",
                                             icon: AppIcon::Folder,
                                             size: ControlSize::Small,
@@ -726,6 +782,8 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                         Ok(selected) => {
                                                             storage_location.set(StorageLocation::Local(selected.name));
                                                             saved_directory_name.set(None);
+                                                            explorer_tree.set(ExplorerTree::default());
+                                                            current_directory.set(RelativePath::root());
                                                             revision += 1;
                                                             if let Some(warning) = selected.persistence_warning {
                                                                 notice.set(Some(Notice::error(warning)));
@@ -753,6 +811,8 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                             Ok(SavedDirectory::Active(name)) => {
                                                                 saved_directory_name.set(None);
                                                                 storage_location.set(StorageLocation::Local(name));
+                                                                explorer_tree.set(ExplorerTree::default());
+                                                                current_directory.set(RelativePath::root());
                                                                 revision += 1;
                                                                 notice.set(Some(Notice::success("Local folder reconnected.")));
                                                             }
@@ -783,6 +843,8 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                 onclick: move |_| {
                                                     set_private_workspace();
                                                     storage_location.set(StorageLocation::Private);
+                                                    explorer_tree.set(ExplorerTree::default());
+                                                    current_directory.set(RelativePath::root());
                                                     revision += 1;
                                                     notice.set(Some(Notice::success("Using private browser storage.")));
                                                 },
@@ -935,20 +997,12 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                 }
                             }
 
-                            div { class: "touch-scroll-region min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-1.25 pt-1 guest-file-list",
+                            div {
+                                class: "touch-scroll-region min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-1.25 pt-1 guest-file-list",
+                                role: if explorer_search_open() { "list" } else { "tree" },
+                                "aria-label": if explorer_search_open() { "Workspace search results" } else { "Workspace files" },
                                 if explorer_search_open() && search_query().trim().is_empty() {
                                     p { class: "guest-muted", "Search files by name or content." }
-                                } else if !explorer_search_open() && !current_directory().is_root() {
-                                    button {
-                                        class: "guest-file-row guest-parent-row",
-                                        onclick: move |_| {
-                                            current_directory.set(parent_path(&current_directory()));
-                                            buffer.set(None);
-                                            binary_preview.set(None);
-                                        },
-                                        span { class: "guest-file-icon", "↰" }
-                                        span { "Parent folder" }
-                                    }
                                 }
                                 if explorer_search_open() && !search_query().trim().is_empty() {
                                     match search_results() {
@@ -973,11 +1027,12 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                             search_query.set(String::new());
                                                             if entry.kind == EntryKind::Directory {
                                                                 active_view.set(GuestView::Editor);
+                                                                expand_tree_path(explorer_tree, entry.path.as_str());
                                                                 current_directory.set(entry.path);
-                                                                buffer.set(None);
-                                                                binary_preview.set(None);
+                                                                explorer_search_open.set(false);
                                                                 return;
                                                             }
+                                                            expand_tree_path(explorer_tree, entry.path.as_str());
                                                             let entry_path = entry.path.clone();
                                                             active_view.set(GuestView::Editor);
                                                             buffer.set(None);
@@ -986,6 +1041,13 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                             notice.set(None);
                                                             let workspace = workspace.clone();
                                                             spawn(async move {
+                                                                populate_tree_to_file(
+                                                                    &files,
+                                                                    &workspace,
+                                                                    &entry_path,
+                                                                    explorer_tree,
+                                                                )
+                                                                .await;
                                                                 match files.read_text(&workspace, &entry_path, MAX_TEXT_BYTES).await {
                                                                     Ok(text) => {
                                                                         remember_tab(open_tabs, entry_path.as_str());
@@ -1043,23 +1105,27 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                         Some(Err(error)) => rsx! {
                                             p { class: "guest-error", "{error}" }
                                         },
-                                        Some(Ok(items)) if items.is_empty() => rsx! {
-                                            p { class: "guest-muted", "This folder is empty." }
+                                        Some(Ok(_)) if explorer_nodes.is_empty() => rsx! {
+                                            p { class: "guest-muted", "This workspace is empty." }
                                         },
-                                        Some(Ok(items)) => rsx! {
-                                            for entry in items {
+                                        Some(Ok(_)) => rsx! {
+                                            for node in explorer_nodes.clone() {
                                                 FileRow {
-                                                    key: "{entry.path.as_str()}",
-                                                    active: active_path.as_deref() == Some(entry.path.as_str()),
-                                                    entry: entry.clone(),
+                                                    key: "{node.entry.path.as_str()}",
+                                                    active: active_path.as_deref() == Some(node.entry.path.as_str())
+                                                        || selected_tree_path().as_deref()
+                                                            == Some(node.entry.path.as_str()),
+                                                    node: node.clone(),
                                                     on_open: {
                                                         let workspace = workspace.clone();
                                                         move |entry: FileEntry| {
+                                                            selected_tree_path.set(Some(entry.path.as_str().to_owned()));
                                                             if entry.kind == EntryKind::Directory {
-                                                                active_view.set(GuestView::Editor);
-                                                                current_directory.set(entry.path);
-                                                                buffer.set(None);
-                                                                binary_preview.set(None);
+                                                                let path = entry.path.clone();
+                                                                let expanded = explorer_tree.write().toggle(path.as_str());
+                                                                if expanded {
+                                                                    current_directory.set(path);
+                                                                }
                                                                 return;
                                                             }
                                                             let entry_path = entry.path.clone();
@@ -1158,6 +1224,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                             }
                                                             let workspace = workspace.clone();
                                                             let deleting_active = active_path.as_deref() == Some(entry.path.as_str());
+                                                            let refresh_directory = parent_path(&entry.path);
                                                             busy.set(true);
                                                             notice.set(None);
                                                             spawn(async move {
@@ -1178,6 +1245,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                                                 !path_is_within(&open.path, entry.path.as_str())
                                                                             });
                                                                         pending_delete.set(None);
+                                                                        current_directory.set(refresh_directory);
                                                                         revision += 1;
                                                                         notice.set(Some(Notice::success("Deleted from this device.")));
                                                                     }
@@ -1381,8 +1449,8 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                     }
 
                     section { class: "flex min-h-0 min-w-0 flex-col overflow-hidden max-md:h-full guest-editor-panel",
-                        if active_view() != GuestView::Terminal {
-                            if !open_tabs().is_empty() {
+                        if matches!(active_view(), GuestView::Editor | GuestView::Preview) {
+                            if active_view() == GuestView::Editor && !open_tabs().is_empty() {
                                 nav {
                                     class: "guest-tab-strip",
                                     "aria-label": "Open files",
@@ -2125,7 +2193,11 @@ fn GuestTerminal(
                     }
                 }
             }
-            div { class: "guest-terminal-status", "Browser command console · local just-bash" }
+            div {
+                class: "guest-terminal-status",
+                title: "Generated directories such as node_modules, target, dist, and .git are visible but their contents are excluded from the bounded shell snapshot.",
+                "Browser command console · local just-bash · generated folders protected"
+            }
         }
     }
 }
@@ -2861,30 +2933,42 @@ fn remap_path(path: &str, source: &RelativePath, destination: &RelativePath) -> 
 
 #[component]
 fn FileRow(
-    entry: FileEntry,
+    node: ExplorerNode,
     active: bool,
     confirm_delete: bool,
     on_open: EventHandler<FileEntry>,
     on_delete: EventHandler<FileEntry>,
     on_operation: EventHandler<(FileEntry, FileOperationKind)>,
 ) -> Element {
+    let entry = node.entry;
     let label = entry.name.clone();
     let kind = entry.kind;
+    let is_directory = kind == EntryKind::Directory;
+    let padding = 6 + node.depth * 14;
     rsx! {
-        div { class: if active { "guest-file-row guest-file-row-active" } else { "guest-file-row" },
+        div {
+            class: if active { "guest-file-row guest-file-row-active" } else { "guest-file-row" },
+            role: "treeitem",
+            "aria-selected": active,
+            "aria-expanded": is_directory.then_some(node.expanded),
             button {
-                class: "flex h-full min-h-7.25 min-w-0 flex-1 items-center gap-1.5 rounded-sm bg-transparent px-1.5 text-left text-xs text-foreground/90 hover:bg-accent",
+                class: "flex h-full min-h-7.25 min-w-0 flex-1 items-center gap-1.5 rounded-sm border-0 bg-transparent pr-1.5 text-left text-xs text-foreground/90 outline-none hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring",
+                style: "padding-left: {padding}px",
                 title: label.clone(),
                 onclick: {
                     let entry = entry.clone();
                     move |_| on_open.call(entry.clone())
                 },
-                span { class: "w-4 shrink-0",
-                    FileIcon {
-                        path: entry.path.as_str().to_owned(),
-                        directory: kind == EntryKind::Directory,
-                        size: 15,
+                span { class: "w-2.25 shrink-0 text-[9px] text-muted-foreground",
+                    if is_directory {
+                        if node.expanded { "▾" } else { "▸" }
                     }
+                }
+                FileIcon {
+                    path: entry.path.as_str().to_owned(),
+                    directory: is_directory,
+                    expanded: node.expanded,
+                    size: 15,
                 }
                 span { class: "truncate", "{label}" }
             }
@@ -3042,6 +3126,49 @@ fn slug_for_project(name: &str) -> String {
         "browser".to_owned()
     } else {
         slug.to_owned()
+    }
+}
+
+async fn populate_tree_to_file(
+    files: &OpfsWorkspaceFiles,
+    workspace: &WorkspaceRecord,
+    path: &RelativePath,
+    mut tree: Signal<ExplorerTree>,
+) {
+    let segments = path
+        .as_str()
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>();
+    let mut directory = RelativePath::root();
+    for segment in segments.iter().take(segments.len().saturating_sub(1)) {
+        let Ok(items) = files.list(workspace, &directory).await else {
+            return;
+        };
+        tree.write().replace_directory(directory.as_str(), items);
+        let Ok(next) = child_path(&directory, segment) else {
+            return;
+        };
+        tree.write().expand(next.as_str());
+        directory = next;
+    }
+    if let Ok(items) = files.list(workspace, &directory).await {
+        tree.write().replace_directory(directory.as_str(), items);
+    }
+}
+
+fn path_contains_bulky_generated_directory(path: &str) -> bool {
+    path.split('/').any(is_bulky_generated_directory_name)
+}
+
+fn expand_tree_path(mut tree: Signal<ExplorerTree>, path: &str) {
+    let mut parent = String::new();
+    for segment in path.split('/').filter(|segment| !segment.is_empty()) {
+        if !parent.is_empty() {
+            parent.push('/');
+        }
+        parent.push_str(segment);
+        tree.write().expand(&parent);
     }
 }
 

@@ -14,7 +14,8 @@ The guest application now covers the browser-compatible product surface:
 - Text editing with conflict-aware saves, multiple tabs with independent dirty
   buffers, image/binary previews, and dirty-navigation protection.
 - A bounded local `just-bash` command console with cancellation, history,
-  workspace reconciliation, and open-buffer conflict handling.
+  workspace reconciliation, open-buffer conflict handling, and protected
+  omission of generated dependency/build directory contents.
 - Sandboxed static HTML preview with bounded local asset inlining.
 - Offline source-history snapshots with change status, local commits, and
   explicit two-step restore.
@@ -28,6 +29,8 @@ These are platform boundaries rather than unfinished guest features:
 
 - The terminal is a bounded command console, not a PTY. Interactive processes,
   native executables, package installation, and network commands are absent.
+  Generated directories remain visible as protected empty directories so large
+  projects do not make ordinary browser-shell commands unusable.
 - Browser source history is not an interoperable `.git` repository. Branches,
   remotes, signing, rebase, worktrees, and provider authentication require a
   native/server Git runtime. The UI labels this distinction explicitly.
