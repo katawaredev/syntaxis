@@ -5,8 +5,8 @@ mod checkbox;
 mod combo_button;
 mod dialog;
 mod drawer;
-mod empty_state;
 mod editor_actions;
+mod empty_state;
 mod explorer_toolbar;
 mod field;
 mod file_icon;
@@ -37,8 +37,8 @@ pub use checkbox::Checkbox;
 pub use combo_button::ComboButton;
 pub use dialog::Modal;
 pub use drawer::Drawer;
-pub use empty_state::EmptyState;
 pub use editor_actions::{EditorAction, EditorActionsMenu, EditorMenuItem};
+pub use empty_state::EmptyState;
 pub use explorer_toolbar::{ExplorerAction, ExplorerToolbar};
 pub use field::Field;
 pub use file_icon::FileIcon;
@@ -71,12 +71,13 @@ pub mod prelude {
     pub use crate::{
         AiChatHeader, AiSendButton, AiSidebarTabs, AppIcon, BrandIcon, BrandMark, Button,
         ButtonKind, Checkbox, ComboButton, ControlSize, DangerNote, DialogActions, DialogForm,
-        Drawer, EditorAction, EditorActionsMenu, EditorMenuItem, EmptyState, ExplorerAction, ExplorerToolbar, Field, FileIcon, FileTree, GitChangeBadge, Icon, IconButton,
-        InteractivePopover, MenuButtonTrigger, MenuContent, MenuTrigger, Modal, PanelHeader,
-        PanelHeaderKind, PanelTab, PanelTabIndicator, PanelTabList, PanelTabWidth,
+        Drawer, EditorAction, EditorActionsMenu, EditorMenuItem, EmptyState, ExplorerAction,
+        ExplorerToolbar, Field, FileIcon, FileTree, GitChangeBadge, Icon, IconButton,
+        InteractivePopover, MenuButtonTrigger, MenuContent, MenuTrigger, Modal, NewTerminalDialog,
+        PanelHeader, PanelHeaderKind, PanelTab, PanelTabIndicator, PanelTabList, PanelTabWidth,
         ProjectLanguageBadge, ProjectTechnologyBadge, ProjectTemplateIcon, ProviderIcon,
-        NewTerminalDialog, RepositoryEmptyDetail, RepositoryPanelHeader, RepositoryPathRow,
-        RepositoryShell, RepositorySidebarTabs, RepositorySidebarView, RunCommandMenu, Select, SlideToConfirm, StatusBadge, TemplateIcon, TextArea,
-        TextAreaResize, TextInput, TextInputType, Toast, Tone,
+        RepositoryEmptyDetail, RepositoryPanelHeader, RepositoryPathRow, RepositoryShell,
+        RepositorySidebarTabs, RepositorySidebarView, RunCommandMenu, Select, SlideToConfirm,
+        StatusBadge, TemplateIcon, TextArea, TextAreaResize, TextInput, TextInputType, Toast, Tone,
     };
 }

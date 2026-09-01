@@ -26,7 +26,7 @@ pub fn ExplorerToolbar(
     on_action: EventHandler<ExplorerAction>,
     on_upload: EventHandler<Vec<dioxus::html::FileData>>,
     on_refresh: EventHandler<()>,
-    #[props(default)] extra: Element,
+    #[props(default)] extra: Option<Element>,
 ) -> Element {
     rsx! {
         div { class: "explorer-toolbar flex h-10.5 min-h-10.5 items-center gap-1 border-b border-border px-1.25",
@@ -86,8 +86,8 @@ pub fn ExplorerToolbar(
                         "View"
                     }
                     DropdownMenuItem::<usize> {
-                        value: 0,
-                        index: 0,
+                        value: 0_usize,
+                        index: 0_usize,
                         disabled: changed_only_disabled,
                         on_select: move |_| on_action.call(ExplorerAction::ToggleChangedOnly),
                         span { class: "flex items-center gap-2",
@@ -97,8 +97,8 @@ pub fn ExplorerToolbar(
                         if changed_only { Icon { icon: AppIcon::Check, size: 12 } }
                     }
                     DropdownMenuItem::<usize> {
-                        value: 1,
-                        index: 1,
+                        value: 1_usize,
+                        index: 1_usize,
                         on_select: move |_| on_action.call(ExplorerAction::ToggleIgnored),
                         span { class: "flex items-center gap-2",
                             Icon { icon: AppIcon::Eye, size: 14 }
@@ -111,13 +111,13 @@ pub fn ExplorerToolbar(
                         "Selected item"
                     }
                     for (index, action, icon, label, danger) in [
-                        (2, ExplorerAction::Move, AppIcon::FileMove, "Move", false),
-                        (3, ExplorerAction::Duplicate, AppIcon::Copy, "Duplicate", false),
-                        (4, ExplorerAction::Delete, AppIcon::Delete, "Delete", true),
+                        (2_usize, ExplorerAction::Move, AppIcon::FileMove, "Move", false),
+                        (3_usize, ExplorerAction::Duplicate, AppIcon::Copy, "Duplicate", false),
+                        (4_usize, ExplorerAction::Delete, AppIcon::Delete, "Delete", true),
                     ] {
                         DropdownMenuItem::<usize> {
                             value: index,
-                            index,
+                            index: index,
                             disabled: pending || !selected,
                             class: if danger { "!text-destructive" } else { "" },
                             on_select: move |_| on_action.call(action),

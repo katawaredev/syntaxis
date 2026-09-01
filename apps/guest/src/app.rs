@@ -19,16 +19,16 @@ use std::{
 use syntaxis_editor::{
     EditorBuffer, EditorConfig, ExplorerNode, ExplorerTree, ExternalChange, language_slug_for_path,
 };
-use syntaxis_terminal::{justfile_commands, makefile_commands, package_json_commands};
+use syntaxis_terminal::{RunCommand, justfile_commands, makefile_commands, package_json_commands};
 use syntaxis_terminal_browser::{
     WorkspaceChange, WorkspaceChangeKind, cancel as cancel_browser_command,
     execute as execute_browser_command, wait_for_bridge,
 };
 use syntaxis_ui::prelude::{
-    AppIcon, Button, ButtonKind, ControlSize, DialogActions, DialogForm, Field, FileIcon, FileTree,
-    EditorAction, EditorActionsMenu, ExplorerAction, ExplorerToolbar, Icon, IconButton, Modal,
-    NewTerminalDialog, PanelHeader, PanelTab, PanelTabIndicator, PanelTabList, PanelTabWidth,
-    RunCommandMenu, StatusBadge, TextInput, Tone,
+    AppIcon, Button, ButtonKind, ControlSize, DialogActions, DialogForm, EditorAction,
+    EditorActionsMenu, ExplorerAction, ExplorerToolbar, Field, FileIcon, FileTree, Icon,
+    IconButton, Modal, NewTerminalDialog, PanelHeader, PanelTab, PanelTabIndicator, PanelTabList,
+    PanelTabWidth, RunCommandMenu, StatusBadge, TextInput, Tone,
 };
 use syntaxis_workspace::{
     BULKY_GENERATED_DIRECTORY_NAMES, EntryKind, ErrorCode, FileEntry, RelativePath,
@@ -410,7 +410,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
     let mut search_query = use_signal(String::new);
     let mut file_operation = use_signal(|| None::<FileOperation>);
     let mut operation_destination = use_signal(String::new);
-    let mut editor_menu_open = use_signal(|| false);
+    let editor_menu_open = use_signal(|| false);
     let mut editor_search_open = use_signal(|| false);
     let mut editor_search_query = use_signal(String::new);
     let mut editor_command_revision = use_signal(|| 0_u64);
@@ -1919,7 +1919,9 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                         save_all: false,
                                         multiple_tabs: open_tabs().len() > 1,
                                         changed: dirty,
-                                        on_action: move |action| match action {
+                                        on_action: {
+                                            let action_active_path = active_path.clone();
+                                            move |action| match action {
                                             EditorAction::Undo | EditorAction::Redo | EditorAction::SelectAll => {
                                                 editor_command_revision += 1;
                                                 editor_command.set(Some(EditorCommand {
@@ -1944,7 +1946,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                 }
                                             }
                                             EditorAction::CloseOthers => {
-                                                if let Some(path) = active_path.clone() {
+                                                if let Some(path) = action_active_path.clone() {
                                                     open_tabs.write().retain(|candidate| candidate == &path);
                                                     tab_buffers.write().retain(|open| open.path == path);
                                                 }
@@ -1955,7 +1957,8 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                     cache_buffer(tab_buffers, open);
                                                 }
                                             }
-                                            _ => {}
+                                                _ => {}
+                                            }
                                         },
                                     }
                                     IconButton {
@@ -2600,7 +2603,7 @@ fn GuestTerminal(
                                                                                                                                                                                                                                                                                                                                                         UseResourceState::Pending,
                         disabled: !bridge_ready || running(),
                         show_add: false,
-                        on_run: move |run| {
+                        on_run: move |run: RunCommand| {
                             command.set(run.command);
                             run_guest_command(
                                 files,

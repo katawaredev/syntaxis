@@ -11,7 +11,8 @@ use syntaxis_git::{
 use syntaxis_ui::prelude::{
     AppIcon, Button, ButtonKind, Checkbox, ControlSize, DialogActions, DialogForm, Drawer, Field,
     FileIcon, GitChangeBadge, Icon, IconButton, MenuButtonTrigger, MenuContent, MenuTrigger, Modal,
-    PanelHeader, PanelHeaderKind, RepositorySidebarTabs, RepositorySidebarView, TextArea, TextInput, TextInputType, Toast, Tone,
+    PanelHeader, PanelHeaderKind, RepositorySidebarTabs, RepositorySidebarView, TextArea,
+    TextInput, TextInputType, Toast, Tone,
 };
 
 use crate::client_error::server_error_message;

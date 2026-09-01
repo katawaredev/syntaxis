@@ -2,14 +2,14 @@ use super::Notice;
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use syntaxis_workspace::{
-    EntryKind, RelativePath, WorkspaceFiles, WorkspaceRecord, is_bulky_generated_directory_name,
-};
-use syntaxis_workspace_browser::OpfsWorkspaceFiles;
 use syntaxis_ui::prelude::{
     AppIcon, Button, ButtonKind, Icon, RepositoryEmptyDetail, RepositoryPanelHeader,
     RepositoryPathRow, RepositoryShell, RepositorySidebarTabs, RepositorySidebarView,
 };
+use syntaxis_workspace::{
+    EntryKind, RelativePath, WorkspaceFiles, WorkspaceRecord, is_bulky_generated_directory_name,
+};
+use syntaxis_workspace_browser::OpfsWorkspaceFiles;
 pub(super) const HISTORY_PATH: &str = ".syntaxis-guest-history.json";
 const MAX_FILE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_SNAPSHOT_BYTES: u64 = 16 * 1024 * 1024;
@@ -161,7 +161,7 @@ pub(super) fn GuestGit(
                                                 let id = commit.id.clone();
                                                 move |_| selected_commit_id.set(Some(id.clone()))
                                             },
-                                            Icon { icon: AppIcon::History, size: 14 }
+                                                Icon { icon: AppIcon::Commit, size: 14 }
                                             span { class: "min-w-0 flex-1",
                                                 strong { class: "block truncate", "{commit.message}" }
                                                 small { class: "text-[9px] text-muted-foreground", "Snapshot {commit.id}" }
@@ -388,8 +388,7 @@ async fn collect_snapshot(
         {
             if entry.path.as_str() == HISTORY_PATH
                 || (entry.kind == EntryKind::Directory
-                    && (entry.name == ".git"
-                        || is_bulky_generated_directory_name(&entry.name)))
+                    && (entry.name == ".git" || is_bulky_generated_directory_name(&entry.name)))
             {
                 continue;
             }
@@ -487,8 +486,7 @@ async fn apply_snapshot(
     {
         if entry.path.as_str() == HISTORY_PATH
             || (entry.kind == EntryKind::Directory
-                && (entry.name == ".git"
-                    || is_bulky_generated_directory_name(&entry.name)))
+                && (entry.name == ".git" || is_bulky_generated_directory_name(&entry.name)))
         {
             continue;
         }

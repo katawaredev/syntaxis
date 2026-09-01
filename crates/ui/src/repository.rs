@@ -58,11 +58,7 @@ pub fn RepositorySidebarTabs(
 }
 
 #[component]
-pub fn RepositoryPanelHeader(
-    title: String,
-    subtitle: Option<String>,
-    actions: Element,
-) -> Element {
+pub fn RepositoryPanelHeader(title: String, subtitle: Option<String>, actions: Element) -> Element {
     rsx! {
         PanelHeader { kind: PanelHeaderKind::Repository,
             div { class: "flex min-w-0 flex-1 items-center gap-2",

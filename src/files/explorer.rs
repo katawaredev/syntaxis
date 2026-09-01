@@ -9,17 +9,17 @@ use super::search::{
 use super::{
     ActionCallback, AnyStorage, AppIcon, ButtonExtension, ControlSize, DataExtension,
     DetailsExtension, DialogExtension, EditorConfigSource, Element, EntryKind, EventHandler,
-    ExplorerTree, FieldsetExtension, FileAction, FileEntry, FileIcon, FormEvent, FormExtension,
-    GitChangeBadge, GitChangeKind, GlobalAttributesExtension, HasFormData, History, IconButton,
-    IframeExtension, InputExtension, LiExtension, LinkExtension, MAX_TEXT_BYTES, MapExtension,
-    MetaExtension, MeterExtension, MpaddedExtension, MspaceExtension, ObjectExtension,
-    OptgroupExtension, OptionExtension, OutputExtension, ParamExtension, ProgressExtension, Props,
-    ReadableExt, ReadableHashMapExt, ReadableHashSetExt, ReadableOptionExt, ReadableResultExt,
-    ReadableStrExt, ReadableVecExt, RelativePath, RepositoryStatus, SelectExtension, Signal,
-    SlotExtension, Storage, SvgAttributesExtension, TextInput, TextInputType, TextareaExtension,
-    ToastState, TrackExtension, WorkspaceRecord, WritableExt, WritableStringExt, WritableVecExt,
-    component, dioxus_core, dioxus_elements, dioxus_signals, rsx, set_error, spawn,
-    workspace_client,
+    ExplorerAction, ExplorerToolbar, ExplorerTree, FieldsetExtension, FileAction, FileEntry,
+    FileIcon, FormEvent, FormExtension, GitChangeBadge, GitChangeKind, GlobalAttributesExtension,
+    HasFormData, History, IconButton, IframeExtension, InputExtension, LiExtension, LinkExtension,
+    MAX_TEXT_BYTES, MapExtension, MetaExtension, MeterExtension, MpaddedExtension, MspaceExtension,
+    ObjectExtension, OptgroupExtension, OptionExtension, OutputExtension, ParamExtension,
+    ProgressExtension, Props, ReadableExt, ReadableHashMapExt, ReadableHashSetExt,
+    ReadableOptionExt, ReadableResultExt, ReadableStrExt, ReadableVecExt, RelativePath,
+    RepositoryStatus, SelectExtension, Signal, SlotExtension, Storage, SvgAttributesExtension,
+    TextInput, TextInputType, TextareaExtension, ToastState, TrackExtension, WorkspaceRecord,
+    WritableExt, WritableStringExt, WritableVecExt, component, dioxus_core, dioxus_elements,
+    dioxus_signals, rsx, set_error, spawn, workspace_client,
 };
 use dioxus::prelude::{UseResourceState, use_resource, use_signal};
 use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};

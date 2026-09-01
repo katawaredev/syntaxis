@@ -9,10 +9,11 @@ use super::{
     History, HistoryAction, HunkAction, Icon, InputExtension, LinkExtension, MenuContent,
     MenuTrigger, Mutation, OptionExtension, Props, ReadableExt, ReadableHashMapExt,
     ReadableHashSetExt, ReadableOptionExt, ReadableResultExt, ReadableStrExt, ReadableVecExt,
-    RebaseStatus, RepositoryStatus, Result, SelectExtension, SelectedChange, ServerFnError,
-    SidebarView, Signal, Storage, StyleExtension, SvgAttributesExtension, TrackExtension,
-    UnifiedDiff, UnifiedDiffView, WritableExt, component, diff_line_class, dioxus_core,
-    dioxus_elements, dioxus_signals, language_slug_for_path, parse_diff_hunks, rsx, use_signal,
+    RebaseStatus, RepositorySidebarTabs, RepositorySidebarView, RepositoryStatus, Result,
+    SelectExtension, SelectedChange, ServerFnError, SidebarView, Signal, Storage, StyleExtension,
+    SvgAttributesExtension, TrackExtension, UnifiedDiff, UnifiedDiffView, WritableExt, component,
+    diff_line_class, dioxus_core, dioxus_elements, dioxus_signals, language_slug_for_path,
+    parse_diff_hunks, rsx, use_signal,
 };
 
 const DIFF_TITLEBAR_CLASS: &str = "sticky top-0 z-10 flex min-h-14 min-w-165 items-center justify-between gap-3 border-b border-border bg-background/95 p-3 font-sans backdrop-blur-sm max-md:min-h-13 max-md:min-w-0 max-md:gap-1.5 max-md:px-2 max-md:py-2";
