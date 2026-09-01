@@ -99,42 +99,6 @@ pub(super) fn MobileTabs(
     }
 }
 
-#[component]
-pub(super) fn EditorMenuItem(
-    index: usize,
-    icon: AppIcon,
-    label: String,
-    #[props(default)] suffix: String,
-    #[props(default = false)] checked: bool,
-    #[props(default = false)] disabled: bool,
-    #[props(default = false)] danger: bool,
-    onclick: EventHandler<()>,
-) -> Element {
-    rsx! {
-        DropdownMenuItem::<usize> {
-            value: index,
-            index,
-            disabled,
-            class: if danger { "!text-destructive" } else { "" },
-            on_select: move |_| onclick.call(()),
-            span { class: "flex min-w-0 items-center gap-2",
-                Icon { icon, size: 14 }
-                span { class: "truncate", "{label}" }
-            }
-            if checked || !suffix.is_empty() {
-                span { class: "ml-auto flex shrink-0 items-center gap-2",
-                    if checked {
-                        Icon { icon: AppIcon::Check, size: 12 }
-                    }
-                    if !suffix.is_empty() {
-                        kbd { "{suffix}" }
-                    }
-                }
-            }
-        }
-    }
-}
-
 pub(super) fn format_editor_reference(
     path: &str,
     source: &str,

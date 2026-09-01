@@ -15,8 +15,8 @@ use syntaxis_editor::{
 };
 use syntaxis_git::{ChangeKind as GitChangeKind, DiffKind, RepositoryStatus, UnifiedDiff};
 use syntaxis_ui::prelude::{
-    AppIcon, Button, ButtonKind, ControlSize, DangerNote, DialogActions, DialogForm, Drawer, Field,
-    FileIcon, GitChangeBadge, Icon, IconButton, MenuButtonTrigger, MenuContent, MenuTrigger, Modal,
+    AppIcon, Button, ButtonKind, ControlSize, DangerNote, DialogActions, DialogForm, Drawer,
+    EditorMenuItem, ExplorerAction, ExplorerToolbar, Field, FileIcon, GitChangeBadge, Icon, IconButton, MenuButtonTrigger, MenuContent, MenuTrigger, Modal,
     PanelHeader, PanelTab, PanelTabIndicator, PanelTabList, PanelTabWidth, TextInput,
     TextInputType, Toast, Tone,
 };
@@ -70,7 +70,7 @@ use documents::{
 };
 use editor_pane::{EditorPane, EditorPaneState};
 use editor_ui::{
-    EditorMenuItem, EditorShortcutState, MobileTabs, SearchOptions, SearchPanel,
+    EditorShortcutState, MobileTabs, SearchOptions, SearchPanel,
     copy_editor_reference, find_matches, format_editor_reference, handle_editor_shortcut,
     issue_command, render_tab, replace_all_search_matches, replace_search_match,
     text_document_contents,

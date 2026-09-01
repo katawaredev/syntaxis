@@ -6,6 +6,10 @@ use syntaxis_workspace::{
     EntryKind, RelativePath, WorkspaceFiles, WorkspaceRecord, is_bulky_generated_directory_name,
 };
 use syntaxis_workspace_browser::OpfsWorkspaceFiles;
+use syntaxis_ui::prelude::{
+    AppIcon, Button, ButtonKind, Icon, RepositoryEmptyDetail, RepositoryPanelHeader,
+    RepositoryPathRow, RepositoryShell, RepositorySidebarTabs, RepositorySidebarView,
+};
 pub(super) const HISTORY_PATH: &str = ".syntaxis-guest-history.json";
 const MAX_FILE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_SNAPSHOT_BYTES: u64 = 16 * 1024 * 1024;
@@ -72,6 +76,9 @@ pub(super) fn GuestGit(
     let mut message = use_signal(String::new);
     let mut busy = use_signal(|| false);
     let mut confirm_restore = use_signal(|| None::<String>);
+    let mut sidebar_view = use_signal(RepositorySidebarView::default);
+    let mut selected_path = use_signal(|| None::<String>);
+    let mut selected_commit_id = use_signal(|| None::<String>);
     let state_workspace = workspace.clone();
     let state = use_resource(move || {
         let workspace = state_workspace.clone();
@@ -89,176 +96,194 @@ pub(super) fn GuestGit(
         }
     });
     rsx! {
-        section { class: "guest-git", "aria-label": "Browser source history",
-            header { class: "guest-module-header",
-                div {
-                    h2 { "Source control" }
-                    p { "Offline browser snapshots for this workspace." }
+        match state() {
+            None => rsx! {
+                div { class: "flex size-full items-center justify-center text-xs text-muted-foreground",
+                    "Reading workspace history…"
                 }
-                button {
-                    r#type: "button",
-                    disabled: busy(),
-                    onclick: move |_| refresh += 1,
-                    "Refresh"
+            },
+            Some(Err(error)) => rsx! {
+                div { class: "flex size-full items-center justify-center p-6 text-xs text-destructive",
+                    "{error}"
                 }
-            }
-            p { class: "guest-module-note",
-                "Browser history provides local commits and restore points. Git branches, remotes, signing, rebase, and interoperable .git data require a server-side Git runtime and are intentionally unavailable here."
-            }
-            match state() {
-                None => rsx! {
-                    p { class: "guest-module-note", "Reading workspace history…" }
-                },
-                Some(Err(error)) => rsx! {
-                    p { class: "guest-ai-error", role: "alert", "{error}" }
-                },
-                Some(Ok((history, status, git_metadata_present))) => {
-                    let commit_disabled = busy() || dirty || message().trim().is_empty()
-                        || (status.is_clean() && !history.commits.is_empty());
-                    rsx! {
-                        div { class: "guest-git-summary",
-                            strong {
-                                if git_metadata_present {
-                                    "Git metadata detected"
+            },
+            Some(Ok((history, status, git_metadata_present))) => {
+                let commit_disabled = busy() || dirty || message().trim().is_empty()
+                    || (status.is_clean() && !history.commits.is_empty());
+                let selected_commit = selected_commit_id().and_then(|id| {
+                    history.commits.iter().find(|commit| commit.id == id).cloned()
+                });
+                rsx! {
+                    RepositoryShell {
+                        sidebar: rsx! {
+                            RepositorySidebarTabs {
+                                active: sidebar_view(),
+                                changes: status.count(),
+                                on_change: move |view| sidebar_view.set(view),
+                            }
+                            div { class: "min-h-0 flex-1 overflow-y-auto p-1.25",
+                                if sidebar_view() == RepositorySidebarView::Changes {
+                                    if status.is_clean() {
+                                        div { class: "flex h-full min-h-40 items-center justify-center p-4 text-center text-xs text-muted-foreground",
+                                            "Working tree clean."
+                                        }
+                                    }
+                                    for (path, badge, tone) in status.added.iter().map(|path| (path, "A", "text-success"))
+                                        .chain(status.modified.iter().map(|path| (path, "M", "text-warning")))
+                                        .chain(status.deleted.iter().map(|path| (path, "D", "text-destructive")))
+                                    {
+                                        RepositoryPathRow {
+                                            key: "{badge}-{path}",
+                                            path: path.clone(),
+                                            status: badge,
+                                            tone_class: tone,
+                                            active: selected_path().as_deref() == Some(path.as_str()),
+                                            onclick: {
+                                                let path = path.clone();
+                                                move |()| selected_path.set(Some(path.clone()))
+                                            },
+                                        }
+                                    }
                                 } else if history.commits.is_empty() {
-                                    "Browser history not initialized"
-                                } else if status.is_clean() {
-                                    "Working tree clean"
+                                    div { class: "flex h-full min-h-40 items-center justify-center p-4 text-center text-xs text-muted-foreground",
+                                        "No browser snapshots yet."
+                                    }
                                 } else {
-                                    "{status.count()} changed path(s)"
-                                }
-                            }
-                            span { "{history.commits.len()} local commit(s)" }
-                        }
-                        if git_metadata_present {
-                            p { class: "guest-module-note",
-                                "This is a Git working tree. Browser snapshots remain available, but branches, remotes, and .git mutations are disabled because the static guest has no Git runtime."
-                            }
-                        }
-                        if !status.is_clean() {
-                            div { class: "guest-git-changes",
-                                for path in status.added.iter() {
-                                    p { key: "a-{path}",
-                                        span { class: "guest-git-added", "A" }
-                                        "{path}"
-                                    }
-                                }
-                                for path in status.modified.iter() {
-                                    p { key: "m-{path}",
-                                        span { class: "guest-git-modified", "M" }
-                                        "{path}"
-                                    }
-                                }
-                                for path in status.deleted.iter() {
-                                    p { key: "d-{path}",
-                                        span { class: "guest-git-deleted", "D" }
-                                        "{path}"
-                                    }
-                                }
-                            }
-                        }
-                        form {
-                            class: "guest-git-commit",
-                            onsubmit: {
-                                let workspace = workspace.clone();
-                                move |event| {
-                                    event.prevent_default();
-                                    let commit_message = message().trim().to_owned();
-                                    if commit_message.is_empty() || busy() || dirty {
-                                        return;
-                                    }
-                                    busy.set(true);
-                                    let workspace = workspace.clone();
-                                    spawn(async move {
-                                        match create_commit(&files, &workspace, commit_message).await {
-                                            Ok(()) => {
-                                                message.set(String::new());
-                                                refresh += 1;
-                                                notice
-                                                    .set(
-                                                        Some(Notice::success("Created a local browser commit.")),
-                                                    );
+                                    for commit in history.commits.iter().rev() {
+                                        button {
+                                            key: "{commit.id}",
+                                            class: if selected_commit_id().as_deref() == Some(commit.id.as_str()) {
+                                                "flex w-full items-center gap-2 rounded-sm bg-accent px-2 py-2 text-left text-xs"
+                                            } else {
+                                                "flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-xs hover:bg-accent/65"
+                                            },
+                                            onclick: {
+                                                let id = commit.id.clone();
+                                                move |_| selected_commit_id.set(Some(id.clone()))
+                                            },
+                                            Icon { icon: AppIcon::History, size: 14 }
+                                            span { class: "min-w-0 flex-1",
+                                                strong { class: "block truncate", "{commit.message}" }
+                                                small { class: "text-[9px] text-muted-foreground", "Snapshot {commit.id}" }
                                             }
-                                            Err(error) => notice.set(Some(Notice::error(error))),
-                                        }
-                                        busy.set(false);
-                                    });
-                                }
-                            },
-                            input {
-                                value: message,
-                                maxlength: 200,
-                                placeholder: "Commit message",
-                                aria_label: "Browser commit message",
-                                oninput: move |event| message.set(event.value()),
-                            }
-                            button { disabled: commit_disabled,
-                                if history.commits.is_empty() {
-                                    "Initialize history"
-                                } else {
-                                    "Commit all"
-                                }
-                            }
-                        }
-                        if dirty {
-                            p { class: "guest-ai-error", "Save the active editor buffer before committing or restoring." }
-                        }
-                        div { class: "guest-git-history",
-                            h3 { "Local commits" }
-                            if history.commits.is_empty() {
-                                p { class: "guest-module-note",
-                                    "No commits yet. Add a message to capture the current workspace."
-                                }
-                            }
-                            for commit in history.commits.iter().rev() {
-                                article { key: "{commit.id}",
-                                    div {
-                                        strong { "{commit.message}" }
-                                        small {
-                                            "Snapshot {commit.id} · {commit.files.iter().filter(|entry| !entry.directory).count()} file(s)"
                                         }
                                     }
-                                    button {
-                                        r#type: "button",
-                                        disabled: busy() || dirty,
-                                        onclick: {
+                                }
+                            }
+                            if sidebar_view() == RepositorySidebarView::Changes {
+                                form {
+                                    class: "grid grid-cols-[minmax(0,1fr)_auto] gap-1.5 border-t border-border p-2",
+                                    onsubmit: {
+                                        let workspace = workspace.clone();
+                                        move |event| {
+                                            event.prevent_default();
+                                            let commit_message = message().trim().to_owned();
+                                            if commit_message.is_empty() || commit_disabled { return; }
+                                            busy.set(true);
                                             let workspace = workspace.clone();
-                                            let commit = commit.clone();
-                                            move |_| {
-                                                if confirm_restore().as_deref() != Some(commit.id.as_str()) {
-                                                    confirm_restore.set(Some(commit.id.clone()));
-                                                    return;
+                                            spawn(async move {
+                                                match create_commit(&files, &workspace, commit_message).await {
+                                                    Ok(()) => {
+                                                        message.set(String::new());
+                                                        refresh += 1;
+                                                        notice.set(Some(Notice::success("Created a browser snapshot.")));
+                                                    }
+                                                    Err(error) => notice.set(Some(Notice::error(error))),
                                                 }
-                                                busy.set(true);
-                                                confirm_restore.set(None);
+                                                busy.set(false);
+                                            });
+                                        }
+                                    },
+                                    input {
+                                        class: "h-8 min-w-0 rounded-md border border-input bg-background px-2 text-xs outline-none",
+                                        value: message,
+                                        placeholder: "Commit message",
+                                        oninput: move |event| message.set(event.value()),
+                                    }
+                                    Button {
+                                        label: if history.commits.is_empty() { "Initialize" } else { "Commit" },
+                                        kind: ButtonKind::Primary,
+                                        disabled: commit_disabled,
+                                        onclick: move |_| {},
+                                    }
+                                }
+                            }
+                        },
+                        header: rsx! {
+                            RepositoryPanelHeader {
+                                title: if git_metadata_present { "browser/git" } else { "browser/history" },
+                                subtitle: Some(format!("{} snapshot(s)", history.commits.len())),
+                                actions: rsx! {
+                                    Button {
+                                        label: "Refresh",
+                                        kind: ButtonKind::Ghost,
+                                        disabled: busy(),
+                                        onclick: move |_| refresh += 1,
+                                    }
+                                },
+                            }
+                        },
+                        detail: rsx! {
+                            if sidebar_view() == RepositorySidebarView::Changes {
+                                if let Some(path) = selected_path() {
+                                    div { class: "p-5",
+                                        h3 { class: "text-sm font-medium", "{path}" }
+                                        p { class: "mt-2 text-xs text-muted-foreground",
+                                            "Browser snapshots track this path. Git-generated diffs require the native Git runtime."
+                                        }
+                                    }
+                                } else {
+                                    RepositoryEmptyDetail { message: "Select a changed file to inspect its browser snapshot status." }
+                                }
+                            } else if let Some(commit) = selected_commit {
+                                div { class: "flex h-full flex-col",
+                                    div { class: "flex items-center gap-3 border-b border-border p-3",
+                                        div { class: "min-w-0 flex-1",
+                                            h3 { class: "truncate text-sm font-medium", "{commit.message}" }
+                                            p { class: "text-[10px] text-muted-foreground",
+                                                "Snapshot {commit.id} · {commit.files.iter().filter(|entry| !entry.directory).count()} files"
+                                            }
+                                        }
+                                        Button {
+                                            label: if confirm_restore().as_deref() == Some(commit.id.as_str()) { "Confirm restore" } else { "Restore" },
+                                            kind: ButtonKind::Danger,
+                                            disabled: busy() || dirty,
+                                            onclick: {
                                                 let workspace = workspace.clone();
                                                 let commit = commit.clone();
-                                                spawn(async move {
-                                                    match restore_snapshot(&files, &workspace, &commit.files).await {
-                                                        Ok(()) => {
-                                                            refresh += 1;
-                                                            on_workspace_changed.call(());
-                                                            notice
-                                                                .set(Some(Notice::success("Restored the browser commit.")));
-                                                        }
-                                                        Err(error) => notice.set(Some(Notice::error(error))),
+                                                move |_| {
+                                                    if confirm_restore().as_deref() != Some(commit.id.as_str()) {
+                                                        confirm_restore.set(Some(commit.id.clone()));
+                                                        return;
                                                     }
-                                                    busy.set(false);
-                                                });
-                                            }
-                                        },
-                                        if confirm_restore().as_deref() == Some(commit.id.as_str()) {
-                                            "Confirm restore"
-                                        } else {
-                                            "Restore"
+                                                    busy.set(true);
+                                                    confirm_restore.set(None);
+                                                    let workspace = workspace.clone();
+                                                    let commit = commit.clone();
+                                                    spawn(async move {
+                                                        match restore_snapshot(&files, &workspace, &commit.files).await {
+                                                            Ok(()) => {
+                                                                refresh += 1;
+                                                                on_workspace_changed.call(());
+                                                                notice.set(Some(Notice::success("Restored the browser snapshot.")));
+                                                            }
+                                                            Err(error) => notice.set(Some(Notice::error(error))),
+                                                        }
+                                                        busy.set(false);
+                                                    });
+                                                }
+                                            },
                                         }
                                     }
+                                    RepositoryEmptyDetail { message: "Browser snapshot selected." }
                                 }
+                            } else {
+                                RepositoryEmptyDetail { message: "Select a browser snapshot to inspect it." }
                             }
-                        }
+                        },
                     }
                 }
-            }
+            },
         }
     }
 }
@@ -363,7 +388,8 @@ async fn collect_snapshot(
         {
             if entry.path.as_str() == HISTORY_PATH
                 || (entry.kind == EntryKind::Directory
-                    && is_bulky_generated_directory_name(&entry.name))
+                    && (entry.name == ".git"
+                        || is_bulky_generated_directory_name(&entry.name)))
             {
                 continue;
             }
@@ -461,7 +487,8 @@ async fn apply_snapshot(
     {
         if entry.path.as_str() == HISTORY_PATH
             || (entry.kind == EntryKind::Directory
-                && is_bulky_generated_directory_name(&entry.name))
+                && (entry.name == ".git"
+                    || is_bulky_generated_directory_name(&entry.name)))
         {
             continue;
         }

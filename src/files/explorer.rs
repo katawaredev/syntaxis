@@ -121,7 +121,26 @@ pub(super) fn Explorer(
                 }
             }
             if active_view == ExplorerView::Files {
-                div { class: "explorer-toolbar flex h-10.5 min-h-10.5 items-center gap-1 border-b border-border px-1.25",
+                ExplorerToolbar {
+                    pending,
+                    selected: selected_entry().is_some(),
+                    changed_only: changed_only(),
+                    show_ignored: show_ignored(),
+                    changed_only_disabled: changes_by_path.is_empty() && !changed_only(),
+                    menu_open: file_menu,
+                    on_action: move |action| match action {
+                        ExplorerAction::CreateFile => on_action.call(FileAction::CreateFile),
+                        ExplorerAction::CreateFolder => on_action.call(FileAction::CreateFolder),
+                        ExplorerAction::Move => on_action.call(FileAction::Move),
+                        ExplorerAction::Duplicate => on_action.call(FileAction::Duplicate),
+                        ExplorerAction::Delete => on_action.call(FileAction::Delete),
+                        ExplorerAction::ToggleChangedOnly => changed_only.toggle(),
+                        ExplorerAction::ToggleIgnored => show_ignored.toggle(),
+                    },
+                    on_upload,
+                    on_refresh,
+                }
+                div { class: "hidden explorer-toolbar flex h-10.5 min-h-10.5 items-center gap-1 border-b border-border px-1.25",
                     IconButton {
                         label: "New file",
                         icon: AppIcon::FilePlus,

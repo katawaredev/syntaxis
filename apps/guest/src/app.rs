@@ -7,7 +7,9 @@ use self::{
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use dioxus::html::{ScrollBehavior, geometry::PixelsVector2D};
 use dioxus::prelude::*;
-use dioxus_code_editor::{CODE_EDITOR_CSS, CodeEditor, EditorEdit};
+use dioxus_code_editor::{
+    CODE_EDITOR_CSS, CodeEditor, EditorCommand, EditorCommandKind, EditorEdit, EditorSearchQuery,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeSet, HashSet},
@@ -24,7 +26,8 @@ use syntaxis_terminal_browser::{
 };
 use syntaxis_ui::prelude::{
     AppIcon, Button, ButtonKind, ControlSize, DialogActions, DialogForm, Field, FileIcon, FileTree,
-    Icon, IconButton, Modal, PanelHeader, PanelTab, PanelTabIndicator, PanelTabList, PanelTabWidth,
+    EditorAction, EditorActionsMenu, ExplorerAction, ExplorerToolbar, Icon, IconButton, Modal,
+    NewTerminalDialog, PanelHeader, PanelTab, PanelTabIndicator, PanelTabList, PanelTabWidth,
     RunCommandMenu, StatusBadge, TextInput, Tone,
 };
 use syntaxis_workspace::{
@@ -407,6 +410,13 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
     let mut search_query = use_signal(String::new);
     let mut file_operation = use_signal(|| None::<FileOperation>);
     let mut operation_destination = use_signal(String::new);
+    let mut editor_menu_open = use_signal(|| false);
+    let mut editor_search_open = use_signal(|| false);
+    let mut editor_search_query = use_signal(String::new);
+    let mut editor_command_revision = use_signal(|| 0_u64);
+    let mut editor_command = use_signal(|| None::<EditorCommand>);
+    let mut editor_word_wrap = use_signal(|| false);
+    let mut editor_line_numbers = use_signal(|| true);
     let mut initial_location_loaded = use_signal(|| false);
     let mut active_view = use_signal(move || initial_view);
     let preview_source = use_signal(|| None::<String>);
@@ -752,7 +762,68 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                 }
                             }
                             if !explorer_search_open() {
-                                div { class: "explorer-toolbar relative flex h-10.5 min-h-10.5 items-center gap-1 border-b border-border px-1.25",
+                                ExplorerToolbar {
+                                    pending: busy(),
+                                    selected: selected_tree_entry().is_some(),
+                                    changed_only: false,
+                                    show_ignored: show_generated(),
+                                    changed_only_disabled: true,
+                                    menu_open: workspace_menu_open,
+                                    on_action: move |action| match action {
+                                        ExplorerAction::CreateFile => {
+                                            new_entry_kind.set(EntryKind::File);
+                                            new_entry_open.set(true);
+                                        }
+                                        ExplorerAction::CreateFolder => {
+                                            new_entry_kind.set(EntryKind::Directory);
+                                            new_entry_open.set(true);
+                                        }
+                                        ExplorerAction::ToggleIgnored => show_generated.toggle(),
+                                        ExplorerAction::Move | ExplorerAction::Duplicate => {
+                                            let Some(entry) = selected_tree_entry() else { return };
+                                            let kind = if action == ExplorerAction::Move {
+                                                FileOperationKind::Move
+                                            } else {
+                                                FileOperationKind::Duplicate
+                                            };
+                                            operation_destination.set(if kind == FileOperationKind::Move {
+                                                entry.path.as_str().to_owned()
+                                            } else {
+                                                duplicate_path(&entry.path)
+                                            });
+                                            file_operation.set(Some(FileOperation {
+                                                source: entry.path,
+                                                kind,
+                                            }));
+                                        }
+                                        ExplorerAction::Delete => {
+                                            if let Some(entry) = selected_tree_entry() {
+                                                pending_delete.set(Some(entry.path));
+                                            }
+                                        }
+                                        ExplorerAction::ToggleChangedOnly => {}
+                                    },
+                                    on_upload: {
+                                        let workspace = workspace.clone();
+                                        move |selected| {
+                                            spawn(upload_files(
+                                                selected,
+                                                workspace.clone(),
+                                                current_directory(),
+                                                files,
+                                                busy,
+                                                revision,
+                                                notice,
+                                            ));
+                                        }
+                                    },
+                                    on_refresh: move |()| {
+                                        explorer_tree.set(ExplorerTree::default());
+                                        current_directory.set(RelativePath::root());
+                                        revision += 1;
+                                    },
+                                }
+                                div { class: "hidden explorer-toolbar relative flex h-10.5 min-h-10.5 items-center gap-1 border-b border-border px-1.25",
                                     IconButton {
                                         label: "New file",
                                         icon: AppIcon::FilePlus,
@@ -1829,6 +1900,65 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                 }
                                 if active_view() == GuestView::Editor {
                                     IconButton {
+                                        label: "Find in file",
+                                        icon: AppIcon::Search,
+                                        size: ControlSize::Small,
+                                        disabled: active_buffer.is_none(),
+                                        pressed: editor_search_open(),
+                                        onclick: move |_| editor_search_open.toggle(),
+                                    }
+                                    EditorActionsMenu {
+                                        open: editor_menu_open,
+                                        interactive: active_buffer.is_some(),
+                                        copy_reference: false,
+                                        navigation_available: false,
+                                        language_services: false,
+                                        code_intelligence_available: false,
+                                        word_wrap: editor_word_wrap(),
+                                        line_numbers: editor_line_numbers(),
+                                        save_all: false,
+                                        multiple_tabs: open_tabs().len() > 1,
+                                        changed: dirty,
+                                        on_action: move |action| match action {
+                                            EditorAction::Undo | EditorAction::Redo | EditorAction::SelectAll => {
+                                                editor_command_revision += 1;
+                                                editor_command.set(Some(EditorCommand {
+                                                    revision: editor_command_revision(),
+                                                    kind: match action {
+                                                        EditorAction::Undo => EditorCommandKind::Undo,
+                                                        EditorAction::Redo => EditorCommandKind::Redo,
+                                                        _ => EditorCommandKind::SelectAll,
+                                                    },
+                                                }));
+                                            }
+                                            EditorAction::WordWrap => editor_word_wrap.toggle(),
+                                            EditorAction::LineNumbers => editor_line_numbers.toggle(),
+                                            EditorAction::CloseAll => {
+                                                if any_dirty {
+                                                    notice.set(Some(Notice::error(UNSAVED_NAVIGATION_MESSAGE)));
+                                                } else {
+                                                    open_tabs.write().clear();
+                                                    tab_buffers.write().clear();
+                                                    buffer.set(None);
+                                                    binary_preview.set(None);
+                                                }
+                                            }
+                                            EditorAction::CloseOthers => {
+                                                if let Some(path) = active_path.clone() {
+                                                    open_tabs.write().retain(|candidate| candidate == &path);
+                                                    tab_buffers.write().retain(|open| open.path == path);
+                                                }
+                                            }
+                                            EditorAction::Revert => {
+                                                if let Some(open) = buffer.write().as_mut() {
+                                                    open.revert();
+                                                    cache_buffer(tab_buffers, open);
+                                                }
+                                            }
+                                            _ => {}
+                                        },
+                                    }
+                                    IconButton {
                                         label: "Save file",
                                         icon: AppIcon::Save,
                                         size: ControlSize::Small,
@@ -1921,6 +2051,35 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                 }
                                             },
                                         }
+                                    }
+                                }
+                            }
+                            if active_view() == GuestView::Editor && editor_search_open() && active_buffer.is_some() {
+                                div { class: "flex items-center gap-2 border-b border-border bg-background px-2 py-1.5",
+                                    Icon { icon: AppIcon::Search, size: 14 }
+                                    input {
+                                        class: "h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs outline-none focus:border-ring",
+                                        r#type: "search",
+                                        autofocus: true,
+                                        value: editor_search_query,
+                                        placeholder: "Find in file…",
+                                        aria_label: "Find in file",
+                                        oninput: move |event| editor_search_query.set(event.value()),
+                                        onkeydown: move |event| {
+                                            if event.key() == Key::Escape {
+                                                editor_search_open.set(false);
+                                                editor_search_query.set(String::new());
+                                            }
+                                        },
+                                    }
+                                    IconButton {
+                                        label: "Close search",
+                                        icon: AppIcon::Close,
+                                        size: ControlSize::Small,
+                                        onclick: move |_| {
+                                            editor_search_open.set(false);
+                                            editor_search_query.set(String::new());
+                                        },
                                     }
                                 }
                             }
@@ -2082,6 +2241,15 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                     language_name: language_slug_for_path(&
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 open.path),
                                     autocomplete: true,
+                                    line_numbers: editor_line_numbers(),
+                                    word_wrap: editor_word_wrap(),
+                                    command: Some(editor_command),
+                                    search_query: editor_search_open().then(|| EditorSearchQuery {
+                                        query: editor_search_query(),
+                                        case_sensitive: false,
+                                        whole_word: false,
+                                        regex: false,
+                                    }),
                                     class: "guest-code-editor",
                                     aria_label: format!("Editing {}", open.path),
                                     oninput: move |edits: Vec<EditorEdit>| {
@@ -2228,6 +2396,37 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
         }
     }
 }
+fn persist_terminal_tab(
+    mut tabs: Signal<Vec<BrowserTerminalTab>>,
+    active_id: u64,
+    command: &str,
+    history: &[CommandRecord],
+    history_cursor: Option<usize>,
+) {
+    if let Some(tab) = tabs.write().iter_mut().find(|tab| tab.id == active_id) {
+        tab.command = command.to_owned();
+        tab.history = history.to_vec();
+        tab.history_cursor = history_cursor;
+    }
+}
+
+fn activate_terminal_tab(
+    id: u64,
+    tabs: Signal<Vec<BrowserTerminalTab>>,
+    mut active_id: Signal<u64>,
+    mut command: Signal<String>,
+    mut history: Signal<Vec<CommandRecord>>,
+    mut history_cursor: Signal<Option<usize>>,
+) {
+    let Some(tab) = tabs.read().iter().find(|tab| tab.id == id).cloned() else {
+        return;
+    };
+    active_id.set(id);
+    command.set(tab.command);
+    history.set(tab.history);
+    history_cursor.set(tab.history_cursor);
+}
+
 #[component]
 fn GuestTerminal(
     workspace: WorkspaceRecord,
@@ -2236,7 +2435,12 @@ fn GuestTerminal(
 ) -> Element {
     let files = OpfsWorkspaceFiles;
     let mut command = use_signal(String::new);
-    let mut shell_number = use_signal(|| 1_u32);
+    let mut tabs = use_signal(|| vec![BrowserTerminalTab::new(1, "shell 1".to_owned())]);
+    let mut active_tab_id = use_signal(|| 1_u64);
+    let mut next_tab_id = use_signal(|| 2_u64);
+    let mut new_terminal_open = use_signal(|| false);
+    let mut new_terminal_name = use_signal(String::new);
+    let mut new_terminal_error = use_signal(|| None::<String>);
     let run_menu_open = use_signal(|| false);
     let mut command_refresh = use_signal(|| 0_u64);
     let command_workspace = workspace.clone();
@@ -2312,41 +2516,81 @@ fn GuestTerminal(
         focus_guest_terminal_input(command_input);
     });
     let submit_workspace = workspace.clone();
+    let menu_workspace = workspace.clone();
     rsx! {
         section { class: "guest-terminal", "aria-label": "Browser terminal",
             PanelHeader {
                 PanelTabList {
-                    PanelTab {
-                        label: format!("shell {}", shell_number()),
-                        active: true,
-                        width: PanelTabWidth::Session,
-                        indicator: PanelTabIndicator::Dot(Tone::Success),
-                        on_select: move |_| {},
-                        on_close: move |()| {
-                            notice
-                                .set(
-                                    Some(
-                                        Notice::success(
-                                            "The browser shell stays available for this workspace.",
-                                        ),
-                                    ),
-                                );
-                        },
+                    for tab in tabs() {
+                        PanelTab {
+                            key: "{tab.id}",
+                            label: tab.name.clone(),
+                            active: active_tab_id() == tab.id,
+                            width: PanelTabWidth::Session,
+                            indicator: PanelTabIndicator::Dot(Tone::Success),
+                            on_select: {
+                                let tab_id = tab.id;
+                                move |_| {
+                                    if running() || active_tab_id() == tab_id {
+                                        return;
+                                    }
+                                    persist_terminal_tab(
+                                        tabs,
+                                        active_tab_id(),
+                                        &command(),
+                                        &history(),
+                                        history_cursor(),
+                                    );
+                                    activate_terminal_tab(
+                                        tab_id,
+                                        tabs,
+                                        active_tab_id,
+                                        command,
+                                        history,
+                                        history_cursor,
+                                    );
+                                }
+                            },
+                            on_close: {
+                                let tab_id = tab.id;
+                                move |()| {
+                                    if running() || tabs.read().len() <= 1 {
+                                        return;
+                                    }
+                                    persist_terminal_tab(
+                                        tabs,
+                                        active_tab_id(),
+                                        &command(),
+                                        &history(),
+                                        history_cursor(),
+                                    );
+                                    tabs.write().retain(|candidate| candidate.id != tab_id);
+                                    if active_tab_id() == tab_id
+                                        && let Some(next) = tabs.read().first().cloned()
+                                    {
+                                        activate_terminal_tab(
+                                            next.id,
+                                            tabs,
+                                            active_tab_id,
+                                            command,
+                                            history,
+                                            history_cursor,
+                                        );
+                                    }
+                                }
+                            },
+                        }
                     }
                 }
                 div { class: "flex items-center gap-1",
                     IconButton {
-                        label: "Reset terminal",
+                        label: "New terminal",
                         icon: AppIcon::Plus,
                         size: ControlSize::Small,
                         disabled: running(),
                         onclick: move |_| {
-                            shell_number += 1;
-                            history.write().clear();
-                            history_cursor.set(None);
-                            command.set(String::new());
-                            notice.set(Some(Notice::success("Started a fresh browser shell.")));
-                            focus_guest_terminal_input(command_input);
+                            new_terminal_name.set(format!("shell {}", next_tab_id()));
+                            new_terminal_open.set(true);
                         },
                     }
                     RunCommandMenu {
@@ -2354,13 +2598,21 @@ fn GuestTerminal(
                         open: run_menu_open,
                         loading: project_commands.state() ==
                                                                                                                                                                                                                                                                                                                                                         UseResourceState::Pending,
-                        disabled: true,
-                        disabled_reason: Some(
-                            "Detected project commands require native runner executables, which are unavailable in the browser shell."
-                                .to_owned(),
-                        ),
+                        disabled: !bridge_ready || running(),
                         show_add: false,
-                        on_run: move |_| {},
+                        on_run: move |run| {
+                            command.set(run.command);
+                            run_guest_command(
+                                files,
+                                menu_workspace.clone(),
+                                command,
+                                history,
+                                history_cursor,
+                                running,
+                                command_input,
+                                on_workspace_changed,
+                            );
+                        },
                         on_add: move |()| {},
                         on_refresh: move |()| command_refresh += 1,
                         on_delete: move |_| {},
@@ -2495,6 +2747,46 @@ fn GuestTerminal(
                 "Browser command console · local just-bash · generated folders protected"
             }
         }
+        if new_terminal_open() {
+            NewTerminalDialog {
+                open: new_terminal_open,
+                name: new_terminal_name,
+                error: new_terminal_error,
+                busy: false,
+                name_error: new_terminal_error(),
+                create_disabled: new_terminal_name().trim().is_empty(),
+                shell_label: "Browser just-bash",
+                on_submit: move |()| {
+                    let name = new_terminal_name().trim().to_owned();
+                    if name.is_empty() {
+                        new_terminal_error.set(Some("Enter a terminal name.".to_owned()));
+                        return;
+                    }
+                    if tabs.read().iter().any(|tab| tab.name == name) {
+                        new_terminal_error.set(Some("Terminal names must be unique.".to_owned()));
+                        return;
+                    }
+                    persist_terminal_tab(
+                        tabs,
+                        active_tab_id(),
+                        &command(),
+                        &history(),
+                        history_cursor(),
+                    );
+                    let id = next_tab_id();
+                    next_tab_id += 1;
+                    tabs.write().push(BrowserTerminalTab::new(id, name));
+                    active_tab_id.set(id);
+                    command.set(String::new());
+                    history.set(Vec::new());
+                    history_cursor.set(None);
+                    new_terminal_name.set(String::new());
+                    new_terminal_error.set(None);
+                    new_terminal_open.set(false);
+                    focus_guest_terminal_input(command_input);
+                },
+            }
+        }
     }
 }
 fn run_guest_command(
@@ -2557,6 +2849,27 @@ enum GuestView {
     Ai,
     AiSettings,
 }
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct BrowserTerminalTab {
+    id: u64,
+    name: String,
+    command: String,
+    history: Vec<CommandRecord>,
+    history_cursor: Option<usize>,
+}
+
+impl BrowserTerminalTab {
+    fn new(id: u64, name: String) -> Self {
+        Self {
+            id,
+            name,
+            command: String::new(),
+            history: Vec::new(),
+            history_cursor: None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct CommandRecord {
     command: String,

@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
 use syntaxis_ui::prelude::{
-    Button, ButtonKind, DialogActions, DialogForm, Field, Modal, TextInput,
+    Button, ButtonKind, DialogActions, DialogForm, Field, Modal,
+    NewTerminalDialog as SharedNewTerminalDialog, TextInput,
 };
 
 #[component]
@@ -14,55 +15,15 @@ pub(super) fn NewTerminalDialog(
     on_submit: EventHandler<()>,
 ) -> Element {
     rsx! {
-        Modal {
-            title: "New terminal",
-            description: "Start a new shell session in this workspace.",
-            on_close: move |()| {
-                if !creating() {
-                    open.set(false);
-                }
-            },
-            DialogForm {
-                Field {
-                    control_id: "terminal-name",
-                    label: "Name",
-                    description: "Optional. Names make terminal tabs easier to identify.",
-                    error: name_error,
-                    TextInput {
-                        placeholder: "shell",
-                        value: "{name}",
-                        autofocus: true,
-                        disabled: creating(),
-                        oninput: move |event: FormEvent| {
-                            name.set(event.value());
-                            server_error.set(None);
-                        },
-                        onkeydown: move |event: KeyboardEvent| {
-                            if event.key() == Key::Enter {
-                                event.prevent_default();
-                                on_submit.call(());
-                            }
-                        },
-                    }
-                }
-                Field { control_id: "terminal-command", label: "Shell",
-                    TextInput { value: "Server default shell", disabled: true }
-                }
-                DialogActions {
-                    Button {
-                        label: "Cancel",
-                        kind: ButtonKind::Ghost,
-                        disabled: creating(),
-                        onclick: move |_| open.set(false),
-                    }
-                    Button {
-                        label: if creating() { "Creating…" } else { "Create terminal" },
-                        kind: ButtonKind::Primary,
-                        disabled: create_disabled,
-                        onclick: move |_| on_submit.call(()),
-                    }
-                }
-            }
+        SharedNewTerminalDialog {
+            open,
+            name,
+            error: server_error,
+            busy: creating(),
+            name_error,
+            create_disabled,
+            shell_label: "Server default shell",
+            on_submit,
         }
     }
 }

@@ -58,21 +58,23 @@ pub(super) fn GitSidebar(
 
     rsx! {
         div { class: "flex h-full min-h-0 flex-col bg-background",
-            div { class: if rebase_active { "grid h-12 min-h-12 grid-cols-1 items-center gap-1 border-b border-border p-1.25" } else { "grid h-12 min-h-12 grid-cols-2 items-center gap-1 border-b border-border p-1.25" },
+            div { class: if rebase_active { "grid h-12 min-h-12 grid-cols-1 items-center gap-1 border-b border-border p-1.25" } else { "contents" },
                 if rebase_active {
                     strong { class: "px-2 text-[11px] font-medium text-foreground",
                         "Rebase conflicts ({conflicts.len()})"
                     }
                 } else {
-                    button {
-                        class: if view() == SidebarView::Changes { "h-8.5 rounded-md bg-muted text-[11px] font-medium text-foreground" } else { "h-8.5 rounded-md bg-transparent text-[11px] text-muted-foreground hover:bg-muted/60 hover:text-foreground" },
-                        onclick: move |_| view.set(SidebarView::Changes),
-                        "Changes ({repository.changes.len()})"
-                    }
-                    button {
-                        class: if view() == SidebarView::History { "h-8.5 rounded-md bg-muted text-[11px] font-medium text-foreground" } else { "h-8.5 rounded-md bg-transparent text-[11px] text-muted-foreground hover:bg-muted/60 hover:text-foreground" },
-                        onclick: move |_| view.set(SidebarView::History),
-                        "History"
+                    RepositorySidebarTabs {
+                        active: if view() == SidebarView::Changes {
+                            RepositorySidebarView::Changes
+                        } else {
+                            RepositorySidebarView::History
+                        },
+                        changes: repository.changes.len(),
+                        on_change: move |next| view.set(match next {
+                            RepositorySidebarView::Changes => SidebarView::Changes,
+                            RepositorySidebarView::History => SidebarView::History,
+                        }),
                     }
                 }
             }
