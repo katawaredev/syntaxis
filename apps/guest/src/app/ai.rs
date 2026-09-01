@@ -72,7 +72,8 @@ pub(super) fn GuestAi(active_path: Option<String>, active_contents: Option<Strin
                             p { "Start a local chat for this workspace." }
                         }
                     } else {
-                        button { class: "guest-ai-session guest-ai-session-active",
+                        button {
+                            class: "guest-ai-session guest-ai-session-active",
                             r#type: "button",
                             "Current chat"
                             small { "{messages().len()} messages" }
@@ -80,188 +81,188 @@ pub(super) fn GuestAi(active_path: Option<String>, active_contents: Option<Strin
                     }
                 }
                 details { class: "guest-ai-settings",
-                summary { "Provider settings" }
-                label {
-                    span { "OpenAI-compatible endpoint" }
-                    input {
-                        value: endpoint,
-                        r#type: "url",
-                        spellcheck: false,
-                        oninput: move |event| endpoint.set(event.value()),
+                    summary { "Provider settings" }
+                    label {
+                        span { "OpenAI-compatible endpoint" }
+                        input {
+                            value: endpoint,
+                            r#type: "url",
+                            spellcheck: false,
+                            oninput: move |event| endpoint.set(event.value()),
+                        }
                     }
-                }
-                label {
-                    span { "Model" }
-                    input {
-                        value: model,
-                        spellcheck: false,
-                        oninput: move |event| model.set(event.value()),
+                    label {
+                        span { "Model" }
+                        input {
+                            value: model,
+                            spellcheck: false,
+                            oninput: move |event| model.set(event.value()),
+                        }
                     }
-                }
-                label {
-                    span { "API key (kept in memory)" }
-                    input {
-                        value: api_key,
-                        r#type: "password",
-                        autocomplete: "off",
-                        oninput: move |event| api_key.set(event.value()),
+                    label {
+                        span { "API key (kept in memory)" }
+                        input {
+                            value: api_key,
+                            r#type: "password",
+                            autocomplete: "off",
+                            oninput: move |event| api_key.set(event.value()),
+                        }
                     }
-                }
-                p { class: "guest-module-note",
-                    "The key stays in memory. Provider CORS policy may block direct browser requests."
-                }
+                    p { class: "guest-module-note",
+                        "The key stays in memory. Provider CORS policy may block direct browser requests."
+                    }
                 }
             }
             main { class: "guest-ai-main",
-            header { class: "guest-module-header",
+                header { class: "guest-module-header",
+                    div {
+                        h2 { "New chat" }
+                        p { "Browser-only · OpenAI-compatible provider" }
+                    }
+                }
                 div {
-                    h2 { "New chat" }
-                    p { "Browser-only · OpenAI-compatible provider" }
-                }
-            }
-            div {
-                class: "guest-ai-timeline",
-                role: "log",
-                "aria-live": "polite",
-                if messages().is_empty() {
-                    div { class: "guest-module-empty",
-                        h3 { "Ask about your project" }
-                        p {
-                            "Open a text file to optionally attach it as context, then enter a request below."
-                        }
-                    }
-                }
-                for (index, message) in messages().into_iter().enumerate() {
-                    article {
-                        key: "{index}",
-                        class: if message.role == "user" { "guest-ai-message guest-ai-user" } else { "guest-ai-message guest-ai-assistant" },
-                        strong {
-                            if message.role == "user" {
-                                "You"
-                            } else {
-                                "Assistant"
+                    class: "guest-ai-timeline",
+                    role: "log",
+                    "aria-live": "polite",
+                    if messages().is_empty() {
+                        div { class: "guest-module-empty",
+                            h3 { "Ask about your project" }
+                            p {
+                                "Open a text file to optionally attach it as context, then enter a request below."
                             }
                         }
-                        pre { "{message.content}" }
                     }
-                }
-                if pending() {
-                    p { class: "guest-module-note", "Waiting for the provider…" }
-                }
-            }
-            if let Some(message) = error() {
-                p { class: "guest-ai-error", role: "alert", "{message}" }
-            }
-            form {
-                class: "guest-ai-composer",
-                onsubmit: move |event| {
-                    event.prevent_default();
-                    let request = prompt().trim().to_owned();
-                    if request.is_empty() || pending() {
-                        return;
-                    }
-                    if api_key().trim().is_empty() {
-                        error.set(Some("Enter an API key in Provider settings.".to_owned()));
-                        return;
-                    }
-                    if request.len() > MAX_PROMPT_BYTES {
-                        error.set(Some("The prompt exceeds the 64 KiB browser limit.".to_owned()));
-                        return;
-                    }
-                    let mut outgoing = messages();
-                    let content = if include_file() {
-                        match (submit_path.clone(), submit_contents.clone()) {
-                            (Some(path), Some(contents)) if contents.len() <= MAX_CONTEXT_BYTES => {
-                                format!(
-                                    "Active file: {path}\n\n```\n{contents}\n```\n\nRequest: {request}",
-                                )
+                    for (index, message) in messages().into_iter().enumerate() {
+                        article {
+                            key: "{index}",
+                            class: if message.role == "user" { "guest-ai-message guest-ai-user" } else { "guest-ai-message guest-ai-assistant" },
+                            strong {
+                                if message.role == "user" {
+                                    "You"
+                                } else {
+                                    "Assistant"
+                                }
                             }
-                            (Some(_), Some(_)) => {
-                                error
-                                    .set(
-                                        Some(
-                                            "The active file exceeds the 128 KiB AI context limit."
-                                                .to_owned(),
-                                        ),
-                                    );
-                                return;
-                            }
-                            _ => request.clone(),
+                            pre { "{message.content}" }
                         }
-                    } else {
-                        request.clone()
-                    };
-                    outgoing
-                        .push(ChatMessage {
-                            role: "user".to_owned(),
-                            content,
-                        });
-                    while outgoing.iter().map(|message| message.content.len()).sum::<usize>()
-                        > MAX_CONVERSATION_BYTES && outgoing.len() > 1
-                    {
-                        outgoing.remove(0);
                     }
-                    if outgoing.iter().map(|message| message.content.len()).sum::<usize>()
-                        > MAX_CONVERSATION_BYTES
-                    {
-                        error
-                            .set(
-                                Some(
-                                    "The AI conversation exceeds the 512 KiB browser limit."
-                                        .to_owned(),
-                                ),
-                            );
-                        return;
-                    }
-                    messages
-                        .write()
-                        .push(ChatMessage {
-                            role: "user".to_owned(),
-                            content: request,
-                        });
-                    prompt.set(String::new());
-                    error.set(None);
-                    pending.set(true);
-                    let endpoint_value = endpoint().trim().to_owned();
-                    let model_value = model().trim().to_owned();
-                    let key_value = api_key().trim().to_owned();
-                    spawn(async move {
-                        match send_chat(&endpoint_value, &model_value, &key_value, &outgoing).await {
-                            Ok(response) => messages.write().push(response),
-                            Err(message) => error.set(Some(message)),
-                        }
-                        pending.set(false);
-                    });
-                },
-                if active_path.is_some() {
-                    label { class: "guest-ai-context",
-                        input {
-                            r#type: "checkbox",
-                            checked: include_file,
-                            onchange: move |event| include_file.set(event.checked()),
-                        }
-                        "Attach the active file ({active_path.as_deref().unwrap_or_default()})"
-                    }
-                }
-                textarea {
-                    value: prompt,
-                    rows: 4,
-                    maxlength: MAX_PROMPT_BYTES,
-                    placeholder: "Ask Syntaxis…",
-                    aria_label: "AI message",
-                    oninput: move |event| prompt.set(event.value()),
-                }
-                button {
-                    class: "guest-ai-send",
-                    disabled: pending() || prompt().trim().is_empty(),
-                    aria_label: "Send message",
                     if pending() {
-                        "Sending…"
-                    } else {
-                        Icon { icon: AppIcon::ArrowUp, size: 16 }
+                        p { class: "guest-module-note", "Waiting for the provider…" }
                     }
                 }
-            }
+                if let Some(message) = error() {
+                    p { class: "guest-ai-error", role: "alert", "{message}" }
+                }
+                form {
+                    class: "guest-ai-composer",
+                    onsubmit: move |event| {
+                        event.prevent_default();
+                        let request = prompt().trim().to_owned();
+                        if request.is_empty() || pending() {
+                            return;
+                        }
+                        if api_key().trim().is_empty() {
+                            error.set(Some("Enter an API key in Provider settings.".to_owned()));
+                            return;
+                        }
+                        if request.len() > MAX_PROMPT_BYTES {
+                            error.set(Some("The prompt exceeds the 64 KiB browser limit.".to_owned()));
+                            return;
+                        }
+                        let mut outgoing = messages();
+                        let content = if include_file() {
+                            match (submit_path.clone(), submit_contents.clone()) {
+                                (Some(path), Some(contents)) if contents.len() <= MAX_CONTEXT_BYTES => {
+                                    format!(
+                                        "Active file: {path}\n\n```\n{contents}\n```\n\nRequest: {request}",
+                                    )
+                                }
+                                (Some(_), Some(_)) => {
+                                    error
+                                        .set(
+                                            Some(
+                                                "The active file exceeds the 128 KiB AI context limit."
+                                                    .to_owned(),
+                                            ),
+                                        );
+                                    return;
+                                }
+                                _ => request.clone(),
+                            }
+                        } else {
+                            request.clone()
+                        };
+                        outgoing
+                            .push(ChatMessage {
+                                role: "user".to_owned(),
+                                content,
+                            });
+                        while outgoing.iter().map(|message| message.content.len()).sum::<usize>()
+                            > MAX_CONVERSATION_BYTES && outgoing.len() > 1
+                        {
+                            outgoing.remove(0);
+                        }
+                        if outgoing.iter().map(|message| message.content.len()).sum::<usize>()
+                            > MAX_CONVERSATION_BYTES
+                        {
+                            error
+                                .set(
+                                    Some(
+                                        "The AI conversation exceeds the 512 KiB browser limit."
+                                            .to_owned(),
+                                    ),
+                                );
+                            return;
+                        }
+                        messages
+                            .write()
+                            .push(ChatMessage {
+                                role: "user".to_owned(),
+                                content: request,
+                            });
+                        prompt.set(String::new());
+                        error.set(None);
+                        pending.set(true);
+                        let endpoint_value = endpoint().trim().to_owned();
+                        let model_value = model().trim().to_owned();
+                        let key_value = api_key().trim().to_owned();
+                        spawn(async move {
+                            match send_chat(&endpoint_value, &model_value, &key_value, &outgoing).await {
+                                Ok(response) => messages.write().push(response),
+                                Err(message) => error.set(Some(message)),
+                            }
+                            pending.set(false);
+                        });
+                    },
+                    if active_path.is_some() {
+                        label { class: "guest-ai-context",
+                            input {
+                                r#type: "checkbox",
+                                checked: include_file,
+                                onchange: move |event| include_file.set(event.checked()),
+                            }
+                            "Attach the active file ({active_path.as_deref().unwrap_or_default()})"
+                        }
+                    }
+                    textarea {
+                        value: prompt,
+                        rows: 4,
+                        maxlength: MAX_PROMPT_BYTES,
+                        placeholder: "Ask Syntaxis…",
+                        aria_label: "AI message",
+                        oninput: move |event| prompt.set(event.value()),
+                    }
+                    button {
+                        class: "guest-ai-send",
+                        disabled: pending() || prompt().trim().is_empty(),
+                        aria_label: "Send message",
+                        if pending() {
+                            "Sending…"
+                        } else {
+                            Icon { icon: AppIcon::Send, size: 16 }
+                        }
+                    }
+                }
             }
         }
     }
