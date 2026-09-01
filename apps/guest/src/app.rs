@@ -1,7 +1,15 @@
+mod ai;
+mod git;
+
 use std::{collections::HashSet, fmt, rc::Rc};
 
+use self::{
+    ai::GuestAi,
+    git::{GuestGit, HISTORY_PATH as GUEST_HISTORY_PATH},
+};
+
 #[cfg(target_arch = "wasm32")]
-use wasm_bindgen::{JsCast, closure::Closure};
+use wasm_bindgen::JsCast;
 
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use dioxus::html::{ScrollBehavior, geometry::PixelsVector2D};
@@ -31,10 +39,26 @@ use syntaxis_workspace_browser::{
 const GUEST_CSS: Asset = asset!("/assets/guest.css");
 const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");
 const GEIST_FONT: Asset = asset!("/assets/geist-latin-wght-normal.woff2");
+const FAVICON: Asset = asset!("/assets/favicon.ico");
+const FAVICON_SVG: Asset = asset!("/assets/favicon.svg");
+const FAVICON_96: Asset = asset!("/assets/favicon-96x96.png");
+const APPLE_TOUCH_ICON: Asset = asset!("/assets/apple-touch-icon.png");
+const SITE_MANIFEST: Asset = asset!("/assets/site.webmanifest");
+#[used]
+static WEB_APP_ICON_192: Asset = asset!(
+    "/assets/web-app-manifest-192x192.png",
+    AssetOptions::builder().with_hash_suffix(false)
+);
+#[used]
+static WEB_APP_ICON_512: Asset = asset!(
+    "/assets/web-app-manifest-512x512.png",
+    AssetOptions::builder().with_hash_suffix(false)
+);
 const GUEST_ARCHIVE_SCRIPT: Asset = asset!("/assets/guest-archive.bundle.js");
 const GUEST_TERMINAL_SCRIPT: Asset = asset!("/assets/guest-terminal.bundle.js");
 const MAX_TEXT_BYTES: u64 = 4 * 1024 * 1024;
-const UNSAVED_NAVIGATION_MESSAGE: &str = "Save the active file before navigating away.";
+const UNSAVED_NAVIGATION_MESSAGE: &str =
+    "Save all modified files before leaving or changing workspace storage.";
 const MAX_ARCHIVE_FILES: usize = 10_000;
 const MAX_ARCHIVE_FILE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_ARCHIVE_WORKSPACE_BYTES: u64 = 32 * 1024 * 1024;
@@ -89,6 +113,28 @@ pub fn App() -> Element {
         "@font-face {{ font-family: 'Geist Variable'; src: url('{GEIST_FONT}') format('woff2'); font-style: normal; font-weight: 100 900; font-display: swap; }}",
     );
     rsx! {
+        document::Link { rel: "icon", r#type: "image/svg+xml", href: FAVICON_SVG }
+        document::Link {
+            rel: "icon",
+            r#type: "image/png",
+            sizes: "96x96",
+            href: FAVICON_96,
+        }
+        document::Link { rel: "shortcut icon", href: FAVICON }
+        document::Link {
+            rel: "apple-touch-icon",
+            sizes: "180x180",
+            href: APPLE_TOUCH_ICON,
+        }
+        document::Link { rel: "manifest", href: SITE_MANIFEST }
+        document::Meta { name: "theme-color", content: "#1f2021" }
+        document::Link {
+            rel: "preload",
+            href: GEIST_FONT,
+            r#as: "font",
+            r#type: "font/woff2",
+            crossorigin: "anonymous",
+        }
         document::Style { {geist_font_face} }
         document::Stylesheet { href: TAILWIND_CSS }
         document::Stylesheet { href: GUEST_CSS }
@@ -105,6 +151,7 @@ fn Home() -> Element {
     let open_browser_workspace: EventHandler<MouseEvent> = {
         let navigator = navigator.clone();
         EventHandler::new(move |_: MouseEvent| {
+            use_private_workspace();
             navigator.push(GuestRoute::Files {
                 slug: "browser".to_owned(),
                 query: GuestFilesQuery::default(),
@@ -172,7 +219,11 @@ fn Home() -> Element {
                     GuestSourceAction {
                         icon: AppIcon::Folder,
                         title: "Open folder".to_owned(),
-                        description: "Use a folder from this device".to_owned(),
+                        description: if folder_picker_supported {
+                            "Use a folder from this device".to_owned()
+                        } else {
+                            "Unavailable here; use private browser storage".to_owned()
+                        },
                         disabled: !folder_picker_supported,
                         onclick: open_local_folder,
                     }
@@ -207,8 +258,16 @@ fn Home() -> Element {
                             },
                         }
                     }
-                    div { class: "flex min-h-22 items-center justify-center rounded-xl border border-border bg-card px-3 py-3 text-center shadow-sm max-md:min-h-16 max-md:py-2.5",
-                        p { class: "text-xs text-muted-foreground", "No recent browser projects yet." }
+                    button {
+                        class: "flex w-full min-h-22 items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-left shadow-sm transition-colors hover:border-primary/60 hover:bg-accent/80 max-md:min-h-16 max-md:py-2.5",
+                        r#type: "button",
+                        onclick: open_browser_workspace,
+                        GuestProjectIcon { name: "Browser workspace".to_owned() }
+                        span { class: "min-w-0 flex-1",
+                            strong { class: "block truncate text-foreground", "Browser workspace" }
+                            small { class: "text-muted-foreground", "Private storage on this device" }
+                        }
+                        span { class: "text-muted-foreground", "Open →" }
                     }
                 }
                 footer { class: "mt-auto pt-10 text-center text-[11px] text-muted-foreground",
@@ -312,10 +371,12 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
         .unwrap_or_else(RelativePath::root);
     let mut current_directory = use_signal(move || initial_directory.clone());
     let mut explorer_search_open = use_signal(|| false);
+    let mut mobile_explorer_open = use_signal(|| false);
     let mut workspace_menu_open = use_signal(|| false);
     let mut new_entry_open = use_signal(|| false);
     let mut revision = use_signal(|| 0_u64);
     let mut buffer = use_signal(|| None::<EditorBuffer>);
+    let mut tab_buffers = use_signal(Vec::<EditorBuffer>::new);
     let mut open_tabs = use_signal(Vec::<String>::new);
     let mut binary_preview = use_signal(|| None::<BinaryPreviewState>);
     let mut new_file_name = use_signal(String::new);
@@ -368,8 +429,9 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
         },
     ));
 
+    let restore_saved_directory = workspace.slug != "browser";
     let _restore_directory = use_resource(move || async move {
-        if folder_picker_supported {
+        if folder_picker_supported && restore_saved_directory {
             match restore_local_directory(false).await {
                 Ok(SavedDirectory::Active(name)) => {
                     storage_location.set(StorageLocation::Local(name));
@@ -391,11 +453,13 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
         let ready = startup_complete();
         let workspace = directory_workspace.clone();
         async move {
-            if ready {
-                files.list(&workspace, &path).await
+            let mut entries = if ready {
+                files.list(&workspace, &path).await?
             } else {
-                Ok(Vec::new())
-            }
+                Vec::new()
+            };
+            entries.retain(|entry| entry.path.as_str() != GUEST_HISTORY_PATH);
+            Ok(entries)
         }
     });
     let search_workspace_record = workspace.clone();
@@ -408,9 +472,11 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
             if !ready || query.trim().is_empty() {
                 Ok(Vec::new())
             } else {
-                search_workspace(&files, &workspace, &query)
+                let mut hits = search_workspace(&files, &workspace, &query)
                     .await
-                    .map_err(|error| error.message)
+                    .map_err(|error| error.message)?;
+                hits.retain(|hit| hit.entry.path.as_str() != GUEST_HISTORY_PATH);
+                Ok(hits)
             }
         }
     });
@@ -479,6 +545,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
         .clone()
         .unwrap_or_else(|| "index.html".to_owned());
     let dirty = active_buffer.as_ref().is_some_and(EditorBuffer::is_dirty);
+    let any_dirty = dirty || tab_buffers.read().iter().any(EditorBuffer::is_dirty);
     let has_html_preview = active_buffer
         .as_ref()
         .is_some_and(|open| is_html_path(&open.path));
@@ -493,9 +560,27 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                 button {
                     class: "inline-flex size-8.5 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground",
                     r#type: "button",
-                    title: "Browser workspace",
-                    aria_label: "Browser workspace",
+                    title: "Back to browser workspaces",
+                    aria_label: "Back to browser workspaces",
+                    onclick: {
+                        let navigator = navigator.clone();
+                        move |_| {
+                            if any_dirty {
+                                notice.set(Some(Notice::error(UNSAVED_NAVIGATION_MESSAGE)));
+                            } else {
+                                navigator.push(GuestRoute::Home {});
+                            }
+                        }
+                    },
                     "←"
+                }
+                button {
+                    class: "hidden size-8.5 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground max-md:inline-flex",
+                    r#type: "button",
+                    title: "Open file explorer",
+                    aria_label: "Open file explorer",
+                    onclick: move |_| mobile_explorer_open.set(true),
+                    Icon { icon: AppIcon::Folder, size: 17 }
                 }
                 GuestProjectIcon { name: workspace.name.clone() }
                 div { class: "flex min-w-0 items-center gap-2",
@@ -534,7 +619,8 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
             div { class: "min-h-0 flex-1 overflow-hidden",
                 section { class: if active_view() == GuestView::Terminal { "flex size-full min-h-0 min-w-0 flex-col overflow-hidden bg-background" } else { "grid size-full min-h-0 min-w-0 grid-cols-[248px_minmax(0,1fr)] overflow-hidden max-md:block" },
                     if active_view() != GuestView::Terminal {
-                        aside { class: "min-h-0 min-w-0 border-r border-border bg-background max-md:hidden",
+                        aside {
+                            class: if mobile_explorer_open() { "min-h-0 min-w-0 border-r border-border bg-background max-md:fixed max-md:inset-x-0 max-md:top-[calc(3rem+env(safe-area-inset-top))] max-md:bottom-[calc(3.875rem+env(safe-area-inset-bottom))] max-md:z-30" } else { "min-h-0 min-w-0 border-r border-border bg-background max-md:hidden" },
                             div { class: "grid h-12 min-h-12 grid-cols-2 items-center gap-1 border-b border-border p-1.25",
                                 button {
                                     class: if !explorer_search_open() { "guest-explorer-tab guest-explorer-tab-active" } else { "guest-explorer-tab" },
@@ -603,6 +689,14 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                         Icon { icon: AppIcon::Upload, size: 14 }
                                     }
                                     span { class: "flex-1" }
+                                    button {
+                                        class: "hidden size-7.25 items-center justify-center rounded-md text-muted-foreground hover:bg-accent max-md:inline-flex",
+                                        r#type: "button",
+                                        title: "Close file explorer",
+                                        aria_label: "Close file explorer",
+                                        onclick: move |_| mobile_explorer_open.set(false),
+                                        "×"
+                                    }
                                     IconButton {
                                         label: "Refresh files",
                                         icon: AppIcon::Refresh,
@@ -630,7 +724,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                             label: "Open local folder",
                                             icon: AppIcon::Folder,
                                             size: ControlSize::Small,
-                                            disabled: busy() || !folder_picker_supported,
+                                            disabled: busy() || any_dirty || !folder_picker_supported,
                                             onclick: move |_| {
                                                 spawn(async move {
                                                     match select_local_directory().await {
@@ -657,7 +751,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                 label: "Reconnect local folder",
                                                 icon: AppIcon::Refresh,
                                                 size: ControlSize::Small,
-                                                disabled: busy(),
+                                                disabled: busy() || any_dirty,
                                                 onclick: move |_| {
                                                     spawn(async move {
                                                         match restore_local_directory(true).await {
@@ -690,7 +784,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                 label: "Use private workspace",
                                                 icon: AppIcon::ShieldAlert,
                                                 size: ControlSize::Small,
-                                                disabled: busy(),
+                                                disabled: busy() || any_dirty,
                                                 onclick: move |_| {
                                                     use_private_workspace();
                                                     storage_location.set(StorageLocation::Private);
@@ -777,10 +871,6 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                         let workspace = workspace.clone();
                                         move |event| {
                                             event.prevent_default();
-                                            if buffer().as_ref().is_some_and(EditorBuffer::is_dirty) {
-                                                notice.set(Some(Notice::error(UNSAVED_NAVIGATION_MESSAGE)));
-                                                return;
-                                            }
                                             let name = new_file_name().trim().to_owned();
                                             let Ok(path) = child_path(&current_directory(), &name) else {
                                                 notice.set(Some(Notice::error("Enter a valid file name.")));
@@ -857,10 +947,6 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                     button {
                                         class: "guest-file-row guest-parent-row",
                                         onclick: move |_| {
-                                            if buffer().as_ref().is_some_and(EditorBuffer::is_dirty) {
-                                                notice.set(Some(Notice::error(UNSAVED_NAVIGATION_MESSAGE)));
-                                                return;
-                                            }
                                             current_directory.set(parent_path(&current_directory()));
                                             buffer.set(None);
                                             binary_preview.set(None);
@@ -974,13 +1060,6 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                     on_open: {
                                                         let workspace = workspace.clone();
                                                         move |entry: FileEntry| {
-                                                            if buffer()
-                                                                .as_ref()
-                                                                .is_some_and(EditorBuffer::is_dirty)
-                                                            {
-                                                                notice.set(Some(Notice::error(UNSAVED_NAVIGATION_MESSAGE)));
-                                                                return;
-                                                            }
                                                             if entry.kind == EntryKind::Directory {
                                                                 active_view.set(GuestView::Editor);
                                                                 current_directory.set(entry.path);
@@ -1072,9 +1151,10 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                                 pending_delete.set(Some(entry.path));
                                                                 return;
                                                             }
-                                                            if active_path.as_deref() == Some(entry.path.as_str())
-                                                                && dirty
-                                                            {
+                                                            if tab_buffers.read().iter().any(|open| {
+                                                                open.is_dirty()
+                                                                    && path_is_within(&open.path, entry.path.as_str())
+                                                            }) {
                                                                 notice.set(Some(Notice::error(UNSAVED_NAVIGATION_MESSAGE)));
                                                                 return;
                                                             }
@@ -1090,11 +1170,12 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                                             buffer.set(None);
                                                                             binary_preview.set(None);
                                                                         }
-                                                                        open_tabs
-                                                                            .write()
-                                                                            .retain(|path| {
-                                                                                !path_is_within(path, entry.path.as_str())
-                                                                            });
+                                                                        open_tabs.write().retain(|path| {
+                                                                            !path_is_within(path, entry.path.as_str())
+                                                                        });
+                                                                        tab_buffers.write().retain(|open| {
+                                                                            !path_is_within(&open.path, entry.path.as_str())
+                                                                        });
                                                                         pending_delete.set(None);
                                                                         revision += 1;
                                                                         notice.set(Some(Notice::success("Deleted from this device.")));
@@ -1106,13 +1187,11 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                         }
                                                     },
                                                     on_operation: {
-                                                        let active_path = active_path.clone();
                                                         move |(entry, kind): (FileEntry, FileOperationKind)| {
-                                                            if dirty
-                                                                && active_path
-                                                                    .as_deref()
-                                                                    .is_some_and(|path| { path_is_within(path, entry.path.as_str()) })
-                                                            {
+                                                            if tab_buffers.read().iter().any(|open| {
+                                                                open.is_dirty()
+                                                                    && path_is_within(&open.path, entry.path.as_str())
+                                                            }) {
                                                                 notice.set(Some(Notice::error(UNSAVED_NAVIGATION_MESSAGE)));
                                                                 return;
                                                             }
@@ -1144,14 +1223,12 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                         let source = operation.source.clone();
                                         let kind = operation.kind;
                                         let workspace = workspace.clone();
-                                        let active_path = active_path.clone();
                                         move |event| {
                                             event.prevent_default();
-                                            if dirty
-                                                && active_path
-                                                    .as_deref()
-                                                    .is_some_and(|path| { path_is_within(path, source.as_str()) })
-                                            {
+                                            if tab_buffers.read().iter().any(|open| {
+                                                open.is_dirty()
+                                                    && path_is_within(&open.path, source.as_str())
+                                            }) {
                                                 notice.set(Some(Notice::error(UNSAVED_NAVIGATION_MESSAGE)));
                                                 return;
                                             }
@@ -1204,6 +1281,15 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                                     &destination,
                                                                 ) {
                                                                     *tab = path;
+                                                                }
+                                                            }
+                                                            for open in tab_buffers.write().iter_mut() {
+                                                                if let Some(path) = remap_path(
+                                                                    &open.path,
+                                                                    &source_for_task,
+                                                                    &destination,
+                                                                ) {
+                                                                    open.rename(path);
                                                                 }
                                                             }
                                                             if let Some(open) = buffer.write().as_mut()
@@ -1306,15 +1392,12 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                         if active_path.as_deref() == Some(tab_path.as_str()) {
                                                             return;
                                                         }
-                                                        if dirty {
-                                                            notice.set(Some(Notice::error(UNSAVED_NAVIGATION_MESSAGE)));
-                                                            return;
-                                                        }
                                                         activate_tab(
                                                             tab_path.clone(),
                                                             files,
                                                             workspace.clone(),
                                                             buffer,
+                                                            tab_buffers,
                                                             binary_preview,
                                                             active_view,
                                                             busy,
@@ -1332,13 +1415,17 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                     let tab_path = tab_path.clone();
                                                     let active_path = active_path.clone();
                                                     move |_| {
-                                                        if active_path.as_deref() == Some(tab_path.as_str()) && dirty {
-                                                            notice.set(Some(Notice::error(UNSAVED_NAVIGATION_MESSAGE)));
+                                                        let tab_dirty = tab_buffers
+                                                            .read()
+                                                            .iter()
+                                                            .find(|open| open.path == tab_path)
+                                                            .is_some_and(EditorBuffer::is_dirty);
+                                                        if tab_dirty {
+                                                            notice.set(Some(Notice::error("Save this file before closing it.")));
                                                             return;
                                                         }
-                                                        open_tabs
-                                                            .write()
-                                                            .retain(|path| path != &tab_path);
+                                                        open_tabs.write().retain(|path| path != &tab_path);
+                                                        tab_buffers.write().retain(|open| open.path != tab_path);
                                                         if active_path.as_deref() == Some(tab_path.as_str()) {
                                                             buffer.set(None);
                                                             binary_preview.set(None);
@@ -1434,6 +1521,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                             && open.path == path.as_str()
                                                         {
                                                             open.finish_save(contents, version);
+                                                            cache_buffer(tab_buffers, open);
                                                         }
                                                         if is_html_path(path.as_str()) {
                                                             load_preview(
@@ -1503,6 +1591,20 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                         let active_path = active_path.clone();
                                         move |changes: Vec<WorkspaceChange>| {
                                             revision += 1;
+                                            open_tabs.write().retain(|path| {
+                                                !changes.iter().any(|change| {
+                                                    change.path == *path
+                                                        && change.kind == WorkspaceChangeKind::Deleted
+                                                })
+                                            });
+                                            tab_buffers.write().retain(|open| {
+                                                !changes.iter().any(|change| {
+                                                    change.path == open.path
+                                                        && (change.kind == WorkspaceChangeKind::Deleted
+                                                            || (change.kind == WorkspaceChangeKind::Modified
+                                                                && !open.is_dirty()))
+                                                })
+                                            });
                                             let Some(path) = active_path.clone() else {
                                                 return;
                                             };
@@ -1564,6 +1666,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                                 }
                                                                 ExternalChange::Unchanged => {}
                                                             }
+                                                            cache_buffer(tab_buffers, open);
                                                         }
                                                         if is_html_path(relative.as_str()) {
                                                             load_preview(
@@ -1594,14 +1697,23 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                     }
                                 }
                             } else if active_view() == GuestView::Git {
-                                GuestUnavailable {
-                                    title: "Git",
-                                    message: "Git is not available in a pure browser workspace.",
+                                GuestGit {
+                                    workspace: workspace.clone(),
+                                    revision,
+                                    dirty: any_dirty,
+                                    notice,
+                                    on_workspace_changed: move |()| {
+                                        buffer.set(None);
+                                        binary_preview.set(None);
+                                        open_tabs.write().clear();
+                                        tab_buffers.write().clear();
+                                        revision += 1;
+                                    },
                                 }
                             } else if active_view() == GuestView::Ai {
-                                GuestUnavailable {
-                                    title: "AI",
-                                    message: "AI is not available in a pure browser workspace.",
+                                GuestAi {
+                                    active_path: active_buffer.as_ref().map(|open| open.path.clone()),
+                                    active_contents: active_buffer.as_ref().map(|open| open.contents.clone()),
                                 }
                             } else if let Some(open) = active_buffer.as_ref() {
                                 CodeEditor {
@@ -1617,11 +1729,14 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                             .into_iter()
                                             .map(|edit| (edit.start, edit.end, edit.text))
                                             .collect::<Vec<_>>();
-                                        if let Some(open) = buffer.write().as_mut()
-                                            && !open.apply_edits(&edits)
-                                        {
-                                            notice
-                                                .set(Some(Notice::error("The editor returned an invalid text change.")));
+                                        if let Some(open) = buffer.write().as_mut() {
+                                            if open.apply_edits(&edits) {
+                                                cache_buffer(tab_buffers, open);
+                                            } else {
+                                                notice.set(Some(Notice::error(
+                                                    "The editor returned an invalid text change.",
+                                                )));
+                                            }
                                         }
                                     },
                                 }
@@ -1662,13 +1777,15 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                     onclick: {
                         let navigator = navigator.clone();
                         let slug = workspace.slug.clone();
+                        let route_path = active_path.clone();
                         move |_| {
                             active_view.set(GuestView::Editor);
-                            navigator
-                                .push(GuestRoute::Files {
-                                    slug: slug.clone(),
-                                    query: GuestFilesQuery::default(),
-                                });
+                            navigator.push(GuestRoute::Files {
+                                slug: slug.clone(),
+                                query: GuestFilesQuery {
+                                    path: route_path.clone(),
+                                },
+                            });
                         }
                     },
                 }
@@ -1679,13 +1796,15 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                     onclick: {
                         let navigator = navigator.clone();
                         let slug = workspace.slug.clone();
+                        let route_path = active_path.clone();
                         move |_| {
                             active_view.set(GuestView::Terminal);
-                            navigator
-                                .push(GuestRoute::Terminal {
-                                    slug: slug.clone(),
-                                    query: GuestFilesQuery::default(),
-                                });
+                            navigator.push(GuestRoute::Terminal {
+                                slug: slug.clone(),
+                                query: GuestFilesQuery {
+                                    path: route_path.clone(),
+                                },
+                            });
                         }
                     },
                 }
@@ -1715,13 +1834,8 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                         move |_| {
                             if has_html_preview {
                                 active_view.set(GuestView::Preview);
-                                navigator
-                                    .push(GuestRoute::Preview {
-                                        slug: slug.clone(),
-                                    }
-                                    }
-                            }
-                            }
+                                navigator.push(GuestRoute::Preview { slug: slug.clone() });
+                            } else {
                                 notice.set(Some(Notice::error("Open an HTML file to use Preview.")));
                             }
                         }
@@ -1810,33 +1924,41 @@ fn GuestTerminal(
                 }
                 div { class: "flex items-center gap-1",
                     IconButton {
-                        label: "New terminal",
+                        label: "Reset terminal",
                         icon: AppIcon::Plus,
                         size: ControlSize::Small,
+                        disabled: running(),
                         onclick: move |_| {
-                            notice.set(Some(Notice::success("The browser workspace uses one local shell.")))
+                            history.write().clear();
+                            history_cursor.set(None);
+                            command.set(String::new());
+                            focus_guest_terminal_input(command_input);
                         },
                     }
                     IconButton {
-                        label: "Terminal actions",
-                        icon: AppIcon::Menu,
+                        label: "Clear terminal output",
+                        icon: AppIcon::Delete,
                         size: ControlSize::Small,
+                        disabled: history().is_empty(),
                         onclick: move |_| {
-                            notice
-                                .set(
-                                    Some(
-                                        Notice::success(
-                                            "Commands run in the browser workspace with just-bash.",
-                                        ),
-                                    ),
-                                )
+                            history.write().clear();
+                            history_cursor.set(None);
                         },
                     }
                     IconButton {
-                        label: "Run command",
-                        icon: AppIcon::Play,
+                        label: if running() { "Stop command" } else { "Focus command input" },
+                        icon: if running() { AppIcon::Stop } else { AppIcon::Play },
                         size: ControlSize::Small,
-                        onclick: move |_| notice.set(Some(Notice::success("Enter a command below to run it."))),
+                        disabled: !bridge_ready,
+                        onclick: move |_| {
+                            if running() {
+                                if let Err(error) = cancel_browser_command() {
+                                    notice.set(Some(Notice::error(error)));
+                                }
+                            } else {
+                                focus_guest_terminal_input(command_input);
+                            }
+                        },
                     }
                 }
             }
@@ -1978,30 +2100,9 @@ fn GuestTerminal(
                         disabled: running() || !bridge_ready || command().trim().is_empty(),
                         "Run"
                     }
-                    button {
-                        class: "sr-only",
-                        r#type: "button",
-                        disabled: !running(),
-                        onclick: move |_| {
-                            if let Err(error) = cancel_browser_command() {
-                                notice.set(Some(Notice::error(error)));
-                            }
-                        },
-                        "Stop"
-                    }
-                    button {
-                        class: "sr-only",
-                        r#type: "button",
-                        disabled: history().is_empty(),
-                        onclick: move |_| {
-                            history.write().clear();
-                            history_cursor.set(None);
-                        },
-                        "Clear"
-                    }
                 }
             }
-            div { class: "guest-terminal-status", "Browser PTY · local just-bash" }
+            div { class: "guest-terminal-status", "Browser command console · local just-bash" }
         }
     }
 }
@@ -2080,31 +2181,9 @@ fn GuestPreview(path: String, source: String) -> Element {
             iframe {
                 class: "guest-preview-frame",
                 title: "Preview of {path}",
-                onmounted: move |_| {
-                    let source = source.clone();
-                    spawn(async move {
-                        let eval = document::eval(
-                            r#"
-                                        const frame = document.querySelector('.guest-preview-frame');
-                                        if (!frame) throw new Error('The preview frame was not mounted.');
-                                        frame.setAttribute('sandbox', '');
-                                        frame.srcdoc = await dioxus.recv();
-                                        "#,
-                        );
-                        let _ = eval.send(source);
-                    });
-                },
+                sandbox: "",
+                srcdoc: source,
             }
-        }
-    }
-}
-
-#[component]
-fn GuestUnavailable(title: String, message: String) -> Element {
-    rsx! {
-        div { class: "flex size-full flex-col items-center justify-center p-7 text-center",
-            h2 { class: "text-lg font-medium text-foreground", "{title}" }
-            p { class: "mt-1.75 max-w-97.5 text-muted-foreground", "{message}" }
         }
     }
 }
@@ -2154,17 +2233,37 @@ fn remember_tab(mut open_tabs: Signal<Vec<String>>, path: &str) {
     }
 }
 
+fn cache_buffer(mut tab_buffers: Signal<Vec<EditorBuffer>>, buffer: &EditorBuffer) {
+    let mut buffers = tab_buffers.write();
+    if let Some(cached) = buffers.iter_mut().find(|cached| cached.path == buffer.path) {
+        *cached = buffer.clone();
+    } else {
+        buffers.push(buffer.clone());
+    }
+}
+
 fn activate_tab(
     path: String,
     files: OpfsWorkspaceFiles,
     workspace: WorkspaceRecord,
     mut buffer: Signal<Option<EditorBuffer>>,
+    tab_buffers: Signal<Vec<EditorBuffer>>,
     mut binary_preview: Signal<Option<BinaryPreviewState>>,
     mut active_view: Signal<GuestView>,
     mut busy: Signal<bool>,
     mut notice: Signal<Option<Notice>>,
 ) {
     active_view.set(GuestView::Editor);
+    if let Some(cached) = tab_buffers
+        .read()
+        .iter()
+        .find(|cached| cached.path == path)
+        .cloned()
+    {
+        buffer.set(Some(cached));
+        binary_preview.set(None);
+        return;
+    }
     buffer.set(None);
     binary_preview.set(None);
     busy.set(true);
@@ -2238,6 +2337,9 @@ async fn collect_archive_entries(
             .await
             .map_err(|error| error.message)?;
         for entry in listed {
+            if entry.path.as_str() == GUEST_HISTORY_PATH {
+                continue;
+            }
             if entries.len() >= MAX_ARCHIVE_FILES {
                 return Err("The workspace contains too many entries for a ZIP export.".into());
             }
@@ -2482,30 +2584,34 @@ async fn upload_files(
 }
 
 fn download_bytes(filename: String, bytes: Vec<u8>, mime: &'static str) {
-    spawn(async move {
-        let script = document::eval(
-            r#"
-            const filename = await dioxus.recv();
-            const encoded = await dioxus.recv();
-            const mime = await dioxus.recv();
-            const binary = atob(encoded);
-            const bytes = new Uint8Array(binary.length);
-            for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
-            const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
-            const link = document.createElement("a");
-            link.href = url;
-            link.download = filename.split("/").pop() || filename;
-            link.style.display = "none";
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            setTimeout(() => URL.revokeObjectURL(url), 1000);
-            "#,
-        );
-        let _ = script.send(filename);
-        let _ = script.send(BASE64.encode(bytes));
-        let _ = script.send(mime);
-    });
+    use js_sys::{Array, Uint8Array};
+    use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, Url};
+
+    let parts = Array::new();
+    parts.push(&Uint8Array::from(bytes.as_slice()));
+    let options = BlobPropertyBag::new();
+    options.set_type(mime);
+    let Ok(blob) = Blob::new_with_u8_array_sequence_and_options(&parts, &options) else {
+        return;
+    };
+    let Ok(url) = Url::create_object_url_with_blob(&blob) else {
+        return;
+    };
+    let Some(document) = web_sys::window().and_then(|window| window.document()) else {
+        let _ = Url::revoke_object_url(&url);
+        return;
+    };
+    let Ok(link) = document
+        .create_element("a")
+        .and_then(|element| element.dyn_into::<HtmlAnchorElement>())
+    else {
+        let _ = Url::revoke_object_url(&url);
+        return;
+    };
+    link.set_href(&url);
+    link.set_download(filename.rsplit('/').next().unwrap_or(&filename));
+    link.click();
+    let _ = Url::revoke_object_url(&url);
 }
 
 fn image_mime(path: &str) -> Option<&'static str> {
@@ -2829,20 +2935,6 @@ fn GuestNavItem(
 }
 
 fn focus_guest_terminal_input(input: Signal<Option<Rc<MountedData>>>) {
-    #[cfg(target_arch = "wasm32")]
-    if let Some(window) = web_sys::window() {
-        let callback = Closure::once_into_js(|| {
-            if let Some(element) = web_sys::window()
-                .and_then(|window| window.document())
-                .and_then(|document| document.get_element_by_id("guest-terminal-command"))
-                .and_then(|element| element.dyn_into::<web_sys::HtmlElement>().ok())
-            {
-                let _ = element.focus();
-            }
-        });
-        let _ = window
-            .set_timeout_with_callback_and_timeout_and_arguments_0(callback.unchecked_ref(), 0);
-    }
     let Some(input) = input() else {
         return;
     };
