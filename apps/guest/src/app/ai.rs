@@ -34,10 +34,7 @@ struct ChatChoice {
 }
 
 #[component]
-pub(super) fn GuestAi(
-    active_path: Option<String>,
-    active_contents: Option<String>,
-) -> Element {
+pub(super) fn GuestAi(active_path: Option<String>, active_contents: Option<String>) -> Element {
     let mut endpoint = use_signal(|| DEFAULT_ENDPOINT.to_owned());
     let mut model = use_signal(|| DEFAULT_MODEL.to_owned());
     let mut api_key = use_signal(String::new);
@@ -54,7 +51,9 @@ pub(super) fn GuestAi(
             header { class: "guest-module-header",
                 div {
                     h2 { "AI assistant" }
-                    p { "Optional BYOK chat. Requests go directly from this browser to the configured provider." }
+                    p {
+                        "Optional BYOK chat. Requests go directly from this browser to the configured provider."
+                    }
                 }
                 button {
                     r#type: "button",
@@ -98,18 +97,29 @@ pub(super) fn GuestAi(
                     "The key is never written to workspace files or browser storage. Provider CORS policy may block direct browser requests."
                 }
             }
-            div { class: "guest-ai-timeline", role: "log", "aria-live": "polite",
+            div {
+                class: "guest-ai-timeline",
+                role: "log",
+                "aria-live": "polite",
                 if messages().is_empty() {
                     div { class: "guest-module-empty",
                         h3 { "Ask about your project" }
-                        p { "Open a text file to optionally attach it as context, then enter a request below." }
+                        p {
+                            "Open a text file to optionally attach it as context, then enter a request below."
+                        }
                     }
                 }
                 for (index, message) in messages().into_iter().enumerate() {
                     article {
                         key: "{index}",
                         class: if message.role == "user" { "guest-ai-message guest-ai-user" } else { "guest-ai-message guest-ai-assistant" },
-                        strong { if message.role == "user" { "You" } else { "Assistant" } }
+                        strong {
+                            if message.role == "user" {
+                                "You"
+                            } else {
+                                "Assistant"
+                            }
+                        }
                         pre { "{message.content}" }
                     }
                 }
@@ -140,10 +150,18 @@ pub(super) fn GuestAi(
                     let content = if include_file() {
                         match (submit_path.clone(), submit_contents.clone()) {
                             (Some(path), Some(contents)) if contents.len() <= MAX_CONTEXT_BYTES => {
-                                format!("Active file: {path}\n\n```\n{contents}\n```\n\nRequest: {request}")
+                                format!(
+                                    "Active file: {path}\n\n```\n{contents}\n```\n\nRequest: {request}",
+                                )
                             }
                             (Some(_), Some(_)) => {
-                                error.set(Some("The active file exceeds the 128 KiB AI context limit.".to_owned()));
+                                error
+                                    .set(
+                                        Some(
+                                            "The active file exceeds the 128 KiB AI context limit."
+                                                .to_owned(),
+                                        ),
+                                    );
                                 return;
                             }
                             _ => request.clone(),
@@ -151,20 +169,34 @@ pub(super) fn GuestAi(
                     } else {
                         request.clone()
                     };
-                    outgoing.push(ChatMessage { role: "user".to_owned(), content });
+                    outgoing
+                        .push(ChatMessage {
+                            role: "user".to_owned(),
+                            content,
+                        });
                     while outgoing.iter().map(|message| message.content.len()).sum::<usize>()
-                        > MAX_CONVERSATION_BYTES
-                        && outgoing.len() > 1
+                        > MAX_CONVERSATION_BYTES && outgoing.len() > 1
                     {
                         outgoing.remove(0);
                     }
                     if outgoing.iter().map(|message| message.content.len()).sum::<usize>()
                         > MAX_CONVERSATION_BYTES
                     {
-                        error.set(Some("The AI conversation exceeds the 512 KiB browser limit.".to_owned()));
+                        error
+                            .set(
+                                Some(
+                                    "The AI conversation exceeds the 512 KiB browser limit."
+                                        .to_owned(),
+                                ),
+                            );
                         return;
                     }
-                    messages.write().push(ChatMessage { role: "user".to_owned(), content: request });
+                    messages
+                        .write()
+                        .push(ChatMessage {
+                            role: "user".to_owned(),
+                            content: request,
+                        });
                     prompt.set(String::new());
                     error.set(None);
                     pending.set(true);
@@ -197,10 +229,7 @@ pub(super) fn GuestAi(
                     aria_label: "AI message",
                     oninput: move |event| prompt.set(event.value()),
                 }
-                button {
-                    disabled: pending() || prompt().trim().is_empty(),
-                    "Send"
-                }
+                button { disabled: pending() || prompt().trim().is_empty(), "Send" }
             }
         }
     }
@@ -234,7 +263,8 @@ async fn send_chat(
         .headers()
         .set("Authorization", &format!("Bearer {api_key}"))
         .map_err(|value| browser_error("Could not authorize the AI request", value))?;
-    let window = web_sys::window().ok_or_else(|| "The browser window is unavailable.".to_owned())?;
+    let window =
+        web_sys::window().ok_or_else(|| "The browser window is unavailable.".to_owned())?;
     let response = JsFuture::from(window.fetch_with_request(&request))
         .await
         .map_err(|value| browser_error("The provider request failed", value))?
@@ -256,7 +286,12 @@ async fn send_chat(
     if !response.ok() {
         let detail = serde_json::from_str::<serde_json::Value>(&text)
             .ok()
-            .and_then(|value| value.pointer("/error/message").and_then(|message| message.as_str()).map(str::to_owned))
+            .and_then(|value| {
+                value
+                    .pointer("/error/message")
+                    .and_then(|message| message.as_str())
+                    .map(str::to_owned)
+            })
             .unwrap_or(text);
         return Err(format!("Provider returned HTTP {status}: {detail}"));
     }

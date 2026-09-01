@@ -262,6 +262,10 @@ web host=default_host port=default_port: build-assets
         --port "{{ port }}" \
         --force-sequential true
 
+# Start the guest web development server.
+guest: build-assets
+    dx serve --package syntaxis-guest --platform web
+
 # Start the desktop development server.
 desktop: build-assets
     dx serve --platform desktop
@@ -474,7 +478,11 @@ dx-check platform=default_platform: build-assets
     set -euo pipefail
 
     case "{{ platform }}" in
-        web | server | desktop)
+        web)
+            dx check "--{{ platform }}"
+            dx build --package syntaxis-guest --platform "{{ platform }}"
+            ;;
+        server | desktop)
             dx check "--{{ platform }}"
             ;;
         *)

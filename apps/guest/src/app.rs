@@ -26,14 +26,14 @@ use syntaxis_ui::prelude::{
     PanelTabList, PanelTabWidth, StatusBadge, Tone,
 };
 use syntaxis_workspace::{
-    EntryKind, ErrorCode, FileEntry, RelativePath, WorkspaceAvailability, WorkspaceFiles,
-    WorkspaceIcon, WorkspaceIconSymbol, WorkspaceId, WorkspaceProfile, WorkspaceRecord,
-    WorkspaceSection,
+    EntryKind, ErrorCode, FileEntry, RelativePath, WorkspaceAvailability, WorkspaceError,
+    WorkspaceFiles, WorkspaceIcon, WorkspaceIconSymbol, WorkspaceId, WorkspaceProfile,
+    WorkspaceRecord, WorkspaceSection,
 };
 use syntaxis_workspace_browser::{
     BrowserSearchHit, OpfsWorkspaceFiles, SavedDirectory, local_directory_picker_supported,
     restore_local_directory, search as search_workspace, select_local_directory,
-    use_private_workspace,
+    set_private_workspace,
 };
 
 const GUEST_CSS: Asset = asset!("/assets/guest.css");
@@ -151,7 +151,7 @@ fn Home() -> Element {
     let open_browser_workspace: EventHandler<MouseEvent> = {
         let navigator = navigator.clone();
         EventHandler::new(move |_: MouseEvent| {
-            use_private_workspace();
+            set_private_workspace();
             navigator.push(GuestRoute::Files {
                 slug: "browser".to_owned(),
                 query: GuestFilesQuery::default(),
@@ -219,11 +219,7 @@ fn Home() -> Element {
                     GuestSourceAction {
                         icon: AppIcon::Folder,
                         title: "Open folder".to_owned(),
-                        description: if folder_picker_supported {
-                            "Use a folder from this device".to_owned()
-                        } else {
-                            "Unavailable here; use private browser storage".to_owned()
-                        },
+                        description: if folder_picker_supported { "Use a folder from this device".to_owned() } else { "Unavailable here; use private browser storage".to_owned() },
                         disabled: !folder_picker_supported,
                         onclick: open_local_folder,
                     }
@@ -447,7 +443,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
     });
 
     let directory_workspace = workspace.clone();
-    let entries = use_resource(move || {
+    let entries: Resource<Result<Vec<FileEntry>, WorkspaceError>> = use_resource(move || {
         let path = current_directory();
         let _revision = revision();
         let ready = startup_complete();
@@ -463,7 +459,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
         }
     });
     let search_workspace_record = workspace.clone();
-    let search_results = use_resource(move || {
+    let search_results: Resource<Result<Vec<BrowserSearchHit>, String>> = use_resource(move || {
         let query = search_query();
         let ready = startup_complete();
         let _revision = revision();
@@ -619,8 +615,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
             div { class: "min-h-0 flex-1 overflow-hidden",
                 section { class: if active_view() == GuestView::Terminal { "flex size-full min-h-0 min-w-0 flex-col overflow-hidden bg-background" } else { "grid size-full min-h-0 min-w-0 grid-cols-[248px_minmax(0,1fr)] overflow-hidden max-md:block" },
                     if active_view() != GuestView::Terminal {
-                        aside {
-                            class: if mobile_explorer_open() { "min-h-0 min-w-0 border-r border-border bg-background max-md:fixed max-md:inset-x-0 max-md:top-[calc(3rem+env(safe-area-inset-top))] max-md:bottom-[calc(3.875rem+env(safe-area-inset-bottom))] max-md:z-30" } else { "min-h-0 min-w-0 border-r border-border bg-background max-md:hidden" },
+                        aside { class: if mobile_explorer_open() { "min-h-0 min-w-0 border-r border-border bg-background max-md:fixed max-md:inset-x-0 max-md:top-[calc(3rem+env(safe-area-inset-top))] max-md:bottom-[calc(3.875rem+env(safe-area-inset-bottom))] max-md:z-30" } else { "min-h-0 min-w-0 border-r border-border bg-background max-md:hidden" },
                             div { class: "grid h-12 min-h-12 grid-cols-2 items-center gap-1 border-b border-border p-1.25",
                                 button {
                                     class: if !explorer_search_open() { "guest-explorer-tab guest-explorer-tab-active" } else { "guest-explorer-tab" },
@@ -786,7 +781,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                 size: ControlSize::Small,
                                                 disabled: busy() || any_dirty,
                                                 onclick: move |_| {
-                                                    use_private_workspace();
+                                                    set_private_workspace();
                                                     storage_location.set(StorageLocation::Private);
                                                     revision += 1;
                                                     notice.set(Some(Notice::success("Using private browser storage.")));
@@ -1151,16 +1146,18 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                                 pending_delete.set(Some(entry.path));
                                                                 return;
                                                             }
-                                                            if tab_buffers.read().iter().any(|open| {
-                                                                open.is_dirty()
-                                                                    && path_is_within(&open.path, entry.path.as_str())
-                                                            }) {
+                                                            if tab_buffers
+                                                                .read()
+                                                                .iter()
+                                                                .any(|open| {
+                                                                    open.is_dirty() && path_is_within(&open.path, entry.path.as_str())
+                                                                })
+                                                            {
                                                                 notice.set(Some(Notice::error(UNSAVED_NAVIGATION_MESSAGE)));
                                                                 return;
                                                             }
                                                             let workspace = workspace.clone();
-                                                            let deleting_active = active_path.as_deref()
-                                                                == Some(entry.path.as_str());
+                                                            let deleting_active = active_path.as_deref() == Some(entry.path.as_str());
                                                             busy.set(true);
                                                             notice.set(None);
                                                             spawn(async move {
@@ -1170,12 +1167,16 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                                             buffer.set(None);
                                                                             binary_preview.set(None);
                                                                         }
-                                                                        open_tabs.write().retain(|path| {
-                                                                            !path_is_within(path, entry.path.as_str())
-                                                                        });
-                                                                        tab_buffers.write().retain(|open| {
-                                                                            !path_is_within(&open.path, entry.path.as_str())
-                                                                        });
+                                                                        open_tabs
+                                                                            .write()
+                                                                            .retain(|path| {
+                                                                                !path_is_within(path, entry.path.as_str())
+                                                                            });
+                                                                        tab_buffers
+                                                                            .write()
+                                                                            .retain(|open| {
+                                                                                !path_is_within(&open.path, entry.path.as_str())
+                                                                            });
                                                                         pending_delete.set(None);
                                                                         revision += 1;
                                                                         notice.set(Some(Notice::success("Deleted from this device.")));
@@ -1188,10 +1189,13 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                     },
                                                     on_operation: {
                                                         move |(entry, kind): (FileEntry, FileOperationKind)| {
-                                                            if tab_buffers.read().iter().any(|open| {
-                                                                open.is_dirty()
-                                                                    && path_is_within(&open.path, entry.path.as_str())
-                                                            }) {
+                                                            if tab_buffers
+                                                                .read()
+                                                                .iter()
+                                                                .any(|open| {
+                                                                    open.is_dirty() && path_is_within(&open.path, entry.path.as_str())
+                                                                })
+                                                            {
                                                                 notice.set(Some(Notice::error(UNSAVED_NAVIGATION_MESSAGE)));
                                                                 return;
                                                             }
@@ -1225,10 +1229,13 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                         let workspace = workspace.clone();
                                         move |event| {
                                             event.prevent_default();
-                                            if tab_buffers.read().iter().any(|open| {
-                                                open.is_dirty()
-                                                    && path_is_within(&open.path, source.as_str())
-                                            }) {
+                                            if tab_buffers
+                                                .read()
+                                                .iter()
+                                                .any(|open| {
+                                                    open.is_dirty() && path_is_within(&open.path, source.as_str())
+                                                })
+                                            {
                                                 notice.set(Some(Notice::error(UNSAVED_NAVIGATION_MESSAGE)));
                                                 return;
                                             }
@@ -1591,20 +1598,28 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                         let active_path = active_path.clone();
                                         move |changes: Vec<WorkspaceChange>| {
                                             revision += 1;
-                                            open_tabs.write().retain(|path| {
-                                                !changes.iter().any(|change| {
-                                                    change.path == *path
-                                                        && change.kind == WorkspaceChangeKind::Deleted
-                                                })
-                                            });
-                                            tab_buffers.write().retain(|open| {
-                                                !changes.iter().any(|change| {
-                                                    change.path == open.path
-                                                        && (change.kind == WorkspaceChangeKind::Deleted
-                                                            || (change.kind == WorkspaceChangeKind::Modified
-                                                                && !open.is_dirty()))
-                                                })
-                                            });
+                                            open_tabs
+                                                .write()
+                                                .retain(|path| {
+                                                    !changes
+                                                        .iter()
+                                                        .any(|change| {
+                                                            change.path == *path
+                                                                && change.kind == WorkspaceChangeKind::Deleted
+                                                        })
+                                                });
+                                            tab_buffers
+                                                .write()
+                                                .retain(|open| {
+                                                    !changes
+                                                        .iter()
+                                                        .any(|change| {
+                                                            change.path == open.path
+                                                                && (change.kind == WorkspaceChangeKind::Deleted
+                                                                    || (change.kind == WorkspaceChangeKind::Modified
+                                                                        && !open.is_dirty()))
+                                                        })
+                                                });
                                             let Some(path) = active_path.clone() else {
                                                 return;
                                             };
@@ -1733,9 +1748,12 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                             if open.apply_edits(&edits) {
                                                 cache_buffer(tab_buffers, open);
                                             } else {
-                                                notice.set(Some(Notice::error(
-                                                    "The editor returned an invalid text change.",
-                                                )));
+                                                notice
+                                                    .set(
+                                                        Some(
+                                                            Notice::error("The editor returned an invalid text change."),
+                                                        ),
+                                                    );
                                             }
                                         }
                                     },
@@ -1780,12 +1798,13 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                         let route_path = active_path.clone();
                         move |_| {
                             active_view.set(GuestView::Editor);
-                            navigator.push(GuestRoute::Files {
-                                slug: slug.clone(),
-                                query: GuestFilesQuery {
-                                    path: route_path.clone(),
-                                },
-                            });
+                            navigator
+                                .push(GuestRoute::Files {
+                                    slug: slug.clone(),
+                                    query: GuestFilesQuery {
+                                        path: route_path.clone(),
+                                    },
+                                });
                         }
                     },
                 }
@@ -1799,12 +1818,13 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                         let route_path = active_path.clone();
                         move |_| {
                             active_view.set(GuestView::Terminal);
-                            navigator.push(GuestRoute::Terminal {
-                                slug: slug.clone(),
-                                query: GuestFilesQuery {
-                                    path: route_path.clone(),
-                                },
-                            });
+                            navigator
+                                .push(GuestRoute::Terminal {
+                                    slug: slug.clone(),
+                                    query: GuestFilesQuery {
+                                        path: route_path.clone(),
+                                    },
+                                });
                         }
                     },
                 }
@@ -1834,7 +1854,10 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                         move |_| {
                             if has_html_preview {
                                 active_view.set(GuestView::Preview);
-                                navigator.push(GuestRoute::Preview { slug: slug.clone() });
+                                navigator
+                                    .push(GuestRoute::Preview {
+                                        slug: slug.clone(),
+                                    });
                             } else {
                                 notice.set(Some(Notice::error("Open an HTML file to use Preview.")));
                             }
@@ -2181,7 +2204,7 @@ fn GuestPreview(path: String, source: String) -> Element {
             iframe {
                 class: "guest-preview-frame",
                 title: "Preview of {path}",
-                sandbox: "",
+                "sandbox": "",
                 srcdoc: source,
             }
         }
@@ -2601,10 +2624,11 @@ fn download_bytes(filename: String, bytes: Vec<u8>, mime: &'static str) {
         let _ = Url::revoke_object_url(&url);
         return;
     };
-    let Ok(link) = document
-        .create_element("a")
-        .and_then(|element| element.dyn_into::<HtmlAnchorElement>())
-    else {
+    let Ok(element) = document.create_element("a") else {
+        let _ = Url::revoke_object_url(&url);
+        return;
+    };
+    let Ok(link) = element.dyn_into::<HtmlAnchorElement>() else {
         let _ = Url::revoke_object_url(&url);
         return;
     };

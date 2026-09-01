@@ -117,118 +117,154 @@ pub(super) fn GuestGit(
                 "Browser history provides local commits and restore points. Git branches, remotes, signing, rebase, and interoperable .git data require a server-side Git runtime and are intentionally unavailable here."
             }
             match state() {
-                None => rsx! { p { class: "guest-module-note", "Reading workspace history…" } },
-                Some(Err(error)) => rsx! { p { class: "guest-ai-error", role: "alert", "{error}" } },
-                Some(Ok((history, status))) => rsx! {
-                    div { class: "guest-git-summary",
-                        strong {
-                            if history.commits.is_empty() { "History not initialized" }
-                            else if status.is_clean() { "Working tree clean" }
-                            else { "{status.count()} changed path(s)" }
-                        }
-                        span { "{history.commits.len()} local commit(s)" }
-                    }
-                    if !status.is_clean() {
-                        div { class: "guest-git-changes",
-                            for path in status.added.iter() {
-                                p { key: "a-{path}", span { class: "guest-git-added", "A" } "{path}" }
-                            }
-                            for path in status.modified.iter() {
-                                p { key: "m-{path}", span { class: "guest-git-modified", "M" } "{path}" }
-                            }
-                            for path in status.deleted.iter() {
-                                p { key: "d-{path}", span { class: "guest-git-deleted", "D" } "{path}" }
-                            }
-                        }
-                    }
-                    form {
-                        class: "guest-git-commit",
-                        onsubmit: {
-                            let workspace = workspace.clone();
-                            move |event| {
-                                event.prevent_default();
-                                let commit_message = message().trim().to_owned();
-                                if commit_message.is_empty() || busy() || dirty {
-                                    return;
+                None => rsx! {
+                    p { class: "guest-module-note", "Reading workspace history…" }
+                },
+                Some(Err(error)) => rsx! {
+                    p { class: "guest-ai-error", role: "alert", "{error}" }
+                },
+                Some(Ok((history, status))) => {
+                    let commit_disabled = busy()
+                        || dirty
+                        || message().trim().is_empty()
+                        || (status.is_clean() && !history.commits.is_empty());
+
+                    rsx! {
+                        div { class: "guest-git-summary",
+                            strong {
+                                if history.commits.is_empty() {
+                                    "History not initialized"
+                                } else if status.is_clean() {
+                                    "Working tree clean"
+                                } else {
+                                    "{status.count()} changed path(s)"
                                 }
-                                busy.set(true);
-                                let workspace = workspace.clone();
-                                spawn(async move {
-                                    match create_commit(&files, &workspace, commit_message).await {
-                                        Ok(()) => {
-                                            message.set(String::new());
-                                            refresh += 1;
-                                            notice.set(Some(Notice::success("Created a local browser commit.")));
-                                        }
-                                        Err(error) => notice.set(Some(Notice::error(error))),
+                            }
+                            span { "{history.commits.len()} local commit(s)" }
+                        }
+                        if !status.is_clean() {
+                            div { class: "guest-git-changes",
+                                for path in status.added.iter() {
+                                    p { key: "a-{path}",
+                                        span { class: "guest-git-added", "A" }
+                                        "{path}"
                                     }
-                                    busy.set(false);
-                                });
-                            }
-                        },
-                        input {
-                            value: message,
-                            maxlength: 200,
-                            placeholder: "Commit message",
-                            aria_label: "Browser commit message",
-                            oninput: move |event| message.set(event.value()),
-                        }
-                        button {
-                            disabled: busy()
-                                || dirty
-                                || message().trim().is_empty()
-                                || (status.is_clean() && !history.commits.is_empty()),
-                            if history.commits.is_empty() { "Initialize history" } else { "Commit all" }
-                        }
-                    }
-                    if dirty {
-                        p { class: "guest-ai-error", "Save the active editor buffer before committing or restoring." }
-                    }
-                    div { class: "guest-git-history",
-                        h3 { "Local commits" }
-                        if history.commits.is_empty() {
-                            p { class: "guest-module-note", "No commits yet. Add a message to capture the current workspace." }
-                        }
-                        for commit in history.commits.iter().rev() {
-                            article { key: "{commit.id}",
-                                div {
-                                    strong { "{commit.message}" }
-                                    small { "Snapshot {commit.id} · {commit.files.iter().filter(|entry| !entry.directory).count()} file(s)" }
                                 }
-                                button {
-                                    r#type: "button",
-                                    disabled: busy() || dirty,
-                                    onclick: {
-                                        let workspace = workspace.clone();
-                                        let commit = commit.clone();
-                                        move |_| {
-                                            if confirm_restore().as_deref() != Some(commit.id.as_str()) {
-                                                confirm_restore.set(Some(commit.id.clone()));
-                                                return;
+                                for path in status.modified.iter() {
+                                    p { key: "m-{path}",
+                                        span { class: "guest-git-modified", "M" }
+                                        "{path}"
+                                    }
+                                }
+                                for path in status.deleted.iter() {
+                                    p { key: "d-{path}",
+                                        span { class: "guest-git-deleted", "D" }
+                                        "{path}"
+                                    }
+                                }
+                            }
+                        }
+                        form {
+                            class: "guest-git-commit",
+                            onsubmit: {
+                                let workspace = workspace.clone();
+                                move |event| {
+                                    event.prevent_default();
+                                    let commit_message = message().trim().to_owned();
+                                    if commit_message.is_empty() || busy() || dirty {
+                                        return;
+                                    }
+                                    busy.set(true);
+                                    let workspace = workspace.clone();
+                                    spawn(async move {
+                                        match create_commit(&files, &workspace, commit_message).await {
+                                            Ok(()) => {
+                                                message.set(String::new());
+                                                refresh += 1;
+                                                notice
+                                                    .set(
+                                                        Some(Notice::success("Created a local browser commit.")),
+                                                    );
                                             }
-                                            busy.set(true);
-                                            confirm_restore.set(None);
+                                            Err(error) => notice.set(Some(Notice::error(error))),
+                                        }
+                                        busy.set(false);
+                                    });
+                                }
+                            },
+                            input {
+                                value: message,
+                                maxlength: 200,
+                                placeholder: "Commit message",
+                                aria_label: "Browser commit message",
+                                oninput: move |event| message.set(event.value()),
+                            }
+                            button { disabled: commit_disabled,
+                                if history.commits.is_empty() {
+                                    "Initialize history"
+                                } else {
+                                    "Commit all"
+                                }
+                            }
+                        }
+                        if dirty {
+                            p { class: "guest-ai-error", "Save the active editor buffer before committing or restoring." }
+                        }
+                        div { class: "guest-git-history",
+                            h3 { "Local commits" }
+                            if history.commits.is_empty() {
+                                p { class: "guest-module-note",
+                                    "No commits yet. Add a message to capture the current workspace."
+                                }
+                            }
+                            for commit in history.commits.iter().rev() {
+                                article { key: "{commit.id}",
+                                    div {
+                                        strong { "{commit.message}" }
+                                        small {
+                                            "Snapshot {commit.id} · {commit.files.iter().filter(|entry| !entry.directory).count()} file(s)"
+                                        }
+                                    }
+                                    button {
+                                        r#type: "button",
+                                        disabled: busy() || dirty,
+                                        onclick: {
                                             let workspace = workspace.clone();
                                             let commit = commit.clone();
-                                            spawn(async move {
-                                                match restore_snapshot(&files, &workspace, &commit.files).await {
-                                                    Ok(()) => {
-                                                        refresh += 1;
-                                                        on_workspace_changed.call(());
-                                                        notice.set(Some(Notice::success("Restored the browser commit.")));
-                                                    }
-                                                    Err(error) => notice.set(Some(Notice::error(error))),
+                                            move |_| {
+                                                if confirm_restore().as_deref() != Some(commit.id.as_str()) {
+                                                    confirm_restore.set(Some(commit.id.clone()));
+                                                    return;
                                                 }
-                                                busy.set(false);
-                                            });
+                                                busy.set(true);
+                                                confirm_restore.set(None);
+                                                let workspace = workspace.clone();
+                                                let commit = commit.clone();
+                                                spawn(async move {
+                                                    match restore_snapshot(&files, &workspace, &commit.files).await {
+                                                        Ok(()) => {
+                                                            refresh += 1;
+                                                            on_workspace_changed.call(());
+                                                            notice
+                                                                .set(Some(Notice::success("Restored the browser commit.")));
+                                                        }
+                                                        Err(error) => notice.set(Some(Notice::error(error))),
+                                                    }
+                                                    busy.set(false);
+                                                });
+                                            }
+                                        },
+                                        if confirm_restore().as_deref() == Some(commit.id.as_str()) {
+                                            "Confirm restore"
+                                        } else {
+                                            "Restore"
                                         }
-                                    },
-                                    if confirm_restore().as_deref() == Some(commit.id.as_str()) { "Confirm restore" } else { "Restore" }
+                                    }
                                 }
                             }
                         }
                     }
-                },
+                }
             }
         }
     }
@@ -264,8 +300,8 @@ async fn create_commit(
         let encoded = serde_json::to_vec(&history)
             .map_err(|error| format!("Could not encode browser history: {error}"))?;
         if encoded.len() <= MAX_HISTORY_BYTES {
-            let path = RelativePath::try_from(HISTORY_PATH.to_owned())
-                .map_err(|error| error.message)?;
+            let path =
+                RelativePath::try_from(HISTORY_PATH.to_owned()).map_err(|error| error.message)?;
             files
                 .write_binary(
                     workspace,
@@ -314,7 +350,11 @@ async fn collect_snapshot(
     let mut snapshot = Vec::new();
     let mut total = 0_u64;
     while let Some(directory) = pending.pop() {
-        for entry in files.list(workspace, &directory).await.map_err(|error| error.message)? {
+        for entry in files
+            .list(workspace, &directory)
+            .await
+            .map_err(|error| error.message)?
+        {
             if entry.path.as_str() == HISTORY_PATH {
                 continue;
             }
@@ -332,11 +372,12 @@ async fn collect_snapshot(
                         .read_binary(workspace, &entry.path, MAX_FILE_BYTES)
                         .await
                         .map_err(|error| error.message)?;
-                    total = total.saturating_add(
-                        u64::try_from(file.content.len()).unwrap_or(u64::MAX),
-                    );
+                    total =
+                        total.saturating_add(u64::try_from(file.content.len()).unwrap_or(u64::MAX));
                     if total > MAX_SNAPSHOT_BYTES {
-                        return Err("The workspace exceeds the 16 MiB browser-history limit.".to_owned());
+                        return Err(
+                            "The workspace exceeds the 16 MiB browser-history limit.".to_owned()
+                        );
                     }
                     snapshot.push(SnapshotEntry {
                         path: entry.path.as_str().to_owned(),
@@ -352,7 +393,10 @@ async fn collect_snapshot(
     Ok(snapshot)
 }
 
-fn compare_snapshot(previous: Option<&[SnapshotEntry]>, current: &[SnapshotEntry]) -> BrowserStatus {
+fn compare_snapshot(
+    previous: Option<&[SnapshotEntry]>,
+    current: &[SnapshotEntry],
+) -> BrowserStatus {
     let previous = previous
         .into_iter()
         .flatten()
@@ -388,7 +432,9 @@ async fn restore_snapshot(
     let rollback = collect_snapshot(files, workspace).await?;
     if let Err(error) = apply_snapshot(files, workspace, snapshot).await {
         return match apply_snapshot(files, workspace, &rollback).await {
-            Ok(()) => Err(format!("Restore failed and the previous workspace was recovered: {error}")),
+            Ok(()) => Err(format!(
+                "Restore failed and the previous workspace was recovered: {error}"
+            )),
             Err(rollback_error) => Err(format!(
                 "Restore failed ({error}) and rollback was incomplete ({rollback_error}). Import a recent ZIP backup before continuing."
             )),

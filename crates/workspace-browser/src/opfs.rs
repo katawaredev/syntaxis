@@ -139,7 +139,7 @@ pub async fn restore_local_directory(request_access: bool) -> WorkspaceResult<Sa
     }
 }
 /// Switches the adapter back to its origin-private browser workspace.
-pub fn use_private_workspace() {
+pub fn set_private_workspace() {
     LOCAL_ROOT.with(|root| root.replace(None));
 }
 #[async_trait(?Send)]
