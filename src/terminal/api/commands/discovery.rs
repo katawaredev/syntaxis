@@ -1,17 +1,12 @@
-use std::{collections::HashSet, fs, path::Path};
-
-use regex::Regex;
-use syntaxis_terminal::{justfile_commands, makefile_commands, package_json_commands};
-
 use super::RunCommand;
-
+use regex::Regex;
+use std::{collections::HashSet, fs, path::Path};
+use syntaxis_terminal::{justfile_commands, makefile_commands, package_json_commands};
 const MAX_COMMANDS: usize = 200;
 const MAX_CONFIG_BYTES: u64 = 2 * 1024 * 1024;
-
 pub(super) fn discover(root: &Path) -> Vec<RunCommand> {
     let mut commands = Vec::new();
     let mut seen = HashSet::new();
-
     discover_just(root, &mut commands, &mut seen);
     discover_package_json(root, &mut commands, &mut seen);
     discover_make(root, &mut commands, &mut seen);
@@ -21,45 +16,35 @@ pub(super) fn discover(root: &Path) -> Vec<RunCommand> {
     discover_rake(root, &mut commands, &mut seen);
     discover_gradle(root, &mut commands, &mut seen);
     discover_common_projects(root, &mut commands, &mut seen);
-
     commands
 }
-
 fn discover_just(root: &Path, commands: &mut Vec<RunCommand>, seen: &mut HashSet<String>) {
     let Some(contents) = read_first(root, &["Justfile", "justfile", ".justfile"]) else {
         return;
     };
     add_shared(commands, seen, justfile_commands(&contents));
 }
-
 fn discover_package_json(root: &Path, commands: &mut Vec<RunCommand>, seen: &mut HashSet<String>) {
     let Some(contents) = read_file(&root.join("package.json")) else {
         return;
     };
-    let sibling_names = [
-        "bun.lock",
-        "bun.lockb",
-        "pnpm-lock.yaml",
-        "yarn.lock",
-    ]
-    .into_iter()
-    .filter(|name| root.join(name).exists())
-    .map(str::to_owned)
-    .collect::<Vec<_>>();
+    let sibling_names = ["bun.lock", "bun.lockb", "pnpm-lock.yaml", "yarn.lock"]
+        .into_iter()
+        .filter(|name| root.join(name).exists())
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
     add_shared(
         commands,
         seen,
         package_json_commands(&contents, &sibling_names),
     );
 }
-
 fn discover_make(root: &Path, commands: &mut Vec<RunCommand>, seen: &mut HashSet<String>) {
     let Some(contents) = read_first(root, &["GNUmakefile", "Makefile", "makefile"]) else {
         return;
     };
     add_shared(commands, seen, makefile_commands(&contents));
 }
-
 fn discover_taskfile(root: &Path, commands: &mut Vec<RunCommand>, seen: &mut HashSet<String>) {
     let Some(contents) = read_first(
         root,
@@ -96,7 +81,6 @@ fn discover_taskfile(root: &Path, commands: &mut Vec<RunCommand>, seen: &mut Has
         }
     }
 }
-
 fn discover_toml_tasks(root: &Path, commands: &mut Vec<RunCommand>, seen: &mut HashSet<String>) {
     if let Some(contents) = read_file(&root.join("mise.toml")) {
         add_toml_table_tasks(&contents, &["tasks"], "mise", "mise run", commands, seen);
@@ -115,7 +99,6 @@ fn discover_toml_tasks(root: &Path, commands: &mut Vec<RunCommand>, seen: &mut H
         );
     }
 }
-
 fn add_toml_table_tasks(
     contents: &str,
     path: &[&str],
@@ -141,7 +124,6 @@ fn add_toml_table_tasks(
         add_detected(commands, seen, source, name, format!("{runner} {name}"));
     }
 }
-
 fn discover_json_tasks(root: &Path, commands: &mut Vec<RunCommand>, seen: &mut HashSet<String>) {
     if let Some(contents) =
         read_file(&root.join("deno.json")).or_else(|| read_file(&root.join("deno.jsonc")))
@@ -167,7 +149,6 @@ fn discover_json_tasks(root: &Path, commands: &mut Vec<RunCommand>, seen: &mut H
         }
     }
 }
-
 fn discover_rake(root: &Path, commands: &mut Vec<RunCommand>, seen: &mut HashSet<String>) {
     let Some(contents) = read_first(root, &["Rakefile", "rakefile", "Rakefile.rb"]) else {
         return;
@@ -186,7 +167,6 @@ fn discover_rake(root: &Path, commands: &mut Vec<RunCommand>, seen: &mut HashSet
         }
     }
 }
-
 fn discover_gradle(root: &Path, commands: &mut Vec<RunCommand>, seen: &mut HashSet<String>) {
     let Some(contents) = read_first(root, &["build.gradle.kts", "build.gradle"]) else {
         return;
@@ -197,9 +177,9 @@ fn discover_gradle(root: &Path, commands: &mut Vec<RunCommand>, seen: &mut HashS
         "gradle"
     };
     let task = Regex::new(
-        r#"(?m)^\s*(?:tasks?\.(?:register|create)\(["']([^"']+)["']|task\s+([A-Za-z][A-Za-z0-9_-]*))"#,
-    )
-    .expect("valid gradle task regex");
+            r#"(?m)^\s*(?:tasks?\.(?:register|create)\(["']([^"']+)["']|task\s+([A-Za-z][A-Za-z0-9_-]*))"#,
+        )
+        .expect("valid gradle task regex");
     for capture in task.captures_iter(&contents) {
         if let Some(name) = capture.get(1).or_else(|| capture.get(2)) {
             add_detected(
@@ -215,7 +195,6 @@ fn discover_gradle(root: &Path, commands: &mut Vec<RunCommand>, seen: &mut HashS
         add_detected(commands, seen, "gradle", name, format!("{runner} {name}"));
     }
 }
-
 fn discover_common_projects(
     root: &Path,
     commands: &mut Vec<RunCommand>,
@@ -294,7 +273,6 @@ fn discover_common_projects(
         );
     }
 }
-
 fn add_shared(
     commands: &mut Vec<RunCommand>,
     seen: &mut HashSet<String>,
@@ -309,7 +287,6 @@ fn add_shared(
         }
     }
 }
-
 fn add_detected(
     commands: &mut Vec<RunCommand>,
     seen: &mut HashSet<String>,
@@ -327,11 +304,9 @@ fn add_detected(
         custom: false,
     });
 }
-
 fn read_first(root: &Path, names: &[&str]) -> Option<String> {
     names.iter().find_map(|name| read_file(&root.join(name)))
 }
-
 fn read_file(path: &Path) -> Option<String> {
     let metadata = path.metadata().ok()?;
     if !metadata.is_file() || metadata.len() > MAX_CONFIG_BYTES {
@@ -339,7 +314,6 @@ fn read_file(path: &Path) -> Option<String> {
     }
     fs::read_to_string(path).ok()
 }
-
 fn is_task_name(name: &str) -> bool {
     !name.is_empty()
         && name

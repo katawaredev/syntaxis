@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-
 /// A project command presented by terminal run menus on every platform.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct RunCommand {
@@ -8,13 +7,15 @@ pub struct RunCommand {
     pub command: String,
     pub custom: bool,
 }
-
 /// Detect package scripts without depending on a host filesystem.
 pub fn package_json_commands(contents: &str, sibling_names: &[String]) -> Vec<RunCommand> {
     let Ok(document) = serde_json::from_str::<serde_json::Value>(contents) else {
         return Vec::new();
     };
-    let Some(scripts) = document.get("scripts").and_then(serde_json::Value::as_object) else {
+    let Some(scripts) = document
+        .get("scripts")
+        .and_then(serde_json::Value::as_object)
+    else {
         return Vec::new();
     };
     let manager = document
@@ -37,7 +38,6 @@ pub fn package_json_commands(contents: &str, sibling_names: &[String]) -> Vec<Ru
         .map(|name| detected(source, name, format!("{runner} {name}")))
         .collect()
 }
-
 /// Detect public Just recipes from already-loaded manifest text.
 pub fn justfile_commands(contents: &str) -> Vec<RunCommand> {
     contents
@@ -59,7 +59,6 @@ pub fn justfile_commands(contents: &str) -> Vec<RunCommand> {
         })
         .collect()
 }
-
 /// Detect conventional Make targets from already-loaded manifest text.
 pub fn makefile_commands(contents: &str) -> Vec<RunCommand> {
     contents
@@ -69,14 +68,13 @@ pub fn makefile_commands(contents: &str) -> Vec<RunCommand> {
             let (name, suffix) = line.split_once(':')?;
             let valid = !name.is_empty()
                 && !suffix.starts_with('=')
-                && name
-                    .chars()
-                    .all(|character| character.is_ascii_alphanumeric() || "_.-".contains(character));
+                && name.chars().all(|character| {
+                    character.is_ascii_alphanumeric() || "_.-".contains(character)
+                });
             valid.then(|| detected("make", name, format!("make {name}")))
         })
         .collect()
 }
-
 fn detected(source: &str, name: &str, command: String) -> RunCommand {
     RunCommand {
         id: format!("detected:{source}:{command}"),
@@ -85,32 +83,37 @@ fn detected(source: &str, name: &str, command: String) -> RunCommand {
         custom: false,
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
     fn package_scripts_honor_the_declared_manager() {
         let commands = package_json_commands(
             r#"{"packageManager":"pnpm@10","scripts":{"check":"biome check ."}}"#,
             &[],
         );
-
         assert_eq!(commands[0].command, "pnpm run check");
     }
-
     #[test]
     fn just_recipes_ignore_private_and_indented_lines() {
         let commands = justfile_commands("# comment\ncheck:\n  cargo check\n_value := 'x'\n");
-
-        assert_eq!(commands.iter().map(|item| item.command.as_str()).collect::<Vec<_>>(), ["just check"]);
+        assert_eq!(
+            commands
+                .iter()
+                .map(|item| item.command.as_str())
+                .collect::<Vec<_>>(),
+            ["just check"],
+        );
     }
-
     #[test]
     fn make_targets_ignore_assignments() {
         let commands = makefile_commands("build: src\nVALUE:=enabled\n\tcommand\n");
-
-        assert_eq!(commands.iter().map(|item| item.command.as_str()).collect::<Vec<_>>(), ["make build"]);
+        assert_eq!(
+            commands
+                .iter()
+                .map(|item| item.command.as_str())
+                .collect::<Vec<_>>(),
+            ["make build"],
+        );
     }
 }

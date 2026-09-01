@@ -1,3 +1,7 @@
+use super::search::{
+    SearchScope, WorkspaceSearchOptions, WorkspaceSearchResult, WorkspaceSearchResults,
+    search_workspace_files,
+};
 #[allow(
     unused_imports,
     reason = "Dioxus expands the parent glob for RSX hot-reload analysis"
@@ -17,24 +21,16 @@ use super::{
     component, dioxus_core, dioxus_elements, dioxus_signals, rsx, set_error, spawn,
     workspace_client,
 };
-use std::collections::{BTreeMap, BTreeSet};
-
 use dioxus::prelude::{UseResourceState, use_resource, use_signal};
 use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
-use syntaxis_ui::prelude::{Icon, MenuContent, MenuTrigger};
-
-use super::search::{
-    SearchScope, WorkspaceSearchOptions, WorkspaceSearchResult, WorkspaceSearchResults,
-    search_workspace_files,
-};
-
+use std::collections::{BTreeMap, BTreeSet};
+use syntaxis_ui::prelude::{FileTree, Icon, MenuContent, MenuTrigger};
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) enum ExplorerView {
     #[default]
     Files,
     Search,
 }
-
 #[component]
 pub(super) fn Explorer(
     workspace: Option<WorkspaceRecord>,
@@ -119,7 +115,8 @@ pub(super) fn Explorer(
                 }
                 button {
                     class: explorer_tab_class(active_view == ExplorerView::Search),
-                    onclick: move |_| view.set(ExplorerView::Search),
+                    onclick: move | _ |
+                                                                                                                                                                                                                                                        view.set(ExplorerView::Search),
                     "Search"
                 }
             }
@@ -130,7 +127,8 @@ pub(super) fn Explorer(
                         icon: AppIcon::FilePlus,
                         size: ControlSize::Small,
                         disabled: pending,
-                        onclick: move |_| on_action.call(FileAction::CreateFile),
+                        onclick: move | _ | on_action
+                                                                                                                                                                                                                                                                                                        .call(FileAction::CreateFile),
                     }
                     IconButton {
                         label: "New folder",
@@ -148,7 +146,8 @@ pub(super) fn Explorer(
                             r#type: "file",
                             multiple: true,
                             disabled: pending,
-                            onchange: move |event: FormEvent| on_upload.call(event.files()),
+                            onchange: move | event :
+                                                                                                                                                                                                                                                                                                                                                        FormEvent | on_upload.call(event.files()),
                         }
                         Icon { icon: AppIcon::Upload, size: 14 }
                     }
@@ -158,7 +157,8 @@ pub(super) fn Explorer(
                         icon: AppIcon::Refresh,
                         size: ControlSize::Small,
                         disabled: pending,
-                        onclick: move |_| on_refresh.call(()),
+                        onclick: move |
+                                                                                                                                                                                                                                                                                                        _ | on_refresh.call(()),
                     }
                     DropdownMenu {
                         class: "relative shrink-0",
@@ -169,7 +169,8 @@ pub(super) fn Explorer(
                             icon: AppIcon::Menu,
                             size: ControlSize::Small,
                             open: file_menu(),
-                            on_toggle: move |()| file_menu.toggle(),
+                            on_toggle: move | () | file_menu
+                                                                                                                                                                                                                                                                                                                                                        .toggle(),
                         }
                         MenuContent { class: "right-0 w-56",
                             div { class: "px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground",
@@ -179,7 +180,8 @@ pub(super) fn Explorer(
                                 value: 0_usize,
                                 index: 0_usize,
                                 disabled: changes_by_path.is_empty() && !changed_only(),
-                                on_select: move |_| changed_only.toggle(),
+                                on_select: move | _ |
+                                                                                                                                                                                                                                                                                                                                                                                                        changed_only.toggle(),
                                 span { class: "flex items-center gap-2",
                                     Icon { icon: AppIcon::FileDiff, size: 14 }
                                     "Changed files only"
@@ -208,7 +210,8 @@ pub(super) fn Explorer(
                                 value: 2_usize,
                                 index: 2_usize,
                                 disabled: pending || selected_entry().is_none(),
-                                on_select: move |_| on_action.call(FileAction::Move),
+                                on_select: move | _ |
+                                                                                                                                                                                                                                                                                                                                                                                                        on_action.call(FileAction::Move),
                                 span { class: "flex items-center gap-2",
                                     Icon { icon: AppIcon::FileMove, size: 14 }
                                     "Move"
@@ -217,7 +220,8 @@ pub(super) fn Explorer(
                             DropdownMenuItem::<usize> {
                                 value: 3_usize,
                                 index: 3_usize,
-                                disabled: pending || selected_entry().is_none(),
+                                disabled: pending || selected_entry()
+                                                                                                                                                                                                                                                                                                                                                                                                        .is_none(),
                                 on_select: move |_| on_action.call(FileAction::Duplicate),
                                 span { class: "flex items-center gap-2",
                                     Icon { icon: AppIcon::Copy, size: 14 }
@@ -284,13 +288,15 @@ pub(super) fn Explorer(
                     DropdownMenu {
                         class: "relative shrink-0",
                         open: search_menu(),
-                        on_open_change: move |open: bool| search_menu.set(open),
+                        on_open_change: move | open : bool
+                                                                                                                                                                                                                                                                                                        | search_menu.set(open),
                         MenuTrigger {
                             label: "Search filters",
                             icon: AppIcon::Menu,
                             size: ControlSize::Small,
                             open: search_menu(),
-                            on_toggle: move |()| search_menu.toggle(),
+                            on_toggle: move
+                                                                                                                                                                                                                                                                                                                                                        | () | search_menu.toggle(),
                         }
                         MenuContent { class: "right-0 w-52",
                             div { class: "px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground",
@@ -303,7 +309,8 @@ pub(super) fn Explorer(
                                 DropdownMenuItem::<SearchScope> {
                                     value: scope,
                                     index,
-                                    on_select: move |scope| search_options.write().scope = scope,
+                                    on_select: move |
+                                                                                                                                                                                                                                                                                                                                                                                                                                                        scope | search_options.write().scope = scope,
                                     span { "{scope.label()}" }
                                     if search_options().scope == scope {
                                         Icon { icon: AppIcon::Check, size: 12 }
@@ -323,7 +330,8 @@ pub(super) fn Explorer(
                             DropdownMenuItem::<usize> {
                                 value: 4_usize,
                                 index: 4_usize,
-                                on_select: move |_| search_options.write().case_sensitive = !search_options().case_sensitive,
+                                on_select: move | _ | search_options.write().case_sensitive = ! search_options()
+                                                                                                                                                                                                                                                                                                                                                                                                        .case_sensitive,
                                 span { "Case sensitive" }
                                 if search_options().case_sensitive {
                                     Icon { icon: AppIcon::Check, size: 12 }
@@ -334,11 +342,7 @@ pub(super) fn Explorer(
                 }
             }
             div {
-                class: if active_view == ExplorerView::Search {
-                    "touch-scroll-region min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-1.25 pt-1"
-                } else {
-                    "flex min-h-0 flex-1 flex-col overflow-hidden"
-                },
+                class: if active_view == ExplorerView::Search { "touch-scroll-region min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-1.25 pt-1" } else { "flex min-h-0 flex-1 flex-col overflow-hidden" },
                 role: "tree",
                 "aria-label": "Workspace files",
                 if active_view == ExplorerView::Search {
@@ -403,8 +407,7 @@ pub(super) fn Explorer(
                                             class: "my-1 flex h-8 w-full items-center justify-center rounded-md text-xs text-primary hover:bg-accent",
                                             r#type: "button",
                                             onclick: move |_| {
-                                                visible_search_files
-                                                    .with_mut(|limit| *limit += 100);
+                                                visible_search_files.with_mut(|limit| *limit += 100);
                                             },
                                             "Show 100 more ({shown} of {total} files)"
                                         }
@@ -421,33 +424,24 @@ pub(super) fn Explorer(
                 } else {
                     FileTree {
                         nodes: nodes.clone(),
-                        selected_path: selected_entry()
-                            .map(|entry| entry.path.as_str().to_owned()),
+                        selected_path: selected_entry().map(|entry| entry.path.as_str().to_owned()),
                         changes: nodes
                             .iter()
                             .filter_map(|node| {
                                 changes_by_path
                                     .get(node.entry.path.as_str())
                                     .and_then(explorer_change_kind)
-                                    .or_else(|| {
-                                        directory_changes
-                                            .get(node.entry.path.as_str())
-                                            .copied()
-                                    })
-                                    .map(|change| {
-                                        (node.entry.path.as_str().to_owned(), change)
-                                    })
+                                    .or_else(|| { directory_changes.get(node.entry.path.as_str()).copied() })
+                                    .map(|change| { (node.entry.path.as_str().to_owned(), change) })
                             })
                             .collect(),
                         loading,
                         load_failed,
                         lock_directories_open: filter_changes,
-                        empty_message: if changed_only() {
-                            "No Git changes.".to_owned()
-                        } else {
-                            "This workspace is empty.".to_owned()
-                        },
-                        on_select: move |entry| selected_entry.set(Some(entry)),
+                        empty_message: if changed_only() { "No Git changes."
+                                                                                                                                                                                                                                                                                                        .to_owned() } else { "This workspace is empty.".to_owned() },
+                        on_select: move |
+                                                                                                                                                                                                                                                                                                        entry | selected_entry.set(Some(entry)),
                         on_open,
                         on_expand,
                     }
@@ -456,7 +450,6 @@ pub(super) fn Explorer(
         }
     }
 }
-
 fn render_search_result(
     result: &WorkspaceSearchResult,
     depth: usize,
@@ -516,7 +509,6 @@ fn render_search_result(
         }
     }
 }
-
 enum SearchResultNode {
     Directory {
         path: String,
@@ -528,7 +520,6 @@ enum SearchResultNode {
         depth: usize,
     },
 }
-
 fn search_result_nodes(
     results: impl IntoIterator<Item = WorkspaceSearchResult>,
 ) -> Vec<SearchResultNode> {
@@ -554,7 +545,6 @@ fn search_result_nodes(
     }
     nodes.into_values().collect()
 }
-
 fn explorer_tab_class(active: bool) -> &'static str {
     if active {
         "file-tree-tab h-8.5 rounded-md bg-muted text-[11px] font-medium text-foreground"
@@ -562,7 +552,6 @@ fn explorer_tab_class(active: bool) -> &'static str {
         "file-tree-tab h-8.5 rounded-md bg-transparent text-[11px] text-muted-foreground hover:bg-muted/60 hover:text-foreground"
     }
 }
-
 fn explorer_change_kind(change: &syntaxis_git::FileChange) -> Option<GitChangeKind> {
     if change.conflicted {
         Some(GitChangeKind::Unmerged)
@@ -570,7 +559,6 @@ fn explorer_change_kind(change: &syntaxis_git::FileChange) -> Option<GitChangeKi
         change.worktree.or(change.index)
     }
 }
-
 fn directory_change_kinds(
     changes: &BTreeMap<String, syntaxis_git::FileChange>,
 ) -> BTreeMap<String, GitChangeKind> {
@@ -590,7 +578,6 @@ fn directory_change_kinds(
     }
     directories
 }
-
 fn stronger_change_kind(left: GitChangeKind, right: GitChangeKind) -> GitChangeKind {
     if change_kind_priority(left) >= change_kind_priority(right) {
         left
@@ -598,7 +585,6 @@ fn stronger_change_kind(left: GitChangeKind, right: GitChangeKind) -> GitChangeK
         right
     }
 }
-
 const fn change_kind_priority(kind: GitChangeKind) -> u8 {
     match kind {
         GitChangeKind::Unmerged => 7,
@@ -609,7 +595,6 @@ const fn change_kind_priority(kind: GitChangeKind) -> u8 {
         GitChangeKind::Untracked => 2,
     }
 }
-
 pub(super) fn expand_directory(
     entry: FileEntry,
     workspace: Option<WorkspaceRecord>,
@@ -627,7 +612,6 @@ pub(super) fn expand_directory(
     };
     expand_loaded_directory(entry, workspace, tree, editor_configs, toast);
 }
-
 pub(super) fn reload_loaded_directories(
     directories: impl IntoIterator<Item = String>,
     workspace: Option<WorkspaceRecord>,
@@ -655,7 +639,6 @@ pub(super) fn reload_loaded_directories(
         expand_loaded_directory(entry, workspace.clone(), tree, editor_configs, toast);
     }
 }
-
 pub(super) fn load_change_directories(
     directories: Vec<String>,
     workspace: Option<WorkspaceRecord>,
@@ -683,7 +666,6 @@ pub(super) fn load_change_directories(
         expand_loaded_directory(entry, workspace.clone(), tree, editor_configs, toast);
     }
 }
-
 fn expand_loaded_directory(
     entry: FileEntry,
     workspace: WorkspaceRecord,
@@ -732,11 +714,9 @@ fn expand_loaded_directory(
         }
     });
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
     fn change(path: &str, kind: GitChangeKind) -> syntaxis_git::FileChange {
         syntaxis_git::FileChange {
             path: RelativePath::try_from(path).unwrap(),
@@ -750,23 +730,19 @@ mod tests {
             unstaged_deletions: 0,
         }
     }
-
     #[test]
     fn directory_badges_include_nested_file_changes() {
         let changes = BTreeMap::from([(
             "public/icons/favicon.svg".to_owned(),
             change("public/icons/favicon.svg", GitChangeKind::Untracked),
         )]);
-
         let directories = directory_change_kinds(&changes);
-
         assert_eq!(directories.get("public"), Some(&GitChangeKind::Untracked));
         assert_eq!(
             directories.get("public/icons"),
             Some(&GitChangeKind::Untracked)
         );
     }
-
     #[test]
     fn directory_badges_prioritize_actionable_changes() {
         let changes = BTreeMap::from([
@@ -779,10 +755,9 @@ mod tests {
                 change("src/main.rs", GitChangeKind::Modified),
             ),
         ]);
-
         assert_eq!(
             directory_change_kinds(&changes).get("src"),
-            Some(&GitChangeKind::Modified)
+            Some(&GitChangeKind::Modified),
         );
     }
 }

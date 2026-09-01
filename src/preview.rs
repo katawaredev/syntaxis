@@ -1,18 +1,14 @@
+use crate::client_error::server_error_message;
 use dioxus::prelude::*;
 use dioxus_primitives::dropdown_menu::DropdownMenuItem;
 use serde::{Deserialize, Serialize};
 use syntaxis_ui::prelude::{AppIcon, ComboButton, Icon, InteractivePopover, Toast, Tone};
-
-use crate::client_error::server_error_message;
-
 #[cfg(feature = "server")]
 pub(crate) mod server;
-
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub(crate) struct PreviewConfig {
     #[serde(default)]
     pub target: Option<PreviewTarget>,
-    // Kept for config files written before explicit URL targets were supported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub port: Option<u16>,
     #[serde(default)]
@@ -20,42 +16,35 @@ pub(crate) struct PreviewConfig {
     #[serde(default)]
     pub stop_command: String,
 }
-
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case", tag = "kind")]
 pub(crate) enum PreviewTarget {
     Loopback { port: u16 },
     Url { url: String },
 }
-
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub(crate) struct PreviewLease {
     pub id: String,
     pub url: String,
 }
-
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub(crate) struct PreviewShare {
     pub url: String,
 }
-
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub(crate) struct PreviewSession {
     pub lease: PreviewLease,
     pub share: Option<PreviewShare>,
 }
-
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub(crate) struct PreviewCandidate {
     pub port: u16,
     pub process: String,
 }
-
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub(crate) struct PreviewProcessStatus {
     pub running: bool,
 }
-
 #[derive(Clone, Copy)]
 struct PreviewConnectionState {
     lease: Signal<Option<PreviewLease>>,
@@ -64,31 +53,26 @@ struct PreviewConnectionState {
     connecting: Signal<bool>,
     reload_key: Signal<u64>,
 }
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum PreviewAction {
     Connect,
     Start,
     Stop,
 }
-
 #[get("/api/previews/{workspace_id}")]
 async fn preview_config(workspace_id: String) -> Result<PreviewConfig, ServerFnError> {
     server::preview_config(workspace_id).await
 }
-
 #[get("/api/previews/{workspace_id}/candidates")]
 async fn preview_candidates(workspace_id: String) -> Result<Vec<PreviewCandidate>, ServerFnError> {
     server::preview_candidates(workspace_id).await
 }
-
 #[get("/api/previews/{workspace_id}/process")]
 async fn preview_process_status(
     workspace_id: String,
 ) -> Result<PreviewProcessStatus, ServerFnError> {
     server::preview_process_status(workspace_id).await
 }
-
 #[post("/api/previews/{workspace_id}/settings")]
 async fn update_preview_config(
     workspace_id: String,
@@ -96,7 +80,6 @@ async fn update_preview_config(
 ) -> Result<(), ServerFnError> {
     server::update_preview_config(workspace_id, config).await
 }
-
 #[post("/api/previews/{workspace_id}/process/start")]
 async fn start_preview_process(
     workspace_id: String,
@@ -105,7 +88,6 @@ async fn start_preview_process(
 ) -> Result<PreviewProcessStatus, ServerFnError> {
     server::start_preview_process(workspace_id, start_command, stop_command).await
 }
-
 #[post("/api/previews/{workspace_id}/process/stop")]
 async fn stop_preview_process(
     workspace_id: String,
@@ -113,28 +95,22 @@ async fn stop_preview_process(
 ) -> Result<PreviewProcessStatus, ServerFnError> {
     server::stop_preview_process(workspace_id, stop_command).await
 }
-
-#[post(
-    "/api/previews/{workspace_id}/lease",
-    headers: dioxus::fullstack::HeaderMap
-)]
+#[post("/api/previews/{workspace_id}/lease", headers:dioxus::fullstack::HeaderMap)]
 async fn create_preview_lease(
     workspace_id: String,
     target: PreviewTarget,
 ) -> Result<PreviewLease, ServerFnError> {
     server::create_preview_lease(workspace_id, target, &headers).await
 }
-
 #[post(
     "/api/previews/{workspace_id}/session/resume",
-    headers: dioxus::fullstack::HeaderMap
+    headers:dioxus::fullstack::HeaderMap
 )]
 async fn resume_preview_session(
     workspace_id: String,
 ) -> Result<Option<PreviewSession>, ServerFnError> {
     server::resume_preview_session(workspace_id, &headers).await
 }
-
 #[post("/api/previews/{workspace_id}/leases/{lease_id}/share")]
 async fn create_preview_share(
     workspace_id: String,
@@ -142,31 +118,33 @@ async fn create_preview_share(
 ) -> Result<PreviewShare, ServerFnError> {
     server::create_preview_share(workspace_id, lease_id).await
 }
-
 #[post("/api/previews/{workspace_id}/leases/{lease_id}/share/revoke")]
 async fn revoke_preview_share(workspace_id: String, lease_id: String) -> Result<(), ServerFnError> {
     server::revoke_preview_share(workspace_id, lease_id).await
 }
-
 #[component]
 pub(crate) fn Preview(slug: String) -> Element {
     let _ = slug;
     let active = use_context::<crate::workspace::ActiveWorkspace>();
     match active.current() {
-        Some(workspace) => rsx! {
-            SuspenseBoundary {
-                fallback: |_| rsx! {
-                    PreviewLoading {}
-                },
-                WorkspacePreview { key: "{workspace.id.0}", workspace_id: workspace.id.0 }
+        Some(workspace) => {
+            rsx! {
+                SuspenseBoundary {
+                    fallback: |_| rsx! {
+                        PreviewLoading {}
+                    },
+                    WorkspacePreview { key: "{workspace.id.0}", workspace_id: workspace.id
+                                                                                                                                                                                                                                                                                                                                                                                        .0 }
+                }
             }
-        },
-        None => rsx! {
-            PreviewLoading {}
-        },
+        }
+        None => {
+            rsx! {
+                PreviewLoading {}
+            }
+        }
     }
 }
-
 #[component]
 fn PreviewLoading() -> Element {
     rsx! {
@@ -181,7 +159,6 @@ fn PreviewLoading() -> Element {
         }
     }
 }
-
 #[component]
 fn WorkspacePreview(workspace_id: String) -> Element {
     let config_workspace_id = workspace_id.clone();
@@ -283,13 +260,11 @@ fn WorkspacePreview(workspace_id: String) -> Element {
             PreviewAction::Stop => ("Stop", "Stop the preview command", AppIcon::Stop),
         }
     };
-
     use_effect(move || {
         let active_lease = lease().map(|lease| lease.id);
         let _ = reload_key();
         frame_loading.set(active_lease.is_some());
     });
-
     use_effect(move || {
         if config_applied() {
             return;
@@ -325,7 +300,6 @@ fn WorkspacePreview(workspace_id: String) -> Element {
             }
         }
     });
-
     use_effect(move || {
         if !detection_requested() {
             return;
@@ -351,7 +325,6 @@ fn WorkspacePreview(workspace_id: String) -> Element {
             Err(problem) => set_preview_error(toast, server_error_message(problem)),
         }
     });
-
     use_effect(move || {
         if process_status_applied() {
             return;
@@ -365,7 +338,6 @@ fn WorkspacePreview(workspace_id: String) -> Element {
             Err(problem) => set_preview_error(toast, server_error_message(problem)),
         }
     });
-
     use_effect(move || {
         if session_applied() {
             return;
@@ -384,7 +356,6 @@ fn WorkspacePreview(workspace_id: String) -> Element {
             Err(problem) => set_preview_error(toast, server_error_message(problem)),
         }
     });
-
     let connect_workspace_id = workspace_id.clone();
     let connect = move || {
         if restoring || connecting() {
@@ -399,7 +370,6 @@ fn WorkspacePreview(workspace_id: String) -> Element {
         };
         connect_preview_target(connect_workspace_id.clone(), target, connection_state);
     };
-
     let auto_workspace_id = workspace_id.clone();
     use_effect(move || {
         if auto_connect_applied()
@@ -422,7 +392,6 @@ fn WorkspacePreview(workspace_id: String) -> Element {
         apply_preview_target(&target, url_target, port, url);
         connect_preview_target(auto_workspace_id.clone(), target, connection_state);
     });
-
     let share_workspace_id = workspace_id.clone();
     let mut enable_sharing = move || {
         let Some(active_lease) = lease() else {
@@ -439,7 +408,6 @@ fn WorkspacePreview(workspace_id: String) -> Element {
             sharing.set(false);
         });
     };
-
     let revoke_workspace_id = workspace_id.clone();
     let mut revoke_sharing = move || {
         let Some(active_lease) = lease() else {
@@ -456,7 +424,6 @@ fn WorkspacePreview(workspace_id: String) -> Element {
             sharing.set(false);
         });
     };
-
     let manage_workspace_id = workspace_id.clone();
     let toggle_process = move || {
         if process_busy() {
@@ -514,7 +481,6 @@ fn WorkspacePreview(workspace_id: String) -> Element {
             process_busy.set(false);
         });
     };
-
     let save_settings_workspace_id = workspace_id.clone();
     let persist_settings = move || {
         if process_busy() {
@@ -551,7 +517,6 @@ fn WorkspacePreview(workspace_id: String) -> Element {
             process_busy.set(false);
         });
     };
-
     rsx! {
         section { class: "flex size-full min-h-0 flex-col bg-card",
             header { class: "flex min-h-12 flex-nowrap items-center gap-2 border-b border-border bg-background px-3 py-2",
@@ -574,7 +539,8 @@ fn WorkspacePreview(workspace_id: String) -> Element {
                     id: "preview-settings",
                     label: "Preview settings",
                     open: settings_open(),
-                    on_open_change: move |next| settings_open.set(next),
+                    on_open_change: move | next |
+                                                                                                                                                                                                                                                                                                                    settings_open.set(next),
                     trigger_class: if settings_open() { "touch-target inline-flex h-7 items-center gap-1.5 rounded-md bg-accent px-2 text-[11px] font-medium text-foreground max-[520px]:justify-center max-[520px]:gap-0 max-[520px]:px-0" } else { "touch-target inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground max-[520px]:justify-center max-[520px]:gap-0 max-[520px]:px-0" },
                     content_class: "absolute top-[calc(100%+6px)] right-0 z-80 max-h-[calc(var(--app-height,100dvh)-4rem)] w-[min(390px,calc(100vw-1rem))] overflow-y-auto rounded-xl border border-border bg-popover p-3 shadow-2xl",
                     trigger: rsx! {
@@ -597,7 +563,8 @@ fn WorkspacePreview(workspace_id: String) -> Element {
                                 placeholder: suggested_start_command.as_deref().unwrap_or("npm run dev"),
                                 value: start_command,
                                 disabled: process_busy() || process_running(),
-                                oninput: move |event| start_command.set(event.value()),
+                                oninput: move |
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        event | start_command.set(event.value()),
                             }
                         }
                         datalist { id: "preview-start-commands",
@@ -617,14 +584,16 @@ fn WorkspacePreview(workspace_id: String) -> Element {
                                 placeholder: suggested_stop_command.as_deref().unwrap_or("docker compose down"),
                                 value: stop_command,
                                 disabled: process_busy(),
-                                oninput: move |event| stop_command.set(event.value()),
+                                oninput: move | event | stop_command
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        .set(event.value()),
                             }
                         }
                         datalist { id: "preview-stop-commands",
                             for command in &detected_commands {
                                 option {
                                     value: command.command.clone(),
-                                    label: command.label.clone(),
+                                    label: command
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    .label.clone(),
                                 }
                             }
                         }
@@ -636,7 +605,8 @@ fn WorkspacePreview(workspace_id: String) -> Element {
                                     "aria-label": "Preview target type",
                                     value: if url_target() { "url" } else { "port" },
                                     disabled: controls_busy,
-                                    onchange: move |event| url_target.set(event.value() == "url"),
+                                    onchange: move | event | url_target
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    .set(event.value() == "url"),
                                     option { value: "port", "Port" }
                                     option { value: "url", "URL" }
                                 }
@@ -665,7 +635,8 @@ fn WorkspacePreview(workspace_id: String) -> Element {
                                         inputmode: "numeric",
                                         value: port,
                                         disabled: controls_busy,
-                                        oninput: move |event| port.set(event.value()),
+                                        oninput: move |
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                event | port.set(event.value()),
                                     }
                                 }
                             }
@@ -721,7 +692,8 @@ fn WorkspacePreview(workspace_id: String) -> Element {
                                 class: "flex h-8 items-center gap-2 rounded-md px-2 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground",
                                 r#type: "button",
                                 disabled: connecting(),
-                                onclick: move |_| *reload_key.write() += 1,
+                                onclick: move | _ | * reload_key
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        .write() += 1,
                                 Icon { icon: AppIcon::Refresh, size: 14 }
                                 "Reload preview"
                             }
@@ -756,7 +728,8 @@ fn WorkspacePreview(workspace_id: String) -> Element {
                     label: primary_label,
                     title: primary_title,
                     icon: primary_icon,
-                    danger: primary_action == PreviewAction::Stop && !process_busy(),
+                    danger: primary_action ==
+                                                                                                                                                                                                                                                                                                                    PreviewAction::Stop && ! process_busy(),
                     disabled: controls_disabled,
                     open: combo_open(),
                     menu_label: "Preview actions",
@@ -935,7 +908,6 @@ fn WorkspacePreview(workspace_id: String) -> Element {
         }
     }
 }
-
 fn selected_preview_target(
     url_target: bool,
     port: &str,
@@ -958,7 +930,6 @@ fn selected_preview_target(
         Ok(PreviewTarget::Loopback { port })
     }
 }
-
 fn default_preview_action(process_running: bool, start_command: &str) -> PreviewAction {
     if process_running {
         PreviewAction::Stop
@@ -968,15 +939,13 @@ fn default_preview_action(process_running: bool, start_command: &str) -> Preview
         PreviewAction::Start
     }
 }
-
 fn single_candidate_target(candidates: &[PreviewCandidate]) -> Option<PreviewTarget> {
     (candidates.len() == 1).then(|| PreviewTarget::Loopback {
         port: candidates[0].port,
     })
 }
-
 fn suggest_preview_commands(
-    commands: &[crate::terminal::api::RunCommand],
+    commands: &[syntaxis_terminal::RunCommand],
 ) -> (Option<String>, Option<String>) {
     let start = commands
         .iter()
@@ -1021,7 +990,6 @@ fn suggest_preview_commands(
         .map(|(_, command)| command);
     (start, stop)
 }
-
 fn apply_preview_target(
     target: &PreviewTarget,
     mut url_target: Signal<bool>,
@@ -1041,7 +1009,6 @@ fn apply_preview_target(
         }
     }
 }
-
 fn connect_preview_target(
     workspace_id: String,
     target: PreviewTarget,
@@ -1061,11 +1028,9 @@ fn connect_preview_target(
         state.connecting.set(false);
     });
 }
-
 fn set_preview_error(mut toast: Signal<Option<(String, Tone)>>, message: impl Into<String>) {
     toast.set(Some((message.into(), Tone::Destructive)));
 }
-
 fn copy_preview_link(value: String, mut toast: Signal<Option<(String, Tone)>>) {
     spawn(async move {
         match crate::clipboard::copy_text(value).await {
@@ -1074,35 +1039,31 @@ fn copy_preview_link(value: String, mut toast: Signal<Option<(String, Tone)>>) {
         }
     });
 }
-
 fn open_preview_window(url: &str) {
     let url = serde_json::to_string(url).expect("preview URLs serialize as JSON strings");
     let _ = document::eval(&format!(
         "globalThis.open({url}, '_blank', 'noopener,noreferrer');"
     ));
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
     fn selected_targets_validate_ports_and_trim_urls() {
         assert_eq!(
             selected_preview_target(false, " 5173 ", "").unwrap(),
-            PreviewTarget::Loopback { port: 5_173 }
+            PreviewTarget::Loopback { port: 5_173 },
         );
         assert_eq!(
             selected_preview_target(true, "", " https://app.example.test ").unwrap(),
             PreviewTarget::Url {
                 url: "https://app.example.test".into(),
-            }
+            },
         );
         selected_preview_target(false, "0", "").unwrap_err();
         selected_preview_target(false, "65536", "").unwrap_err();
         selected_preview_target(true, "", " ").unwrap_err();
     }
-
     #[test]
     fn default_action_follows_preview_configuration_and_process_state() {
         assert_eq!(default_preview_action(false, ""), PreviewAction::Connect);
@@ -1112,36 +1073,34 @@ mod tests {
         );
         assert_eq!(default_preview_action(true, ""), PreviewAction::Stop);
     }
-
     #[test]
     fn preview_command_suggestions_prefer_servers_and_optional_cleanup() {
         let commands = vec![
-            crate::terminal::api::RunCommand {
+            syntaxis_terminal::RunCommand {
                 id: "test".into(),
                 label: "cargo · test".into(),
                 command: "cargo test".into(),
                 custom: false,
             },
-            crate::terminal::api::RunCommand {
+            syntaxis_terminal::RunCommand {
                 id: "dev".into(),
                 label: "npm · dev".into(),
                 command: "npm run dev".into(),
                 custom: false,
             },
-            crate::terminal::api::RunCommand {
+            syntaxis_terminal::RunCommand {
                 id: "down".into(),
                 label: "compose · down".into(),
                 command: "docker compose down".into(),
                 custom: false,
             },
         ];
-
         assert_eq!(
             suggest_preview_commands(&commands),
             (
                 Some("npm run dev".into()),
                 Some("docker compose down".into())
-            )
+            ),
         );
     }
 }

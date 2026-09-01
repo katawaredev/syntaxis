@@ -1,17 +1,14 @@
+use crate::files::{SearchScope, WorkspaceSearchOptions, search_workspace_files};
 use dioxus::prelude::*;
 use syntaxis_agent::{ExtensionWidget, ImageAttachment, PiCommand, PromptDelivery};
 use syntaxis_ui::prelude::{AiSendButton, AppIcon, Icon, IconButton};
 use syntaxis_workspace::{EntryKind, WorkspaceRecord};
-
-use crate::files::{SearchScope, WorkspaceSearchOptions, search_workspace_files};
-
 mod attachments;
 mod bridges;
 mod commands;
 mod draft;
 mod mentions;
 mod widgets;
-
 use attachments::ComposerAttachments;
 pub(crate) use attachments::load_images;
 use bridges::{toggle_speech, use_paste_bridge, use_speech_bridge};
@@ -22,7 +19,6 @@ use mentions::{
     mention_query,
 };
 use widgets::{ExtensionWidgets, QueuePreview};
-
 #[derive(Clone)]
 pub(crate) struct ComposerSubmission {
     pub(crate) text: String,
@@ -167,7 +163,8 @@ pub(crate) fn AgentComposer(
         footer { class: "bg-card px-2.5 pt-1 pb-[max(0.65rem,env(safe-area-inset-bottom))]",
             div { class: "relative mx-auto max-w-3xl",
                 SlashCommandMenu {
-                    commands: matched_commands.clone(),
+                    commands: matched_commands
+                                                                                                                                                                                                                                                                                                .clone(),
                     draft,
                     selected: command_index(),
                 }
@@ -312,7 +309,8 @@ pub(crate) fn AgentComposer(
                                 r#type: "file",
                                 accept: "image/*",
                                 multiple: true,
-                                disabled: !accepts_images || !connected,
+                                disabled: !
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                        accepts_images || ! connected,
                                 onchange: move |event: FormEvent| {
                                     spawn(load_images(event.files(), attachments, composer_error));
                                 },
@@ -325,7 +323,8 @@ pub(crate) fn AgentComposer(
                                 r#type: "button",
                                 aria_label: "Reference active file",
                                 title: "Reference {active_file}",
-                                onclick: move |_| append_file_reference(draft, &active_file),
+                                onclick: move | _ | append_file_reference(draft, &
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                        active_file),
                                 Icon { icon: AppIcon::Code, size: 15 }
                             }
                         }
@@ -370,16 +369,14 @@ pub(crate) fn AgentComposer(
                                     label: format!("Stop {agent_name}"),
                                     icon: AppIcon::Stop,
                                     danger: true,
-                                    onclick: move |_| on_abort.call(()),
+                                    onclick: move
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | _ | on_abort.call(()),
                                 }
                             }
                             AiSendButton {
-                                label: if working {
-                                    format!("Steer {agent_name}")
-                                } else {
-                                    "Send message".to_owned()
-                                },
-                                disabled: !can_send,
+                                label: if working { format!("Steer {agent_name}") } else { "Send message".to_owned() },
+                                disabled: !
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                        can_send,
                                 onclick: move |_| {
                                     submit_composer(
                                         can_send,
@@ -427,7 +424,6 @@ pub(crate) fn AgentComposer(
         }
     }
 }
-
 #[allow(
     clippy::too_many_arguments,
     reason = "composer submission intentionally receives its independent reactive inputs explicitly"
@@ -450,7 +446,7 @@ fn submit_composer(
     {
         composer_error.set(Some(format!(
             "/{} requires the agent's terminal interface and cannot run here.",
-            command.name
+            command.name,
         )));
         return;
     }

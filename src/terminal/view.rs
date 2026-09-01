@@ -25,11 +25,13 @@ use futures_util::{
 use menus::terminal_actions_menu;
 use mobile::{MobileTerminalKeys, ctrl_modified_byte};
 use syntaxis_notifications::NotificationTarget;
-use syntaxis_terminal::{ClientMessage, Lifecycle, RunCommand, SessionId, SessionSummary, TerminalSize};
+use syntaxis_terminal::{
+    ClientMessage, Lifecycle, RunCommand, SessionId, SessionSummary, TerminalSize,
+};
 use syntaxis_ui::prelude::{
     AppIcon, Button, ButtonKind, ControlSize, Icon, IconButton, MenuButtonTrigger, MenuContent,
-    MenuTrigger, PanelHeader, PanelTab, PanelTabIndicator, PanelTabList, PanelTabWidth,
-    RunCommandMenu, Toast, Tone,
+    PanelHeader, PanelTab, PanelTabIndicator, PanelTabList, PanelTabWidth, RunCommandMenu, Toast,
+    Tone,
 };
 const TERMINAL_SCRIPT: Asset = asset!("/assets/terminal/terminal.bundle.js");
 

@@ -26,7 +26,6 @@ mod slide_to_confirm;
 mod template_icon;
 mod textarea;
 mod toast;
-
 pub use ai::{AiChatHeader, AiSendButton, AiSidebarTabs};
 pub use badge::{StatusBadge, Tone};
 pub use button::{Button, ButtonKind};
@@ -57,18 +56,15 @@ pub use slide_to_confirm::SlideToConfirm;
 pub use template_icon::{ProjectTemplateIcon, TemplateIcon};
 pub use textarea::{TextArea, TextAreaResize};
 pub use toast::Toast;
-
 pub mod prelude {
     pub use crate::{
-        AiChatHeader, AiSendButton, AiSidebarTabs, AppIcon, BrandIcon, BrandMark, Button, ButtonKind, Checkbox,
-        ComboButton, ControlSize,
-        DangerNote, DialogActions, DialogForm, Drawer, EmptyState, Field, FileIcon, FileTree,
-        GitChangeBadge,
-        Icon, IconButton, InteractivePopover, MenuButtonTrigger, MenuContent, MenuTrigger, Modal,
-        PanelHeader, PanelHeaderKind, PanelTab, PanelTabIndicator, PanelTabList, PanelTabWidth,
+        AiChatHeader, AiSendButton, AiSidebarTabs, AppIcon, BrandIcon, BrandMark, Button,
+        ButtonKind, Checkbox, ComboButton, ControlSize, DangerNote, DialogActions, DialogForm,
+        Drawer, EmptyState, Field, FileIcon, FileTree, GitChangeBadge, Icon, IconButton,
+        InteractivePopover, MenuButtonTrigger, MenuContent, MenuTrigger, Modal, PanelHeader,
+        PanelHeaderKind, PanelTab, PanelTabIndicator, PanelTabList, PanelTabWidth,
         ProjectLanguageBadge, ProjectTechnologyBadge, ProjectTemplateIcon, ProviderIcon,
-        RunCommandMenu, Select,
-        SlideToConfirm, StatusBadge, TemplateIcon, TextArea, TextAreaResize, TextInput,
-        TextInputType, Toast, Tone,
+        RunCommandMenu, Select, SlideToConfirm, StatusBadge, TemplateIcon, TextArea,
+        TextAreaResize, TextInput, TextInputType, Toast, Tone,
     };
 }

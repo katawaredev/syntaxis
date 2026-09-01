@@ -494,13 +494,11 @@ dx-check platform=default_platform: build-assets
 # Format Rust, RSX, JavaScript, CSS, and JSON source.
 format:
     cargo fmt --all
-    dx fmt
     bun run format:web
 
 # Check formatting without modifying files.
 format-check:
     cargo fmt --all -- --check
-    dx fmt --check
     bun run format:web:check
 
 # Preview and remove ignored build artifacts while preserving local configuration.
@@ -669,14 +667,12 @@ qa platform=default_platform: build-assets (fix platform) (test-doc platform)
 # CI owns Rust compilation, Clippy, and tests.
 pre-commit: build-assets
     cargo fmt --all -- --check
-    dx fmt --check
     bun run format:web:check
     bun run lint:web
 
 # Apply formatting and safe lint fixes, then perform the fast validation workflow.
 fix platform=default_platform: build-assets
     cargo fmt --all
-    dx fmt
     bun run format:web
     bun run lint:web:fix
     cargo clippy \
@@ -685,4 +681,5 @@ fix platform=default_platform: build-assets
         --no-default-features \
         --features "{{ platform }}" \
         --fix --allow-dirty --allow-staged
+    cargo fmt --all
     just check "{{ platform }}"

@@ -1,32 +1,25 @@
-use std::collections::BTreeMap;
-
+use super::Notice;
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use syntaxis_workspace::{
-    EntryKind, RelativePath, WorkspaceFiles, WorkspaceRecord,
-    is_bulky_generated_directory_name,
+    EntryKind, RelativePath, WorkspaceFiles, WorkspaceRecord, is_bulky_generated_directory_name,
 };
 use syntaxis_workspace_browser::OpfsWorkspaceFiles;
-
-use super::Notice;
-
 pub(super) const HISTORY_PATH: &str = ".syntaxis-guest-history.json";
 const MAX_FILE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_SNAPSHOT_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_HISTORY_BYTES: usize = 24 * 1024 * 1024;
 const MAX_COMMITS: usize = 8;
-
 mod base64_bytes {
     use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
     use serde::{Deserialize, Deserializer, Serializer};
-
     pub(super) fn serialize<S>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         serializer.serialize_str(&BASE64.encode(bytes))
     }
-
     pub(super) fn deserialize<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
     where
         D: Deserializer<'de>,
@@ -35,7 +28,6 @@ mod base64_bytes {
         BASE64.decode(encoded).map_err(serde::de::Error::custom)
     }
 }
-
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct SnapshotEntry {
     path: String,
@@ -43,36 +35,30 @@ struct SnapshotEntry {
     #[serde(with = "base64_bytes")]
     content: Vec<u8>,
 }
-
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct BrowserCommit {
     id: String,
     message: String,
     files: Vec<SnapshotEntry>,
 }
-
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 struct BrowserHistory {
     commits: Vec<BrowserCommit>,
 }
-
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct BrowserStatus {
     added: Vec<String>,
     modified: Vec<String>,
     deleted: Vec<String>,
 }
-
 impl BrowserStatus {
     fn is_clean(&self) -> bool {
         self.added.is_empty() && self.modified.is_empty() && self.deleted.is_empty()
     }
-
     fn count(&self) -> usize {
         self.added.len() + self.modified.len() + self.deleted.len()
     }
 }
-
 #[component]
 pub(super) fn GuestGit(
     workspace: WorkspaceRecord,
@@ -102,7 +88,6 @@ pub(super) fn GuestGit(
             Ok::<_, String>((history, status, git_metadata_present))
         }
     });
-
     rsx! {
         section { class: "guest-git", "aria-label": "Browser source history",
             header { class: "guest-module-header",
@@ -128,11 +113,8 @@ pub(super) fn GuestGit(
                     p { class: "guest-ai-error", role: "alert", "{error}" }
                 },
                 Some(Ok((history, status, git_metadata_present))) => {
-                    let commit_disabled = busy()
-                        || dirty
-                        || message().trim().is_empty()
+                    let commit_disabled = busy() || dirty || message().trim().is_empty()
                         || (status.is_clean() && !history.commits.is_empty());
-
                     rsx! {
                         div { class: "guest-git-summary",
                             strong {
@@ -280,7 +262,6 @@ pub(super) fn GuestGit(
         }
     }
 }
-
 async fn create_commit(
     files: &OpfsWorkspaceFiles,
     workspace: &WorkspaceRecord,
@@ -330,11 +311,7 @@ async fn create_commit(
         history.commits.remove(0);
     }
 }
-
-async fn has_git_metadata(
-    files: &OpfsWorkspaceFiles,
-    workspace: &WorkspaceRecord,
-) -> bool {
+async fn has_git_metadata(files: &OpfsWorkspaceFiles, workspace: &WorkspaceRecord) -> bool {
     let Ok(path) = RelativePath::try_from(".git".to_owned()) else {
         return false;
     };
@@ -343,7 +320,6 @@ async fn has_git_metadata(
         .await
         .is_ok_and(|entry| entry.kind == EntryKind::Directory || entry.kind == EntryKind::File)
 }
-
 async fn load_history(
     files: &OpfsWorkspaceFiles,
     workspace: &WorkspaceRecord,
@@ -363,7 +339,6 @@ async fn load_history(
         Err(error) => Err(error.message),
     }
 }
-
 fn history_is_missing(error: &syntaxis_workspace::WorkspaceError) -> bool {
     if error.code == syntaxis_workspace::ErrorCode::NotFound {
         return true;
@@ -373,7 +348,6 @@ fn history_is_missing(error: &syntaxis_workspace::WorkspaceError) -> bool {
         || message.contains("not be found")
         || message.contains("could not open the file entry")
 }
-
 async fn collect_snapshot(
     files: &OpfsWorkspaceFiles,
     workspace: &WorkspaceRecord,
@@ -427,7 +401,6 @@ async fn collect_snapshot(
     snapshot.sort_by(|left, right| left.path.cmp(&right.path));
     Ok(snapshot)
 }
-
 fn compare_snapshot(
     previous: Option<&[SnapshotEntry]>,
     current: &[SnapshotEntry],
@@ -458,7 +431,6 @@ fn compare_snapshot(
     }
     status
 }
-
 async fn restore_snapshot(
     files: &OpfsWorkspaceFiles,
     workspace: &WorkspaceRecord,
@@ -468,16 +440,15 @@ async fn restore_snapshot(
     if let Err(error) = apply_snapshot(files, workspace, snapshot).await {
         return match apply_snapshot(files, workspace, &rollback).await {
             Ok(()) => Err(format!(
-                "Restore failed and the previous workspace was recovered: {error}"
+                "Restore failed and the previous workspace was recovered: {error}",
             )),
             Err(rollback_error) => Err(format!(
-                "Restore failed ({error}) and rollback was incomplete ({rollback_error}). Import a recent ZIP backup before continuing."
+                "Restore failed ({error}) and rollback was incomplete ({rollback_error}). Import a recent ZIP backup before continuing.",
             )),
         };
     }
     Ok(())
 }
-
 async fn apply_snapshot(
     files: &OpfsWorkspaceFiles,
     workspace: &WorkspaceRecord,

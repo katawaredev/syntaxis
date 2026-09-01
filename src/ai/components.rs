@@ -1,26 +1,19 @@
 use dioxus::prelude::*;
 use dioxus_primitives::collapsible::{Collapsible, CollapsibleContent, CollapsibleTrigger};
 use syntaxis_agent::{AgentSnapshot, ModelSummary, SessionStats, ThinkingLevel};
-use syntaxis_ui::prelude::{
-    AiChatHeader, AppIcon, Icon, IconButton, InteractivePopover, ProviderIcon,
-};
-
+use syntaxis_ui::prelude::{AiChatHeader, AppIcon, Icon, InteractivePopover, ProviderIcon};
 mod composer;
 mod extension_dialog;
 mod session_sidebar;
 mod timeline;
-
 pub(super) use composer::{AgentComposer, ComposerSubmission, load_images};
 pub(super) use extension_dialog::ExtensionRequestDialog;
 pub(super) use session_sidebar::AgentSessionSidebar;
 pub(super) use timeline::AgentTimeline;
-
 mod model_controls;
 mod usage;
-
 use model_controls::ModelPicker;
 use usage::UsageMenu;
-
 #[component]
 pub(super) fn AgentHeader(
     workspace_id: String,
@@ -80,7 +73,6 @@ pub(super) fn AgentHeader(
         }
     }
 }
-
 #[component]
 fn WorkspacePicker(
     workspace_name: String,
@@ -100,7 +92,8 @@ fn WorkspacePicker(
             class: "min-w-0",
             open: open(),
             on_open_change: move |next| open.set(next),
-            disabled: locked_reason.is_some(),
+            disabled: locked_reason
+                                                                                                                                                                                            .is_some(),
             trigger_class: "flex h-8 max-w-44 items-center gap-1.5 rounded-lg px-2 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 max-[520px]:size-10 max-[520px]:max-w-none max-[520px]:justify-center max-[520px]:p-0",
             content_class: "absolute top-[calc(100%+6px)] left-0 z-80 w-52 rounded-xl border border-border bg-popover p-1.5 shadow-2xl",
             trigger: rsx! {

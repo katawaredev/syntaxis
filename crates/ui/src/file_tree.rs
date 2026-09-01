@@ -1,12 +1,9 @@
-use std::collections::BTreeMap;
-
+use crate::{FileIcon, GitChangeBadge};
 use dioxus::prelude::*;
+use std::collections::BTreeMap;
 use syntaxis_editor::ExplorerNode;
 use syntaxis_git::ChangeKind as GitChangeKind;
 use syntaxis_workspace::{EntryKind, FileEntry};
-
-use crate::{FileIcon, GitChangeBadge};
-
 /// Shared workspace tree viewport used by server-backed and browser-only editors.
 #[component]
 pub fn FileTree(
@@ -46,7 +43,8 @@ pub fn FileTree(
                 for node in nodes {
                     FileTreeRow {
                         key: "{node.entry.path.as_str()}",
-                        change: changes.get(node.entry.path.as_str()).copied(),
+                        change: changes.get(node.entry.path.as_str())
+                                                                                                                                                                                                                                                                                                                                                        .copied(),
                         node,
                         selected_path: selected_path.clone(),
                         lock_directories_open,
@@ -59,7 +57,6 @@ pub fn FileTree(
         }
     }
 }
-
 #[component]
 fn FileTreeRow(
     node: ExplorerNode,
@@ -77,16 +74,9 @@ fn FileTreeRow(
     let is_directory = entry.kind == EntryKind::Directory;
     let ignored = node.ignored;
     let entry_for_click = entry.clone();
-
     rsx! {
         button {
-            class: if ignored {
-                "file-tree-row flex h-7.25 w-full items-center gap-1.5 rounded-sm bg-transparent pr-1.5 text-left text-xs text-muted-foreground/55 hover:bg-accent/45"
-            } else if selected {
-                "file-tree-row flex h-7.25 w-full items-center gap-1.5 rounded-sm bg-accent pr-1.5 text-left text-xs text-foreground"
-            } else {
-                "file-tree-row flex h-7.25 w-full items-center gap-1.5 rounded-sm bg-transparent pr-1.5 text-left text-xs text-foreground/90 hover:bg-accent/65"
-            },
+            class: if ignored { "file-tree-row flex h-7.25 w-full items-center gap-1.5 rounded-sm bg-transparent pr-1.5 text-left text-xs text-muted-foreground/55 hover:bg-accent/45" } else if selected { "file-tree-row flex h-7.25 w-full items-center gap-1.5 rounded-sm bg-accent pr-1.5 text-left text-xs text-foreground" } else { "file-tree-row flex h-7.25 w-full items-center gap-1.5 rounded-sm bg-transparent pr-1.5 text-left text-xs text-foreground/90 hover:bg-accent/65" },
             style: "padding-left: {padding}px",
             role: "treeitem",
             "aria-selected": selected,
@@ -104,14 +94,19 @@ fn FileTreeRow(
             },
             span { class: "w-2.25 shrink-0 text-[9px] text-muted-foreground",
                 if is_directory {
-                    if node.expanded { "▾" } else { "▸" }
+                    if node.expanded {
+                        "▾"
+                    } else {
+                        "▸"
+                    }
                 }
             }
             FileIcon {
                 path: path.clone(),
                 directory: is_directory,
                 symlink: entry.kind == EntryKind::Symlink,
-                expanded: node.expanded,
+                expanded: node
+                                                                                                                                                                                                                                        .expanded,
                 size: 15,
             }
             span { class: "min-w-0 flex-1 truncate", "{entry.name}" }

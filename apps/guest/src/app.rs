@@ -1,25 +1,19 @@
 mod ai;
 mod git;
-
-use std::{
-    collections::{BTreeSet, HashSet},
-    fmt,
-    rc::Rc,
-};
-
 use self::{
-    ai::{GuestAi, GuestAiSettings, provide_guest_ai_config},
+    ai::{GuestAi, GuestAiSettings, use_guest_ai_config},
     git::{GuestGit, HISTORY_PATH as GUEST_HISTORY_PATH},
 };
-
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::JsCast;
-
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use dioxus::html::{ScrollBehavior, geometry::PixelsVector2D};
 use dioxus::prelude::*;
 use dioxus_code_editor::{CODE_EDITOR_CSS, CodeEditor, EditorEdit};
 use serde::{Deserialize, Serialize};
+use std::{
+    collections::{BTreeSet, HashSet},
+    fmt,
+    rc::Rc,
+};
 use syntaxis_editor::{
     EditorBuffer, EditorConfig, ExplorerNode, ExplorerTree, ExternalChange, language_slug_for_path,
 };
@@ -44,7 +38,8 @@ use syntaxis_workspace_browser::{
     restore_local_directory, search as search_workspace, select_local_directory,
     set_private_workspace,
 };
-
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::JsCast;
 const GUEST_CSS: Asset = asset!("/assets/guest.css");
 const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");
 const GEIST_FONT: Asset = asset!("/assets/geist-latin-wght-normal.woff2");
@@ -71,12 +66,10 @@ const UNSAVED_NAVIGATION_MESSAGE: &str =
 const MAX_ARCHIVE_FILES: usize = 10_000;
 const MAX_ARCHIVE_FILE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_ARCHIVE_WORKSPACE_BYTES: u64 = 32 * 1024 * 1024;
-
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct GuestFilesQuery {
     path: Option<String>,
 }
-
 impl From<&str> for GuestFilesQuery {
     fn from(query: &str) -> Self {
         Self {
@@ -88,7 +81,6 @@ impl From<&str> for GuestFilesQuery {
         }
     }
 }
-
 impl fmt::Display for GuestFilesQuery {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut serializer = url::form_urlencoded::Serializer::new(String::new());
@@ -98,7 +90,6 @@ impl fmt::Display for GuestFilesQuery {
         formatter.write_str(&serializer.finish())
     }
 }
-
 #[derive(Clone, Debug, Routable, PartialEq)]
 #[rustfmt::skip]
 enum GuestRoute {
@@ -119,10 +110,9 @@ enum GuestRoute {
     #[route("/workspaces/:slug/ai/settings/:section")]
     AiSettingsSection { slug: String, section: String },
 }
-
 #[component]
 pub fn App() -> Element {
-    provide_guest_ai_config();
+    use_guest_ai_config();
     let geist_font_face = format!(
         "@font-face {{ font-family: 'Geist Variable'; src: url('{GEIST_FONT}') format('woff2'); font-style: normal; font-weight: 100 900; font-display: swap; }}",
     );
@@ -156,7 +146,6 @@ pub fn App() -> Element {
         Router::<GuestRoute> {}
     }
 }
-
 #[component]
 fn Home() -> Element {
     let mut notice = use_signal(|| None::<Notice>);
@@ -195,7 +184,6 @@ fn Home() -> Element {
             }
         });
     });
-
     rsx! {
         document::Title { "Home · Syntaxis" }
         main { class: "app-viewport relative w-full overflow-x-hidden overflow-y-auto overscroll-contain bg-background",
@@ -217,7 +205,8 @@ fn Home() -> Element {
                             label: "Notifications",
                             icon: AppIcon::Bell,
                             size: ControlSize::Small,
-                            onclick: move |_| notice.set(Some(Notice::success("Browser workspace notifications."))),
+                            onclick: move | _ | notice
+                                                                                                                                                                                                                                                                                                                                                                                                                .set(Some(Notice::success("Browser workspace notifications."))),
                         }
                         IconButton {
                             label: "Sign out",
@@ -233,13 +222,15 @@ fn Home() -> Element {
                     GuestSourceAction {
                         icon: AppIcon::Folder,
                         title: "Open folder".to_owned(),
-                        description: if folder_picker_supported { "Use a folder from this device".to_owned() } else { "Unavailable here; use private browser storage".to_owned() },
+                        description: if folder_picker_supported { "Use a folder from this device"
+                                                                                                                                                                                                                                                                                                                                                        .to_owned() } else { "Unavailable here; use private browser storage".to_owned() },
                         disabled: !folder_picker_supported,
                         onclick: open_local_folder,
                     }
                     GuestSourceAction {
                         icon: AppIcon::FolderPlus,
-                        title: "Empty Project".to_owned(),
+                        title: "Empty Project"
+                                                                                                                                                                                                                                                                                                                                                        .to_owned(),
                         description: "Start a pure browser project".to_owned(),
                         disabled: false,
                         onclick: open_browser_workspace,
@@ -299,65 +290,67 @@ fn Home() -> Element {
         }
     }
 }
-
 #[component]
 fn Files(slug: String, query: GuestFilesQuery) -> Element {
     rsx! {
         GuestWorkspace {
             slug,
             initial_view: GuestView::Editor,
-            initial_path: query.path,
+            initial_path: query
+                                                                                                                                                                                .path,
         }
     }
 }
-
 #[component]
 fn Terminal(slug: String, query: GuestFilesQuery) -> Element {
     rsx! {
         GuestWorkspace {
             slug,
             initial_view: GuestView::Terminal,
-            initial_path: query.path,
+            initial_path: query
+                                                                                                                                                                                .path,
         }
     }
 }
-
 #[component]
 fn Preview(slug: String) -> Element {
     rsx! {
         GuestWorkspace { slug, initial_view: GuestView::Preview, initial_path: None }
     }
 }
-
 #[component]
 fn Git(slug: String) -> Element {
     rsx! {
         GuestWorkspace { slug, initial_view: GuestView::Git, initial_path: None }
     }
 }
-
 #[component]
 fn Ai(slug: String) -> Element {
     rsx! {
         GuestWorkspace { slug, initial_view: GuestView::Ai, initial_path: None }
     }
 }
-
 #[component]
 fn AiSettings(slug: String) -> Element {
     rsx! {
-        GuestWorkspace { slug, initial_view: GuestView::AiSettings, initial_path: None }
+        GuestWorkspace {
+            slug,
+            initial_view: GuestView::AiSettings,
+            initial_path: None,
+        }
     }
 }
-
 #[component]
 fn AiSettingsSection(slug: String, section: String) -> Element {
     let _section = section;
     rsx! {
-        GuestWorkspace { slug, initial_view: GuestView::AiSettings, initial_path: None }
+        GuestWorkspace {
+            slug,
+            initial_view: GuestView::AiSettings,
+            initial_path: None,
+        }
     }
 }
-
 #[component]
 fn GuestSourceAction(
     icon: AppIcon,
@@ -371,7 +364,8 @@ fn GuestSourceAction(
             class: "grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-3 overflow-hidden rounded-xl border border-border bg-card p-4 text-left shadow-sm transition-colors hover:border-primary/60 hover:bg-accent/80 max-[420px]:p-3.5",
             disabled,
             aria_label: title.clone(),
-            onclick: move |event| onclick.call(event),
+            onclick: move | event | onclick
+                                                                                                                                                                                .call(event),
             span { class: "grid size-9 place-items-center rounded-lg bg-primary/10 text-primary",
                 Icon { icon, size: 22 }
             }
@@ -382,7 +376,6 @@ fn GuestSourceAction(
         }
     }
 }
-
 #[component]
 fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<String>) -> Element {
     let workspace = guest_workspace(slug);
@@ -452,7 +445,6 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
             }
         },
     ));
-
     let restore_saved_directory = workspace.slug != "browser";
     let _restore_directory = use_resource(move || async move {
         if folder_picker_supported && restore_saved_directory {
@@ -469,7 +461,6 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
         }
         startup_complete.set(true);
     });
-
     let directory_workspace = workspace.clone();
     let entries: Resource<Result<(RelativePath, Vec<FileEntry>), WorkspaceError>> =
         use_resource(move || {
@@ -518,7 +509,6 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
             }
         }
     });
-
     let initial_file_workspace = workspace.clone();
     let initial_file_path = requested_path.clone();
     use_effect(move || {
@@ -552,7 +542,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                 path: path.as_str().to_owned(),
                                 size: file.content.len(),
                                 data_url: image_mime(path.as_str()).map(|mime| {
-                                    format!("data:{mime};base64:{}", BASE64.encode(file.content))
+                                    format!("data:{mime};base64:{}", BASE64.encode(file.content),)
                                 }),
                                 hex: String::new(),
                             }));
@@ -568,7 +558,6 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
             busy.set(false);
         });
     });
-
     let active_buffer = buffer();
     let active_binary = binary_preview();
     let active_path = active_buffer
@@ -655,18 +644,20 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                 EditorConfig::default(),
                             )));
                         }
-                        Err(text_error) => match files
-                            .read_binary(&workspace, &entry_path, MAX_BINARY_BYTES)
-                            .await
-                        {
-                            Ok(file) => binary_preview.set(Some(BinaryPreviewState {
-                                path: entry_path.as_str().to_owned(),
-                                size: file.content.len(),
-                                data_url: None,
-                                hex: hex_preview(&file.content),
-                            })),
-                            Err(_) => notice.set(Some(Notice::error(text_error.message))),
-                        },
+                        Err(text_error) => {
+                            match files
+                                .read_binary(&workspace, &entry_path, MAX_BINARY_BYTES)
+                                .await
+                            {
+                                Ok(file) => binary_preview.set(Some(BinaryPreviewState {
+                                    path: entry_path.as_str().to_owned(),
+                                    size: file.content.len(),
+                                    data_url: None,
+                                    hex: hex_preview(&file.content),
+                                })),
+                                Err(_) => notice.set(Some(Notice::error(text_error.message))),
+                            }
+                        }
                     }
                 }
                 busy.set(false);
@@ -677,7 +668,6 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
         document::Title { "{page_title}" }
         document::Script { src: GUEST_ARCHIVE_SCRIPT }
         document::Script { src: GUEST_TERMINAL_SCRIPT }
-
         main { class: "app-viewport flex w-full flex-col overflow-hidden",
             header { class: "flex h-[calc(2.875rem+env(safe-area-inset-top))] min-h-[calc(2.875rem+env(safe-area-inset-top))] items-center gap-2 border-b border-border bg-background px-[max(0.625rem,env(safe-area-inset-left))] pt-[env(safe-area-inset-top)] max-md:h-[calc(3rem+env(safe-area-inset-top))] max-md:min-h-[calc(3rem+env(safe-area-inset-top))]",
                 button {
@@ -707,7 +697,8 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                         Icon { icon: AppIcon::Folder, size: 17 }
                     }
                 }
-                GuestProjectIcon { name: workspace.name.clone() }
+                GuestProjectIcon { name: workspace.name
+                                                                                                                                                                                                                                                                                                .clone() }
                 div { class: "flex min-w-0 items-center gap-2",
                     strong { class: "truncate text-[13px]", {workspace.name.clone()} }
                     StatusBadge {
@@ -728,7 +719,8 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                         label: "Notifications",
                         icon: AppIcon::Bell,
                         size: ControlSize::Small,
-                        onclick: move |_| notice.set(Some(Notice::success("Browser workspace notifications."))),
+                        onclick: move | _ | notice
+                                                                                                                                                                                                                                                                                                                                                        .set(Some(Notice::success("Browser workspace notifications."))),
                     }
                     IconButton {
                         label: "Sign out",
@@ -740,7 +732,6 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                     }
                 }
             }
-
             div { class: "min-h-0 flex-1 overflow-hidden",
                 section { class: if active_view() == GuestView::Editor { "grid size-full min-h-0 min-w-0 grid-cols-[248px_minmax(0,1fr)] overflow-hidden max-md:block" } else { "flex size-full min-h-0 min-w-0 flex-col overflow-hidden bg-background" },
                     if active_view() == GuestView::Editor {
@@ -854,8 +845,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                     onclick: {
                                                         let selected = selected.clone();
                                                         move |_| {
-                                                            operation_destination
-                                                                .set(selected.path.as_str().to_owned());
+                                                            operation_destination.set(selected.path.as_str().to_owned());
                                                             file_operation
                                                                 .set(
                                                                     Some(FileOperation {
@@ -878,8 +868,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                     onclick: {
                                                         let selected = selected.clone();
                                                         move |_| {
-                                                            operation_destination
-                                                                .set(duplicate_path(&selected.path));
+                                                            operation_destination.set(duplicate_path(&selected.path));
                                                             file_operation
                                                                 .set(
                                                                     Some(FileOperation {
@@ -955,7 +944,8 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                     label: "Reconnect local folder",
                                                     icon: AppIcon::Refresh,
                                                     size: ControlSize::Small,
-                                                    disabled: busy() || any_dirty,
+                                                    disabled: busy() ||
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                any_dirty,
                                                     onclick: move |_| {
                                                         spawn(async move {
                                                             match restore_local_directory(true).await {
@@ -1053,14 +1043,16 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                 div { class: "flex items-center gap-1 border-b border-border p-1.75",
                                     form {
                                         class: "relative min-w-0 flex-1",
-                                        onsubmit: move |event: FormEvent| event.prevent_default(),
+                                        onsubmit: move | event : FormEvent |
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        event.prevent_default(),
                                         input {
                                             class: "h-7.25 w-full rounded-md border border-input bg-background px-2 text-xs text-foreground outline-none placeholder:text-muted-foreground focus:border-ring",
                                             value: search_query,
                                             r#type: "search",
                                             placeholder: "Search workspace…",
                                             aria_label: "Search workspace",
-                                            oninput: move |event| search_query.set(event.value()),
+                                            oninput: move | event | search_query.set(event
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                .value()),
                                         }
                                     }
                                     if !search_query().is_empty() {
@@ -1076,7 +1068,8 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                             if new_entry_open() {
                                 Modal {
                                     title: if new_entry_kind() == EntryKind::Directory { "New folder" } else { "New file" },
-                                    description: format!("Create inside {}.", display_path(&current_directory())),
+                                    description: format!("Create inside {}.", display_path(&
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                current_directory())),
                                     on_close: move |()| {
                                         new_entry_open.set(false);
                                         new_file_name.set(String::new());
@@ -1170,13 +1163,8 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                     }
                                 }
                             }
-
                             div {
-                                class: if explorer_search_open() {
-                                    "touch-scroll-region min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-1.25 pt-1 guest-file-list"
-                                } else {
-                                    "flex min-h-0 flex-1 flex-col overflow-hidden guest-file-list"
-                                },
+                                class: if explorer_search_open() { "touch-scroll-region min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-1.25 pt-1 guest-file-list" } else { "flex min-h-0 flex-1 flex-col overflow-hidden guest-file-list" },
                                 role: if explorer_search_open() { "list" } else { "tree" },
                                 "aria-label": if explorer_search_open() { "Workspace search results" } else { "Workspace files" },
                                 if explorer_search_open() && search_query().trim().is_empty() {
@@ -1292,192 +1280,194 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                 on_expand: expand_tree_entry,
                                             }
                                             if false {
-                                            for node in explorer_nodes.clone() {
-                                                FileRow {
-                                                    key: "{node.entry.path.as_str()}",
-                                                    active: active_path.as_deref() == Some(node.entry.path.as_str())
-                                                        || selected_tree_entry()
-                                                            .as_ref()
-                                                            .is_some_and(|selected| selected.path == node.entry.path),
-                                                    node: node.clone(),
-                                                    on_open: {
-                                                        let workspace = workspace.clone();
-                                                        move |entry: FileEntry| {
-                                                            selected_tree_entry.set(Some(entry.clone()));
-                                                            if entry.kind == EntryKind::Directory {
-                                                                let path = entry.path.clone();
-                                                                let expanded = explorer_tree.write().toggle(path.as_str());
-                                                                if expanded {
-                                                                    current_directory.set(path);
-                                                                }
-                                                                return;
-                                                            }
-                                                            let entry_path = entry.path.clone();
-                                                            active_view.set(GuestView::Editor);
-                                                            buffer.set(None);
-                                                            binary_preview.set(None);
+                                                for node in explorer_nodes.clone() {
+                                                    FileRow {
+                                                        key: "{node.entry.path.as_str()}",
+                                                        active: active_path.as_deref()
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    == Some(node.entry.path.as_str())
+                                                            || selected_tree_entry()
+                                                                .as_ref()
+                                                                .is_some_and(|selected| selected.path == node.entry.path),
+                                                        node: node.clone(),
+                                                        on_open: {
                                                             let workspace = workspace.clone();
-                                                            busy.set(true);
-                                                            notice.set(None);
-                                                            spawn(async move {
-                                                                if let Some(mime) = image_mime(entry_path.as_str()) {
-                                                                    match files
-                                                                        .read_binary(&workspace, &entry_path, MAX_BINARY_BYTES)
-                                                                        .await
-                                                                    {
-                                                                        Ok(file) => {
-                                                                            binary_preview
-                                                                                .set(
-                                                                                    Some(BinaryPreviewState {
-                                                                                        path: entry_path.as_str().to_owned(),
-                                                                                        size: file.content.len(),
-                                                                                        data_url: Some(
-                                                                                            format!(
-                                                                                                "data:{mime};base64:{}",
-                                                                                                BASE64.encode(file.content),
+                                                            move |entry: FileEntry| {
+                                                                selected_tree_entry.set(Some(entry.clone()));
+                                                                if entry.kind == EntryKind::Directory {
+                                                                    let path = entry.path.clone();
+                                                                    let expanded = explorer_tree.write().toggle(path.as_str());
+                                                                    if expanded {
+                                                                        current_directory.set(path);
+                                                                    }
+                                                                    return;
+                                                                }
+                                                                let entry_path = entry.path.clone();
+                                                                active_view.set(GuestView::Editor);
+                                                                buffer.set(None);
+                                                                binary_preview.set(None);
+                                                                let workspace = workspace.clone();
+                                                                busy.set(true);
+                                                                notice.set(None);
+                                                                spawn(async move {
+                                                                    if let Some(mime) = image_mime(entry_path.as_str()) {
+                                                                        match files
+                                                                            .read_binary(&workspace, &entry_path, MAX_BINARY_BYTES)
+                                                                            .await
+                                                                        {
+                                                                            Ok(file) => {
+                                                                                binary_preview
+                                                                                    .set(
+                                                                                        Some(BinaryPreviewState {
+                                                                                            path: entry_path.as_str().to_owned(),
+                                                                                            size: file.content.len(),
+                                                                                            data_url: Some(
+                                                                                                format!(
+                                                                                                    "data:{mime};base64:{}",
+                                                                                                    BASE64.encode(file.content),
+                                                                                                ),
+                                                                                            ),
+                                                                                            hex: String::new(),
+                                                                                        }),
+                                                                                    )
+                                                                            }
+                                                                            Err(error) => notice.set(Some(Notice::error(error.message))),
+                                                                        }
+                                                                    } else {
+                                                                        match files.read_text(&workspace, &entry_path, MAX_TEXT_BYTES).await
+                                                                        {
+                                                                            Ok(text) => {
+                                                                                remember_tab(open_tabs, entry_path.as_str());
+                                                                                buffer
+                                                                                    .set(
+                                                                                        Some(
+                                                                                            EditorBuffer::open(
+                                                                                                entry_path.as_str(),
+                                                                                                text.content,
+                                                                                                text.version,
+                                                                                                EditorConfig::default(),
                                                                                             ),
                                                                                         ),
-                                                                                        hex: String::new(),
-                                                                                    }),
-                                                                                )
-                                                                        }
-                                                                        Err(error) => notice.set(Some(Notice::error(error.message))),
-                                                                    }
-                                                                } else {
-                                                                    match files.read_text(&workspace, &entry_path, MAX_TEXT_BYTES).await
-                                                                    {
-                                                                        Ok(text) => {
-                                                                            remember_tab(open_tabs, entry_path.as_str());
-                                                                            buffer
-                                                                                .set(
-                                                                                    Some(
-                                                                                        EditorBuffer::open(
-                                                                                            entry_path.as_str(),
-                                                                                            text.content,
-                                                                                            text.version,
-                                                                                            EditorConfig::default(),
-                                                                                        ),
-                                                                                    ),
-                                                                                );
-                                                                        }
-                                                                        Err(text_error) => {
-                                                                            match files
-                                                                                .read_binary(&workspace, &entry_path, MAX_BINARY_BYTES)
-                                                                                .await
-                                                                            {
-                                                                                Ok(file) => {
-                                                                                    binary_preview
-                                                                                        .set(
-                                                                                            Some(BinaryPreviewState {
-                                                                                                path: entry_path.as_str().to_owned(),
-                                                                                                size: file.content.len(),
-                                                                                                data_url: None,
-                                                                                                hex: hex_preview(&file.content),
-                                                                                            }),
-                                                                                        )
-                                                                                }
-                                                                                Err(_) => {
-                                                                                    notice.set(Some(Notice::error(text_error.message)))
+                                                                                    );
+                                                                            }
+                                                                            Err(text_error) => {
+                                                                                match files
+                                                                                    .read_binary(&workspace, &entry_path, MAX_BINARY_BYTES)
+                                                                                    .await
+                                                                                {
+                                                                                    Ok(file) => {
+                                                                                        binary_preview
+                                                                                            .set(
+                                                                                                Some(BinaryPreviewState {
+                                                                                                    path: entry_path.as_str().to_owned(),
+                                                                                                    size: file.content.len(),
+                                                                                                    data_url: None,
+                                                                                                    hex: hex_preview(&file.content),
+                                                                                                }),
+                                                                                            )
+                                                                                    }
+                                                                                    Err(_) => {
+                                                                                        notice.set(Some(Notice::error(text_error.message)))
+                                                                                    }
                                                                                 }
                                                                             }
                                                                         }
                                                                     }
-                                                                }
-                                                                busy.set(false);
-                                                            });
-                                                        }
-                                                    },
-                                                    confirm_delete: pending_delete().as_ref() == Some(&node.entry.path),
-                                                    on_delete: {
-                                                        let workspace = workspace.clone();
-                                                        let active_path = active_path.clone();
-                                                        move |entry: FileEntry| {
-                                                            if pending_delete().as_ref() != Some(&entry.path) {
-                                                                pending_delete.set(Some(entry.path));
-                                                                return;
+                                                                    busy.set(false);
+                                                                });
                                                             }
-                                                            if tab_buffers
-                                                                .read()
-                                                                .iter()
-                                                                .any(|open| {
-                                                                    open.is_dirty() && path_is_within(&open.path, entry.path.as_str())
-                                                                })
-                                                            {
-                                                                notice.set(Some(Notice::error(UNSAVED_NAVIGATION_MESSAGE)));
-                                                                return;
-                                                            }
+                                                        },
+                                                        confirm_delete: pending_delete().as_ref() == Some(& node
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        .entry.path),
+                                                        on_delete: {
                                                             let workspace = workspace.clone();
-                                                            let deleting_active = active_path.as_deref() == Some(entry.path.as_str());
-                                                            let refresh_directory = parent_path(&entry.path);
-                                                            busy.set(true);
-                                                            notice.set(None);
-                                                            spawn(async move {
-                                                                match files.delete(&workspace, &entry.path).await {
-                                                                    Ok(()) => {
-                                                                        if deleting_active {
-                                                                            buffer.set(None);
-                                                                            binary_preview.set(None);
-                                                                        }
-                                                                        open_tabs
-                                                                            .write()
-                                                                            .retain(|path| {
-                                                                                !path_is_within(path, entry.path.as_str())
-                                                                            });
-                                                                        tab_buffers
-                                                                            .write()
-                                                                            .retain(|open| {
-                                                                                !path_is_within(&open.path, entry.path.as_str())
-                                                                            });
-                                                                        pending_delete.set(None);
-                                                                        current_directory.set(refresh_directory);
-                                                                        revision += 1;
-                                                                        notice.set(Some(Notice::success("Deleted from this device.")));
-                                                                    }
-                                                                    Err(error) => notice.set(Some(Notice::error(error.message))),
+                                                            let active_path = active_path.clone();
+                                                            move |entry: FileEntry| {
+                                                                if pending_delete().as_ref() != Some(&entry.path) {
+                                                                    pending_delete.set(Some(entry.path));
+                                                                    return;
                                                                 }
-                                                                busy.set(false);
-                                                            });
-                                                        }
-                                                    },
-                                                    on_operation: {
-                                                        move |(entry, kind): (FileEntry, FileOperationKind)| {
-                                                            if tab_buffers
-                                                                .read()
-                                                                .iter()
-                                                                .any(|open| {
-                                                                    open.is_dirty() && path_is_within(&open.path, entry.path.as_str())
-                                                                })
-                                                            {
-                                                                notice.set(Some(Notice::error(UNSAVED_NAVIGATION_MESSAGE)));
-                                                                return;
+                                                                if tab_buffers
+                                                                    .read()
+                                                                    .iter()
+                                                                    .any(|open| {
+                                                                        open.is_dirty() && path_is_within(&open.path, entry.path.as_str())
+                                                                    })
+                                                                {
+                                                                    notice.set(Some(Notice::error(UNSAVED_NAVIGATION_MESSAGE)));
+                                                                    return;
+                                                                }
+                                                                let workspace = workspace.clone();
+                                                                let deleting_active = active_path.as_deref() == Some(entry.path.as_str());
+                                                                let refresh_directory = parent_path(&entry.path);
+                                                                busy.set(true);
+                                                                notice.set(None);
+                                                                spawn(async move {
+                                                                    match files.delete(&workspace, &entry.path).await {
+                                                                        Ok(()) => {
+                                                                            if deleting_active {
+                                                                                buffer.set(None);
+                                                                                binary_preview.set(None);
+                                                                            }
+                                                                            open_tabs
+                                                                                .write()
+                                                                                .retain(|path| {
+                                                                                    !path_is_within(path, entry.path.as_str())
+                                                                                });
+                                                                            tab_buffers
+                                                                                .write()
+                                                                                .retain(|open| {
+                                                                                    !path_is_within(&open.path, entry.path.as_str())
+                                                                                });
+                                                                            pending_delete.set(None);
+                                                                            current_directory.set(refresh_directory);
+                                                                            revision += 1;
+                                                                            notice.set(Some(Notice::success("Deleted from this device.")));
+                                                                        }
+                                                                        Err(error) => notice.set(Some(Notice::error(error.message))),
+                                                                    }
+                                                                    busy.set(false);
+                                                                });
                                                             }
-                                                            let destination = match kind {
-                                                                FileOperationKind::Move => entry.path.as_str().to_owned(),
-                                                                FileOperationKind::Duplicate => duplicate_path(&entry.path),
-                                                            };
-                                                            operation_destination.set(destination);
-                                                            file_operation
-                                                                .set(
-                                                                    Some(FileOperation {
-                                                                        source: entry.path,
-                                                                        kind,
-                                                                    }),
-                                                                );
-                                                        }
-                                                    },
+                                                        },
+                                                        on_operation: {
+                                                            move |(entry, kind): (FileEntry, FileOperationKind)| {
+                                                                if tab_buffers
+                                                                    .read()
+                                                                    .iter()
+                                                                    .any(|open| {
+                                                                        open.is_dirty() && path_is_within(&open.path, entry.path.as_str())
+                                                                    })
+                                                                {
+                                                                    notice.set(Some(Notice::error(UNSAVED_NAVIGATION_MESSAGE)));
+                                                                    return;
+                                                                }
+                                                                let destination = match kind {
+                                                                    FileOperationKind::Move => entry.path.as_str().to_owned(),
+                                                                    FileOperationKind::Duplicate => duplicate_path(&entry.path),
+                                                                };
+                                                                operation_destination.set(destination);
+                                                                file_operation
+                                                                    .set(
+                                                                        Some(FileOperation {
+                                                                            source: entry.path,
+                                                                            kind,
+                                                                        }),
+                                                                    );
+                                                            }
+                                                        },
+                                                    }
                                                 }
-                                            }
                                             }
                                         },
                                     }
                                 }
                             }
-
                             if let Some(operation) = file_operation() {
                                 Modal {
                                     title: if operation.kind == FileOperationKind::Move { "Rename or move item" } else { "Duplicate item" },
                                     description: format!("Selected path: {}", operation.source.as_str()),
-                                    on_close: move |()| file_operation.set(None),
+                                    on_close: move | () |
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                file_operation.set(None),
                                     form {
                                         onsubmit: {
                                             let source = operation.source.clone();
@@ -1620,7 +1610,8 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                 TextInput {
                                                     value: operation_destination(),
                                                     autofocus: true,
-                                                    oninput: move |event: FormEvent| operation_destination.set(event.value()),
+                                                    oninput: move |
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                event : FormEvent | operation_destination.set(event.value()),
                                                 }
                                             }
                                             DialogActions {
@@ -1727,7 +1718,6 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                             }
                         }
                     }
-
                     section { class: "flex min-h-0 min-w-0 flex-col overflow-hidden max-md:h-full guest-editor-panel",
                         if matches!(active_view(), GuestView::Editor | GuestView::Preview) {
                             if active_view() == GuestView::Editor && !open_tabs().is_empty() {
@@ -1935,11 +1925,11 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                 }
                             }
                         }
-
                         div { class: "relative min-h-0 min-w-0 flex-1 overflow-auto bg-card guest-editor-surface",
                             if active_view() == GuestView::Terminal {
                                 GuestTerminal {
-                                    workspace: workspace.clone(),
+                                    workspace: workspace
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                .clone(),
                                     notice,
                                     on_workspace_changed: {
                                         let workspace = workspace.clone();
@@ -2076,17 +2066,21 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                             } else if active_view() == GuestView::Ai {
                                 GuestAi {
                                     slug: workspace.slug.clone(),
-                                    active_path: active_buffer.as_ref().map(|open| open.path.clone()),
-                                    active_contents: active_buffer.as_ref().map(|open| open.contents.clone()),
+                                    active_path: active_buffer.as_ref().map(| open | open
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                .path.clone()),
+                                    active_contents: active_buffer.as_ref().map(| open | open
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                .contents.clone()),
                                 }
                             } else if active_view() == GuestView::AiSettings {
                                 GuestAiSettings { slug: workspace.slug.clone() }
                             } else if let Some(open) = active_buffer.as_ref() {
                                 CodeEditor {
                                     key: "{open.path}",
-                                    value: open.contents.clone(),
+                                    value: open.contents
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                .clone(),
                                     filename: open.path.clone(),
-                                    language_name: language_slug_for_path(&open.path),
+                                    language_name: language_slug_for_path(&
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                open.path),
                                     autocomplete: true,
                                     class: "guest-code-editor",
                                     aria_label: format!("Editing {}", open.path),
@@ -2123,7 +2117,6 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                     }
                 }
             }
-
             if let Some(message) = notice() {
                 div {
                     class: if message.error { "guest-notice guest-notice-error" } else { "guest-notice" },
@@ -2235,7 +2228,6 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
         }
     }
 }
-
 #[component]
 fn GuestTerminal(
     workspace: WorkspaceRecord,
@@ -2245,7 +2237,7 @@ fn GuestTerminal(
     let files = OpfsWorkspaceFiles;
     let mut command = use_signal(String::new);
     let mut shell_number = use_signal(|| 1_u32);
-    let mut run_menu_open = use_signal(|| false);
+    let run_menu_open = use_signal(|| false);
     let mut command_refresh = use_signal(|| 0_u64);
     let command_workspace = workspace.clone();
     let project_commands = use_resource(move || {
@@ -2289,9 +2281,7 @@ fn GuestTerminal(
             Ok::<_, String>(commands)
         }
     });
-    let detected_commands = project_commands()
-        .and_then(Result::ok)
-        .unwrap_or_default();
+    let detected_commands = project_commands().and_then(Result::ok).unwrap_or_default();
     let mut history = use_signal(Vec::<CommandRecord>::new);
     let mut history_cursor = use_signal(|| None::<usize>);
     let running = use_signal(|| false);
@@ -2321,7 +2311,6 @@ fn GuestTerminal(
         }
         focus_guest_terminal_input(command_input);
     });
-
     let submit_workspace = workspace.clone();
     rsx! {
         section { class: "guest-terminal", "aria-label": "Browser terminal",
@@ -2341,7 +2330,7 @@ fn GuestTerminal(
                                             "The browser shell stays available for this workspace.",
                                         ),
                                     ),
-                                )
+                                );
                         },
                     }
                 }
@@ -2363,7 +2352,8 @@ fn GuestTerminal(
                     RunCommandMenu {
                         commands: detected_commands,
                         open: run_menu_open,
-                        loading: project_commands.state() == UseResourceState::Pending,
+                        loading: project_commands.state() ==
+                                                                                                                                                                                                                                                                                                                                                        UseResourceState::Pending,
                         disabled: true,
                         disabled_reason: Some(
                             "Detected project commands require native runner executables, which are unavailable in the browser shell."
@@ -2392,7 +2382,8 @@ fn GuestTerminal(
             }
             div {
                 class: "guest-terminal-output",
-                onmounted: move |event| output.set(Some(event.data())),
+                onmounted: move | event |
+                                                                                                                                                                                                                                        output.set(Some(event.data())),
                 role: "log",
                 "aria-live": "polite",
                 for record in history() {
@@ -2444,7 +2435,8 @@ fn GuestTerminal(
                         autocomplete: "off",
                         autocapitalize: "off",
                         spellcheck: false,
-                        title: bridge_message.clone(),
+                        title: bridge_message
+                                                                                                                                                                                                                                                                                                                                                        .clone(),
                         placeholder: "",
                         aria_label: "Browser shell command",
                         onmounted: move |event| {
@@ -2505,7 +2497,6 @@ fn GuestTerminal(
         }
     }
 }
-
 fn run_guest_command(
     files: OpfsWorkspaceFiles,
     workspace: WorkspaceRecord,
@@ -2557,7 +2548,6 @@ fn run_guest_command(
         focus_guest_terminal_input(command_input);
     });
 }
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum GuestView {
     Editor,
@@ -2567,7 +2557,6 @@ enum GuestView {
     Ai,
     AiSettings,
 }
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct CommandRecord {
     command: String,
@@ -2577,7 +2566,6 @@ struct CommandRecord {
     changes: Vec<WorkspaceChange>,
     reconciliation_succeeded: bool,
 }
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct ArchiveEntry {
     path: String,
@@ -2585,7 +2573,6 @@ struct ArchiveEntry {
     directory: bool,
     content: Vec<u8>,
 }
-
 #[derive(Clone, Debug, PartialEq)]
 struct BinaryPreviewState {
     path: String,
@@ -2593,19 +2580,16 @@ struct BinaryPreviewState {
     data_url: Option<String>,
     hex: String,
 }
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum FileOperationKind {
     Move,
     Duplicate,
 }
-
 #[derive(Clone, Debug, PartialEq)]
 struct FileOperation {
     source: RelativePath,
     kind: FileOperationKind,
 }
-
 #[component]
 fn BinaryFilePreview(preview: BinaryPreviewState) -> Element {
     rsx! {
@@ -2622,7 +2606,6 @@ fn BinaryFilePreview(preview: BinaryPreviewState) -> Element {
         }
     }
 }
-
 #[component]
 fn GuestPreview(path: String, source: String) -> Element {
     rsx! {
@@ -2639,7 +2622,6 @@ fn GuestPreview(path: String, source: String) -> Element {
         }
     }
 }
-
 #[component]
 fn SearchRow(hit: BrowserSearchHit, active: bool, on_open: EventHandler<FileEntry>) -> Element {
     let entry = hit.entry.clone();
@@ -2648,7 +2630,8 @@ fn SearchRow(hit: BrowserSearchHit, active: bool, on_open: EventHandler<FileEntr
         button {
             class: if active { "guest-search-row guest-file-row-active" } else { "guest-search-row" },
             title: "Open {label}",
-            onclick: move |_| on_open.call(entry.clone()),
+            onclick: move | _ | on_open
+                                                                                                                                                                                .call(entry.clone()),
             span { class: "guest-file-icon",
                 if entry.kind == EntryKind::Directory {
                     "▸"
@@ -2663,7 +2646,6 @@ fn SearchRow(hit: BrowserSearchHit, active: bool, on_open: EventHandler<FileEntr
         }
     }
 }
-
 fn change_summary(changes: &[WorkspaceChange]) -> String {
     changes
         .iter()
@@ -2678,13 +2660,11 @@ fn change_summary(changes: &[WorkspaceChange]) -> String {
         .collect::<Vec<_>>()
         .join(", ")
 }
-
 fn remember_tab(mut open_tabs: Signal<Vec<String>>, path: &str) {
     if !open_tabs.read().iter().any(|open_path| open_path == path) {
         open_tabs.write().push(path.to_owned());
     }
 }
-
 fn cache_buffer(mut tab_buffers: Signal<Vec<EditorBuffer>>, buffer: &EditorBuffer) {
     let mut buffers = tab_buffers.write();
     if let Some(cached) = buffers.iter_mut().find(|cached| cached.path == buffer.path) {
@@ -2693,7 +2673,6 @@ fn cache_buffer(mut tab_buffers: Signal<Vec<EditorBuffer>>, buffer: &EditorBuffe
         buffers.push(buffer.clone());
     }
 }
-
 fn activate_tab(
     path: String,
     files: OpfsWorkspaceFiles,
@@ -2738,10 +2717,8 @@ fn activate_tab(
         busy.set(false);
     });
 }
-
 const MAX_BINARY_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_UPLOAD_BYTES: u64 = 8 * 1024 * 1024;
-
 async fn export_workspace(
     files: OpfsWorkspaceFiles,
     workspace: WorkspaceRecord,
@@ -2775,7 +2752,6 @@ async fn export_workspace(
     }
     busy.set(false);
 }
-
 async fn collect_archive_entries(
     files: &OpfsWorkspaceFiles,
     workspace: &WorkspaceRecord,
@@ -2808,7 +2784,7 @@ async fn collect_archive_entries(
                     if entry.size > MAX_ARCHIVE_FILE_BYTES {
                         return Err(format!(
                             "{} exceeds the 8 MiB ZIP export file limit.",
-                            entry.path.as_str()
+                            entry.path.as_str(),
                         ));
                     }
                     let file = files
@@ -2833,7 +2809,6 @@ async fn collect_archive_entries(
     entries.sort_by(|left, right| left.path.cmp(&right.path));
     Ok(entries)
 }
-
 async fn import_workspace(
     selected: dioxus::html::FileData,
     workspace: WorkspaceRecord,
@@ -2876,14 +2851,13 @@ async fn import_workspace(
             revision += 1;
             notice.set(Some(Notice::success(format!(
                 "Imported {imported} workspace entr{}.",
-                if imported == 1 { "y" } else { "ies" }
+                if imported == 1 { "y" } else { "ies" },
             ))));
         }
         Err(error) => notice.set(Some(Notice::error(error))),
     }
     busy.set(false);
 }
-
 async fn apply_archive_entries(
     files: &OpfsWorkspaceFiles,
     workspace: &WorkspaceRecord,
@@ -2939,7 +2913,6 @@ async fn apply_archive_entries(
     }
     Ok(normalized.len())
 }
-
 async fn ensure_archive_parent(
     files: &OpfsWorkspaceFiles,
     workspace: &WorkspaceRecord,
@@ -2969,7 +2942,6 @@ async fn ensure_archive_parent(
     }
     Ok(())
 }
-
 async fn upload_files(
     selected: Vec<dioxus::html::FileData>,
     workspace: WorkspaceRecord,
@@ -3034,11 +3006,9 @@ async fn upload_files(
         Notice::error(message)
     }));
 }
-
 fn download_bytes(filename: String, bytes: Vec<u8>, mime: &'static str) {
     use js_sys::{Array, Uint8Array};
     use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, Url};
-
     let parts = Array::new();
     parts.push(&Uint8Array::from(bytes.as_slice()));
     let options = BlobPropertyBag::new();
@@ -3066,7 +3036,6 @@ fn download_bytes(filename: String, bytes: Vec<u8>, mime: &'static str) {
     link.click();
     let _ = Url::revoke_object_url(&url);
 }
-
 fn image_mime(path: &str) -> Option<&'static str> {
     let extension = path.rsplit_once('.')?.1.to_ascii_lowercase();
     match extension.as_str() {
@@ -3080,14 +3049,11 @@ fn image_mime(path: &str) -> Option<&'static str> {
         _ => None,
     }
 }
-
 fn mime_for_path(path: &str) -> &'static str {
     preview_asset_mime(path)
 }
-
 const MAX_PREVIEW_ASSET_BYTES: u64 = 1024 * 1024;
 const MAX_PREVIEW_TOTAL_ASSET_BYTES: u64 = 4 * 1024 * 1024;
-
 fn load_preview(
     files: OpfsWorkspaceFiles,
     workspace: WorkspaceRecord,
@@ -3104,7 +3070,6 @@ fn load_preview(
         preview_loading.set(false);
     });
 }
-
 async fn prepare_html_preview<F>(
     files: &F,
     workspace: &WorkspaceRecord,
@@ -3161,7 +3126,6 @@ where
     }
     source
 }
-
 fn preview_references(source: &str) -> Vec<(usize, usize, String)> {
     let mut references = Vec::new();
     for attribute in ["src", "href"] {
@@ -3183,7 +3147,6 @@ fn preview_references(source: &str) -> Vec<(usize, usize, String)> {
     references.sort_unstable_by_key(|(start, _, _)| *start);
     references
 }
-
 fn resolve_preview_path(document_path: &str, reference: &str) -> Option<RelativePath> {
     let reference = reference
         .split(['?', '#'])
@@ -3200,7 +3163,6 @@ fn resolve_preview_path(document_path: &str, reference: &str) -> Option<Relative
     {
         return None;
     }
-
     let mut segments = document_path
         .rsplit_once('/')
         .map_or_else(Vec::new, |(parent, _)| {
@@ -3217,7 +3179,6 @@ fn resolve_preview_path(document_path: &str, reference: &str) -> Option<Relative
     }
     RelativePath::try_from(segments.join("/")).ok()
 }
-
 fn preview_asset_mime(path: &str) -> &'static str {
     if let Some(mime) = image_mime(path) {
         return mime;
@@ -3238,14 +3199,13 @@ fn preview_asset_mime(path: &str) -> &'static str {
         _ => "application/octet-stream",
     }
 }
-
 fn is_html_path(path: &str) -> bool {
     matches!(
         path.rsplit_once('.').map(|(_, extension)| extension.to_ascii_lowercase()),
-        Some(extension) if matches!(extension.as_str(), "htm" | "html")
+        Some(extension)
+        if matches!(extension.as_str(), "htm" | "html")
     )
 }
-
 fn hex_preview(bytes: &[u8]) -> String {
     let shown = bytes.iter().take(64).copied().collect::<Vec<_>>();
     let mut result = shown
@@ -3258,7 +3218,6 @@ fn hex_preview(bytes: &[u8]) -> String {
     }
     result
 }
-
 fn duplicate_path(path: &RelativePath) -> String {
     let (stem, extension) = path
         .as_str()
@@ -3271,14 +3230,12 @@ fn duplicate_path(path: &RelativePath) -> String {
         format!("{stem}-copy.{extension}")
     }
 }
-
 fn path_is_within(path: &str, parent: &str) -> bool {
     path == parent
         || path
             .strip_prefix(parent)
             .is_some_and(|suffix| suffix.starts_with('/'))
 }
-
 fn remap_path(path: &str, source: &RelativePath, destination: &RelativePath) -> Option<String> {
     if path == source.as_str() {
         return Some(destination.as_str().to_owned());
@@ -3287,7 +3244,6 @@ fn remap_path(path: &str, source: &RelativePath, destination: &RelativePath) -> 
         .filter(|suffix| suffix.starts_with('/'))
         .map(|suffix| format!("{}{}", destination.as_str(), suffix))
 }
-
 #[component]
 fn FileRow(
     node: ExplorerNode,
@@ -3327,7 +3283,8 @@ fn FileRow(
                     }
                 }
                 FileIcon {
-                    path: entry.path.as_str().to_owned(),
+                    path: entry.path.as_str()
+                                                                                                                                                                                                                                                                                                .to_owned(),
                     directory: is_directory,
                     expanded: node.expanded,
                     size: 15,
@@ -3337,7 +3294,6 @@ fn FileRow(
         }
     }
 }
-
 #[component]
 fn GuestProjectIcon(name: String) -> Element {
     let initial = name.trim().chars().next().map_or_else(
@@ -3350,7 +3306,6 @@ fn GuestProjectIcon(name: String) -> Element {
         }
     }
 }
-
 #[component]
 fn GuestNavItem(
     label: String,
@@ -3364,7 +3319,8 @@ fn GuestNavItem(
             class: if active { "flex w-26 flex-col items-center justify-center gap-1 border-t-2 border-transparent bg-transparent px-2.5 pt-2 pb-1.5 text-foreground max-md:w-1/5 max-md:pb-2" } else { "flex w-26 flex-col items-center justify-center gap-1 border-t-2 border-transparent bg-transparent px-2.5 pt-2 pb-1.5 text-muted-foreground hover:bg-accent/50 hover:text-foreground max-md:w-1/5 max-md:pb-2" },
             disabled,
             aria_current: if active { "page" } else { "" },
-            onclick: move |event| onclick.call(event),
+            onclick: move |
+                                                                                                                                                                                event | onclick.call(event),
             span { class: "h-5 text-base leading-5",
                 Icon { icon, size: 18 }
             }
@@ -3372,7 +3328,6 @@ fn GuestNavItem(
         }
     }
 }
-
 fn focus_guest_terminal_input(input: Signal<Option<Rc<MountedData>>>) {
     let Some(input) = input() else {
         return;
@@ -3381,19 +3336,16 @@ fn focus_guest_terminal_input(input: Signal<Option<Rc<MountedData>>>) {
         let _ = input.set_focus(true).await;
     });
 }
-
 #[derive(Clone, Debug, PartialEq)]
 struct Notice {
     message: String,
     error: bool,
 }
-
 #[derive(Clone, Debug, PartialEq)]
 enum StorageLocation {
     Private,
     Local(String),
 }
-
 impl StorageLocation {
     fn badge_label(&self) -> String {
         match self {
@@ -3402,7 +3354,6 @@ impl StorageLocation {
         }
     }
 }
-
 impl Notice {
     fn success(message: impl Into<String>) -> Self {
         Self {
@@ -3410,7 +3361,6 @@ impl Notice {
             error: false,
         }
     }
-
     fn error(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
@@ -3418,7 +3368,6 @@ impl Notice {
         }
     }
 }
-
 fn guest_workspace(slug: String) -> WorkspaceRecord {
     let name = if slug == "browser" {
         "Browser workspace".to_owned()
@@ -3440,7 +3389,6 @@ fn guest_workspace(slug: String) -> WorkspaceRecord {
         availability: WorkspaceAvailability::Available,
     }
 }
-
 fn slug_for_project(name: &str) -> String {
     let slug = name
         .chars()
@@ -3459,7 +3407,6 @@ fn slug_for_project(name: &str) -> String {
         slug.to_owned()
     }
 }
-
 async fn populate_tree_to_file(
     files: &OpfsWorkspaceFiles,
     workspace: &WorkspaceRecord,
@@ -3487,11 +3434,9 @@ async fn populate_tree_to_file(
         tree.write().replace_directory(directory.as_str(), items);
     }
 }
-
 fn path_contains_bulky_generated_directory(path: &str) -> bool {
     path.split('/').any(is_bulky_generated_directory_name)
 }
-
 fn expand_tree_path(mut tree: Signal<ExplorerTree>, path: &str) {
     let mut parent = String::new();
     for segment in path.split('/').filter(|segment| !segment.is_empty()) {
@@ -3502,7 +3447,6 @@ fn expand_tree_path(mut tree: Signal<ExplorerTree>, path: &str) {
         tree.write().expand(&parent);
     }
 }
-
 fn child_path(parent: &RelativePath, name: &str) -> Result<RelativePath, ()> {
     if name.is_empty() || name.contains('/') || name.contains('\\') {
         return Err(());
@@ -3514,7 +3458,6 @@ fn child_path(parent: &RelativePath, name: &str) -> Result<RelativePath, ()> {
     };
     RelativePath::try_from(path).map_err(|_| ())
 }
-
 fn parent_path(path: &RelativePath) -> RelativePath {
     path.as_str()
         .rsplit_once('/')
@@ -3522,7 +3465,6 @@ fn parent_path(path: &RelativePath) -> RelativePath {
             RelativePath::try_from(parent).unwrap_or_else(|_| RelativePath::root())
         })
 }
-
 fn display_path(path: &RelativePath) -> String {
     if path.is_root() {
         "Browser workspace".into()

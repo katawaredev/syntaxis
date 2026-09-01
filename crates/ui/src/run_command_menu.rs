@@ -1,9 +1,7 @@
+use crate::{AppIcon, Icon, MenuContent, MenuTrigger};
 use dioxus::prelude::*;
 use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
 use syntaxis_terminal::RunCommand;
-
-use crate::{AppIcon, Icon, MenuContent, MenuTrigger};
-
 /// Shared project-command dropdown used by native and browser terminals.
 #[component]
 pub fn RunCommandMenu(
@@ -81,7 +79,8 @@ pub fn RunCommandMenu(
                 if show_add {
                     DropdownMenuItem::<usize> {
                         value: commands.len(),
-                        index: commands.len(),
+                        index: commands
+                                                                                                                                                                                                                                                                                                                                                        .len(),
                         on_select: move |_| on_add.call(()),
                         span { class: "flex items-center gap-2",
                             Icon { icon: AppIcon::Plus, size: 14 }
@@ -90,13 +89,18 @@ pub fn RunCommandMenu(
                     }
                 }
                 DropdownMenuItem::<usize> {
-                    value: commands.len() + usize::from(show_add),
+                    value: commands.len() +
+                                                                                                                                                                                                                                                                                                usize::from(show_add),
                     index: commands.len() + usize::from(show_add),
                     disabled: loading,
                     on_select: move |_| on_refresh.call(()),
                     span { class: "flex items-center gap-2",
                         Icon { icon: AppIcon::Refresh, size: 14 }
-                        if loading { "Refreshing…" } else { "Refresh" }
+                        if loading {
+                            "Refreshing…"
+                        } else {
+                            "Refresh"
+                        }
                     }
                 }
             }

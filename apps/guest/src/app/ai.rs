@@ -1,19 +1,17 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 use syntaxis_ui::prelude::{
-    AiChatHeader, AiSendButton, AiSidebarTabs, AppIcon, Button, ButtonKind, ControlSize, Field, Icon, IconButton,
-    TextInput, TextInputType,
+    AiChatHeader, AiSendButton, AiSidebarTabs, AppIcon, Button, ButtonKind, ControlSize, Field,
+    Icon, IconButton, TextInput, TextInputType,
 };
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{Request, RequestInit, RequestMode, Response};
-
 const DEFAULT_ENDPOINT: &str = "https://api.openai.com/v1/chat/completions";
 const DEFAULT_MODEL: &str = "gpt-4.1-mini";
 const MAX_PROMPT_BYTES: usize = 64 * 1024;
 const MAX_CONTEXT_BYTES: usize = 128 * 1024;
 const MAX_CONVERSATION_BYTES: usize = 512 * 1024;
-
 #[derive(Clone, Copy)]
 pub(super) struct GuestAiConfig {
     endpoint: Signal<String>,
@@ -22,8 +20,7 @@ pub(super) struct GuestAiConfig {
     prompt: Signal<String>,
     messages: Signal<Vec<ChatMessage>>,
 }
-
-pub(super) fn provide_guest_ai_config() {
+pub(super) fn use_guest_ai_config() {
     let endpoint = use_signal(|| DEFAULT_ENDPOINT.to_owned());
     let model = use_signal(|| DEFAULT_MODEL.to_owned());
     let api_key = use_signal(String::new);
@@ -38,29 +35,24 @@ pub(super) fn provide_guest_ai_config() {
     });
 }
 const MAX_RESPONSE_BYTES: usize = 1024 * 1024;
-
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct ChatMessage {
     role: String,
     content: String,
 }
-
 #[derive(Serialize)]
 struct ChatRequest<'a> {
     model: &'a str,
     messages: &'a [ChatMessage],
 }
-
 #[derive(Deserialize)]
 struct ChatResponse {
     choices: Vec<ChatChoice>,
 }
-
 #[derive(Deserialize)]
 struct ChatChoice {
     message: ChatMessage,
 }
-
 #[component]
 pub(super) fn GuestAi(
     slug: String,
@@ -81,7 +73,6 @@ pub(super) fn GuestAi(
     let mut error = use_signal(|| None::<String>);
     let submit_path = active_path.clone();
     let submit_contents = active_contents.clone();
-
     rsx! {
         section {
             class: if sidebar_open() { "guest-ai" } else { "guest-ai guest-ai-sidebar-hidden" },
@@ -93,10 +84,11 @@ pub(super) fn GuestAi(
                     on_settings: {
                         let slug = slug.clone();
                         move |()| {
-                            navigator.push(super::GuestRoute::AiSettingsSection {
-                                slug: slug.clone(),
-                                section: "provider-accounts".to_owned(),
-                            });
+                            navigator
+                                .push(super::GuestRoute::AiSettingsSection {
+                                    slug: slug.clone(),
+                                    section: "provider-accounts".to_owned(),
+                                });
                         }
                     },
                 }
@@ -130,14 +122,14 @@ pub(super) fn GuestAi(
                         }
                     }
                 }
-
             }
             main { class: "guest-ai-main",
                 AiChatHeader {
                     title: "New chat",
                     connected: !api_key().trim().is_empty(),
                     sidebar_open: sidebar_open(),
-                    on_toggle_sidebar: move |()| sidebar_open.toggle(),
+                    on_toggle_sidebar: move | () | sidebar_open
+                                                                                                                                                                                                                                                                                                                                                            .toggle(),
                     on_open_sidebar: move |()| sidebar_open.set(true),
                     actions: rsx! {
                         IconButton {
@@ -152,10 +144,11 @@ pub(super) fn GuestAi(
                             onclick: {
                                 let slug = slug.clone();
                                 move |_| {
-                                    navigator.push(super::GuestRoute::AiSettingsSection {
-                                        slug: slug.clone(),
-                                        section: "provider-accounts".to_owned(),
-                                    });
+                                    navigator
+                                        .push(super::GuestRoute::AiSettingsSection {
+                                            slug: slug.clone(),
+                                            section: "provider-accounts".to_owned(),
+                                        });
                                 }
                             },
                         }
@@ -287,22 +280,20 @@ pub(super) fn GuestAi(
                         maxlength: MAX_PROMPT_BYTES,
                         placeholder: "Ask Syntaxis…",
                         aria_label: "AI message",
-                        oninput: move |event| prompt.set(event.value()),
+                        oninput: move |
+                                                                                                                                                                                                                                                                                                                                                                                                                                event | prompt.set(event.value()),
                     }
                     div { class: "guest-ai-composer-toolbar",
                         IconButton {
                             label: "Attach files (unavailable in browser chat)",
-                            icon: AppIcon::Attach,
+                            icon: AppIcon::Attachment,
                             size: ControlSize::Small,
                             disabled: true,
-                            onclick: move |_| {},
+                            onclick: move | _ |
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    {},
                         }
                         IconButton {
-                            label: if let Some(path) = active_path.as_deref() {
-                                format!("Reference {path}")
-                            } else {
-                                "Open a file to reference it".to_owned()
-                            },
+                            label: if let Some(path) = active_path.as_deref() { format!("Reference {path}") } else { "Open a file to reference it".to_owned() },
                             icon: AppIcon::LineNumbers,
                             size: ControlSize::Small,
                             pressed: include_file(),
@@ -314,13 +305,13 @@ pub(super) fn GuestAi(
                             icon: AppIcon::Microphone,
                             size: ControlSize::Small,
                             disabled: true,
-                            onclick: move |_| {},
+                            onclick: move |
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    _ | {},
                         }
-                        span { class: "guest-ai-composer-hint",
-                            "Markdown supported · Enter sends"
-                        }
+                        span { class: "guest-ai-composer-hint", "Markdown supported · Enter sends" }
                         AiSendButton {
-                            disabled: pending() || prompt().trim().is_empty(),
+                            disabled: pending() ||
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    prompt().trim().is_empty(),
                             submit: true,
                             onclick: move |_| {},
                         }
@@ -330,7 +321,6 @@ pub(super) fn GuestAi(
         }
     }
 }
-
 #[component]
 pub(super) fn GuestAiSettings(slug: String) -> Element {
     let navigator = use_navigator();
@@ -340,20 +330,29 @@ pub(super) fn GuestAiSettings(slug: String) -> Element {
         mut api_key,
         ..
     } = use_context();
-
     rsx! {
-        section { class: "guest-ai guest-ai-settings-view", "aria-label": "AI settings",
-            nav { class: "guest-ai-sidebar", "aria-label": "AI settings sections",
+        section {
+            class: "guest-ai guest-ai-settings-view",
+            "aria-label": "AI settings",
+            nav {
+                class: "guest-ai-sidebar",
+                "aria-label": "AI settings sections",
                 AiSidebarTabs {
                     settings_active: true,
                     on_chat: {
                         let slug = slug.clone();
-                        move |()| navigator.push(super::GuestRoute::Ai { slug: slug.clone() })
+                        move |_| {
+                            navigator
+                                .push(super::GuestRoute::Ai {
+                                    slug: slug.clone(),
+                                });
+                        }
                     },
-                    on_settings: move |()| {},
+                    on_settings: move |_| {},
                 }
                 div { class: "guest-ai-settings-sections",
-                    button { class: "guest-ai-settings-section guest-ai-settings-section-active",
+                    button {
+                        class: "guest-ai-settings-section guest-ai-settings-section-active",
                         r#type: "button",
                         "Provider accounts"
                     }
@@ -387,21 +386,19 @@ pub(super) fn GuestAiSettings(slug: String) -> Element {
                             TextInput {
                                 value: endpoint(),
                                 placeholder: DEFAULT_ENDPOINT,
-                                oninput: move |event: FormEvent| endpoint.set(event.value()),
+                                oninput: move | event : FormEvent |
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        endpoint.set(event.value()),
                             }
                         }
-                        Field {
-                            control_id: "guest-ai-model",
-                            label: "Model",
+                        Field { control_id: "guest-ai-model", label: "Model",
                             TextInput {
                                 value: model(),
                                 placeholder: DEFAULT_MODEL,
-                                oninput: move |event: FormEvent| model.set(event.value()),
+                                oninput: move
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | event : FormEvent | model.set(event.value()),
                             }
                         }
-                        Field {
-                            control_id: "guest-ai-api-key",
-                            label: "API key",
+                        Field { control_id: "guest-ai-api-key", label: "API key",
                             TextInput {
                                 input_type: TextInputType::Password,
                                 value: api_key(),
@@ -419,7 +416,6 @@ pub(super) fn GuestAiSettings(slug: String) -> Element {
         }
     }
 }
-
 async fn send_chat(
     endpoint: &str,
     model: &str,
@@ -489,7 +485,6 @@ async fn send_chat(
         .map(|choice| choice.message)
         .ok_or_else(|| "The provider returned no assistant message.".to_owned())
 }
-
 fn browser_error(context: &str, value: JsValue) -> String {
     let detail = value.as_string().unwrap_or_else(|| format!("{value:?}"));
     format!("{context}: {detail}")
