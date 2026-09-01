@@ -18,9 +18,7 @@ pub const BULKY_GENERATED_DIRECTORY_NAMES: &[&str] = &[
 
 /// Returns whether a single directory name is a conventional bulky artifact.
 pub fn is_bulky_generated_directory_name(name: &str) -> bool {
-    BULKY_GENERATED_DIRECTORY_NAMES
-        .iter()
-        .any(|candidate| *candidate == name)
+    BULKY_GENERATED_DIRECTORY_NAMES.contains(&name)
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
