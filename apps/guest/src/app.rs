@@ -19,6 +19,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use dioxus::html::{ScrollBehavior, geometry::PixelsVector2D};
 use dioxus::prelude::*;
 use dioxus_code_editor::{CODE_EDITOR_CSS, CodeEditor, EditorEdit};
+use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
 use serde::{Deserialize, Serialize};
 use syntaxis_editor::{
     EditorBuffer, EditorConfig, ExplorerNode, ExplorerTree, ExternalChange, language_slug_for_path,
@@ -28,8 +29,9 @@ use syntaxis_terminal_browser::{
     execute as execute_browser_command, wait_for_bridge,
 };
 use syntaxis_ui::prelude::{
-    AppIcon, ControlSize, FileIcon, Icon, IconButton, PanelHeader, PanelTab, PanelTabIndicator,
-    PanelTabList, PanelTabWidth, StatusBadge, Tone,
+    AppIcon, Button, ButtonKind, ControlSize, DialogActions, DialogForm, Field, FileIcon, Icon,
+    IconButton, MenuContent, MenuTrigger, Modal, PanelHeader, PanelTab, PanelTabIndicator,
+    PanelTabList, PanelTabWidth, StatusBadge, TextInput, Tone,
 };
 use syntaxis_workspace::{
     BULKY_GENERATED_DIRECTORY_NAMES, EntryKind, ErrorCode, FileEntry, RelativePath,
