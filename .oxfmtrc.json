@@ -6,6 +6,7 @@
   "ignorePatterns": [
     "assets/tailwind.css",
     "assets/terminal/terminal.bundle.js",
+    "apps/guest/assets/guest-terminal.bundle.js",
     "crates/code-editor/assets/editor.bundle.js",
     "crates/code-editor/assets/lsp.bundle.js"
   ]

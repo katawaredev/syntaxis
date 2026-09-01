@@ -6006,6 +6006,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "syntaxis-guest"
+version = "0.1.0"
+dependencies = [
+ "base64 0.23.1",
+ "dioxus",
+ "dioxus-code-editor",
+ "serde",
+ "syntaxis-editor",
+ "syntaxis-terminal-browser",
+ "syntaxis-ui",
+ "syntaxis-workspace",
+ "syntaxis-workspace-browser",
+ "url",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "syntaxis-lsp-host"
 version = "0.1.0"
 dependencies = [
@@ -6037,6 +6055,19 @@ dependencies = [
  "serde",
  "serde_bytes",
  "serde_json",
+]
+
+[[package]]
+name = "syntaxis-terminal-browser"
+version = "0.1.0"
+dependencies = [
+ "gloo-timers 0.4.0",
+ "js-sys",
+ "serde",
+ "serde-wasm-bindgen",
+ "syntaxis-workspace",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]
@@ -6072,6 +6103,18 @@ dependencies = [
  "async-trait",
  "futures-lite",
  "serde",
+]
+
+[[package]]
+name = "syntaxis-workspace-browser"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "js-sys",
+ "syntaxis-workspace",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]

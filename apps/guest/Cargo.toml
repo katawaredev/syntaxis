@@ -1,0 +1,29 @@
+[package]
+name = "syntaxis-guest"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+base64 = "0.23.1"
+dioxus = { version = "0.7.10" }
+dioxus-code-editor = { path = "../../crates/code-editor" }
+serde = { version = "1.0.229", features = ["derive"] }
+syntaxis-editor = { path = "../../crates/editor" }
+syntaxis-terminal-browser = { path = "../../crates/terminal-browser" }
+syntaxis-ui = { path = "../../crates/ui" }
+syntaxis-workspace = { path = "../../crates/workspace" }
+url = "2.5.8"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+syntaxis-workspace-browser = { path = "../../crates/workspace-browser" }
+web-sys = { version = "0.3.77", features = ["Document", "HtmlElement", "Window"] }
+wasm-bindgen = "0.2.127"
+
+[features]
+default = ["web"]
+web = ["dioxus/web"]
+
+[lints]
+workspace = true

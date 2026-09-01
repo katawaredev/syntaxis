@@ -1,0 +1,10 @@
+[application]
+asset_dir = "assets"
+tailwind_input = "../../tailwind.css"
+tailwind_output = "assets/tailwind.css"
+
+[web.app]
+title = "Syntaxis Guest"
+
+[web]
+pre_compress = true

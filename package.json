@@ -3,6 +3,8 @@
   "private": true,
   "scripts": {
     "build:editor": "bun scripts/build-code-editor.mjs",
+    "build:guest-archive": "bun scripts/build-guest-archive.mjs",
+    "build:guest-terminal": "bun scripts/build-guest-terminal.mjs",
     "build:terminal": "bun scripts/build-terminal.mjs",
     "format:web": "oxfmt --write \"*.{js,mjs,cjs,css,json,jsonc}\" \"**/*.{js,mjs,cjs,css,json,jsonc}\"",
     "format:web:check": "oxfmt --check \"*.{js,mjs,cjs,css,json,jsonc}\" \"**/*.{js,mjs,cjs,css,json,jsonc}\"",
@@ -31,7 +33,9 @@
     "@codemirror/view": "6.43.8",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
-    "esbuild": "^0.28.2"
+    "esbuild": "^0.28.2",
+    "fflate": "^0.8.2",
+    "just-bash": "3.4.2"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "0.84.3",
