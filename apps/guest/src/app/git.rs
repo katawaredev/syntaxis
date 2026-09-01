@@ -335,11 +335,19 @@ async fn load_history(
     {
         Ok(file) => serde_json::from_slice(&file.content)
             .map_err(|error| format!("Browser history is damaged: {error}")),
-        Err(error) if matches!(error.code, syntaxis_workspace::ErrorCode::NotFound) => {
-            Ok(BrowserHistory::default())
-        }
+        Err(error) if history_is_missing(&error) => Ok(BrowserHistory::default()),
         Err(error) => Err(error.message),
     }
+}
+
+fn history_is_missing(error: &syntaxis_workspace::WorkspaceError) -> bool {
+    if error.code == syntaxis_workspace::ErrorCode::NotFound {
+        return true;
+    }
+    let message = error.message.to_ascii_lowercase();
+    message.contains("not found")
+        || message.contains("not be found")
+        || message.contains("could not open the file entry")
 }
 
 async fn collect_snapshot(

@@ -1,5 +1,6 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
+use syntaxis_ui::prelude::{AppIcon, Button, ButtonKind, Icon};
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{Request, RequestInit, RequestMode, Response};
@@ -48,24 +49,37 @@ pub(super) fn GuestAi(active_path: Option<String>, active_contents: Option<Strin
 
     rsx! {
         section { class: "guest-ai", "aria-label": "Browser AI assistant",
-            header { class: "guest-module-header",
-                div {
-                    h2 { "AI assistant" }
-                    p {
-                        "Optional BYOK chat. Requests go directly from this browser to the configured provider."
+            nav { class: "guest-ai-sidebar", "aria-label": "Agent chats",
+                div { class: "guest-ai-sidebar-actions",
+                    Button {
+                        label: "New chat",
+                        kind: ButtonKind::Primary,
+                        disabled: pending(),
+                        onclick: move |_| {
+                            messages.write().clear();
+                            prompt.set(String::new());
+                            error.set(None);
+                        },
                     }
                 }
-                button {
-                    r#type: "button",
-                    disabled: pending() || messages().is_empty(),
-                    onclick: move |_| {
-                        messages.write().clear();
-                        error.set(None);
-                    },
-                    "New chat"
+                div { class: "guest-ai-session-list",
+                    if messages().is_empty() {
+                        div { class: "guest-ai-session-empty",
+                            div { class: "guest-ai-session-icon",
+                                Icon { icon: AppIcon::Sparkles, size: 17 }
+                            }
+                            strong { "No chats yet" }
+                            p { "Start a local chat for this workspace." }
+                        }
+                    } else {
+                        button { class: "guest-ai-session guest-ai-session-active",
+                            r#type: "button",
+                            "Current chat"
+                            small { "{messages().len()} messages" }
+                        }
+                    }
                 }
-            }
-            details { class: "guest-ai-settings", open: true,
+                details { class: "guest-ai-settings",
                 summary { "Provider settings" }
                 label {
                     span { "OpenAI-compatible endpoint" }
@@ -94,7 +108,15 @@ pub(super) fn GuestAi(active_path: Option<String>, active_contents: Option<Strin
                     }
                 }
                 p { class: "guest-module-note",
-                    "The key is never written to workspace files or browser storage. Provider CORS policy may block direct browser requests."
+                    "The key stays in memory. Provider CORS policy may block direct browser requests."
+                }
+                }
+            }
+            main { class: "guest-ai-main",
+            header { class: "guest-module-header",
+                div {
+                    h2 { "New chat" }
+                    p { "Browser-only · OpenAI-compatible provider" }
                 }
             }
             div {
@@ -229,7 +251,17 @@ pub(super) fn GuestAi(active_path: Option<String>, active_contents: Option<Strin
                     aria_label: "AI message",
                     oninput: move |event| prompt.set(event.value()),
                 }
-                button { disabled: pending() || prompt().trim().is_empty(), "Send" }
+                button {
+                    class: "guest-ai-send",
+                    disabled: pending() || prompt().trim().is_empty(),
+                    aria_label: "Send message",
+                    if pending() {
+                        "Sending…"
+                    } else {
+                        Icon { icon: AppIcon::ArrowUp, size: 16 }
+                    }
+                }
+            }
             }
         }
     }

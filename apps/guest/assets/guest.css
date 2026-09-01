@@ -56,7 +56,9 @@ button:disabled {
 
 .guest-workspace-menu {
   display: grid;
+  max-height: min(560px, calc(100svh - 96px));
   gap: 2px;
+  overflow-y: auto;
 }
 
 .guest-workspace-menu > button,
@@ -719,6 +721,188 @@ button:disabled {
   resize: vertical;
 }
 
+/* Browser AI mirrors the desktop chat shell while keeping provider settings local. */
+.guest-ai {
+  display: grid;
+  grid-template: minmax(0, 1fr) / 260px minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.guest-ai-sidebar {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  background: var(--sidebar, var(--background));
+}
+
+.guest-ai-sidebar-actions {
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.guest-ai-sidebar-actions > button {
+  width: 100%;
+}
+
+.guest-ai-session-list {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.guest-ai-session-empty {
+  display: flex;
+  height: 100%;
+  min-height: 180px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  padding: 16px;
+  color: var(--muted-foreground);
+  text-align: center;
+}
+
+.guest-ai-session-empty strong {
+  margin-top: 10px;
+  color: var(--foreground);
+  font-size: 12px;
+}
+
+.guest-ai-session-empty p {
+  margin: 4px 0 0;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.guest-ai-session-icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--secondary);
+  color: var(--primary);
+}
+
+.guest-ai-session {
+  display: grid;
+  width: 100%;
+  gap: 3px;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 11px;
+  text-align: left;
+}
+
+.guest-ai-session small {
+  color: var(--muted-foreground);
+  font-size: 9px;
+}
+
+.guest-ai-session-active {
+  border-color: var(--border);
+  background: var(--accent);
+}
+
+.guest-ai-sidebar .guest-ai-settings {
+  display: block;
+  max-height: 48%;
+  padding: 0 12px 12px;
+  overflow-y: auto;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: transparent;
+}
+
+.guest-ai-sidebar .guest-ai-settings label {
+  grid-template-columns: 1fr;
+  gap: 4px;
+}
+
+.guest-ai-main {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.guest-ai-main > .guest-module-header {
+  min-height: 54px;
+  padding: 10px 16px;
+}
+
+.guest-ai-main > .guest-ai-timeline {
+  width: 100%;
+  flex: 1;
+  padding: 24px 24px 12px;
+}
+
+.guest-ai-main > .guest-ai-error {
+  margin: 0 auto 8px;
+  width: min(760px, calc(100% - 32px));
+}
+
+.guest-ai-message {
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+}
+
+.guest-ai-user {
+  width: fit-content;
+  max-width: min(620px, 88%);
+  margin-right: max(0px, calc((100% - 760px) / 2));
+  margin-left: auto;
+  background: var(--secondary);
+}
+
+.guest-ai-assistant {
+  padding-right: 0;
+  padding-left: 0;
+}
+
+.guest-ai-composer {
+  width: min(760px, calc(100% - 32px));
+  margin: 0 auto 16px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--input);
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+}
+
+.guest-ai-context {
+  padding: 9px 12px 0;
+}
+
+.guest-ai-composer textarea {
+  min-height: 70px;
+  padding: 12px;
+  border: 0;
+  background: transparent;
+  resize: none;
+}
+
+.guest-ai-composer .guest-ai-send {
+  width: 36px;
+  min-height: 36px;
+  align-self: end;
+  margin: 0 8px 8px 0;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
 .guest-git > .guest-module-note {
   margin: 12px 18px;
 }
@@ -913,35 +1097,27 @@ button:disabled {
     max-width: 180px;
   }
 
-  .guest-ai,
   .guest-git {
     display: flex;
     flex-direction: column;
   }
 
-  .guest-ai-settings {
-    order: 2;
-    max-height: 42%;
+  .guest-ai {
+    grid-template: auto minmax(0, 1fr) / 1fr;
+  }
+
+  .guest-ai-sidebar {
+    max-height: 42svh;
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }
 
-  .guest-ai-timeline {
-    order: 3;
+  .guest-ai-session-list {
+    display: none;
   }
 
-  .guest-ai-composer {
-    order: 4;
-  }
-
-  .guest-ai > .guest-ai-error {
-    position: static;
-    order: 4;
-  }
-
-  .guest-ai-settings label {
-    grid-template-columns: 1fr;
-    gap: 4px;
+  .guest-ai-sidebar .guest-ai-settings {
+    max-height: 30svh;
   }
 
   .guest-ai-composer,
