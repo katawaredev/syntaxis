@@ -6016,6 +6016,7 @@ dependencies = [
  "serde",
  "serde_json",
  "syntaxis-editor",
+ "syntaxis-terminal",
  "syntaxis-terminal-browser",
  "syntaxis-ui",
  "syntaxis-workspace",
@@ -6095,7 +6096,9 @@ dependencies = [
  "dioxus-devicons",
  "dioxus-icons",
  "dioxus-primitives",
+ "syntaxis-editor",
  "syntaxis-git",
+ "syntaxis-terminal",
  "syntaxis-workspace",
 ]
 

@@ -52,10 +52,11 @@ the same script in CI and deploy the resulting static directory.
 - Run bounded `just-bash` commands locally and reconcile their file changes
   back to the active browser workspace.
 - Detect conflicting writes using the shared Syntaxis file-version model.
-- Reuse the existing Rust-facing CodeMirror editor component.
-- Track offline source-history snapshots with status, commits, and confirmed restore.
-- Use optional BYOK AI chat through a user-configured OpenAI-compatible HTTPS endpoint.
-- Access the file explorer on desktop and mobile layouts.
+- Reuse the shared CodeMirror editor, file-tree viewport, AI chrome, and terminal run menu.
+- Detect Git metadata while providing bounded offline snapshots for browser-safe history.
+- Detect package.json, Justfile, and Makefile commands; native-runtime commands remain visibly disabled.
+- Use optional BYOK AI chat with provider credentials configured under AI Settings.
+- Access the shared, scrollable file explorer on desktop and mobile layouts.
 
 The browser terminal snapshots at most 32 MiB total and 8 MiB per file. Common
 generated directories (`node_modules`, `target`, `dist`, `.git`, and similar)
@@ -64,9 +65,9 @@ snapshot. It is a command console rather than a PTY: shell variables and
 working-directory state reset between commands, interactive processes are
 unavailable, and network access is disabled.
 
-Browser source history intentionally does not claim `.git` compatibility:
-branches, remotes, signing, rebase, and worktrees require the native/server Git
-runtime. AI keys remain in memory and requests go directly to the selected
-provider, so that provider must allow browser CORS. ZIP import/export is
+The guest detects `.git` metadata but does not mutate it: branches, remotes,
+signing, rebase, and worktrees require the native/server Git runtime. AI keys
+remain in memory, are configured at `/workspaces/<slug>/ai/settings/provider-accounts`, and go
+directly to the selected provider, so that provider must allow browser CORS. ZIP import/export is
 intentionally merge-only: existing workspace paths are never overwritten by an
 import.

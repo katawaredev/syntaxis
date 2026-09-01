@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 use syntaxis_agent::{ExtensionWidget, ImageAttachment, PiCommand, PromptDelivery};
-use syntaxis_ui::prelude::{AppIcon, Icon, IconButton};
+use syntaxis_ui::prelude::{AiSendButton, AppIcon, Icon, IconButton};
 use syntaxis_workspace::{EntryKind, WorkspaceRecord};
 
 use crate::files::{SearchScope, WorkspaceSearchOptions, search_workspace_files};
@@ -373,11 +373,13 @@ pub(crate) fn AgentComposer(
                                     onclick: move |_| on_abort.call(()),
                                 }
                             }
-                            button {
-                                class: "grid size-8.5 place-items-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-35",
+                            AiSendButton {
+                                label: if working {
+                                    format!("Steer {agent_name}")
+                                } else {
+                                    "Send message".to_owned()
+                                },
                                 disabled: !can_send,
-                                aria_label: if working { format!("Steer {agent_name}") } else { "Send message".to_owned() },
-                                title: if working { format!("Steer {agent_name}") } else { "Send message".to_owned() },
                                 onclick: move |_| {
                                     submit_composer(
                                         can_send,
@@ -390,7 +392,6 @@ pub(crate) fn AgentComposer(
                                         on_send,
                                     );
                                 },
-                                Icon { icon: AppIcon::Send, size: 15 }
                             }
                             if working {
                                 button {

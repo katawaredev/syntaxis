@@ -2,17 +2,9 @@ use bytes::Bytes;
 use dioxus::fullstack::{CborEncoding, Encoding, WebSocketOptions, Websocket};
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use syntaxis_terminal::{ClientMessage, ServerMessage};
+use syntaxis_terminal::{ClientMessage, RunCommand, ServerMessage};
 
 const MAX_TERMINAL_MESSAGE_BYTES: usize = 128 * 1024;
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub(crate) struct RunCommand {
-    pub id: String,
-    pub label: String,
-    pub command: String,
-    pub custom: bool,
-}
 
 pub(crate) struct TerminalEncoding;
 

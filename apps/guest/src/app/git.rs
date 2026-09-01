@@ -2,7 +2,10 @@ use std::collections::BTreeMap;
 
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
-use syntaxis_workspace::{EntryKind, RelativePath, WorkspaceFiles, WorkspaceRecord};
+use syntaxis_workspace::{
+    EntryKind, RelativePath, WorkspaceFiles, WorkspaceRecord,
+    is_bulky_generated_directory_name,
+};
 use syntaxis_workspace_browser::OpfsWorkspaceFiles;
 
 use super::Notice;
@@ -90,12 +93,13 @@ pub(super) fn GuestGit(
         let _refresh = refresh();
         async move {
             let history = load_history(&files, &workspace).await?;
+            let git_metadata_present = has_git_metadata(&files, &workspace).await;
             let current = collect_snapshot(&files, &workspace).await?;
             let status = compare_snapshot(
                 history.commits.last().map(|commit| commit.files.as_slice()),
                 &current,
             );
-            Ok::<_, String>((history, status))
+            Ok::<_, String>((history, status, git_metadata_present))
         }
     });
 
@@ -123,7 +127,7 @@ pub(super) fn GuestGit(
                 Some(Err(error)) => rsx! {
                     p { class: "guest-ai-error", role: "alert", "{error}" }
                 },
-                Some(Ok((history, status))) => {
+                Some(Ok((history, status, git_metadata_present))) => {
                     let commit_disabled = busy()
                         || dirty
                         || message().trim().is_empty()
@@ -132,8 +136,10 @@ pub(super) fn GuestGit(
                     rsx! {
                         div { class: "guest-git-summary",
                             strong {
-                                if history.commits.is_empty() {
-                                    "History not initialized"
+                                if git_metadata_present {
+                                    "Git metadata detected"
+                                } else if history.commits.is_empty() {
+                                    "Browser history not initialized"
                                 } else if status.is_clean() {
                                     "Working tree clean"
                                 } else {
@@ -141,6 +147,11 @@ pub(super) fn GuestGit(
                                 }
                             }
                             span { "{history.commits.len()} local commit(s)" }
+                        }
+                        if git_metadata_present {
+                            p { class: "guest-module-note",
+                                "This is a Git working tree. Browser snapshots remain available, but branches, remotes, and .git mutations are disabled because the static guest has no Git runtime."
+                            }
                         }
                         if !status.is_clean() {
                             div { class: "guest-git-changes",
@@ -320,6 +331,19 @@ async fn create_commit(
     }
 }
 
+async fn has_git_metadata(
+    files: &OpfsWorkspaceFiles,
+    workspace: &WorkspaceRecord,
+) -> bool {
+    let Ok(path) = RelativePath::try_from(".git".to_owned()) else {
+        return false;
+    };
+    files
+        .stat(workspace, &path)
+        .await
+        .is_ok_and(|entry| entry.kind == EntryKind::Directory || entry.kind == EntryKind::File)
+}
+
 async fn load_history(
     files: &OpfsWorkspaceFiles,
     workspace: &WorkspaceRecord,
@@ -363,7 +387,10 @@ async fn collect_snapshot(
             .await
             .map_err(|error| error.message)?
         {
-            if entry.path.as_str() == HISTORY_PATH {
+            if entry.path.as_str() == HISTORY_PATH
+                || (entry.kind == EntryKind::Directory
+                    && is_bulky_generated_directory_name(&entry.name))
+            {
                 continue;
             }
             match entry.kind {
@@ -461,12 +488,16 @@ async fn apply_snapshot(
         .await
         .map_err(|error| error.message)?
     {
-        if entry.path.as_str() != HISTORY_PATH {
-            files
-                .delete(workspace, &entry.path)
-                .await
-                .map_err(|error| error.message)?;
+        if entry.path.as_str() == HISTORY_PATH
+            || (entry.kind == EntryKind::Directory
+                && is_bulky_generated_directory_name(&entry.name))
+        {
+            continue;
         }
+        files
+            .delete(workspace, &entry.path)
+            .await
+            .map_err(|error| error.message)?;
     }
     let mut directories = snapshot
         .iter()

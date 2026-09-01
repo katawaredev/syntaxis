@@ -8,7 +8,7 @@ use std::{
 };
 
 use self::{
-    ai::GuestAi,
+    ai::{GuestAi, GuestAiSettings, provide_guest_ai_config},
     git::{GuestGit, HISTORY_PATH as GUEST_HISTORY_PATH},
 };
 
@@ -23,14 +23,15 @@ use serde::{Deserialize, Serialize};
 use syntaxis_editor::{
     EditorBuffer, EditorConfig, ExplorerNode, ExplorerTree, ExternalChange, language_slug_for_path,
 };
+use syntaxis_terminal::{justfile_commands, makefile_commands, package_json_commands};
 use syntaxis_terminal_browser::{
     WorkspaceChange, WorkspaceChangeKind, cancel as cancel_browser_command,
     execute as execute_browser_command, wait_for_bridge,
 };
 use syntaxis_ui::prelude::{
-    AppIcon, Button, ButtonKind, ControlSize, DialogActions, DialogForm, Field, FileIcon, Icon,
-    IconButton, Modal, PanelHeader, PanelTab, PanelTabIndicator, PanelTabList, PanelTabWidth,
-    StatusBadge, TextInput, Tone,
+    AppIcon, Button, ButtonKind, ControlSize, DialogActions, DialogForm, Field, FileIcon, FileTree,
+    Icon, IconButton, Modal, PanelHeader, PanelTab, PanelTabIndicator, PanelTabList, PanelTabWidth,
+    RunCommandMenu, StatusBadge, TextInput, Tone,
 };
 use syntaxis_workspace::{
     BULKY_GENERATED_DIRECTORY_NAMES, EntryKind, ErrorCode, FileEntry, RelativePath,
@@ -113,10 +114,15 @@ enum GuestRoute {
     Git { slug: String },
     #[route("/workspaces/:slug/ai")]
     Ai { slug: String },
+    #[route("/workspaces/:slug/ai/settings")]
+    AiSettings { slug: String },
+    #[route("/workspaces/:slug/ai/settings/:section")]
+    AiSettingsSection { slug: String, section: String },
 }
 
 #[component]
 pub fn App() -> Element {
+    provide_guest_ai_config();
     let geist_font_face = format!(
         "@font-face {{ font-family: 'Geist Variable'; src: url('{GEIST_FONT}') format('woff2'); font-style: normal; font-weight: 100 900; font-display: swap; }}",
     );
@@ -338,6 +344,21 @@ fn Ai(slug: String) -> Element {
 }
 
 #[component]
+fn AiSettings(slug: String) -> Element {
+    rsx! {
+        GuestWorkspace { slug, initial_view: GuestView::AiSettings, initial_path: None }
+    }
+}
+
+#[component]
+fn AiSettingsSection(slug: String, section: String) -> Element {
+    let _section = section;
+    rsx! {
+        GuestWorkspace { slug, initial_view: GuestView::AiSettings, initial_path: None }
+    }
+}
+
+#[component]
 fn GuestSourceAction(
     icon: AppIcon,
     title: String,
@@ -508,7 +529,6 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
             initial_location_loaded.set(true);
             return;
         };
-        active_view.set(GuestView::Editor);
         busy.set(true);
         notice.set(None);
         let workspace = initial_file_workspace.clone();
@@ -581,9 +601,78 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
         GuestView::Git => "Source control",
         GuestView::Preview => "Preview",
         GuestView::Ai => "AI",
+        GuestView::AiSettings => "AI Settings",
     };
     let page_title = format!("{} · {section_title}", workspace.name);
     let save_workspace = workspace.clone();
+    let select_tree_entry = EventHandler::new(move |entry: FileEntry| {
+        selected_tree_entry.set(Some(entry));
+    });
+    let expand_tree_entry = EventHandler::new(move |entry: FileEntry| {
+        let path = entry.path;
+        if explorer_tree.write().toggle(path.as_str()) {
+            current_directory.set(path);
+        }
+    });
+    let open_tree_file = {
+        let workspace = workspace.clone();
+        EventHandler::new(move |entry: FileEntry| {
+            let entry_path = entry.path;
+            active_view.set(GuestView::Editor);
+            buffer.set(None);
+            binary_preview.set(None);
+            busy.set(true);
+            notice.set(None);
+            let workspace = workspace.clone();
+            spawn(async move {
+                if let Some(mime) = image_mime(entry_path.as_str()) {
+                    match files
+                        .read_binary(&workspace, &entry_path, MAX_BINARY_BYTES)
+                        .await
+                    {
+                        Ok(file) => binary_preview.set(Some(BinaryPreviewState {
+                            path: entry_path.as_str().to_owned(),
+                            size: file.content.len(),
+                            data_url: Some(format!(
+                                "data:{mime};base64:{}",
+                                BASE64.encode(file.content),
+                            )),
+                            hex: String::new(),
+                        })),
+                        Err(error) => notice.set(Some(Notice::error(error.message))),
+                    }
+                } else {
+                    match files
+                        .read_text(&workspace, &entry_path, MAX_TEXT_BYTES)
+                        .await
+                    {
+                        Ok(text) => {
+                            remember_tab(open_tabs, entry_path.as_str());
+                            buffer.set(Some(EditorBuffer::open(
+                                entry_path.as_str(),
+                                text.content,
+                                text.version,
+                                EditorConfig::default(),
+                            )));
+                        }
+                        Err(text_error) => match files
+                            .read_binary(&workspace, &entry_path, MAX_BINARY_BYTES)
+                            .await
+                        {
+                            Ok(file) => binary_preview.set(Some(BinaryPreviewState {
+                                path: entry_path.as_str().to_owned(),
+                                size: file.content.len(),
+                                data_url: None,
+                                hex: hex_preview(&file.content),
+                            })),
+                            Err(_) => notice.set(Some(Notice::error(text_error.message))),
+                        },
+                    }
+                }
+                busy.set(false);
+            });
+        })
+    };
     rsx! {
         document::Title { "{page_title}" }
         document::Script { src: GUEST_ARCHIVE_SCRIPT }
@@ -655,7 +744,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
             div { class: "min-h-0 flex-1 overflow-hidden",
                 section { class: if active_view() == GuestView::Editor { "grid size-full min-h-0 min-w-0 grid-cols-[248px_minmax(0,1fr)] overflow-hidden max-md:block" } else { "flex size-full min-h-0 min-w-0 flex-col overflow-hidden bg-background" },
                     if active_view() == GuestView::Editor {
-                        aside { class: if mobile_explorer_open() { "min-h-0 min-w-0 border-r border-border bg-sidebar max-md:fixed max-md:inset-x-0 max-md:top-[calc(3rem+env(safe-area-inset-top))] max-md:bottom-[calc(3.875rem+env(safe-area-inset-bottom))] max-md:z-30" } else { "min-h-0 min-w-0 border-r border-border bg-sidebar max-md:hidden" },
+                        aside { class: if mobile_explorer_open() { "flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-r border-border bg-sidebar max-md:fixed max-md:inset-x-0 max-md:top-[calc(3rem+env(safe-area-inset-top))] max-md:bottom-[calc(3.875rem+env(safe-area-inset-bottom))] max-md:z-30" } else { "flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-r border-border bg-sidebar max-md:hidden" },
                             div { class: "grid h-12 min-h-12 grid-cols-2 items-center gap-1 border-b border-border p-1.25",
                                 button {
                                     class: if !explorer_search_open() { "guest-explorer-tab guest-explorer-tab-active" } else { "guest-explorer-tab" },
@@ -1083,7 +1172,11 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                             }
 
                             div {
-                                class: "touch-scroll-region min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-1.25 pt-1 guest-file-list",
+                                class: if explorer_search_open() {
+                                    "touch-scroll-region min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-1.25 pt-1 guest-file-list"
+                                } else {
+                                    "flex min-h-0 flex-1 flex-col overflow-hidden guest-file-list"
+                                },
                                 role: if explorer_search_open() { "list" } else { "tree" },
                                 "aria-label": if explorer_search_open() { "Workspace search results" } else { "Workspace files" },
                                 if explorer_search_open() && search_query().trim().is_empty() {
@@ -1189,6 +1282,16 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                             p { class: "guest-muted", "This workspace is empty." }
                                         },
                                         Some(Ok(_)) => rsx! {
+                                            FileTree {
+                                                nodes: explorer_nodes.clone(),
+                                                selected_path: selected_tree_entry()
+                                                    .map(|entry| entry.path.as_str().to_owned())
+                                                    .or_else(|| active_path.clone()),
+                                                on_select: select_tree_entry,
+                                                on_open: open_tree_file,
+                                                on_expand: expand_tree_entry,
+                                            }
+                                            if false {
                                             for node in explorer_nodes.clone() {
                                                 FileRow {
                                                     key: "{node.entry.path.as_str()}",
@@ -1363,6 +1466,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                         }
                                                     },
                                                 }
+                                            }
                                             }
                                         },
                                     }
@@ -1971,9 +2075,12 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                 }
                             } else if active_view() == GuestView::Ai {
                                 GuestAi {
+                                    slug: workspace.slug.clone(),
                                     active_path: active_buffer.as_ref().map(|open| open.path.clone()),
                                     active_contents: active_buffer.as_ref().map(|open| open.contents.clone()),
                                 }
+                            } else if active_view() == GuestView::AiSettings {
+                                GuestAiSettings { slug: workspace.slug.clone() }
                             } else if let Some(open) = active_buffer.as_ref() {
                                 CodeEditor {
                                     key: "{open.path}",
@@ -2111,7 +2218,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                 GuestNavItem {
                     label: "AI",
                     icon: AppIcon::Bot,
-                    active: active_view() == GuestView::Ai,
+                    active: matches!(active_view(), GuestView::Ai | GuestView::AiSettings),
                     onclick: {
                         let navigator = navigator.clone();
                         let slug = workspace.slug.clone();
@@ -2138,6 +2245,53 @@ fn GuestTerminal(
     let files = OpfsWorkspaceFiles;
     let mut command = use_signal(String::new);
     let mut shell_number = use_signal(|| 1_u32);
+    let mut run_menu_open = use_signal(|| false);
+    let mut command_refresh = use_signal(|| 0_u64);
+    let command_workspace = workspace.clone();
+    let project_commands = use_resource(move || {
+        let workspace = command_workspace.clone();
+        let _refresh = command_refresh();
+        async move {
+            let root = RelativePath::root();
+            let entries = files
+                .list(&workspace, &root)
+                .await
+                .map_err(|error| error.message)?;
+            let sibling_names = entries
+                .iter()
+                .map(|entry| entry.name.clone())
+                .collect::<Vec<_>>();
+            let mut commands = Vec::new();
+            let mut seen = HashSet::new();
+            for entry in entries {
+                let detected = match entry.name.as_str() {
+                    "package.json" => files
+                        .read_text(&workspace, &entry.path, 512 * 1024)
+                        .await
+                        .map(|file| package_json_commands(&file.content, &sibling_names)),
+                    "Justfile" | "justfile" | ".justfile" => files
+                        .read_text(&workspace, &entry.path, 512 * 1024)
+                        .await
+                        .map(|file| justfile_commands(&file.content)),
+                    "GNUmakefile" | "Makefile" | "makefile" => files
+                        .read_text(&workspace, &entry.path, 512 * 1024)
+                        .await
+                        .map(|file| makefile_commands(&file.content)),
+                    _ => continue,
+                }
+                .map_err(|error| error.message)?;
+                for command in detected {
+                    if seen.insert(command.command.clone()) {
+                        commands.push(command);
+                    }
+                }
+            }
+            Ok::<_, String>(commands)
+        }
+    });
+    let detected_commands = project_commands()
+        .and_then(Result::ok)
+        .unwrap_or_default();
     let mut history = use_signal(Vec::<CommandRecord>::new);
     let mut history_cursor = use_signal(|| None::<usize>);
     let running = use_signal(|| false);
@@ -2168,7 +2322,6 @@ fn GuestTerminal(
         focus_guest_terminal_input(command_input);
     });
 
-    let command_workspace = workspace.clone();
     let submit_workspace = workspace.clone();
     rsx! {
         section { class: "guest-terminal", "aria-label": "Browser terminal",
@@ -2207,41 +2360,33 @@ fn GuestTerminal(
                             focus_guest_terminal_input(command_input);
                         },
                     }
-                    IconButton {
-                        label: "Clear terminal output",
-                        icon: AppIcon::Delete,
-                        size: ControlSize::Small,
-                        disabled: history().is_empty(),
-                        onclick: move |_| {
-                            history.write().clear();
-                            history_cursor.set(None);
-                        },
+                    RunCommandMenu {
+                        commands: detected_commands,
+                        open: run_menu_open,
+                        loading: project_commands.state() == UseResourceState::Pending,
+                        disabled: true,
+                        disabled_reason: Some(
+                            "Detected project commands require native runner executables, which are unavailable in the browser shell."
+                                .to_owned(),
+                        ),
+                        show_add: false,
+                        on_run: move |_| {},
+                        on_add: move |()| {},
+                        on_refresh: move |()| command_refresh += 1,
+                        on_delete: move |_| {},
                     }
-                    IconButton {
-                        label: if running() { "Stop command" } else { "Run command" },
-                        icon: if running() { AppIcon::Stop } else { AppIcon::Play },
-                        size: ControlSize::Small,
-                        disabled: !bridge_ready,
-                        onclick: move |_| {
-                            if running() {
+                    if running() {
+                        IconButton {
+                            label: "Stop command",
+                            icon: AppIcon::Stop,
+                            size: ControlSize::Small,
+                            disabled: !bridge_ready,
+                            onclick: move |_| {
                                 if let Err(error) = cancel_browser_command() {
                                     notice.set(Some(Notice::error(error)));
                                 }
-                            } else if command().trim().is_empty() {
-                                focus_guest_terminal_input(command_input);
-                            } else {
-                                run_guest_command(
-                                    files,
-                                    command_workspace.clone(),
-                                    command,
-                                    history,
-                                    history_cursor,
-                                    running,
-                                    command_input,
-                                    on_workspace_changed,
-                                );
-                            }
-                        },
+                            },
+                        }
                     }
                 }
             }
@@ -2420,6 +2565,7 @@ enum GuestView {
     Terminal,
     Git,
     Ai,
+    AiSettings,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

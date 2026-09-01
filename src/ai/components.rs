@@ -1,7 +1,9 @@
 use dioxus::prelude::*;
 use dioxus_primitives::collapsible::{Collapsible, CollapsibleContent, CollapsibleTrigger};
 use syntaxis_agent::{AgentSnapshot, ModelSummary, SessionStats, ThinkingLevel};
-use syntaxis_ui::prelude::{AppIcon, Icon, IconButton, InteractivePopover, ProviderIcon};
+use syntaxis_ui::prelude::{
+    AiChatHeader, AppIcon, Icon, IconButton, InteractivePopover, ProviderIcon,
+};
 
 mod composer;
 mod extension_dialog;
@@ -46,29 +48,13 @@ pub(super) fn AgentHeader(
         None
     };
     rsx! {
-        header { class: "flex min-h-12 items-center gap-2 border-b border-border bg-background px-2.5 max-[520px]:gap-1.5 max-[520px]:px-2",
-            div { class: "shrink-0 max-md:hidden",
-                IconButton {
-                    label: if sidebar_open { "Hide AI sidebar" } else { "Show AI sidebar" },
-                    icon: AppIcon::Explorer,
-                    pressed: sidebar_open,
-                    onclick: move |_| on_toggle_sidebar.call(()),
-                }
-            }
-            div { class: "hidden shrink-0 max-md:block",
-                IconButton {
-                    label: "Open AI sidebar",
-                    icon: AppIcon::Explorer,
-                    onclick: move |_| on_open_sidebar.call(()),
-                }
-            }
-            div {
-                class: "flex min-w-0 flex-1 items-center gap-2",
-                title: "{workspace_name} · {connection}",
-                span { class: if connection_ready { "size-1.5 shrink-0 rounded-full bg-success" } else { "size-1.5 shrink-0 rounded-full bg-warning" } }
-                strong { class: "min-w-0 truncate text-xs", "{session_title}" }
-            }
-            div { class: "flex shrink-0 items-center gap-1",
+        AiChatHeader {
+            title: session_title,
+            connected: connection_ready,
+            sidebar_open,
+            on_toggle_sidebar,
+            on_open_sidebar,
+            actions: rsx! {
                 WorkspacePicker {
                     workspace_name: workspace_name.clone(),
                     locked_reason: workspace_locked_reason,
@@ -90,7 +76,7 @@ pub(super) fn AgentHeader(
                     compact_disabled: controls_disabled || snapshot.session_stats.is_none(),
                     on_compact,
                 }
-            }
+            },
         }
     }
 }

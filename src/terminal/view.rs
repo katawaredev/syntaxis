@@ -1,5 +1,5 @@
 use super::TerminalQuery;
-use super::api::{self, RunCommand};
+use super::api;
 use super::renderer::{
     RendererAction, RendererActionResult, RendererCommand, RendererOutputBatch, SourceLink,
     XtermRenderer,
@@ -25,11 +25,11 @@ use futures_util::{
 use menus::terminal_actions_menu;
 use mobile::{MobileTerminalKeys, ctrl_modified_byte};
 use syntaxis_notifications::NotificationTarget;
-use syntaxis_terminal::{ClientMessage, Lifecycle, SessionId, SessionSummary, TerminalSize};
+use syntaxis_terminal::{ClientMessage, Lifecycle, RunCommand, SessionId, SessionSummary, TerminalSize};
 use syntaxis_ui::prelude::{
     AppIcon, Button, ButtonKind, ControlSize, Icon, IconButton, MenuButtonTrigger, MenuContent,
-    MenuTrigger, PanelHeader, PanelTab, PanelTabIndicator, PanelTabList, PanelTabWidth, Toast,
-    Tone,
+    MenuTrigger, PanelHeader, PanelTab, PanelTabIndicator, PanelTabList, PanelTabWidth,
+    RunCommandMenu, Toast, Tone,
 };
 const TERMINAL_SCRIPT: Asset = asset!("/assets/terminal/terminal.bundle.js");
 
@@ -46,13 +46,6 @@ enum TerminalAction {
     CloseOthers,
     CloseAll,
 }
-#[derive(Clone, Debug, Eq, PartialEq)]
-enum RunMenuAction {
-    Run(RunCommand),
-    Add,
-    Refresh,
-}
-
 #[component]
 pub fn Terminal(slug: String, query: TerminalQuery) -> Element {
     let active = use_context::<crate::workspace::ActiveWorkspace>();
@@ -501,96 +494,28 @@ fn RemoteTerminal(
                         disabled: !connection_ready,
                         onclick: move |_| open_new_terminal_dialog.call(()),
                     }
-                    DropdownMenu {
-                        class: "relative order-3 shrink-0",
-                        open: quick_menu(),
-                        on_open_change: move |open: bool| quick_menu.set(open),
-                        MenuTrigger {
-                            label: "Run command",
-                            icon: AppIcon::Play,
-                            open: quick_menu(),
-                            on_toggle: move |()| quick_menu.toggle(),
-                        }
-                        MenuContent { class: "right-0 max-h-[min(32rem,calc(100svh-4rem))] w-72 overflow-y-auto",
-                            if commands_loading() && run_commands.read().is_empty() {
-                                div { class: "px-2 py-2 text-xs text-muted-foreground",
-                                    "Detecting project commands…"
-                                }
-                            } else if run_commands.read().is_empty() {
-                                div { class: "px-2 py-2 text-xs text-muted-foreground",
-                                    "No project commands detected"
-                                }
-                            }
-                            for (index, command) in run_commands().into_iter().enumerate() {
-                                DropdownMenuItem::<RunMenuAction> {
-                                    value: RunMenuAction::Run(command.clone()),
-                                    index,
-                                    disabled: !connection_ready || pending_command.read().is_some(),
-                                    on_select: move |action: RunMenuAction| {
-                                        if let RunMenuAction::Run(command) = action {
-                                            run_project_command.call(command);
-                                        }
-                                    },
-                                    div { class: "flex min-w-0 flex-1 flex-col gap-0.5 text-left",
-                                        span { class: "truncate", "{command.label}" }
-                                        span { class: "truncate text-[10px] text-muted-foreground",
-                                            "{command.command}"
+                    RunCommandMenu {
+                        commands: run_commands(),
+                        open: quick_menu,
+                        loading: commands_loading(),
+                        disabled: !connection_ready || pending_command.read().is_some(),
+                        on_run: move |command| run_project_command.call(command),
+                        on_add: move |()| open_add_command_dialog.call(()),
+                        on_refresh: move |()| refresh_commands.call(()),
+                        on_delete: {
+                            let workspace_id = workspace_id.clone();
+                            move |command_id: String| {
+                                let workspace_id = workspace_id.clone();
+                                spawn(async move {
+                                    match api::delete_run_command(workspace_id, command_id).await {
+                                        Ok(commands) => run_commands.set(commands),
+                                        Err(error) => {
+                                            toast.set(Some(server_error_message(error)));
                                         }
                                     }
-                                    if command.custom {
-                                        button {
-                                            class: "-my-1 -mr-1 inline-flex size-7 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-destructive/12 hover:text-destructive",
-                                            r#type: "button",
-                                            title: "Delete custom command",
-                                            "aria-label": "Delete {command.label}",
-                                            onclick: {
-                                                let workspace_id = workspace_id.clone();
-                                                let command_id = command.id.clone();
-                                                move |event: MouseEvent| {
-                                                    event.stop_propagation();
-                                                    let workspace_id = workspace_id.clone();
-                                                    let command_id = command_id.clone();
-                                                    spawn(async move {
-                                                        match api::delete_run_command(workspace_id, command_id).await {
-                                                            Ok(commands) => run_commands.set(commands),
-                                                            Err(error) => toast.set(Some(server_error_message(error))),
-                                                        }
-                                                    });
-                                                }
-                                            },
-                                            Icon {
-                                                icon: AppIcon::Delete,
-                                                size: 13,
-                                            }
-                                        }
-                                    }
-                                }
+                                });
                             }
-                            hr {}
-                            DropdownMenuItem::<RunMenuAction> {
-                                value: RunMenuAction::Add,
-                                index: run_commands.read().len(),
-                                on_select: move |_: RunMenuAction| open_add_command_dialog.call(()),
-                                span { class: "flex items-center gap-2",
-                                    Icon { icon: AppIcon::Plus, size: 14 }
-                                    "Add command"
-                                }
-                            }
-                            DropdownMenuItem::<RunMenuAction> {
-                                value: RunMenuAction::Refresh,
-                                index: run_commands.read().len() + 1,
-                                disabled: commands_loading(),
-                                on_select: move |_: RunMenuAction| refresh_commands.call(()),
-                                span { class: "flex items-center gap-2",
-                                    Icon { icon: AppIcon::Refresh, size: 14 }
-                                    if commands_loading() {
-                                        "Refreshing…"
-                                    } else {
-                                        "Refresh"
-                                    }
-                                }
-                            }
-                        }
+                        },
                     }
                     {
                         terminal_actions_menu(

@@ -1,7 +1,8 @@
 use dioxus::prelude::*;
 use serde_json::{Value, json};
 use syntaxis_ui::prelude::{
-    AppIcon, Button, ButtonKind, DialogActions, DialogForm, IconButton, Modal, ProviderIcon, Tone,
+    AiSidebarTabs as SharedAiSidebarTabs, AppIcon, Button, ButtonKind, DialogActions, DialogForm,
+    IconButton, Modal, ProviderIcon, Tone,
 };
 
 use super::{
@@ -26,34 +27,16 @@ pub(super) fn AiSidebarTabs(
     on_change: EventHandler<AiPanel>,
 ) -> Element {
     rsx! {
-        div { class: "grid h-12 min-h-12 grid-cols-2 items-center gap-1 border-b border-border p-1.25",
-            SidebarTab {
-                label: "Chat",
-                active: panel() == AiPanel::Chat,
-                onclick: move |()| {
-                    panel.set(AiPanel::Chat);
-                    on_change.call(AiPanel::Chat);
-                },
-            }
-            SidebarTab {
-                label: "Settings",
-                active: panel() == AiPanel::Settings,
-                onclick: move |()| {
-                    panel.set(AiPanel::Settings);
-                    on_change.call(AiPanel::Settings);
-                },
-            }
-        }
-    }
-}
-
-#[component]
-fn SidebarTab(label: &'static str, active: bool, onclick: EventHandler<()>) -> Element {
-    rsx! {
-        button {
-            class: if active { "file-tree-tab h-8.5 rounded-md bg-muted text-[11px] font-medium text-foreground" } else { "file-tree-tab h-8.5 rounded-md bg-transparent text-[11px] text-muted-foreground hover:bg-muted/60 hover:text-foreground" },
-            onclick: move |_| onclick.call(()),
-            "{label}"
+        SharedAiSidebarTabs {
+            settings_active: panel() == AiPanel::Settings,
+            on_chat: move |()| {
+                panel.set(AiPanel::Chat);
+                on_change.call(AiPanel::Chat);
+            },
+            on_settings: move |()| {
+                panel.set(AiPanel::Settings);
+                on_change.call(AiPanel::Settings);
+            },
         }
     }
 }

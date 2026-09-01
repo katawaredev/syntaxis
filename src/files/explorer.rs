@@ -334,7 +334,11 @@ pub(super) fn Explorer(
                 }
             }
             div {
-                class: "touch-scroll-region min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-1.25 pt-1",
+                class: if active_view == ExplorerView::Search {
+                    "touch-scroll-region min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-1.25 pt-1"
+                } else {
+                    "flex min-h-0 flex-1 flex-col overflow-hidden"
+                },
                 role: "tree",
                 "aria-label": "Workspace files",
                 if active_view == ExplorerView::Search {
@@ -414,44 +418,38 @@ pub(super) fn Explorer(
                             }
                         }
                     }
-                } else if loading {
-                    div {
-                        class: "flex items-center gap-2 p-3 text-xs text-muted-foreground",
-                        role: "status",
-                        span {
-                            class: "size-3.5 shrink-0 animate-spin rounded-full border-2 border-current/30 border-t-primary",
-                            aria_hidden: "true",
-                        }
-                        "Loading workspace files…"
-                    }
-                } else if load_failed {
-                    div { class: "p-3 text-xs text-destructive",
-                        "Could not load workspace files. Use Refresh to try again."
-                    }
-                } else if nodes.is_empty() {
-                    div { class: "p-3 text-xs text-muted-foreground",
-                        match active_view {
-                            ExplorerView::Files if changed_only() => "No Git changes.",
-                            ExplorerView::Search => unreachable!(),
-                            ExplorerView::Files => "This workspace is empty.",
-                        }
-                    }
-                }
-                if active_view != ExplorerView::Search {
-                    for node in nodes {
-                        {
-                            render_explorer_row(
-                                node.clone(),
+                } else {
+                    FileTree {
+                        nodes: nodes.clone(),
+                        selected_path: selected_entry()
+                            .map(|entry| entry.path.as_str().to_owned()),
+                        changes: nodes
+                            .iter()
+                            .filter_map(|node| {
                                 changes_by_path
                                     .get(node.entry.path.as_str())
                                     .and_then(explorer_change_kind)
-                                    .or_else(|| directory_changes.get(node.entry.path.as_str()).copied()),
-                                selected_entry,
-                                on_open,
-                                on_expand,
-                                filter_changes,
-                            )
-                        }
+                                    .or_else(|| {
+                                        directory_changes
+                                            .get(node.entry.path.as_str())
+                                            .copied()
+                                    })
+                                    .map(|change| {
+                                        (node.entry.path.as_str().to_owned(), change)
+                                    })
+                            })
+                            .collect(),
+                        loading,
+                        load_failed,
+                        lock_directories_open: filter_changes,
+                        empty_message: if changed_only() {
+                            "No Git changes.".to_owned()
+                        } else {
+                            "This workspace is empty.".to_owned()
+                        },
+                        on_select: move |entry| selected_entry.set(Some(entry)),
+                        on_open,
+                        on_expand,
                     }
                 }
             }
@@ -555,68 +553,6 @@ fn search_result_nodes(
         nodes.insert(path, SearchResultNode::File { result, depth });
     }
     nodes.into_values().collect()
-}
-
-pub(super) fn render_explorer_row(
-    node: syntaxis_editor::ExplorerNode,
-    git_change: Option<GitChangeKind>,
-    mut selected_entry: Signal<Option<FileEntry>>,
-    on_open: EventHandler<FileEntry>,
-    on_expand: EventHandler<FileEntry>,
-    lock_directories_open: bool,
-) -> Element {
-    let entry = node.entry;
-    let path = entry.path.as_str().to_owned();
-    let selected = selected_entry()
-        .as_ref()
-        .is_some_and(|selected| selected.path == entry.path);
-    let padding = 6 + node.depth * 14;
-    let is_directory = entry.kind == EntryKind::Directory;
-    let ignored = node.ignored;
-    let entry_for_click = entry.clone();
-    rsx! {
-        button {
-            key: "{path}",
-            class: if ignored { "file-tree-row flex h-7.25 w-full items-center gap-1.5 rounded-sm bg-transparent pr-1.5 text-left text-xs text-muted-foreground/55 hover:bg-accent/45" } else if selected { "file-tree-row flex h-7.25 w-full items-center gap-1.5 rounded-sm bg-accent pr-1.5 text-left text-xs text-foreground" } else { "file-tree-row flex h-7.25 w-full items-center gap-1.5 rounded-sm bg-transparent pr-1.5 text-left text-xs text-foreground/90 hover:bg-accent/65" },
-            style: "padding-left: {padding}px",
-            role: "treeitem",
-            "aria-selected": selected,
-            "aria-expanded": is_directory.then_some(node.expanded),
-            title: ignored.then_some("Ignored by Git"),
-            onclick: move |_| {
-                selected_entry.set(Some(entry_for_click.clone()));
-                if is_directory {
-                    if !lock_directories_open {
-                        on_expand.call(entry_for_click.clone());
-                    }
-                } else {
-                    on_open.call(entry_for_click.clone());
-                }
-            },
-            span { class: "w-2.25 shrink-0 text-[9px] text-muted-foreground",
-                if is_directory {
-                    if node.expanded {
-                        "▾"
-                    } else {
-                        "▸"
-                    }
-                } else {
-                    ""
-                }
-            }
-            FileIcon {
-                path: entry.path.as_str().to_owned(),
-                directory: entry.kind == EntryKind::Directory,
-                symlink: entry.kind == EntryKind::Symlink,
-                expanded: node.expanded,
-                size: 15,
-            }
-            span { class: "flex-1 truncate", "{entry.name}" }
-            if let Some(change) = git_change {
-                GitChangeBadge { kind: change }
-            }
-        }
-    }
 }
 
 fn explorer_tab_class(active: bool) -> &'static str {

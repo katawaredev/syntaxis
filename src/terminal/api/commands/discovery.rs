@@ -1,6 +1,7 @@
 use std::{collections::HashSet, fs, path::Path};
 
 use regex::Regex;
+use syntaxis_terminal::{justfile_commands, makefile_commands, package_json_commands};
 
 use super::RunCommand;
 
@@ -28,69 +29,35 @@ fn discover_just(root: &Path, commands: &mut Vec<RunCommand>, seen: &mut HashSet
     let Some(contents) = read_first(root, &["Justfile", "justfile", ".justfile"]) else {
         return;
     };
-    for line in contents.lines().filter(|line| {
-        !line.starts_with(char::is_whitespace) && !line.trim_start().starts_with('#')
-    }) {
-        let Some((header, suffix)) = line.split_once(':') else {
-            continue;
-        };
-        if suffix.starts_with('=') {
-            continue;
-        }
-        let Some(name) = header.split_whitespace().next() else {
-            continue;
-        };
-        if is_just_recipe_name(name) {
-            add_detected(commands, seen, "just", name, format!("just {name}"));
-        }
-    }
+    add_shared(commands, seen, justfile_commands(&contents));
 }
 
 fn discover_package_json(root: &Path, commands: &mut Vec<RunCommand>, seen: &mut HashSet<String>) {
     let Some(contents) = read_file(&root.join("package.json")) else {
         return;
     };
-    let Ok(package) = serde_json::from_str::<serde_json::Value>(&contents) else {
-        return;
-    };
-    let Some(scripts) = package
-        .get("scripts")
-        .and_then(serde_json::Value::as_object)
-    else {
-        return;
-    };
-    let declared_manager = package
-        .get("packageManager")
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or_default();
-    let runner = if root.join("bun.lock").exists()
-        || root.join("bun.lockb").exists()
-        || declared_manager.starts_with("bun@")
-    {
-        "bun run"
-    } else if root.join("pnpm-lock.yaml").exists() || declared_manager.starts_with("pnpm@") {
-        "pnpm run"
-    } else if root.join("yarn.lock").exists() || declared_manager.starts_with("yarn@") {
-        "yarn run"
-    } else {
-        "npm run"
-    };
-    let source = runner.split_whitespace().next().unwrap_or("package");
-    for name in scripts.keys() {
-        add_detected(commands, seen, source, name, format!("{runner} {name}"));
-    }
+    let sibling_names = [
+        "bun.lock",
+        "bun.lockb",
+        "pnpm-lock.yaml",
+        "yarn.lock",
+    ]
+    .into_iter()
+    .filter(|name| root.join(name).exists())
+    .map(str::to_owned)
+    .collect::<Vec<_>>();
+    add_shared(
+        commands,
+        seen,
+        package_json_commands(&contents, &sibling_names),
+    );
 }
 
 fn discover_make(root: &Path, commands: &mut Vec<RunCommand>, seen: &mut HashSet<String>) {
     let Some(contents) = read_first(root, &["GNUmakefile", "Makefile", "makefile"]) else {
         return;
     };
-    let target = Regex::new(r"(?m)^([A-Za-z0-9][A-Za-z0-9_.-]*):(?:[^=]|$)")
-        .expect("valid make target regex");
-    for capture in target.captures_iter(&contents) {
-        let name = &capture[1];
-        add_detected(commands, seen, "make", name, format!("make {name}"));
-    }
+    add_shared(commands, seen, makefile_commands(&contents));
 }
 
 fn discover_taskfile(root: &Path, commands: &mut Vec<RunCommand>, seen: &mut HashSet<String>) {
@@ -328,6 +295,21 @@ fn discover_common_projects(
     }
 }
 
+fn add_shared(
+    commands: &mut Vec<RunCommand>,
+    seen: &mut HashSet<String>,
+    detected: impl IntoIterator<Item = RunCommand>,
+) {
+    for command in detected {
+        if commands.len() >= MAX_COMMANDS {
+            return;
+        }
+        if seen.insert(command.command.clone()) {
+            commands.push(command);
+        }
+    }
+}
+
 fn add_detected(
     commands: &mut Vec<RunCommand>,
     seen: &mut HashSet<String>,
@@ -363,11 +345,4 @@ fn is_task_name(name: &str) -> bool {
         && name
             .chars()
             .all(|character| character.is_ascii_alphanumeric() || "_.:-".contains(character))
-}
-
-fn is_just_recipe_name(name: &str) -> bool {
-    name.starts_with(|character: char| character.is_ascii_alphabetic())
-        && name
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || "_-".contains(character))
 }

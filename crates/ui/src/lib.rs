@@ -1,3 +1,4 @@
+mod ai;
 mod badge;
 mod button;
 mod checkbox;
@@ -7,6 +8,7 @@ mod drawer;
 mod empty_state;
 mod field;
 mod file_icon;
+mod file_tree;
 mod form;
 mod git_change;
 mod icon_button;
@@ -17,6 +19,7 @@ mod menu;
 mod panel;
 mod project_badge;
 mod provider_icon;
+mod run_command_menu;
 mod select;
 mod size;
 mod slide_to_confirm;
@@ -24,6 +27,7 @@ mod template_icon;
 mod textarea;
 mod toast;
 
+pub use ai::{AiChatHeader, AiSendButton, AiSidebarTabs};
 pub use badge::{StatusBadge, Tone};
 pub use button::{Button, ButtonKind};
 pub use checkbox::Checkbox;
@@ -33,6 +37,7 @@ pub use drawer::Drawer;
 pub use empty_state::EmptyState;
 pub use field::Field;
 pub use file_icon::FileIcon;
+pub use file_tree::FileTree;
 pub use form::{DangerNote, DialogActions, DialogForm};
 pub use git_change::GitChangeBadge;
 pub use icon_button::IconButton;
@@ -45,6 +50,7 @@ pub use panel::{
 };
 pub use project_badge::{ProjectLanguageBadge, ProjectTechnologyBadge};
 pub use provider_icon::ProviderIcon;
+pub use run_command_menu::RunCommandMenu;
 pub use select::Select;
 pub use size::ControlSize;
 pub use slide_to_confirm::SlideToConfirm;
@@ -54,11 +60,14 @@ pub use toast::Toast;
 
 pub mod prelude {
     pub use crate::{
-        AppIcon, BrandIcon, BrandMark, Button, ButtonKind, Checkbox, ComboButton, ControlSize,
-        DangerNote, DialogActions, DialogForm, Drawer, EmptyState, Field, FileIcon, GitChangeBadge,
+        AiChatHeader, AiSendButton, AiSidebarTabs, AppIcon, BrandIcon, BrandMark, Button, ButtonKind, Checkbox,
+        ComboButton, ControlSize,
+        DangerNote, DialogActions, DialogForm, Drawer, EmptyState, Field, FileIcon, FileTree,
+        GitChangeBadge,
         Icon, IconButton, InteractivePopover, MenuButtonTrigger, MenuContent, MenuTrigger, Modal,
         PanelHeader, PanelHeaderKind, PanelTab, PanelTabIndicator, PanelTabList, PanelTabWidth,
-        ProjectLanguageBadge, ProjectTechnologyBadge, ProjectTemplateIcon, ProviderIcon, Select,
+        ProjectLanguageBadge, ProjectTechnologyBadge, ProjectTemplateIcon, ProviderIcon,
+        RunCommandMenu, Select,
         SlideToConfirm, StatusBadge, TemplateIcon, TextArea, TextAreaResize, TextInput,
         TextInputType, Toast, Tone,
     };

@@ -1,6 +1,9 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
-use syntaxis_ui::prelude::{AppIcon, Button, ButtonKind, Icon};
+use syntaxis_ui::prelude::{
+    AiChatHeader, AiSendButton, AiSidebarTabs, AppIcon, Button, ButtonKind, ControlSize, Field, Icon, IconButton,
+    TextInput, TextInputType,
+};
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{Request, RequestInit, RequestMode, Response};
@@ -10,6 +13,30 @@ const DEFAULT_MODEL: &str = "gpt-4.1-mini";
 const MAX_PROMPT_BYTES: usize = 64 * 1024;
 const MAX_CONTEXT_BYTES: usize = 128 * 1024;
 const MAX_CONVERSATION_BYTES: usize = 512 * 1024;
+
+#[derive(Clone, Copy)]
+pub(super) struct GuestAiConfig {
+    endpoint: Signal<String>,
+    model: Signal<String>,
+    api_key: Signal<String>,
+    prompt: Signal<String>,
+    messages: Signal<Vec<ChatMessage>>,
+}
+
+pub(super) fn provide_guest_ai_config() {
+    let endpoint = use_signal(|| DEFAULT_ENDPOINT.to_owned());
+    let model = use_signal(|| DEFAULT_MODEL.to_owned());
+    let api_key = use_signal(String::new);
+    let prompt = use_signal(String::new);
+    let messages = use_signal(Vec::new);
+    use_context_provider(move || GuestAiConfig {
+        endpoint,
+        model,
+        api_key,
+        prompt,
+        messages,
+    });
+}
 const MAX_RESPONSE_BYTES: usize = 1024 * 1024;
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -35,21 +62,44 @@ struct ChatChoice {
 }
 
 #[component]
-pub(super) fn GuestAi(active_path: Option<String>, active_contents: Option<String>) -> Element {
-    let mut endpoint = use_signal(|| DEFAULT_ENDPOINT.to_owned());
-    let mut model = use_signal(|| DEFAULT_MODEL.to_owned());
-    let mut api_key = use_signal(String::new);
-    let mut prompt = use_signal(String::new);
+pub(super) fn GuestAi(
+    slug: String,
+    active_path: Option<String>,
+    active_contents: Option<String>,
+) -> Element {
+    let navigator = use_navigator();
+    let GuestAiConfig {
+        endpoint,
+        model,
+        api_key,
+        mut prompt,
+        mut messages,
+    } = use_context();
+    let mut sidebar_open = use_signal(|| true);
     let mut include_file = use_signal(|| false);
     let mut pending = use_signal(|| false);
     let mut error = use_signal(|| None::<String>);
-    let mut messages = use_signal(Vec::<ChatMessage>::new);
     let submit_path = active_path.clone();
     let submit_contents = active_contents.clone();
 
     rsx! {
-        section { class: "guest-ai", "aria-label": "Browser AI assistant",
+        section {
+            class: if sidebar_open() { "guest-ai" } else { "guest-ai guest-ai-sidebar-hidden" },
+            "aria-label": "Browser AI assistant",
             nav { class: "guest-ai-sidebar", "aria-label": "Agent chats",
+                AiSidebarTabs {
+                    settings_active: false,
+                    on_chat: move |()| {},
+                    on_settings: {
+                        let slug = slug.clone();
+                        move |()| {
+                            navigator.push(super::GuestRoute::AiSettingsSection {
+                                slug: slug.clone(),
+                                section: "provider-accounts".to_owned(),
+                            });
+                        }
+                    },
+                }
                 div { class: "guest-ai-sidebar-actions",
                     Button {
                         label: "New chat",
@@ -80,45 +130,42 @@ pub(super) fn GuestAi(active_path: Option<String>, active_contents: Option<Strin
                         }
                     }
                 }
-                details { class: "guest-ai-settings",
-                    summary { "Provider settings" }
-                    label {
-                        span { "OpenAI-compatible endpoint" }
-                        input {
-                            value: endpoint,
-                            r#type: "url",
-                            spellcheck: false,
-                            oninput: move |event| endpoint.set(event.value()),
-                        }
-                    }
-                    label {
-                        span { "Model" }
-                        input {
-                            value: model,
-                            spellcheck: false,
-                            oninput: move |event| model.set(event.value()),
-                        }
-                    }
-                    label {
-                        span { "API key (kept in memory)" }
-                        input {
-                            value: api_key,
-                            r#type: "password",
-                            autocomplete: "off",
-                            oninput: move |event| api_key.set(event.value()),
-                        }
-                    }
-                    p { class: "guest-module-note",
-                        "The key stays in memory. Provider CORS policy may block direct browser requests."
-                    }
-                }
+
             }
             main { class: "guest-ai-main",
-                header { class: "guest-module-header",
-                    div {
-                        h2 { "New chat" }
-                        p { "Browser-only · OpenAI-compatible provider" }
-                    }
+                AiChatHeader {
+                    title: "New chat",
+                    connected: !api_key().trim().is_empty(),
+                    sidebar_open: sidebar_open(),
+                    on_toggle_sidebar: move |()| sidebar_open.toggle(),
+                    on_open_sidebar: move |()| sidebar_open.set(true),
+                    actions: rsx! {
+                        IconButton {
+                            label: "Workspace selection requires the Syntaxis server",
+                            icon: AppIcon::GitBranch,
+                            disabled: true,
+                            onclick: move |_| {},
+                        }
+                        IconButton {
+                            label: "Model settings",
+                            icon: AppIcon::Bot,
+                            onclick: {
+                                let slug = slug.clone();
+                                move |_| {
+                                    navigator.push(super::GuestRoute::AiSettingsSection {
+                                        slug: slug.clone(),
+                                        section: "provider-accounts".to_owned(),
+                                    });
+                                }
+                            },
+                        }
+                        IconButton {
+                            label: "Usage details require the Syntaxis server",
+                            icon: AppIcon::MoreVertical,
+                            disabled: true,
+                            onclick: move |_| {},
+                        }
+                    },
                 }
                 div {
                     class: "guest-ai-timeline",
@@ -234,16 +281,6 @@ pub(super) fn GuestAi(active_path: Option<String>, active_contents: Option<Strin
                             pending.set(false);
                         });
                     },
-                    if active_path.is_some() {
-                        label { class: "guest-ai-context",
-                            input {
-                                r#type: "checkbox",
-                                checked: include_file,
-                                onchange: move |event| include_file.set(event.checked()),
-                            }
-                            "Attach the active file ({active_path.as_deref().unwrap_or_default()})"
-                        }
-                    }
                     textarea {
                         value: prompt,
                         rows: 4,
@@ -252,14 +289,129 @@ pub(super) fn GuestAi(active_path: Option<String>, active_contents: Option<Strin
                         aria_label: "AI message",
                         oninput: move |event| prompt.set(event.value()),
                     }
-                    button {
-                        class: "guest-ai-send",
-                        disabled: pending() || prompt().trim().is_empty(),
-                        aria_label: "Send message",
-                        if pending() {
-                            "Sending…"
-                        } else {
-                            Icon { icon: AppIcon::Send, size: 16 }
+                    div { class: "guest-ai-composer-toolbar",
+                        IconButton {
+                            label: "Attach files (unavailable in browser chat)",
+                            icon: AppIcon::Attach,
+                            size: ControlSize::Small,
+                            disabled: true,
+                            onclick: move |_| {},
+                        }
+                        IconButton {
+                            label: if let Some(path) = active_path.as_deref() {
+                                format!("Reference {path}")
+                            } else {
+                                "Open a file to reference it".to_owned()
+                            },
+                            icon: AppIcon::LineNumbers,
+                            size: ControlSize::Small,
+                            pressed: include_file(),
+                            disabled: active_path.is_none(),
+                            onclick: move |_| include_file.toggle(),
+                        }
+                        IconButton {
+                            label: "Dictation unavailable in browser chat",
+                            icon: AppIcon::Microphone,
+                            size: ControlSize::Small,
+                            disabled: true,
+                            onclick: move |_| {},
+                        }
+                        span { class: "guest-ai-composer-hint",
+                            "Markdown supported · Enter sends"
+                        }
+                        AiSendButton {
+                            disabled: pending() || prompt().trim().is_empty(),
+                            submit: true,
+                            onclick: move |_| {},
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+pub(super) fn GuestAiSettings(slug: String) -> Element {
+    let navigator = use_navigator();
+    let GuestAiConfig {
+        mut endpoint,
+        mut model,
+        mut api_key,
+        ..
+    } = use_context();
+
+    rsx! {
+        section { class: "guest-ai guest-ai-settings-view", "aria-label": "AI settings",
+            nav { class: "guest-ai-sidebar", "aria-label": "AI settings sections",
+                AiSidebarTabs {
+                    settings_active: true,
+                    on_chat: {
+                        let slug = slug.clone();
+                        move |()| navigator.push(super::GuestRoute::Ai { slug: slug.clone() })
+                    },
+                    on_settings: move |()| {},
+                }
+                div { class: "guest-ai-settings-sections",
+                    button { class: "guest-ai-settings-section guest-ai-settings-section-active",
+                        r#type: "button",
+                        "Provider accounts"
+                    }
+                    for label in ["General", "Global instructions", "Prompt templates", "Skills", "Extensions"] {
+                        button {
+                            class: "guest-ai-settings-section",
+                            r#type: "button",
+                            disabled: true,
+                            title: "Requires the Syntaxis server",
+                            "{label}"
+                        }
+                    }
+                }
+            }
+            main { class: "guest-ai-main",
+                header { class: "guest-module-header",
+                    div {
+                        h2 { "Provider accounts" }
+                        p { "Configure the provider used by browser-only chat." }
+                    }
+                }
+                div { class: "guest-ai-settings-panel",
+                    section { class: "guest-ai-settings-card",
+                        h3 { "OpenAI-compatible provider" }
+                        p {
+                            "Credentials remain in memory and are cleared when this browser tab closes."
+                        }
+                        Field {
+                            control_id: "guest-ai-endpoint",
+                            label: "Endpoint",
+                            TextInput {
+                                value: endpoint(),
+                                placeholder: DEFAULT_ENDPOINT,
+                                oninput: move |event: FormEvent| endpoint.set(event.value()),
+                            }
+                        }
+                        Field {
+                            control_id: "guest-ai-model",
+                            label: "Model",
+                            TextInput {
+                                value: model(),
+                                placeholder: DEFAULT_MODEL,
+                                oninput: move |event: FormEvent| model.set(event.value()),
+                            }
+                        }
+                        Field {
+                            control_id: "guest-ai-api-key",
+                            label: "API key",
+                            TextInput {
+                                input_type: TextInputType::Password,
+                                value: api_key(),
+                                placeholder: "sk-…",
+                                autocomplete: "off",
+                                oninput: move |event: FormEvent| api_key.set(event.value()),
+                            }
+                        }
+                        p { class: "guest-module-note",
+                            "Direct requests require an HTTPS endpoint that permits browser CORS."
                         }
                     }
                 }
