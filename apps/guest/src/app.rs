@@ -2,13 +2,14 @@ mod ai;
 mod git;
 use self::{
     ai::{GuestAi, GuestAiSettings, use_guest_ai_config},
-    git::{GuestGit, HISTORY_PATH as GUEST_HISTORY_PATH},
+    git::{GuestGit, LEGACY_HISTORY_PATH as GUEST_HISTORY_PATH},
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use dioxus::html::{ScrollBehavior, geometry::PixelsVector2D};
 use dioxus::prelude::*;
 use dioxus_code_editor::{
     CODE_EDITOR_CSS, CodeEditor, EditorCommand, EditorCommandKind, EditorEdit, EditorSearchQuery,
+    EditorSearchStatus,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -17,7 +18,8 @@ use std::{
     rc::Rc,
 };
 use syntaxis_editor::{
-    EditorBuffer, EditorConfig, ExplorerNode, ExplorerTree, ExternalChange, language_slug_for_path,
+    EditorBuffer, EditorConfig, ExplorerTree, ExternalChange, find_matches, language_slug_for_path,
+    replace_all_search_matches, replace_search_match,
 };
 use syntaxis_terminal::{RunCommand, justfile_commands, makefile_commands, package_json_commands};
 use syntaxis_terminal_browser::{
@@ -26,9 +28,13 @@ use syntaxis_terminal_browser::{
 };
 use syntaxis_ui::prelude::{
     AppIcon, Button, ButtonKind, ControlSize, DialogActions, DialogForm, EditorAction,
-    EditorActionsMenu, ExplorerAction, ExplorerToolbar, Field, FileIcon, FileTree, Icon,
-    IconButton, Modal, NewTerminalDialog, PanelHeader, PanelTab, PanelTabIndicator, PanelTabList,
-    PanelTabWidth, RunCommandMenu, StatusBadge, TextInput, Tone,
+    EditorActionsMenu, EditorMenuItem, ExplorerAction, ExplorerToolbar, Field, FileTree, Icon,
+    IconButton, Modal, NewTerminalDialog, NotificationPopover, PanelHeader, PanelTab,
+    PanelTabIndicator, PanelTabList, PanelTabWidth, ProjectIcon, RunCommandMenu,
+    RuntimeStatusPopover, SearchOptions, SearchPanel, SkipLink, StatusBadge, TerminalActionsMenu,
+    TerminalEmptyState, TerminalMenuAction, TerminalMobileTabs, TerminalStatusBar, TerminalTab,
+    TextInput, Toast, Tone, WorkspaceHeader, WorkspaceModuleNav, WorkspaceSourceAction,
+    WorkspaceSourceFileAction,
 };
 use syntaxis_workspace::{
     BULKY_GENERATED_DIRECTORY_NAMES, EntryKind, ErrorCode, FileEntry, RelativePath,
@@ -62,6 +68,7 @@ static WEB_APP_ICON_512: Asset = asset!(
     AssetOptions::builder().with_hash_suffix(false)
 );
 const GUEST_ARCHIVE_SCRIPT: Asset = asset!("/assets/guest-archive.bundle.js");
+const GUEST_GIT_SCRIPT: Asset = asset!("/assets/guest-git.bundle.js");
 const GUEST_TERMINAL_SCRIPT: Asset = asset!("/assets/guest-terminal.bundle.js");
 const MAX_TEXT_BYTES: u64 = 4 * 1024 * 1024;
 const UNSAVED_NAVIGATION_MESSAGE: &str =
@@ -69,6 +76,10 @@ const UNSAVED_NAVIGATION_MESSAGE: &str =
 const MAX_ARCHIVE_FILES: usize = 10_000;
 const MAX_ARCHIVE_FILE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_ARCHIVE_WORKSPACE_BYTES: u64 = 32 * 1024 * 1024;
+
+fn is_guest_metadata_path(path: &str) -> bool {
+    path == GUEST_HISTORY_PATH || path == ".git" || path.starts_with(".git/")
+}
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct GuestFilesQuery {
     path: Option<String>,
@@ -152,6 +163,9 @@ pub fn App() -> Element {
 #[component]
 fn Home() -> Element {
     let mut notice = use_signal(|| None::<Notice>);
+    let busy = use_signal(|| false);
+    let revision = use_signal(|| 0_u64);
+    let mut notifications_open = use_signal(|| false);
     let folder_picker_supported = use_hook(local_directory_picker_supported);
     let navigator = use_navigator();
     let open_browser_workspace: EventHandler<MouseEvent> = {
@@ -189,8 +203,10 @@ fn Home() -> Element {
     });
     rsx! {
         document::Title { "Home · Syntaxis" }
+        document::Script { src: GUEST_ARCHIVE_SCRIPT }
         main { class: "app-viewport relative w-full overflow-x-hidden overflow-y-auto overscroll-contain bg-background",
-            section { class: "mx-auto flex min-h-full w-[calc(100%-2.5rem)] max-w-205 flex-col pt-[max(9vh,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] max-md:w-[calc(100%-1.5rem)] max-md:max-w-155 max-md:pt-[max(2.125rem,env(safe-area-inset-top))]",
+            SkipLink { target_id: "home-main-content" }
+            section { id: "home-main-content", tabindex: "-1", class: "mx-auto flex min-h-full w-[calc(100%-2.5rem)] max-w-205 flex-col pt-[max(9vh,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] max-md:w-[calc(100%-1.5rem)] max-md:max-w-155 max-md:pt-[max(2.125rem,env(safe-area-inset-top))]",
                 header { class: "mb-9.5 flex items-start justify-between gap-4 max-md:mb-6.5",
                     div { class: "min-w-0",
                         p { class: "text-[10px] font-bold tracking-[0.14em] text-primary max-[420px]:hidden",
@@ -204,74 +220,72 @@ fn Home() -> Element {
                         }
                     }
                     div { class: "flex items-center gap-1",
-                        IconButton {
-                            label: "Notifications",
-                            icon: AppIcon::Bell,
-                            size: ControlSize::Small,
-                            onclick: move | _ | notice
-                                                                                                                                                                                                                                                                                                                                                                                                                .set(Some(Notice::success("Browser workspace notifications."))),
+                        NotificationPopover {
+                            count: 0,
+                            open: notifications_open(),
+                            on_open_change: move |next| notifications_open.set(next),
+                            on_clear_all: move |()| {},
                         }
                         IconButton {
                             label: "Sign out",
                             icon: AppIcon::Logout,
                             size: ControlSize::Small,
-                            onclick: move |_| {
-                                notice.set(Some(Notice::error("The browser workspace has no account session.")))
-                            },
+                            disabled: true,
+                            onclick: move |_| {},
                         }
                     }
                 }
-                div { class: "mb-10.5 grid grid-cols-2 gap-3 max-md:mb-8 max-md:grid-cols-1",
-                    GuestSourceAction {
+                div { class: "mb-10.5 grid grid-cols-3 gap-3 max-md:mb-8 max-md:grid-cols-1",
+                    WorkspaceSourceAction {
                         icon: AppIcon::Folder,
                         title: "Open folder".to_owned(),
                         description: if folder_picker_supported { "Use a folder from this device"
-                                                                                                                                                                                                                                                                                                                                                        .to_owned() } else { "Unavailable here; use private browser storage".to_owned() },
+                                                                                                                                                                                                                                                                                                                                                                                .to_owned() } else { "Unavailable here; use private browser storage".to_owned() },
                         disabled: !folder_picker_supported,
                         onclick: open_local_folder,
                     }
-                    GuestSourceAction {
+                    WorkspaceSourceAction {
                         icon: AppIcon::FolderPlus,
-                        title: "Empty Project"
-                                                                                                                                                                                                                                                                                                                                                        .to_owned(),
+                        title: "Browser workspace"
+                                                                                                                                                                                                                                                                                                                                                                                .to_owned(),
                         description: "Start a pure browser project".to_owned(),
                         disabled: false,
                         onclick: open_browser_workspace,
                     }
+                    WorkspaceSourceFileAction {
+                        icon: AppIcon::Upload,
+                        title: "Open ZIP archive",
+                        description: "Import a project into browser storage",
+                        accept: ".zip,application/zip",
+                        disabled: busy(),
+                        on_select: {
+                            let navigator = navigator.clone();
+                            move |selected: Vec<dioxus::html::FileData>| {
+                                let Some(selected) = selected.into_iter().next() else { return };
+                                set_private_workspace();
+                                let navigator = navigator.clone();
+                                spawn(async move {
+                                    if import_workspace(selected, guest_workspace("browser".to_owned()), OpfsWorkspaceFiles, busy, revision, notice).await {
+                                        navigator.push(GuestRoute::Files { slug: "browser".to_owned(), query: GuestFilesQuery::default() });
+                                    }
+                                });
+                            }
+                        },
+                    }
                 }
-                section { "aria-labelledby": "recent-title",
+                section { "aria-labelledby": "browser-limitations-title",
                     div { class: "mb-3 flex items-center justify-between gap-3",
                         h2 {
                             class: "text-[17px] font-semibold text-muted-foreground",
-                            id: "recent-title",
-                            "Recent projects"
-                        }
-                        IconButton {
-                            label: "Recent project actions",
-                            icon: AppIcon::MoreVertical,
-                            size: ControlSize::Small,
-                            onclick: move |_| {
-                                notice
-                                    .set(
-                                        Some(
-                                            Notice::success(
-                                                "Browser projects are stored locally in this browser.",
-                                            ),
-                                        ),
-                                    )
-                            },
+                            id: "browser-limitations-title",
+                            "About browser workspaces"
                         }
                     }
-                    button {
-                        class: "flex w-full min-h-22 items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-left shadow-sm transition-colors hover:border-primary/60 hover:bg-accent/80 max-md:min-h-16 max-md:py-2.5",
-                        r#type: "button",
-                        onclick: open_browser_workspace,
-                        GuestProjectIcon { name: "Browser workspace".to_owned() }
-                        span { class: "min-w-0 flex-1",
-                            strong { class: "block truncate text-foreground", "Browser workspace" }
-                            small { class: "text-muted-foreground", "Private storage on this device" }
+                    div { class: "rounded-xl border border-border bg-card px-4 py-3 text-[12px] leading-relaxed text-muted-foreground shadow-sm",
+                        p { "This edition runs entirely in your browser. Project files stay on this device unless you open a local folder or export a ZIP." }
+                        p { class: "mt-2",
+                            "Git runs locally with ordinary .git metadata; HTTPS remotes depend on host CORS or a trusted proxy. Server terminals, language servers, background agents, account sync, SSH Git, and remote workspaces remain unavailable."
                         }
-                        span { class: "text-muted-foreground", "Open →" }
                     }
                 }
                 footer { class: "mt-auto pt-10 text-center text-[11px] text-muted-foreground",
@@ -280,15 +294,10 @@ fn Home() -> Element {
             }
         }
         if let Some(message) = notice() {
-            div {
-                class: if message.error { "guest-notice guest-notice-error" } else { "guest-notice" },
-                role: "status",
-                span { "{message.message}" }
-                button {
-                    aria_label: "Dismiss notification",
-                    onclick: move |_| notice.set(None),
-                    "×"
-                }
+            Toast {
+                message: message.message,
+                tone: if message.error { Tone::Destructive } else { Tone::Success },
+                on_close: move |()| notice.set(None),
             }
         }
     }
@@ -300,7 +309,7 @@ fn Files(slug: String, query: GuestFilesQuery) -> Element {
             slug,
             initial_view: GuestView::Editor,
             initial_path: query
-                                                                                                                                                                                .path,
+                                                                                                                                                                                            .path,
         }
     }
 }
@@ -311,7 +320,7 @@ fn Terminal(slug: String, query: GuestFilesQuery) -> Element {
             slug,
             initial_view: GuestView::Terminal,
             initial_path: query
-                                                                                                                                                                                .path,
+                                                                                                                                                                                            .path,
         }
     }
 }
@@ -355,31 +364,6 @@ fn AiSettingsSection(slug: String, section: String) -> Element {
     }
 }
 #[component]
-fn GuestSourceAction(
-    icon: AppIcon,
-    title: String,
-    description: String,
-    disabled: bool,
-    onclick: EventHandler<MouseEvent>,
-) -> Element {
-    rsx! {
-        button {
-            class: "grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-3 overflow-hidden rounded-xl border border-border bg-card p-4 text-left shadow-sm transition-colors hover:border-primary/60 hover:bg-accent/80 max-[420px]:p-3.5",
-            disabled,
-            aria_label: title.clone(),
-            onclick: move | event | onclick
-                                                                                                                                                                                .call(event),
-            span { class: "grid size-9 place-items-center rounded-lg bg-primary/10 text-primary",
-                Icon { icon, size: 22 }
-            }
-            span { class: "min-w-0",
-                strong { class: "mb-1 block text-foreground", {title.clone()} }
-                small { class: "block leading-snug text-muted-foreground", {description} }
-            }
-        }
-    }
-}
-#[component]
 fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<String>) -> Element {
     let workspace = guest_workspace(slug);
     let files = OpfsWorkspaceFiles;
@@ -392,7 +376,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
     let mut selected_tree_entry = use_signal(|| None::<FileEntry>);
     let mut show_generated = use_signal(|| false);
     let mut mobile_explorer_open = use_signal(|| false);
-    let mut workspace_menu_open = use_signal(|| false);
+    let workspace_menu_open = use_signal(|| false);
     let mut new_entry_open = use_signal(|| false);
     let mut revision = use_signal(|| 0_u64);
     let mut buffer = use_signal(|| None::<EditorBuffer>);
@@ -403,8 +387,16 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
     let mut new_entry_kind = use_signal(|| EntryKind::File);
     let mut busy = use_signal(|| false);
     let mut notice = use_signal(|| None::<Notice>);
+    let mut notifications_open = use_signal(|| false);
+    let export_workspace_action = {
+        let workspace = workspace.clone();
+        move |()| {
+            spawn(export_workspace(files, workspace.clone(), busy, notice));
+        }
+    };
+    let mut sidebar_open = use_signal(|| true);
     let mut storage_location = use_signal(|| StorageLocation::Private);
-    let mut saved_directory_name = use_signal(|| None::<String>);
+    let mut pending_folder_permission = use_signal(|| None::<String>);
     let mut startup_complete = use_signal(|| false);
     let mut pending_delete = use_signal(|| None::<RelativePath>);
     let mut search_query = use_signal(String::new);
@@ -412,7 +404,13 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
     let mut operation_destination = use_signal(String::new);
     let editor_menu_open = use_signal(|| false);
     let mut editor_search_open = use_signal(|| false);
-    let mut editor_search_query = use_signal(String::new);
+    let editor_search_query = use_signal(String::new);
+    let mut editor_search_match = use_signal(|| 0_usize);
+    let editor_search_options = use_signal(SearchOptions::default);
+    let mut editor_search_status = use_signal(EditorSearchStatus::default);
+    let editor_replace_query = use_signal(String::new);
+    let editor_replace_open = use_signal(|| false);
+    let editor_search_input = use_signal(|| None::<Rc<MountedData>>);
     let mut editor_command_revision = use_signal(|| 0_u64);
     let mut editor_command = use_signal(|| None::<EditorCommand>);
     let mut editor_word_wrap = use_signal(|| false);
@@ -463,7 +461,9 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                     storage_location.set(StorageLocation::Local(name));
                 }
                 Ok(SavedDirectory::NeedsPermission(name)) => {
-                    saved_directory_name.set(Some(name));
+                    storage_location.set(StorageLocation::PermissionRequired);
+                    pending_folder_permission.set(Some(name));
+                    return;
                 }
                 Ok(SavedDirectory::Missing) => {}
                 Err(error) => notice.set(Some(Notice::error(error.message))),
@@ -484,7 +484,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                 } else {
                     Vec::new()
                 };
-                entries.retain(|entry| entry.path.as_str() != GUEST_HISTORY_PATH);
+                entries.retain(|entry| !is_guest_metadata_path(entry.path.as_str()));
                 Ok((path, entries))
             }
         });
@@ -511,7 +511,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                     .await
                     .map_err(|error| error.message)?;
                 hits.retain(|hit| {
-                    hit.entry.path.as_str() != GUEST_HISTORY_PATH
+                    !is_guest_metadata_path(hit.entry.path.as_str())
                         && (include_generated
                             || !path_contains_bulky_generated_directory(hit.entry.path.as_str()))
                 });
@@ -574,10 +574,6 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
         .as_ref()
         .map(|open| open.path.clone())
         .or_else(|| active_binary.as_ref().map(|preview| preview.path.clone()));
-    let active_name = active_path
-        .as_deref()
-        .and_then(|path| path.rsplit('/').next())
-        .unwrap_or("No file selected");
     let preview_path = active_path
         .clone()
         .unwrap_or_else(|| "index.html".to_owned());
@@ -677,11 +673,13 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
     rsx! {
         document::Title { "{page_title}" }
         document::Script { src: GUEST_ARCHIVE_SCRIPT }
+        document::Script { src: GUEST_GIT_SCRIPT }
         document::Script { src: GUEST_TERMINAL_SCRIPT }
         main { class: "app-viewport flex w-full flex-col overflow-hidden",
-            header { class: "flex h-[calc(2.875rem+env(safe-area-inset-top))] min-h-[calc(2.875rem+env(safe-area-inset-top))] items-center gap-2 border-b border-border bg-background px-[max(0.625rem,env(safe-area-inset-left))] pt-[env(safe-area-inset-top)] max-md:h-[calc(3rem+env(safe-area-inset-top))] max-md:min-h-[calc(3rem+env(safe-area-inset-top))]",
+            SkipLink { target_id: "workspace-main-content" }
+            WorkspaceHeader {
                 button {
-                    class: "inline-flex size-8.5 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground",
+                    class: "inline-flex size-8.5 items-center justify-center rounded-lg text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
                     r#type: "button",
                     title: "Back to browser workspaces",
                     aria_label: "Back to browser workspaces",
@@ -697,54 +695,70 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                     },
                     "←"
                 }
-                if active_view() == GuestView::Editor {
-                    button {
-                        class: "hidden size-8.5 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground max-md:inline-flex",
-                        r#type: "button",
-                        title: "Open file explorer",
-                        aria_label: "Open file explorer",
-                        onclick: move |_| mobile_explorer_open.set(true),
-                        Icon { icon: AppIcon::Folder, size: 17 }
-                    }
+                ProjectIcon {
+                    name: workspace.name.clone(),
+                    icon: workspace.icon.clone(),
+                    compact: true,
                 }
-                GuestProjectIcon { name: workspace.name
-                                                                                                                                                                                                                                                                                                .clone() }
                 div { class: "flex min-w-0 items-center gap-2",
                     strong { class: "truncate text-[13px]", {workspace.name.clone()} }
                     StatusBadge {
                         label: storage_location().badge_label(),
-                        tone: Tone::Neutral,
+                        tone: if matches!(storage_location(), StorageLocation::PermissionRequired) { Tone::Warning } else { Tone::Neutral },
                     }
                 }
                 div { class: "ml-auto flex items-center gap-1 pr-2 text-[11px] text-muted-foreground",
-                    div {
-                        class: "grid size-8 place-items-center rounded-lg",
-                        title: "Browser-only workspace",
-                        span {
-                            class: "size-2 rounded-full bg-success shadow-[0_0_0.5rem_color-mix(in_oklch,var(--success),transparent_20%)]",
-                            aria_hidden: "true",
-                        }
+                    RuntimeStatusPopover {
+                        message: "Browser command runtime ready · files stay on this device",
+                        tone: Tone::Success,
                     }
-                    IconButton {
-                        label: "Notifications",
-                        icon: AppIcon::Bell,
-                        size: ControlSize::Small,
-                        onclick: move | _ | notice
-                                                                                                                                                                                                                                                                                                                                                        .set(Some(Notice::success("Browser workspace notifications."))),
+                    NotificationPopover {
+                        count: 0,
+                        open: notifications_open(),
+                        on_open_change: move |next| notifications_open.set(next),
+                        on_clear_all: move |()| {},
                     }
                     IconButton {
                         label: "Sign out",
                         icon: AppIcon::Logout,
                         size: ControlSize::Small,
-                        onclick: move |_| {
-                            notice.set(Some(Notice::error("The browser workspace has no account session.")))
-                        },
+                        disabled: true,
+                        onclick: move |_| {},
                     }
                 }
             }
-            div { class: "min-h-0 flex-1 overflow-hidden",
-                section { class: if active_view() == GuestView::Editor { "grid size-full min-h-0 min-w-0 grid-cols-[248px_minmax(0,1fr)] overflow-hidden max-md:block" } else { "flex size-full min-h-0 min-w-0 flex-col overflow-hidden bg-background" },
-                    if active_view() == GuestView::Editor {
+            div { id: "workspace-main-content", tabindex: "-1", class: "relative min-h-0 flex-1 overflow-hidden",
+                if let Some(folder_name) = pending_folder_permission() {
+                    div { class: "absolute inset-0 z-50 flex items-center justify-center bg-background/95 p-6",
+                        div { class: "max-w-md rounded-xl border border-border bg-card p-6 text-center shadow-lg",
+                            Icon { icon: AppIcon::Folder, size: 28 }
+                            h2 { class: "mt-3 text-base font-semibold", "Restore folder access" }
+                            p { class: "mt-1 text-xs leading-relaxed text-muted-foreground",
+                                "Your browser requires permission before Syntaxis can reopen {folder_name}."
+                            }
+                            Button {
+                                label: "Allow folder access",
+                                kind: ButtonKind::Primary,
+                                onclick: move |_| {
+                                    spawn(async move {
+                                    match restore_local_directory(true).await {
+                                        Ok(SavedDirectory::Active(name)) => {
+                                            storage_location.set(StorageLocation::Local(name));
+                                            pending_folder_permission.set(None);
+                                            startup_complete.set(true);
+                                        }
+                                        Ok(SavedDirectory::NeedsPermission(_)) => notice.set(Some(Notice::error("Folder access was not granted."))),
+                                        Ok(SavedDirectory::Missing) => notice.set(Some(Notice::error("The saved folder is no longer available."))),
+                                        Err(error) => notice.set(Some(Notice::error(error.message))),
+                                    }
+                                    });
+                                },
+                            }
+                        }
+                    }
+                }
+                section { class: if active_view() == GuestView::Editor && sidebar_open() { "grid size-full min-h-0 min-w-0 grid-cols-[248px_minmax(0,1fr)] overflow-hidden max-md:block" } else if active_view() == GuestView::Editor { "grid size-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] overflow-hidden max-md:block" } else { "flex size-full min-h-0 min-w-0 flex-col overflow-hidden bg-background" },
+                    if active_view() == GuestView::Editor && (sidebar_open() || mobile_explorer_open()) {
                         aside { class: if mobile_explorer_open() { "flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-r border-border bg-sidebar max-md:fixed max-md:inset-x-0 max-md:top-[calc(3rem+env(safe-area-inset-top))] max-md:bottom-[calc(3.875rem+env(safe-area-inset-bottom))] max-md:z-30" } else { "flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-r border-border bg-sidebar max-md:hidden" },
                             div { class: "grid h-12 min-h-12 grid-cols-2 items-center gap-1 border-b border-border p-1.25",
                                 button {
@@ -786,15 +800,21 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                             } else {
                                                 FileOperationKind::Duplicate
                                             };
-                                            operation_destination.set(if kind == FileOperationKind::Move {
-                                                entry.path.as_str().to_owned()
-                                            } else {
-                                                duplicate_path(&entry.path)
-                                            });
-                                            file_operation.set(Some(FileOperation {
-                                                source: entry.path,
-                                                kind,
-                                            }));
+                                            operation_destination
+                                                .set(
+                                                    if kind == FileOperationKind::Move {
+                                                        entry.path.as_str().to_owned()
+                                                    } else {
+                                                        duplicate_path(&entry.path)
+                                                    },
+                                                );
+                                            file_operation
+                                                .set(
+                                                    Some(FileOperation {
+                                                        source: entry.path,
+                                                        kind,
+                                                    }),
+                                                );
                                         }
                                         ExplorerAction::Delete => {
                                             if let Some(entry) = selected_tree_entry() {
@@ -806,15 +826,39 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                     on_upload: {
                                         let workspace = workspace.clone();
                                         move |selected| {
-                                            spawn(upload_files(
-                                                selected,
-                                                workspace.clone(),
-                                                current_directory(),
-                                                files,
-                                                busy,
-                                                revision,
-                                                notice,
-                                            ));
+                                            spawn(
+                                                upload_files(
+                                                    selected,
+                                                    workspace.clone(),
+                                                    current_directory(),
+                                                    files,
+                                                    busy,
+                                                    revision,
+                                                    notice,
+                                                ),
+                                            );
+                                        }
+                                    },
+                                    extra: rsx! {
+                                        button {
+                                            class: "hidden size-7.25 items-center justify-center rounded-md text-muted-foreground hover:bg-accent max-md:inline-flex",
+                                            r#type: "button",
+                                            title: "Close file explorer",
+                                            aria_label: "Close file explorer",
+                                            onclick: move |_| mobile_explorer_open.set(false),
+                                            Icon { icon: AppIcon::Close, size: 14 }
+                                        }
+                                    },
+                                    menu_extra: rsx! {
+                                        div { class: "px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground",
+                                            "Browser workspace"
+                                        }
+                                        EditorMenuItem {
+                                            index: 20,
+                                            icon: AppIcon::Share,
+                                            label: "Export workspace ZIP",
+                                            disabled: busy(),
+                                            onclick: export_workspace_action,
                                         }
                                     },
                                     on_refresh: move |()| {
@@ -823,307 +867,22 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                         revision += 1;
                                     },
                                 }
-                                div { class: "hidden explorer-toolbar relative flex h-10.5 min-h-10.5 items-center gap-1 border-b border-border px-1.25",
-                                    IconButton {
-                                        label: "New file",
-                                        icon: AppIcon::FilePlus,
-                                        size: ControlSize::Small,
-                                        disabled: busy(),
-                                        onclick: move |_| {
-                                            new_entry_kind.set(EntryKind::File);
-                                            new_entry_open.set(true);
-                                        },
-                                    }
-                                    IconButton {
-                                        label: "New folder",
-                                        icon: AppIcon::FolderPlus,
-                                        size: ControlSize::Small,
-                                        disabled: busy(),
-                                        onclick: move |_| {
-                                            new_entry_kind.set(EntryKind::Directory);
-                                            new_entry_open.set(true);
-                                        },
-                                    }
-                                    label {
-                                        class: if busy() { "touch-target inline-flex size-7.25 min-w-7.25 cursor-not-allowed items-center justify-center rounded-md bg-transparent text-muted-foreground opacity-50" } else { "touch-target inline-flex size-7.25 min-w-7.25 cursor-pointer items-center justify-center rounded-md bg-transparent text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" },
-                                        aria_label: "Upload files",
-                                        title: "Upload files",
-                                        input {
-                                            class: "guest-upload-input",
-                                            r#type: "file",
-                                            multiple: true,
-                                            disabled: busy(),
-                                            onchange: {
-                                                let workspace = workspace.clone();
-                                                move |event: FormEvent| {
-                                                    let selected = event.files();
-                                                    let workspace = workspace.clone();
-                                                    spawn(
-                                                        upload_files(
-                                                            selected,
-                                                            workspace,
-                                                            current_directory(),
-                                                            files,
-                                                            busy,
-                                                            revision,
-                                                            notice,
-                                                        ),
-                                                    );
-                                                }
-                                            },
-                                        }
-                                        Icon { icon: AppIcon::Upload, size: 14 }
-                                    }
-                                    span { class: "flex-1" }
-                                    button {
-                                        class: "hidden size-7.25 items-center justify-center rounded-md text-muted-foreground hover:bg-accent max-md:inline-flex",
-                                        r#type: "button",
-                                        title: "Close file explorer",
-                                        aria_label: "Close file explorer",
-                                        onclick: move |_| mobile_explorer_open.set(false),
-                                        "×"
-                                    }
-                                    IconButton {
-                                        label: "Refresh files",
-                                        icon: AppIcon::Refresh,
-                                        size: ControlSize::Small,
-                                        disabled: busy(),
-                                        onclick: move |_| {
-                                            explorer_tree.set(ExplorerTree::default());
-                                            current_directory.set(RelativePath::root());
-                                            revision += 1;
-                                        },
-                                    }
-                                    IconButton {
-                                        label: "Workspace actions",
-                                        icon: AppIcon::Menu,
-                                        size: ControlSize::Small,
-                                        pressed: workspace_menu_open(),
-                                        onclick: move |_| workspace_menu_open.toggle(),
-                                    }
-                                    if workspace_menu_open() {
-                                        div { class: "guest-workspace-menu absolute top-10 right-1 z-10 w-56 rounded-md border border-border bg-popover p-1.5 text-xs text-foreground shadow-xl",
-                                            div { class: "border-b border-border px-2 py-1.5 text-[10px] text-muted-foreground",
-                                                "Workspace actions · {storage_location().badge_label()}"
-                                                div { class: "truncate",
-                                                    "{display_path(&current_directory())}"
-                                                }
-                                            }
-                                            if let Some(selected) = selected_tree_entry() {
-                                                button {
-                                                    r#type: "button",
-                                                    disabled: busy(),
-                                                    onclick: {
-                                                        let selected = selected.clone();
-                                                        move |_| {
-                                                            operation_destination.set(selected.path.as_str().to_owned());
-                                                            file_operation
-                                                                .set(
-                                                                    Some(FileOperation {
-                                                                        source: selected.path.clone(),
-                                                                        kind: FileOperationKind::Move,
-                                                                    }),
-                                                                );
-                                                            workspace_menu_open.set(false);
-                                                        }
-                                                    },
-                                                    Icon {
-                                                        icon: AppIcon::FileMove,
-                                                        size: 14,
-                                                    }
-                                                    span { "Rename or move selected" }
-                                                }
-                                                button {
-                                                    r#type: "button",
-                                                    disabled: busy(),
-                                                    onclick: {
-                                                        let selected = selected.clone();
-                                                        move |_| {
-                                                            operation_destination.set(duplicate_path(&selected.path));
-                                                            file_operation
-                                                                .set(
-                                                                    Some(FileOperation {
-                                                                        source: selected.path.clone(),
-                                                                        kind: FileOperationKind::Duplicate,
-                                                                    }),
-                                                                );
-                                                            workspace_menu_open.set(false);
-                                                        }
-                                                    },
-                                                    Icon {
-                                                        icon: AppIcon::Copy,
-                                                        size: 14,
-                                                    }
-                                                    span { "Duplicate selected" }
-                                                }
-                                                button {
-                                                    r#type: "button",
-                                                    class: "!text-destructive",
-                                                    disabled: busy(),
-                                                    onclick: {
-                                                        let selected = selected.clone();
-                                                        move |_| {
-                                                            pending_delete.set(Some(selected.path.clone()));
-                                                            workspace_menu_open.set(false);
-                                                        }
-                                                    },
-                                                    Icon {
-                                                        icon: AppIcon::Delete,
-                                                        size: 14,
-                                                    }
-                                                    span { "Delete selected" }
-                                                }
-                                                hr {}
-                                            }
-                                            IconButton {
-                                                label: if show_generated() { "Hide generated folders" } else { "Show generated folders" },
-                                                icon: AppIcon::Eye,
-                                                size: ControlSize::Small,
-                                                pressed: show_generated(),
-                                                onclick: move |_| show_generated.toggle(),
-                                            }
-                                            IconButton {
-                                                label: "Open local folder",
-                                                icon: AppIcon::Folder,
-                                                size: ControlSize::Small,
-                                                disabled: busy() || any_dirty || !folder_picker_supported,
-                                                onclick: move |_| {
-                                                    spawn(async move {
-                                                        match select_local_directory().await {
-                                                            Ok(selected) => {
-                                                                storage_location.set(StorageLocation::Local(selected.name));
-                                                                saved_directory_name.set(None);
-                                                                explorer_tree.set(ExplorerTree::default());
-                                                                current_directory.set(RelativePath::root());
-                                                                revision += 1;
-                                                                if let Some(warning) = selected.persistence_warning {
-                                                                    notice.set(Some(Notice::error(warning)));
-                                                                } else {
-                                                                    notice
-                                                                        .set(
-                                                                            Some(Notice::success("Using the selected local folder.")),
-                                                                        );
-                                                                }
-                                                            }
-                                                            Err(error) => notice.set(Some(Notice::error(error.message))),
-                                                        }
-                                                    });
-                                                },
-                                            }
-                                            if saved_directory_name().is_some() {
-                                                IconButton {
-                                                    label: "Reconnect local folder",
-                                                    icon: AppIcon::Refresh,
-                                                    size: ControlSize::Small,
-                                                    disabled: busy() ||
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                any_dirty,
-                                                    onclick: move |_| {
-                                                        spawn(async move {
-                                                            match restore_local_directory(true).await {
-                                                                Ok(SavedDirectory::Active(name)) => {
-                                                                    saved_directory_name.set(None);
-                                                                    storage_location.set(StorageLocation::Local(name));
-                                                                    explorer_tree.set(ExplorerTree::default());
-                                                                    current_directory.set(RelativePath::root());
-                                                                    revision += 1;
-                                                                    notice.set(Some(Notice::success("Local folder reconnected.")));
-                                                                }
-                                                                Ok(SavedDirectory::NeedsPermission(name)) => {
-                                                                    saved_directory_name.set(Some(name));
-                                                                    notice
-                                                                        .set(
-                                                                            Some(
-                                                                                Notice::error("The browser did not grant folder access."),
-                                                                            ),
-                                                                        );
-                                                                }
-                                                                Ok(SavedDirectory::Missing) => {
-                                                                    notice.set(Some(Notice::error("No saved local folder was found.")));
-                                                                }
-                                                                Err(error) => notice.set(Some(Notice::error(error.message))),
-                                                            }
-                                                        });
-                                                    },
-                                                }
-                                            }
-                                            if storage_location() != StorageLocation::Private {
-                                                IconButton {
-                                                    label: "Use private workspace",
-                                                    icon: AppIcon::ShieldAlert,
-                                                    size: ControlSize::Small,
-                                                    disabled: busy() || any_dirty,
-                                                    onclick: move |_| {
-                                                        set_private_workspace();
-                                                        storage_location.set(StorageLocation::Private);
-                                                        explorer_tree.set(ExplorerTree::default());
-                                                        current_directory.set(RelativePath::root());
-                                                        revision += 1;
-                                                        notice.set(Some(Notice::success("Using private browser storage.")));
-                                                    },
-                                                }
-                                            }
-                                            IconButton {
-                                                label: "Export workspace ZIP",
-                                                icon: AppIcon::Share,
-                                                size: ControlSize::Small,
-                                                disabled: busy(),
-                                                onclick: {
-                                                    let workspace = workspace.clone();
-                                                    move |_| {
-                                                        spawn(export_workspace(files, workspace.clone(), busy, notice));
-                                                    }
-                                                },
-                                            }
-                                            label {
-                                                class: if busy() { "touch-target inline-flex size-7.25 min-w-7.25 cursor-not-allowed items-center justify-center rounded-md bg-transparent text-muted-foreground opacity-50" } else { "touch-target inline-flex size-7.25 min-w-7.25 cursor-pointer items-center justify-center rounded-md bg-transparent text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" },
-                                                aria_label: "Import workspace ZIP",
-                                                title: "Import workspace ZIP",
-                                                input {
-                                                    class: "guest-upload-input",
-                                                    r#type: "file",
-                                                    accept: ".zip,application/zip",
-                                                    disabled: busy(),
-                                                    onchange: {
-                                                        let workspace = workspace.clone();
-                                                        move |event: FormEvent| {
-                                                            let Some(selected) = event.files().into_iter().next() else {
-                                                                return;
-                                                            };
-                                                            spawn(
-                                                                import_workspace(
-                                                                    selected,
-                                                                    workspace.clone(),
-                                                                    files,
-                                                                    busy,
-                                                                    revision,
-                                                                    notice,
-                                                                ),
-                                                            );
-                                                        }
-                                                    },
-                                                }
-                                                Icon {
-                                                    icon: AppIcon::FilePlus,
-                                                    size: 14,
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
                             } else {
                                 div { class: "flex items-center gap-1 border-b border-border p-1.75",
                                     form {
                                         class: "relative min-w-0 flex-1",
                                         onsubmit: move | event : FormEvent |
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        event.prevent_default(),
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                event.prevent_default(),
                                         input {
                                             class: "h-7.25 w-full rounded-md border border-input bg-background px-2 text-xs text-foreground outline-none placeholder:text-muted-foreground focus:border-ring",
                                             value: search_query,
                                             r#type: "search",
+                                            name: "workspace-search",
+                                            autocomplete: "off",
                                             placeholder: "Search workspace…",
                                             aria_label: "Search workspace",
                                             oninput: move | event | search_query.set(event
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                .value()),
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            .value()),
                                         }
                                     }
                                     if !search_query().is_empty() {
@@ -1140,7 +899,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                 Modal {
                                     title: if new_entry_kind() == EntryKind::Directory { "New folder" } else { "New file" },
                                     description: format!("Create inside {}.", display_path(&
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                current_directory())),
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    current_directory())),
                                     on_close: move |()| {
                                         new_entry_open.set(false);
                                         new_file_name.set(String::new());
@@ -1350,185 +1109,6 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                 on_open: open_tree_file,
                                                 on_expand: expand_tree_entry,
                                             }
-                                            if false {
-                                                for node in explorer_nodes.clone() {
-                                                    FileRow {
-                                                        key: "{node.entry.path.as_str()}",
-                                                        active: active_path.as_deref()
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    == Some(node.entry.path.as_str())
-                                                            || selected_tree_entry()
-                                                                .as_ref()
-                                                                .is_some_and(|selected| selected.path == node.entry.path),
-                                                        node: node.clone(),
-                                                        on_open: {
-                                                            let workspace = workspace.clone();
-                                                            move |entry: FileEntry| {
-                                                                selected_tree_entry.set(Some(entry.clone()));
-                                                                if entry.kind == EntryKind::Directory {
-                                                                    let path = entry.path.clone();
-                                                                    let expanded = explorer_tree.write().toggle(path.as_str());
-                                                                    if expanded {
-                                                                        current_directory.set(path);
-                                                                    }
-                                                                    return;
-                                                                }
-                                                                let entry_path = entry.path.clone();
-                                                                active_view.set(GuestView::Editor);
-                                                                buffer.set(None);
-                                                                binary_preview.set(None);
-                                                                let workspace = workspace.clone();
-                                                                busy.set(true);
-                                                                notice.set(None);
-                                                                spawn(async move {
-                                                                    if let Some(mime) = image_mime(entry_path.as_str()) {
-                                                                        match files
-                                                                            .read_binary(&workspace, &entry_path, MAX_BINARY_BYTES)
-                                                                            .await
-                                                                        {
-                                                                            Ok(file) => {
-                                                                                binary_preview
-                                                                                    .set(
-                                                                                        Some(BinaryPreviewState {
-                                                                                            path: entry_path.as_str().to_owned(),
-                                                                                            size: file.content.len(),
-                                                                                            data_url: Some(
-                                                                                                format!(
-                                                                                                    "data:{mime};base64:{}",
-                                                                                                    BASE64.encode(file.content),
-                                                                                                ),
-                                                                                            ),
-                                                                                            hex: String::new(),
-                                                                                        }),
-                                                                                    )
-                                                                            }
-                                                                            Err(error) => notice.set(Some(Notice::error(error.message))),
-                                                                        }
-                                                                    } else {
-                                                                        match files.read_text(&workspace, &entry_path, MAX_TEXT_BYTES).await
-                                                                        {
-                                                                            Ok(text) => {
-                                                                                remember_tab(open_tabs, entry_path.as_str());
-                                                                                buffer
-                                                                                    .set(
-                                                                                        Some(
-                                                                                            EditorBuffer::open(
-                                                                                                entry_path.as_str(),
-                                                                                                text.content,
-                                                                                                text.version,
-                                                                                                EditorConfig::default(),
-                                                                                            ),
-                                                                                        ),
-                                                                                    );
-                                                                            }
-                                                                            Err(text_error) => {
-                                                                                match files
-                                                                                    .read_binary(&workspace, &entry_path, MAX_BINARY_BYTES)
-                                                                                    .await
-                                                                                {
-                                                                                    Ok(file) => {
-                                                                                        binary_preview
-                                                                                            .set(
-                                                                                                Some(BinaryPreviewState {
-                                                                                                    path: entry_path.as_str().to_owned(),
-                                                                                                    size: file.content.len(),
-                                                                                                    data_url: None,
-                                                                                                    hex: hex_preview(&file.content),
-                                                                                                }),
-                                                                                            )
-                                                                                    }
-                                                                                    Err(_) => {
-                                                                                        notice.set(Some(Notice::error(text_error.message)))
-                                                                                    }
-                                                                                }
-                                                                            }
-                                                                        }
-                                                                    }
-                                                                    busy.set(false);
-                                                                });
-                                                            }
-                                                        },
-                                                        confirm_delete: pending_delete().as_ref() == Some(& node
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        .entry.path),
-                                                        on_delete: {
-                                                            let workspace = workspace.clone();
-                                                            let active_path = active_path.clone();
-                                                            move |entry: FileEntry| {
-                                                                if pending_delete().as_ref() != Some(&entry.path) {
-                                                                    pending_delete.set(Some(entry.path));
-                                                                    return;
-                                                                }
-                                                                if tab_buffers
-                                                                    .read()
-                                                                    .iter()
-                                                                    .any(|open| {
-                                                                        open.is_dirty() && path_is_within(&open.path, entry.path.as_str())
-                                                                    })
-                                                                {
-                                                                    notice.set(Some(Notice::error(UNSAVED_NAVIGATION_MESSAGE)));
-                                                                    return;
-                                                                }
-                                                                let workspace = workspace.clone();
-                                                                let deleting_active = active_path.as_deref() == Some(entry.path.as_str());
-                                                                let refresh_directory = parent_path(&entry.path);
-                                                                busy.set(true);
-                                                                notice.set(None);
-                                                                spawn(async move {
-                                                                    match files.delete(&workspace, &entry.path).await {
-                                                                        Ok(()) => {
-                                                                            if deleting_active {
-                                                                                buffer.set(None);
-                                                                                binary_preview.set(None);
-                                                                            }
-                                                                            open_tabs
-                                                                                .write()
-                                                                                .retain(|path| {
-                                                                                    !path_is_within(path, entry.path.as_str())
-                                                                                });
-                                                                            tab_buffers
-                                                                                .write()
-                                                                                .retain(|open| {
-                                                                                    !path_is_within(&open.path, entry.path.as_str())
-                                                                                });
-                                                                            pending_delete.set(None);
-                                                                            current_directory.set(refresh_directory);
-                                                                            revision += 1;
-                                                                            notice.set(Some(Notice::success("Deleted from this device.")));
-                                                                        }
-                                                                        Err(error) => notice.set(Some(Notice::error(error.message))),
-                                                                    }
-                                                                    busy.set(false);
-                                                                });
-                                                            }
-                                                        },
-                                                        on_operation: {
-                                                            move |(entry, kind): (FileEntry, FileOperationKind)| {
-                                                                if tab_buffers
-                                                                    .read()
-                                                                    .iter()
-                                                                    .any(|open| {
-                                                                        open.is_dirty() && path_is_within(&open.path, entry.path.as_str())
-                                                                    })
-                                                                {
-                                                                    notice.set(Some(Notice::error(UNSAVED_NAVIGATION_MESSAGE)));
-                                                                    return;
-                                                                }
-                                                                let destination = match kind {
-                                                                    FileOperationKind::Move => entry.path.as_str().to_owned(),
-                                                                    FileOperationKind::Duplicate => duplicate_path(&entry.path),
-                                                                };
-                                                                operation_destination.set(destination);
-                                                                file_operation
-                                                                    .set(
-                                                                        Some(FileOperation {
-                                                                            source: entry.path,
-                                                                            kind,
-                                                                        }),
-                                                                    );
-                                                            }
-                                                        },
-                                                    }
-                                                }
-                                            }
                                         },
                                     }
                                 }
@@ -1538,7 +1118,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                     title: if operation.kind == FileOperationKind::Move { "Rename or move item" } else { "Duplicate item" },
                                     description: format!("Selected path: {}", operation.source.as_str()),
                                     on_close: move | () |
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                file_operation.set(None),
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    file_operation.set(None),
                                     form {
                                         onsubmit: {
                                             let source = operation.source.clone();
@@ -1682,7 +1262,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                     value: operation_destination(),
                                                     autofocus: true,
                                                     oninput: move |
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                event : FormEvent | operation_destination.set(event.value()),
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    event : FormEvent | operation_destination.set(event.value()),
                                                 }
                                             }
                                             DialogActions {
@@ -1791,23 +1371,42 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                     }
                     section { class: "flex min-h-0 min-w-0 flex-col overflow-hidden max-md:h-full guest-editor-panel",
                         if matches!(active_view(), GuestView::Editor | GuestView::Preview) {
-                            if active_view() == GuestView::Editor && !open_tabs().is_empty() {
-                                nav {
-                                    class: "guest-tab-strip",
-                                    "aria-label": "Open files",
+                            PanelHeader {
+                                if active_view() == GuestView::Editor {
+                                    div { class: "shrink-0 max-md:hidden",
+                                        IconButton {
+                                            label: if sidebar_open() { "Hide file browser" } else { "Show file browser" },
+                                            icon: AppIcon::Explorer,
+                                            pressed: sidebar_open(),
+                                            onclick: move |_| sidebar_open.toggle(),
+                                        }
+                                    }
+                                    div { class: "hidden shrink-0 max-md:block",
+                                        IconButton {
+                                            label: "Open explorer",
+                                            icon: AppIcon::Explorer,
+                                            onclick: move |_| mobile_explorer_open.set(true),
+                                        }
+                                    }
+                                    PanelTabList {
                                     for tab_path in open_tabs() {
-                                        div { class: if active_path.as_deref() == Some(tab_path.as_str()) { "guest-tab guest-tab-active" } else { "guest-tab" },
-                                            button {
-                                                class: "guest-tab-open",
-                                                title: "Open {tab_path}",
-                                                onclick: {
-                                                    let tab_path = tab_path.clone();
-                                                    let workspace = workspace.clone();
-                                                    let active_path = active_path.clone();
-                                                    move |_| {
-                                                        if active_path.as_deref() == Some(tab_path.as_str()) {
-                                                            return;
-                                                        }
+                                        PanelTab {
+                                            key: "{tab_path}",
+                                            label: file_label(&tab_path).to_owned(),
+                                            active: active_path.as_deref() == Some(tab_path.as_str()),
+                                            width: PanelTabWidth::Content,
+                                            dirty: tab_buffers
+                                                .read()
+                                                .iter()
+                                                .find(|open| open.path == tab_path)
+                                                .is_some_and(EditorBuffer::is_dirty),
+                                            indicator: PanelTabIndicator::Glyph(file_glyph(&tab_path).to_owned()),
+                                            on_select: {
+                                                let tab_path = tab_path.clone();
+                                                let workspace = workspace.clone();
+                                                let active_path = active_path.clone();
+                                                move |_| {
+                                                    if active_path.as_deref() != Some(tab_path.as_str()) {
                                                         activate_tab(
                                                             tab_path.clone(),
                                                             files,
@@ -1820,60 +1419,34 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                             notice,
                                                         );
                                                     }
-                                                },
-                                                "{tab_path}"
-                                            }
-                                            button {
-                                                class: "guest-tab-close",
-                                                title: "Close {tab_path}",
-                                                aria_label: "Close {tab_path}",
-                                                onclick: {
-                                                    let tab_path = tab_path.clone();
-                                                    let active_path = active_path.clone();
-                                                    move |_| {
-                                                        let tab_dirty = tab_buffers
-                                                            .read()
-                                                            .iter()
-                                                            .find(|open| open.path == tab_path)
-                                                            .is_some_and(EditorBuffer::is_dirty);
-                                                        if tab_dirty {
-                                                            notice.set(Some(Notice::error("Save this file before closing it.")));
-                                                            return;
-                                                        }
-                                                        open_tabs.write().retain(|path| path != &tab_path);
-                                                        tab_buffers.write().retain(|open| open.path != tab_path);
-                                                        if active_path.as_deref() == Some(tab_path.as_str()) {
-                                                            buffer.set(None);
-                                                            binary_preview.set(None);
-                                                        }
+                                                }
+                                            },
+                                            on_close: {
+                                                let tab_path = tab_path.clone();
+                                                let active_path = active_path.clone();
+                                                move |()| {
+                                                    let tab_dirty = tab_buffers
+                                                        .read()
+                                                        .iter()
+                                                        .find(|open| open.path == tab_path)
+                                                        .is_some_and(EditorBuffer::is_dirty);
+                                                    if tab_dirty {
+                                                        notice.set(Some(Notice::error("Save this file before closing it.")));
+                                                        return;
                                                     }
-                                                },
-                                                "×"
-                                            }
+                                                    open_tabs.write().retain(|path| path != &tab_path);
+                                                    tab_buffers.write().retain(|open| open.path != tab_path);
+                                                    if active_path.as_deref() == Some(tab_path.as_str()) {
+                                                        buffer.set(None);
+                                                        binary_preview.set(None);
+                                                    }
+                                                }
+                                            },
                                         }
                                     }
-                                }
-                            }
-                            div { class: "guest-editor-toolbar",
-                                div { class: "guest-panel-heading",
-                                    if active_view() == GuestView::Editor {
-                                        strong { "{active_name}" }
-                                        if dirty {
-                                            span {
-                                                class: "guest-dirty",
-                                                title: "Unsaved changes",
-                                                "●"
-                                            }
-                                        }
-                                    } else if active_view() == GuestView::Terminal {
-                                        strong { "Terminal" }
-                                    } else if active_view() == GuestView::Preview {
-                                        strong { "Preview" }
-                                    } else if active_view() == GuestView::Git {
-                                        strong { "Git" }
-                                    } else {
-                                        strong { "AI" }
                                     }
+                                } else {
+                                    strong { class: "min-w-0 flex-1 truncate px-1 text-xs font-medium", "Preview" }
                                 }
                                 if active_view() == GuestView::Preview {
                                     IconButton {
@@ -1918,45 +1491,62 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                         line_numbers: editor_line_numbers(),
                                         save_all: false,
                                         multiple_tabs: open_tabs().len() > 1,
+                                        download_available: active_path.is_some(),
                                         changed: dirty,
                                         on_action: {
                                             let action_active_path = active_path.clone();
+                                            let action_workspace = workspace.clone();
                                             move |action| match action {
-                                            EditorAction::Undo | EditorAction::Redo | EditorAction::SelectAll => {
-                                                editor_command_revision += 1;
-                                                editor_command.set(Some(EditorCommand {
-                                                    revision: editor_command_revision(),
-                                                    kind: match action {
-                                                        EditorAction::Undo => EditorCommandKind::Undo,
-                                                        EditorAction::Redo => EditorCommandKind::Redo,
-                                                        _ => EditorCommandKind::SelectAll,
-                                                    },
-                                                }));
-                                            }
-                                            EditorAction::WordWrap => editor_word_wrap.toggle(),
-                                            EditorAction::LineNumbers => editor_line_numbers.toggle(),
-                                            EditorAction::CloseAll => {
-                                                if any_dirty {
-                                                    notice.set(Some(Notice::error(UNSAVED_NAVIGATION_MESSAGE)));
-                                                } else {
-                                                    open_tabs.write().clear();
-                                                    tab_buffers.write().clear();
-                                                    buffer.set(None);
-                                                    binary_preview.set(None);
+                                                EditorAction::Undo | EditorAction::Redo | EditorAction::SelectAll => {
+                                                    editor_command_revision += 1;
+                                                    editor_command
+                                                        .set(
+                                                            Some(EditorCommand {
+                                                                revision: editor_command_revision(),
+                                                                kind: match action {
+                                                                    EditorAction::Undo => EditorCommandKind::Undo,
+                                                                    EditorAction::Redo => EditorCommandKind::Redo,
+                                                                    _ => EditorCommandKind::SelectAll,
+                                                                },
+                                                            }),
+                                                        );
                                                 }
-                                            }
-                                            EditorAction::CloseOthers => {
-                                                if let Some(path) = action_active_path.clone() {
-                                                    open_tabs.write().retain(|candidate| candidate == &path);
-                                                    tab_buffers.write().retain(|open| open.path == path);
+                                                EditorAction::WordWrap => editor_word_wrap.toggle(),
+                                                EditorAction::LineNumbers => editor_line_numbers.toggle(),
+                                                EditorAction::CloseAll => {
+                                                    if any_dirty {
+                                                        notice.set(Some(Notice::error(UNSAVED_NAVIGATION_MESSAGE)));
+                                                    } else {
+                                                        open_tabs.write().clear();
+                                                        tab_buffers.write().clear();
+                                                        buffer.set(None);
+                                                        binary_preview.set(None);
+                                                    }
                                                 }
-                                            }
-                                            EditorAction::Revert => {
-                                                if let Some(open) = buffer.write().as_mut() {
-                                                    open.revert();
-                                                    cache_buffer(tab_buffers, open);
+                                                EditorAction::CloseOthers => {
+                                                    if let Some(path) = action_active_path.clone() {
+                                                        open_tabs.write().retain(|candidate| candidate == &path);
+                                                        tab_buffers.write().retain(|open| open.path == path);
+                                                    }
                                                 }
-                                            }
+                                                EditorAction::Revert => {
+                                                    if let Some(open) = buffer.write().as_mut() {
+                                                        open.revert();
+                                                        cache_buffer(tab_buffers, open);
+                                                    }
+                                                }
+                                                EditorAction::Download => {
+                                                    let Some(path) = action_active_path.clone() else { return };
+                                                    let Ok(path) = RelativePath::try_from(path) else { return };
+                                                    let filename = path.as_str().to_owned();
+                                                    let workspace = action_workspace.clone();
+                                                    spawn(async move {
+                                                        match files.read_binary(&workspace, &path, MAX_BINARY_BYTES).await {
+                                                            Ok(file) => download_bytes(filename, file.content, mime_for_path(path.as_str())),
+                                                            Err(error) => notice.set(Some(Notice::error(error.message))),
+                                                        }
+                                                    });
+                                                }
                                                 _ => {}
                                             }
                                         },
@@ -2025,65 +1615,55 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                             });
                                         },
                                     }
-                                    if let Some(path) = active_path.clone() {
-                                        IconButton {
-                                            label: "Download file",
-                                            icon: AppIcon::Share,
-                                            size: ControlSize::Small,
-                                            disabled: busy(),
-                                            onclick: {
-                                                let workspace = workspace.clone();
-                                                move |_| {
-                                                    let Ok(path) = RelativePath::try_from(path.clone()) else {
-                                                        return;
-                                                    };
-                                                    let filename = path.as_str().to_owned();
-                                                    let workspace = workspace.clone();
-                                                    spawn(async move {
-                                                        match files.read_binary(&workspace, &path, MAX_BINARY_BYTES).await {
-                                                            Ok(file) => {
-                                                                download_bytes(
-                                                                    filename,
-                                                                    file.content,
-                                                                    mime_for_path(path.as_str()),
-                                                                )
-                                                            }
-                                                            Err(error) => notice.set(Some(Notice::error(error.message))),
-                                                        }
-                                                    });
-                                                }
-                                            },
-                                        }
-                                    }
                                 }
                             }
-                            if active_view() == GuestView::Editor && editor_search_open() && active_buffer.is_some() {
-                                div { class: "flex items-center gap-2 border-b border-border bg-background px-2 py-1.5",
-                                    Icon { icon: AppIcon::Search, size: 14 }
-                                    input {
-                                        class: "h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs outline-none focus:border-ring",
-                                        r#type: "search",
-                                        autofocus: true,
-                                        value: editor_search_query,
-                                        placeholder: "Find in file…",
-                                        aria_label: "Find in file",
-                                        oninput: move |event| editor_search_query.set(event.value()),
-                                        onkeydown: move |event| {
-                                            if event.key() == Key::Escape {
-                                                editor_search_open.set(false);
-                                                editor_search_query.set(String::new());
+                            if active_view() == GuestView::Editor && editor_search_open()
+                                && active_buffer.is_some()
+                            {
+                                SearchPanel {
+                                    query: editor_search_query,
+                                    current: editor_search_match,
+                                    options: editor_search_options,
+                                    replacement: editor_replace_query,
+                                    replace_open: editor_replace_open,
+                                    search_input: editor_search_input,
+                                    count: editor_search_status().count,
+                                    error: (!editor_search_status().valid).then(|| "Invalid regular expression".to_owned()),
+                                    on_next: move |direction| {
+                                        if editor_search_status().count == 0 { return; }
+                                        editor_command_revision += 1;
+                                        editor_command.set(Some(EditorCommand {
+                                            revision: editor_command_revision(),
+                                            kind: if direction > 0 { EditorCommandKind::SearchNext } else { EditorCommandKind::SearchPrevious },
+                                        }));
+                                    },
+                                    on_replace: move |()| {
+                                        let Some(open) = buffer() else { return };
+                                        let Ok(matches) = find_matches(&open.contents, &editor_search_query(), editor_search_options()) else { return };
+                                        if matches.is_empty() { return; }
+                                        let current = editor_search_match().min(matches.len() - 1);
+                                        match replace_search_match(&open.contents, &editor_search_query(), &editor_replace_query(), editor_search_options(), matches[current]) {
+                                            Ok(contents) => {
+                                                let (start, end) = matches[current];
+                                                let cursor = start + contents.len() - (open.contents.len() - (end - start));
+                                                editor_command_revision += 1;
+                                                editor_command.set(Some(EditorCommand { revision: editor_command_revision(), kind: EditorCommandKind::Replace { value: contents, start: cursor, end: cursor } }));
                                             }
-                                        },
-                                    }
-                                    IconButton {
-                                        label: "Close search",
-                                        icon: AppIcon::Close,
-                                        size: ControlSize::Small,
-                                        onclick: move |_| {
-                                            editor_search_open.set(false);
-                                            editor_search_query.set(String::new());
-                                        },
-                                    }
+                                            Err(message) => notice.set(Some(Notice::error(message))),
+                                        }
+                                    },
+                                    on_replace_all: move |()| {
+                                        let Some(open) = buffer() else { return };
+                                        match replace_all_search_matches(&open.contents, &editor_search_query(), &editor_replace_query(), editor_search_options()) {
+                                            Ok(contents) => {
+                                                editor_command_revision += 1;
+                                                editor_command.set(Some(EditorCommand { revision: editor_command_revision(), kind: EditorCommandKind::Replace { value: contents, start: 0, end: 0 } }));
+                                                editor_search_match.set(0);
+                                            }
+                                            Err(message) => notice.set(Some(Notice::error(message))),
+                                        }
+                                    },
+                                    on_close: move |()| editor_search_open.set(false),
                                 }
                             }
                         }
@@ -2091,7 +1671,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                             if active_view() == GuestView::Terminal {
                                 GuestTerminal {
                                     workspace: workspace
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                .clone(),
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    .clone(),
                                     notice,
                                     on_workspace_changed: {
                                         let workspace = workspace.clone();
@@ -2229,9 +1809,9 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                 GuestAi {
                                     slug: workspace.slug.clone(),
                                     active_path: active_buffer.as_ref().map(| open | open
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                .path.clone()),
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    .path.clone()),
                                     active_contents: active_buffer.as_ref().map(| open | open
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                .contents.clone()),
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    .contents.clone()),
                                 }
                             } else if active_view() == GuestView::AiSettings {
                                 GuestAiSettings { slug: workspace.slug.clone() }
@@ -2239,20 +1819,21 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                 CodeEditor {
                                     key: "{open.path}",
                                     value: open.contents
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                .clone(),
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    .clone(),
                                     filename: open.path.clone(),
                                     language_name: language_slug_for_path(&
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                open.path),
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    open.path),
                                     autocomplete: true,
                                     line_numbers: editor_line_numbers(),
                                     word_wrap: editor_word_wrap(),
                                     command: Some(editor_command),
-                                    search_query: editor_search_open().then(|| EditorSearchQuery {
-                                        query: editor_search_query(),
-                                        case_sensitive: false,
-                                        whole_word: false,
-                                        regex: false,
-                                    }),
+                                    search_query: editor_search_open()
+                                        .then(|| EditorSearchQuery {
+                                            query: editor_search_query(),
+                                            case_sensitive: editor_search_options().case_sensitive,
+                                            whole_word: editor_search_options().whole_word,
+                                            regex: editor_search_options().regex,
+                                        }),
                                     class: "guest-code-editor",
                                     aria_label: format!("Editing {}", open.path),
                                     oninput: move |edits: Vec<EditorEdit>| {
@@ -2273,6 +1854,12 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                             }
                                         }
                                     },
+                                    onsearch: move |status: EditorSearchStatus| {
+                                        if let Some(current) = status.current {
+                                            editor_search_match.set(current);
+                                        }
+                                        editor_search_status.set(status);
+                                    },
                                 }
                             } else if let Some(preview) = active_binary {
                                 BinaryFilePreview { preview }
@@ -2289,20 +1876,13 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                 }
             }
             if let Some(message) = notice() {
-                div {
-                    class: if message.error { "guest-notice guest-notice-error" } else { "guest-notice" },
-                    role: "status",
-                    span { "{message.message}" }
-                    button {
-                        "aria-label": "Dismiss notification",
-                        onclick: move |_| notice.set(None),
-                        "×"
-                    }
+                Toast {
+                    message: message.message,
+                    tone: if message.error { Tone::Destructive } else { Tone::Success },
+                    on_close: move |()| notice.set(None),
                 }
             }
-            nav {
-                class: "flex h-[calc(3.625rem+env(safe-area-inset-bottom))] min-h-[calc(3.625rem+env(safe-area-inset-bottom))] items-stretch justify-center border-t border-border bg-background pb-[env(safe-area-inset-bottom)] max-md:h-[calc(3.875rem+env(safe-area-inset-bottom))] max-md:min-h-[calc(3.875rem+env(safe-area-inset-bottom))]",
-                "aria-label": "Workspace modules",
+            WorkspaceModuleNav {
                 GuestNavItem {
                     label: "Files",
                     icon: AppIcon::Folder,
@@ -2401,11 +1981,12 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
 }
 fn persist_terminal_tab(
     mut tabs: Signal<Vec<BrowserTerminalTab>>,
-    active_id: u64,
+    active_id: Option<u64>,
     command: &str,
     history: &[CommandRecord],
     history_cursor: Option<usize>,
 ) {
+    let Some(active_id) = active_id else { return };
     if let Some(tab) = tabs.write().iter_mut().find(|tab| tab.id == active_id) {
         tab.command = command.to_owned();
         tab.history = history.to_vec();
@@ -2416,7 +1997,7 @@ fn persist_terminal_tab(
 fn activate_terminal_tab(
     id: u64,
     tabs: Signal<Vec<BrowserTerminalTab>>,
-    mut active_id: Signal<u64>,
+    mut active_id: Signal<Option<u64>>,
     mut command: Signal<String>,
     mut history: Signal<Vec<CommandRecord>>,
     mut history_cursor: Signal<Option<usize>>,
@@ -2424,7 +2005,7 @@ fn activate_terminal_tab(
     let Some(tab) = tabs.read().iter().find(|tab| tab.id == id).cloned() else {
         return;
     };
-    active_id.set(id);
+    active_id.set(Some(id));
     command.set(tab.command);
     history.set(tab.history);
     history_cursor.set(tab.history_cursor);
@@ -2438,13 +2019,15 @@ fn GuestTerminal(
 ) -> Element {
     let files = OpfsWorkspaceFiles;
     let mut command = use_signal(String::new);
-    let mut tabs = use_signal(|| vec![BrowserTerminalTab::new(1, "shell 1".to_owned())]);
-    let mut active_tab_id = use_signal(|| 1_u64);
-    let mut next_tab_id = use_signal(|| 2_u64);
+    let mut tabs = use_signal(Vec::<BrowserTerminalTab>::new);
+    let mut active_tab_id = use_signal(|| None::<u64>);
+    let mut next_tab_id = use_signal(|| 1_u64);
     let mut new_terminal_open = use_signal(|| false);
     let mut new_terminal_name = use_signal(String::new);
     let mut new_terminal_error = use_signal(|| None::<String>);
     let run_menu_open = use_signal(|| false);
+    let terminal_menu_open = use_signal(|| false);
+    let mobile_tabs_open = use_signal(|| false);
     let mut command_refresh = use_signal(|| 0_u64);
     let command_workspace = workspace.clone();
     let project_commands = use_resource(move || {
@@ -2528,13 +2111,13 @@ fn GuestTerminal(
                         PanelTab {
                             key: "{tab.id}",
                             label: tab.name.clone(),
-                            active: active_tab_id() == tab.id,
+                            active: active_tab_id() == Some(tab.id),
                             width: PanelTabWidth::Session,
                             indicator: PanelTabIndicator::Dot(Tone::Success),
                             on_select: {
                                 let tab_id = tab.id;
                                 move |_| {
-                                    if running() || active_tab_id() == tab_id {
+                                    if running() || active_tab_id() == Some(tab_id) {
                                         return;
                                     }
                                     persist_terminal_tab(
@@ -2557,7 +2140,7 @@ fn GuestTerminal(
                             on_close: {
                                 let tab_id = tab.id;
                                 move |()| {
-                                    if running() || tabs.read().len() <= 1 {
+                                    if running() {
                                         return;
                                     }
                                     persist_terminal_tab(
@@ -2568,7 +2151,7 @@ fn GuestTerminal(
                                         history_cursor(),
                                     );
                                     tabs.write().retain(|candidate| candidate.id != tab_id);
-                                    if active_tab_id() == tab_id
+                                    if active_tab_id() == Some(tab_id)
                                         && let Some(next) = tabs.read().first().cloned()
                                     {
                                         activate_terminal_tab(
@@ -2579,18 +2162,79 @@ fn GuestTerminal(
                                             history,
                                             history_cursor,
                                         );
+                                    } else if tabs.read().is_empty() {
+                                        active_tab_id.set(None);
+                                        command.set(String::new());
+                                        history.set(Vec::new());
+                                        history_cursor.set(None);
                                     }
                                 }
                             },
                         }
                     }
                 }
+                TerminalMobileTabs {
+                    tabs: tabs()
+                        .into_iter()
+                        .map(|tab| TerminalTab {
+                            id: tab.id.to_string(),
+                            name: tab.name,
+                            tone: Tone::Success,
+                        })
+                        .collect(),
+                    active_id: active_tab_id().map(|id| id.to_string()),
+                    open: mobile_tabs_open,
+                    on_select: move |id: String| {
+                        let Ok(id) = id.parse::<u64>() else { return };
+                        if !running() {
+                            persist_terminal_tab(
+                                tabs,
+                                active_tab_id(),
+                                &command(),
+                                &history(),
+                                history_cursor(),
+                            );
+                            activate_terminal_tab(
+                                id,
+                                tabs,
+                                active_tab_id,
+                                command,
+                                history,
+                                history_cursor,
+                            );
+                        }
+                    },
+                    on_close: move |id: String| {
+                        let Ok(id) = id.parse::<u64>() else { return };
+                        if running() {
+                            return;
+                        }
+                        tabs.write().retain(|tab| tab.id != id);
+                        if active_tab_id() == Some(id) {
+                            if let Some(next) = tabs.read().first().cloned() {
+                                activate_terminal_tab(
+                                    next.id,
+                                    tabs,
+                                    active_tab_id,
+                                    command,
+                                    history,
+                                    history_cursor,
+                                );
+                            } else {
+                                active_tab_id.set(None);
+                                command.set(String::new());
+                                history.set(Vec::new());
+                                history_cursor.set(None);
+                            }
+                        }
+                    },
+                }
                 div { class: "flex items-center gap-1",
                     IconButton {
                         label: "New terminal",
                         icon: AppIcon::Plus,
                         size: ControlSize::Small,
-                        disabled: running(),
+                        disabled: running() || !bridge_ready,
                         onclick: move |_| {
                             new_terminal_name.set(format!("shell {}", next_tab_id()));
                             new_terminal_open.set(true);
@@ -2600,8 +2244,8 @@ fn GuestTerminal(
                         commands: detected_commands,
                         open: run_menu_open,
                         loading: project_commands.state() ==
-                                                                                                                                                                                                                                                                                                                                                        UseResourceState::Pending,
-                        disabled: !bridge_ready || running(),
+                                                                                                                                                                                                                                                                                                                                                                                UseResourceState::Pending,
+                        disabled: !bridge_ready || running() || active_tab_id().is_none(),
                         show_add: false,
                         on_run: move |run: RunCommand| {
                             command.set(run.command);
@@ -2633,12 +2277,76 @@ fn GuestTerminal(
                             },
                         }
                     }
+                    TerminalActionsMenu {
+                        open: terminal_menu_open,
+                        terminal_available: active_tab_id().is_some() && !running(),
+                        renderer_actions: false,
+                        restart_available: active_tab_id().is_some() && !running(),
+                        detach_available: false,
+                        refresh_available: !running(),
+                        terminal_count: if running() { 0 } else { tabs.read().len() },
+                        on_action: move |action| match action {
+                            TerminalMenuAction::Clear | TerminalMenuAction::Restart => {
+                                history.set(Vec::new());
+                                history_cursor.set(None);
+                                command.set(String::new());
+                            }
+                            TerminalMenuAction::Refresh => command_refresh += 1,
+                            TerminalMenuAction::Close => {
+                                if let Some(id) = active_tab_id() {
+                                    tabs.write().retain(|tab| tab.id != id);
+                                    if let Some(next) = tabs.read().first().cloned() {
+                                        activate_terminal_tab(
+                                            next.id,
+                                            tabs,
+                                            active_tab_id,
+                                            command,
+                                            history,
+                                            history_cursor,
+                                        );
+                                    } else {
+                                        active_tab_id.set(None);
+                                        command.set(String::new());
+                                        history.set(Vec::new());
+                                        history_cursor.set(None);
+                                    }
+                                }
+                            }
+                            TerminalMenuAction::CloseOthers => {
+                                if let Some(id) = active_tab_id() {
+                                    tabs.write().retain(|tab| tab.id == id);
+                                }
+                            }
+                            TerminalMenuAction::CloseAll => {
+                                tabs.write().clear();
+                                active_tab_id.set(None);
+                                command.set(String::new());
+                                history.set(Vec::new());
+                                history_cursor.set(None);
+                            }
+                            TerminalMenuAction::CopySelection
+                            | TerminalMenuAction::CopyAll
+                            | TerminalMenuAction::Paste
+                            | TerminalMenuAction::Detach => {}
+                        },
+                    }
                 }
             }
-            div {
-                class: "guest-terminal-output",
+            div { class: "relative min-h-0 flex-1 overflow-hidden bg-card",
+                if tabs.read().is_empty() {
+                    TerminalEmptyState {
+                        description: "Create a browser terminal in this workspace.",
+                        disabled: !bridge_ready,
+                        on_new: move |()| {
+                            new_terminal_name.set(format!("shell {}", next_tab_id()));
+                            new_terminal_open.set(true);
+                        },
+                    }
+                } else {
+                div {
+                class: "guest-terminal-output size-full",
                 onmounted: move | event |
-                                                                                                                                                                                                                                        output.set(Some(event.data())),
+                                                                                                                                                                                                                                                        output.set(Some(event.data())),
                 role: "log",
                 "aria-live": "polite",
                 for record in history() {
@@ -2691,7 +2399,7 @@ fn GuestTerminal(
                         autocapitalize: "off",
                         spellcheck: false,
                         title: bridge_message
-                                                                                                                                                                                                                                                                                                                                                        .clone(),
+                                                                                                                                                                                                                                                                                                                                                                                .clone(),
                         placeholder: "",
                         aria_label: "Browser shell command",
                         onmounted: move |event| {
@@ -2744,10 +2452,11 @@ fn GuestTerminal(
                     }
                 }
             }
-            div {
-                class: "guest-terminal-status",
+                }
+            }
+            TerminalStatusBar {
                 title: "Generated directories such as node_modules, target, dist, and .git are visible but their contents are excluded from the bounded shell snapshot.",
-                "Browser command console · local just-bash · generated folders protected"
+                label: "Browser command console · local just-bash · generated folders protected",
             }
         }
         if new_terminal_open() {
@@ -2779,7 +2488,7 @@ fn GuestTerminal(
                     let id = next_tab_id();
                     next_tab_id += 1;
                     tabs.write().push(BrowserTerminalTab::new(id, name));
-                    active_tab_id.set(id);
+                    active_tab_id.set(Some(id));
                     command.set(String::new());
                     history.set(Vec::new());
                     history_cursor.set(None);
@@ -2947,7 +2656,7 @@ fn SearchRow(hit: BrowserSearchHit, active: bool, on_open: EventHandler<FileEntr
             class: if active { "guest-search-row guest-file-row-active" } else { "guest-search-row" },
             title: "Open {label}",
             onclick: move | _ | on_open
-                                                                                                                                                                                .call(entry.clone()),
+                                                                                                                                                                                            .call(entry.clone()),
             span { class: "guest-file-icon",
                 if entry.kind == EntryKind::Directory {
                     "▸"
@@ -3081,7 +2790,7 @@ async fn collect_archive_entries(
             .await
             .map_err(|error| error.message)?;
         for entry in listed {
-            if entry.path.as_str() == GUEST_HISTORY_PATH {
+            if is_guest_metadata_path(entry.path.as_str()) {
                 continue;
             }
             if entries.len() >= MAX_ARCHIVE_FILES {
@@ -3132,12 +2841,12 @@ async fn import_workspace(
     mut busy: Signal<bool>,
     mut revision: Signal<u64>,
     mut notice: Signal<Option<Notice>>,
-) {
+) -> bool {
     if selected.size() > MAX_ARCHIVE_WORKSPACE_BYTES {
         notice.set(Some(Notice::error(
             "The ZIP file exceeds the 32 MiB limit.",
         )));
-        return;
+        return false;
     }
     busy.set(true);
     let result = async {
@@ -3169,10 +2878,13 @@ async fn import_workspace(
                 "Imported {imported} workspace entr{}.",
                 if imported == 1 { "y" } else { "ies" },
             ))));
+            busy.set(false);
+            return true;
         }
         Err(error) => notice.set(Some(Notice::error(error))),
     }
     busy.set(false);
+    false
 }
 async fn apply_archive_entries(
     files: &OpfsWorkspaceFiles,
@@ -3210,11 +2922,13 @@ async fn apply_archive_entries(
             path.as_str().matches('/').count(),
         )
     });
-    for (path, directory, content) in &normalized {
-        ensure_archive_parent(files, workspace, path).await?;
+    for (path, _, _) in &normalized {
         if files.stat(workspace, path).await.is_ok() {
             return Err(format!("The destination already exists: {}", path.as_str()));
         }
+    }
+    for (path, directory, content) in &normalized {
+        ensure_archive_parent(files, workspace, path).await?;
         if *directory {
             files
                 .create_directory(workspace, path)
@@ -3522,6 +3236,22 @@ fn is_html_path(path: &str) -> bool {
         if matches!(extension.as_str(), "htm" | "html")
     )
 }
+
+fn file_label(path: &str) -> &str {
+    path.rsplit('/').next().unwrap_or(path)
+}
+
+fn file_glyph(path: &str) -> &'static str {
+    match path
+        .rsplit_once('.')
+        .map(|(_, extension)| extension.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("rs") => "R",
+        Some("md" | "markdown") => "M",
+        _ => "·",
+    }
+}
 fn hex_preview(bytes: &[u8]) -> String {
     let shown = bytes.iter().take(64).copied().collect::<Vec<_>>();
     let mut result = shown
@@ -3561,68 +3291,6 @@ fn remap_path(path: &str, source: &RelativePath, destination: &RelativePath) -> 
         .map(|suffix| format!("{}{}", destination.as_str(), suffix))
 }
 #[component]
-fn FileRow(
-    node: ExplorerNode,
-    active: bool,
-    confirm_delete: bool,
-    on_open: EventHandler<FileEntry>,
-    on_delete: EventHandler<FileEntry>,
-    on_operation: EventHandler<(FileEntry, FileOperationKind)>,
-) -> Element {
-    let entry = node.entry;
-    let label = entry.name.clone();
-    let kind = entry.kind;
-    let is_directory = kind == EntryKind::Directory;
-    let padding = 6 + node.depth * 14;
-    let _row_actions = (on_delete, on_operation, confirm_delete);
-    rsx! {
-        div {
-            class: if active { "guest-file-row guest-file-row-active" } else { "guest-file-row" },
-            role: "treeitem",
-            "aria-selected": active,
-            "aria-expanded": is_directory.then_some(node.expanded),
-            button {
-                class: "flex h-full min-h-7.25 min-w-0 flex-1 items-center gap-1.5 rounded-sm border-0 bg-transparent pr-1.5 text-left text-xs text-foreground/90 outline-none hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring",
-                style: "padding-left: {padding}px",
-                title: label.clone(),
-                onclick: {
-                    let entry = entry.clone();
-                    move |_| on_open.call(entry.clone())
-                },
-                span { class: "w-2.25 shrink-0 text-[9px] text-muted-foreground",
-                    if is_directory {
-                        if node.expanded {
-                            "▾"
-                        } else {
-                            "▸"
-                        }
-                    }
-                }
-                FileIcon {
-                    path: entry.path.as_str()
-                                                                                                                                                                                                                                                                                                .to_owned(),
-                    directory: is_directory,
-                    expanded: node.expanded,
-                    size: 15,
-                }
-                span { class: "truncate", "{label}" }
-            }
-        }
-    }
-}
-#[component]
-fn GuestProjectIcon(name: String) -> Element {
-    let initial = name.trim().chars().next().map_or_else(
-        || "?".to_owned(),
-        |character| character.to_uppercase().collect(),
-    );
-    rsx! {
-        span { class: "grid size-7 shrink-0 place-items-center overflow-hidden rounded-md border border-border/70 bg-muted/50 text-[9px] font-bold text-muted-foreground",
-            {initial}
-        }
-    }
-}
-#[component]
 fn GuestNavItem(
     label: String,
     icon: AppIcon,
@@ -3636,7 +3304,7 @@ fn GuestNavItem(
             disabled,
             aria_current: if active { "page" } else { "" },
             onclick: move |
-                                                                                                                                                                                event | onclick.call(event),
+                                                                                                                                                                                            event | onclick.call(event),
             span { class: "h-5 text-base leading-5",
                 Icon { icon, size: 18 }
             }
@@ -3661,12 +3329,14 @@ struct Notice {
 enum StorageLocation {
     Private,
     Local(String),
+    PermissionRequired,
 }
 impl StorageLocation {
     fn badge_label(&self) -> String {
         match self {
             Self::Private => "Private".into(),
             Self::Local(_) => "Local".into(),
+            Self::PermissionRequired => "Permission needed".into(),
         }
     }
 }
@@ -3773,13 +3443,6 @@ fn child_path(parent: &RelativePath, name: &str) -> Result<RelativePath, ()> {
         format!("{}/{}", parent.as_str(), name)
     };
     RelativePath::try_from(path).map_err(|_| ())
-}
-fn parent_path(path: &RelativePath) -> RelativePath {
-    path.as_str()
-        .rsplit_once('/')
-        .map_or_else(RelativePath::root, |(parent, _)| {
-            RelativePath::try_from(parent).unwrap_or_else(|_| RelativePath::root())
-        })
 }
 fn display_path(path: &RelativePath) -> String {
     if path.is_root() {

@@ -18,6 +18,7 @@ thread_local! {
         RefCell::new(None)
     };
 }
+const ACTIVE_ROOT_PROPERTY: &str = "__SYNTAXIS_GUEST_WORKSPACE_ROOT__";
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(extends = web_sys::Window, js_name = Window)]
@@ -95,7 +96,7 @@ pub async fn select_local_directory() -> WorkspaceResult<SelectedDirectory> {
             error.message,
         )
     });
-    LOCAL_ROOT.with(|root| root.replace(Some(directory)));
+    set_active_root(Some(directory));
     Ok(SelectedDirectory {
         name,
         persistence_warning,
@@ -111,6 +112,10 @@ pub async fn select_local_directory() -> WorkspaceResult<SelectedDirectory> {
 /// Returns an unavailable error when browser storage or the permission API
 /// cannot be accessed.
 pub async fn restore_local_directory(request_access: bool) -> WorkspaceResult<SavedDirectory> {
+    if let Some(directory) = LOCAL_ROOT.with(|root| root.borrow().clone()) {
+        let name = directory.unchecked_ref::<FileSystemHandle>().name();
+        return Ok(SavedDirectory::Active(name));
+    }
     let Some(directory) = load_directory().await? else {
         return Ok(SavedDirectory::Missing);
     };
@@ -132,7 +137,7 @@ pub async fn restore_local_directory(request_access: bool) -> WorkspaceResult<Sa
         .as_string()
         .unwrap_or_default();
     if permission == "granted" {
-        LOCAL_ROOT.with(|root| root.replace(Some(directory)));
+        set_active_root(Some(directory));
         Ok(SavedDirectory::Active(name))
     } else {
         Ok(SavedDirectory::NeedsPermission(name))
@@ -140,7 +145,17 @@ pub async fn restore_local_directory(request_access: bool) -> WorkspaceResult<Sa
 }
 /// Switches the adapter back to its origin-private browser workspace.
 pub fn set_private_workspace() {
-    LOCAL_ROOT.with(|root| root.replace(None));
+    set_active_root(None);
+}
+
+fn set_active_root(directory: Option<FileSystemDirectoryHandle>) {
+    LOCAL_ROOT.with(|root| root.replace(directory.clone()));
+    let value = directory.map_or(JsValue::UNDEFINED, JsValue::from);
+    let _ = Reflect::set(
+        &js_sys::global(),
+        &JsValue::from_str(ACTIVE_ROOT_PROPERTY),
+        &value,
+    );
 }
 #[async_trait(?Send)]
 impl WorkspaceFiles for OpfsWorkspaceFiles {

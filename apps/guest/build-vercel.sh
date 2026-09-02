@@ -6,6 +6,7 @@ cd "$repository_root"
 
 bun scripts/ensure-js-deps.mjs
 bun run build:guest-archive
+bun run build:guest-git
 bun run build:guest-terminal
 
 dx build \

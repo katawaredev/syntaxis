@@ -10,15 +10,17 @@ use dioxus_code_editor::{
 use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
 use syntaxis_editor::{
     BufferStatus, EditorBuffer, EditorConfigSource, ExplorerTree, ExternalChange, IndentStyle,
-    apply_editor_config, language_label_for_path, language_servers_for_language,
-    language_slug_for_path, lsp_language_id_for_path, resolve_editor_config,
+    apply_editor_config, find_matches, language_label_for_path, language_servers_for_language,
+    language_slug_for_path, lsp_language_id_for_path, replace_all_search_matches,
+    replace_search_match, resolve_editor_config,
 };
 use syntaxis_git::{ChangeKind as GitChangeKind, DiffKind, RepositoryStatus, UnifiedDiff};
 use syntaxis_ui::prelude::{
     AppIcon, Button, ButtonKind, ControlSize, DangerNote, DialogActions, DialogForm, Drawer,
     EditorMenuItem, ExplorerAction, ExplorerToolbar, Field, FileIcon, GitChangeBadge, Icon,
     IconButton, MenuButtonTrigger, MenuContent, MenuTrigger, Modal, PanelHeader, PanelTab,
-    PanelTabIndicator, PanelTabList, PanelTabWidth, TextInput, TextInputType, Toast, Tone,
+    PanelTabIndicator, PanelTabList, PanelTabWidth, SearchOptions, SearchPanel, TextInput,
+    TextInputType, Toast, Tone,
 };
 use syntaxis_workspace::{
     ChangeKind, EntryKind, FileEntry, FileSession, RelativePath, WorkspaceRecord, WorkspaceSession,
@@ -70,9 +72,8 @@ use documents::{
 };
 use editor_pane::{EditorPane, EditorPaneState};
 use editor_ui::{
-    EditorShortcutState, MobileTabs, SearchOptions, SearchPanel, copy_editor_reference,
-    find_matches, format_editor_reference, handle_editor_shortcut, issue_command, render_tab,
-    replace_all_search_matches, replace_search_match, text_document_contents,
+    EditorShortcutState, MobileTabs, copy_editor_reference, format_editor_reference,
+    handle_editor_shortcut, issue_command, render_tab, text_document_contents,
 };
 use explorer::{Explorer, ExplorerView, expand_directory};
 use git_actions::{

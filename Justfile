@@ -121,6 +121,10 @@ build-guest-terminal: install-js
 build-guest-archive: install-js
     bun run build:guest-archive
 
+# Build the guest-only browser Git bundle.
+build-guest-git: install-js
+    bun run build:guest-git
+
 # Build the CodeMirror editor bundle when its sources or pinned packages changed.
 build-editor: install-js
     bun run build:editor
@@ -130,7 +134,7 @@ build-pi-settings: install-js
     bun run generate:pi-settings
 
 # Build all npm-backed application assets. Each generator has its own cache key.
-build-assets: build-editor build-terminal build-guest-terminal build-guest-archive build-pi-settings
+build-assets: build-editor build-terminal build-guest-terminal build-guest-archive build-guest-git build-pi-settings
 
 # -----------------------------------------------------------------------------
 # Environment inspection

@@ -32,6 +32,10 @@
 /apps/guest/assets/guest-archive.bundle.js
 /apps/guest/assets/guest-archive.bundle.stamp
 
+# Generated guest browser Git bundle (build with: bun run build:guest-git)
+/apps/guest/assets/guest-git.bundle.js
+/apps/guest/assets/guest-git.bundle.stamp
+
 # Generated CodeMirror bundle (build with: bun run build:editor)
 /crates/code-editor/assets/editor.bundle.js
 /crates/code-editor/assets/lsp.bundle.js

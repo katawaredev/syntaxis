@@ -5978,6 +5978,7 @@ dependencies = [
 name = "syntaxis-editor"
 version = "0.1.0"
 dependencies = [
+ "regex",
  "syntaxis-workspace",
 ]
 
@@ -6016,6 +6017,7 @@ dependencies = [
  "serde",
  "serde_json",
  "syntaxis-editor",
+ "syntaxis-git",
  "syntaxis-terminal",
  "syntaxis-terminal-browser",
  "syntaxis-ui",

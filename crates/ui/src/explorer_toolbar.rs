@@ -27,6 +27,7 @@ pub fn ExplorerToolbar(
     on_upload: EventHandler<Vec<dioxus::html::FileData>>,
     on_refresh: EventHandler<()>,
     #[props(default)] extra: Option<Element>,
+    #[props(default)] menu_extra: Option<Element>,
 ) -> Element {
     rsx! {
         div { class: "explorer-toolbar flex h-10.5 min-h-10.5 items-center gap-1 border-b border-border px-1.25",
@@ -126,6 +127,10 @@ pub fn ExplorerToolbar(
                                 "{label}"
                             }
                         }
+                    }
+                    if let Some(menu_extra) = menu_extra {
+                        hr {}
+                        {menu_extra}
                     }
                 }
             }

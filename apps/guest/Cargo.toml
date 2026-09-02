@@ -12,6 +12,7 @@ dioxus-code-editor = { path = "../../crates/code-editor" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 syntaxis-editor = { path = "../../crates/editor" }
+syntaxis-git = { path = "../../crates/git" }
 syntaxis-terminal = { path = "../../crates/terminal" }
 syntaxis-terminal-browser = { path = "../../crates/terminal-browser" }
 syntaxis-ui = { path = "../../crates/ui" }

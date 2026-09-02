@@ -54,7 +54,7 @@ pub(super) fn Explorer(
 ) -> Element {
     let mut search_options = use_signal(WorkspaceSearchOptions::default);
     let mut search_menu = use_signal(|| false);
-    let mut file_menu = use_signal(|| false);
+    let file_menu = use_signal(|| false);
     let mut search_request = use_signal(|| None::<(u64, String)>);
     let mut search_revision = use_signal(|| 0_u64);
     let mut visible_search_files = use_signal(|| 100_usize);
@@ -139,127 +139,6 @@ pub(super) fn Explorer(
                     },
                     on_upload,
                     on_refresh,
-                }
-                div { class: "hidden explorer-toolbar flex h-10.5 min-h-10.5 items-center gap-1 border-b border-border px-1.25",
-                    IconButton {
-                        label: "New file",
-                        icon: AppIcon::FilePlus,
-                        size: ControlSize::Small,
-                        disabled: pending,
-                        onclick: move | _ | on_action
-                                                                                                                                                                                                                                                                                                        .call(FileAction::CreateFile),
-                    }
-                    IconButton {
-                        label: "New folder",
-                        icon: AppIcon::FolderPlus,
-                        size: ControlSize::Small,
-                        disabled: pending,
-                        onclick: move |_| on_action.call(FileAction::CreateFolder),
-                    }
-                    label {
-                        class: if pending { "touch-target inline-flex size-7.25 min-w-7.25 cursor-not-allowed items-center justify-center rounded-md bg-transparent text-muted-foreground opacity-50" } else { "touch-target inline-flex size-7.25 min-w-7.25 cursor-pointer items-center justify-center rounded-md bg-transparent text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" },
-                        aria_label: "Upload files",
-                        title: "Upload files",
-                        input {
-                            class: "hidden",
-                            r#type: "file",
-                            multiple: true,
-                            disabled: pending,
-                            onchange: move | event :
-                                                                                                                                                                                                                                                                                                                                                        FormEvent | on_upload.call(event.files()),
-                        }
-                        Icon { icon: AppIcon::Upload, size: 14 }
-                    }
-                    span { class: "flex-1" }
-                    IconButton {
-                        label: "Refresh files",
-                        icon: AppIcon::Refresh,
-                        size: ControlSize::Small,
-                        disabled: pending,
-                        onclick: move |
-                                                                                                                                                                                                                                                                                                        _ | on_refresh.call(()),
-                    }
-                    DropdownMenu {
-                        class: "relative shrink-0",
-                        open: file_menu(),
-                        on_open_change: move |open: bool| file_menu.set(open),
-                        MenuTrigger {
-                            label: "Explorer actions",
-                            icon: AppIcon::Menu,
-                            size: ControlSize::Small,
-                            open: file_menu(),
-                            on_toggle: move | () | file_menu
-                                                                                                                                                                                                                                                                                                                                                        .toggle(),
-                        }
-                        MenuContent { class: "right-0 w-56",
-                            div { class: "px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground",
-                                "View"
-                            }
-                            DropdownMenuItem::<usize> {
-                                value: 0_usize,
-                                index: 0_usize,
-                                disabled: changes_by_path.is_empty() && !changed_only(),
-                                on_select: move | _ |
-                                                                                                                                                                                                                                                                                                                                                                                                        changed_only.toggle(),
-                                span { class: "flex items-center gap-2",
-                                    Icon { icon: AppIcon::FileDiff, size: 14 }
-                                    "Changed files only"
-                                }
-                                if changed_only() {
-                                    Icon { icon: AppIcon::Check, size: 12 }
-                                }
-                            }
-                            DropdownMenuItem::<usize> {
-                                value: 1_usize,
-                                index: 1_usize,
-                                on_select: move |_| show_ignored.toggle(),
-                                span { class: "flex items-center gap-2",
-                                    Icon { icon: AppIcon::Eye, size: 14 }
-                                    "Show Git ignored files"
-                                }
-                                if show_ignored() {
-                                    Icon { icon: AppIcon::Check, size: 12 }
-                                }
-                            }
-                            hr {}
-                            div { class: "px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground",
-                                "Selected item"
-                            }
-                            DropdownMenuItem::<usize> {
-                                value: 2_usize,
-                                index: 2_usize,
-                                disabled: pending || selected_entry().is_none(),
-                                on_select: move | _ |
-                                                                                                                                                                                                                                                                                                                                                                                                        on_action.call(FileAction::Move),
-                                span { class: "flex items-center gap-2",
-                                    Icon { icon: AppIcon::FileMove, size: 14 }
-                                    "Move"
-                                }
-                            }
-                            DropdownMenuItem::<usize> {
-                                value: 3_usize,
-                                index: 3_usize,
-                                disabled: pending || selected_entry()
-                                                                                                                                                                                                                                                                                                                                                                                                        .is_none(),
-                                on_select: move |_| on_action.call(FileAction::Duplicate),
-                                span { class: "flex items-center gap-2",
-                                    Icon { icon: AppIcon::Copy, size: 14 }
-                                    "Duplicate"
-                                }
-                            }
-                            DropdownMenuItem::<usize> {
-                                value: 4_usize,
-                                index: 4_usize,
-                                disabled: pending || selected_entry().is_none(),
-                                class: "!text-destructive",
-                                on_select: move |_| on_action.call(FileAction::Delete),
-                                span { class: "flex items-center gap-2",
-                                    Icon { icon: AppIcon::Delete, size: 14 }
-                                    "Delete"
-                                }
-                            }
-                        }
-                    }
                 }
             }
             if active_view == ExplorerView::Search {

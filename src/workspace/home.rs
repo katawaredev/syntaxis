@@ -3,7 +3,7 @@ mod recent;
 
 use dioxus::prelude::*;
 
-use syntaxis_ui::prelude::{AppIcon, Icon, Toast};
+use syntaxis_ui::prelude::{AppIcon, SkipLink, Toast, WorkspaceSourceAction};
 use syntaxis_workspace::{ExecutionLocation, RuntimeCapability, RuntimeState};
 
 use self::{dialogs::HomeDialogs, recent::RecentProjects};
@@ -108,7 +108,8 @@ pub fn Home() -> Element {
     rsx! {
         document::Title { "Home" }
         main { class: "app-viewport relative w-full overflow-x-hidden overflow-y-auto overscroll-contain bg-background",
-            section { class: "mx-auto flex min-h-full w-[calc(100%-2.5rem)] max-w-205 flex-col pt-[max(9vh,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] max-md:w-[calc(100%-1.5rem)] max-md:max-w-155 max-md:pt-[max(2.125rem,env(safe-area-inset-top))]",
+            SkipLink { target_id: "home-main-content" }
+            section { id: "home-main-content", tabindex: "-1", class: "mx-auto flex min-h-full w-[calc(100%-2.5rem)] max-w-205 flex-col pt-[max(9vh,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] max-md:w-[calc(100%-1.5rem)] max-md:max-w-155 max-md:pt-[max(2.125rem,env(safe-area-inset-top))]",
                 header { class: "mb-9.5 flex items-start justify-between gap-4 max-md:mb-6.5",
                     div { class: "min-w-0",
                         p { class: "text-[10px] font-bold tracking-[0.14em] text-primary max-[420px]:hidden",
@@ -128,19 +129,19 @@ pub fn Home() -> Element {
                 }
 
                 div { class: "mb-10.5 grid grid-cols-3 gap-3 max-md:mb-8 max-md:grid-cols-1",
-                    SourceAction {
+                    WorkspaceSourceAction {
                         icon: AppIcon::Folder,
                         title: runtime_presentation.folder_action_title.clone(),
                         description: runtime_presentation.folder_action_description.clone(),
                         onclick: move |_| dialog.set(HomeDialog::WorkspaceFolder),
                     }
-                    SourceAction {
+                    WorkspaceSourceAction {
                         icon: AppIcon::FolderGit2,
                         title: "Open Git URL".to_owned(),
                         description: "Clone a Git repository".to_owned(),
                         onclick: move |_| dialog.set(HomeDialog::Git),
                     }
-                    SourceAction {
+                    WorkspaceSourceAction {
                         icon: AppIcon::FolderPlus,
                         title: "New project".to_owned(),
                         description: "Scaffold in a live terminal".to_owned(),
@@ -176,30 +177,6 @@ pub fn Home() -> Element {
         }
         if let Some(message) = toast() {
             Toast { message, on_close: move |()| toast.set(None) }
-        }
-    }
-}
-
-#[component]
-fn SourceAction(
-    icon: AppIcon,
-    title: String,
-    description: String,
-    onclick: EventHandler<MouseEvent>,
-) -> Element {
-    let accessible_title = title.clone();
-    rsx! {
-        button {
-            class: "grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-3 overflow-hidden rounded-xl border border-border bg-card p-4 text-left shadow-sm transition-colors hover:border-primary/60 hover:bg-accent/80 max-[420px]:p-3.5",
-            "aria-label": accessible_title,
-            onclick: move |event| onclick.call(event),
-            span { class: "grid size-9 place-items-center rounded-lg bg-primary/10 text-primary",
-                Icon { icon, size: 22 }
-            }
-            span { class: "min-w-0",
-                strong { class: "mb-1 block text-foreground", {title} }
-                small { class: "block leading-snug text-muted-foreground", {description} }
-            }
         }
     }
 }

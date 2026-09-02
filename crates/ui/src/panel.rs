@@ -83,7 +83,7 @@ pub fn PanelTab(
     rsx! {
         div { class: "flex h-8.5 items-center gap-0.5 rounded-md border pr-0.75 text-[11px] {width.class()} {active_class}",
             button {
-                class: "flex h-full min-w-0 flex-1 items-center gap-1.75 bg-transparent pr-1.25 pl-2.5 text-inherit",
+                class: "flex h-full min-w-0 flex-1 items-center gap-1.75 rounded-sm bg-transparent pr-1.25 pl-2.5 text-inherit outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 role: "tab",
                 "aria-selected": active,
                 onclick: move |event| on_select.call(event),
@@ -107,7 +107,7 @@ pub fn PanelTab(
                 }
             }
             button {
-                class: "grid size-5.75 shrink-0 place-items-center rounded-sm bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground",
+                class: "grid size-5.75 shrink-0 place-items-center rounded-sm bg-transparent text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
                 "aria-label": "Close {label_for_close}",
                 title: "Close {label_for_close}",
                 onclick: move |_| on_close.call(()),

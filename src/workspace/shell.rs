@@ -1,7 +1,10 @@
 use std::collections::BTreeMap;
 
 use dioxus::prelude::*;
-use syntaxis_ui::prelude::{AppIcon, Icon, InteractivePopover, StatusBadge, Tone};
+use syntaxis_ui::prelude::{
+    AppIcon, Icon, RuntimeStatusPopover, SkipLink, StatusBadge, Tone, WorkspaceHeader,
+    WorkspaceModuleNav,
+};
 
 use crate::{
     app::{LogoutButton, Route},
@@ -160,6 +163,7 @@ pub fn WorkspaceShell() -> Element {
             document::Title { "{page_title}" }
         }
         main { class: "app-viewport flex w-full flex-col overflow-hidden",
+            SkipLink { target_id: "workspace-main-content" }
             if let (Some(workspace), Some(location)) = (
                 active_workspace.current(),
                 runtime_location,
@@ -172,9 +176,9 @@ pub fn WorkspaceShell() -> Element {
                     state: event_state,
                 }
             }
-            header { class: "flex h-[calc(2.875rem+env(safe-area-inset-top))] min-h-[calc(2.875rem+env(safe-area-inset-top))] items-center gap-2 border-b border-border bg-background px-[max(0.625rem,env(safe-area-inset-left))] pt-[env(safe-area-inset-top)] max-md:h-[calc(3rem+env(safe-area-inset-top))] max-md:min-h-[calc(3rem+env(safe-area-inset-top))]",
+            WorkspaceHeader {
                 Link {
-                    class: "inline-flex size-8.5 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground",
+                    class: "inline-flex size-8.5 items-center justify-center rounded-lg text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
                     to: Route::Home {},
                     title: "Back to projects",
                     "aria-label": "Back to projects",
@@ -196,15 +200,13 @@ pub fn WorkspaceShell() -> Element {
                     StatusBadge { label: runtime_label, tone: Tone::Neutral }
                 }
                 div { class: "ml-auto flex items-center gap-1 pr-2 text-[11px] text-muted-foreground",
-                    RuntimeStatusIndicator { message: runtime_message, tone: runtime_tone }
+                    RuntimeStatusPopover { message: runtime_message, tone: runtime_tone }
                     NotificationMenu {}
                     LogoutButton {}
                 }
             }
-            div { class: "min-h-0 flex-1 overflow-hidden", Outlet::<Route> {} }
-            nav {
-                class: "flex h-[calc(3.625rem+env(safe-area-inset-bottom))] min-h-[calc(3.625rem+env(safe-area-inset-bottom))] items-stretch justify-center border-t border-border bg-background pb-[env(safe-area-inset-bottom)] max-md:h-[calc(3.875rem+env(safe-area-inset-bottom))] max-md:min-h-[calc(3.875rem+env(safe-area-inset-bottom))]",
-                "aria-label": "Workspace modules",
+            div { id: "workspace-main-content", tabindex: "-1", class: "min-h-0 flex-1 overflow-hidden", Outlet::<Route> {} }
+            WorkspaceModuleNav {
                 NavItem {
                     label: "Files",
                     icon: AppIcon::Folder,
@@ -246,37 +248,6 @@ pub fn WorkspaceShell() -> Element {
                         query: crate::ai::AiQuery::default(),
                     },
                 }
-            }
-        }
-    }
-}
-
-#[component]
-fn RuntimeStatusIndicator(message: String, tone: Tone) -> Element {
-    let mut open = use_signal(|| false);
-    let dot_class = match tone {
-        Tone::Success => {
-            "bg-success shadow-[0_0_0.5rem_color-mix(in_oklch,var(--success),transparent_20%)]"
-        }
-        Tone::Warning => "bg-warning",
-        Tone::Destructive => "bg-destructive",
-        Tone::Neutral => "bg-muted-foreground",
-    };
-    rsx! {
-        InteractivePopover {
-            id: "runtime-status",
-            label: message.clone(),
-            title: message.clone(),
-            open: open(),
-            on_open_change: move |next| open.set(next),
-            trigger_class: if open() { "grid size-8 place-items-center rounded-lg bg-accent" } else { "grid size-8 place-items-center rounded-lg hover:bg-accent" },
-            content_class: "absolute top-[calc(100%+6px)] right-0 z-90 w-[min(280px,calc(100vw-1rem))] rounded-xl border border-border bg-popover p-3 shadow-2xl",
-            trigger: rsx! {
-                span { class: "size-2 rounded-full {dot_class}", "aria-hidden": "true" }
-            },
-            strong { class: "block text-xs text-foreground", "Runtime status" }
-            p { class: "mt-1 break-words text-[10px] leading-relaxed text-muted-foreground",
-                "{message}"
             }
         }
     }

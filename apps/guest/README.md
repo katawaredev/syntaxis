@@ -7,14 +7,15 @@ dependencies do not increase the main Syntaxis bundle.
 It provides the browser-compatible Syntaxis workspace experience over the
 Origin Private File System (OPFS), with optional direct access to a
 user-selected local folder in browsers that support the File System Access API.
-No server functions or handwritten JavaScript filesystem bridge are used.
+It uses no server functions; small generated JavaScript bridges provide the
+browser-only ZIP, Git, and command runtimes.
 
 ## Run locally
 
 From the repository root:
 
 ```sh
-just build-guest-archive build-guest-terminal
+just build-guest-archive build-guest-git build-guest-terminal
 dx serve --package syntaxis-guest --platform web
 ```
 
@@ -53,7 +54,8 @@ the same script in CI and deploy the resulting static directory.
   back to the active browser workspace.
 - Detect conflicting writes using the shared Syntaxis file-version model.
 - Reuse the shared CodeMirror editor, file-tree viewport, AI chrome, and terminal run menu.
-- Detect Git metadata while providing bounded offline snapshots for browser-safe history.
+- Use a real local Git repository for status, staging, commits, history, branches,
+  diffs, and HTTPS remote synchronization.
 - Detect package.json, Justfile, and Makefile commands; native-runtime commands remain visibly disabled.
 - Use optional BYOK AI chat with provider credentials configured under AI Settings.
 - Access the shared, scrollable file explorer on desktop and mobile layouts.
@@ -65,8 +67,11 @@ snapshot. It is a command console rather than a PTY: shell variables and
 working-directory state reset between commands, interactive processes are
 unavailable, and network access is disabled.
 
-The guest detects `.git` metadata but does not mutate it: branches, remotes,
-signing, rebase, and worktrees require the native/server Git runtime. AI keys
+The guest stores and mutates ordinary `.git` metadata through isomorphic-git.
+Remote operations use Git Smart HTTP and normally require a trusted CORS proxy;
+credentials are held only for the request. SSH, credential helpers, GPG
+signing, rebase, worktrees, hooks, and partial-hunk staging still require the
+native/server Git runtime. AI keys
 remain in memory, are configured at `/workspaces/<slug>/ai/settings/provider-accounts`, and go
 directly to the selected provider, so that provider must allow browser CORS. ZIP import/export is
 intentionally merge-only: existing workspace paths are never overwritten by an

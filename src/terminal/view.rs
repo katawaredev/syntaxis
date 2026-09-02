@@ -6,48 +6,31 @@ use super::renderer::{
 };
 use super::runtime::{ConnectionState, MAX_RECONNECT_ATTEMPTS, send_renderer_action};
 use super::session::{duplicate_session_name_error, update_session_size};
-mod components;
 mod connection;
 mod dialogs;
-mod menus;
 mod mobile;
 
 use crate::client_error::server_error_message;
 use connection::{TerminalConnectionOptions, TerminalConnectionState, use_terminal_connection};
 use dialogs::{AddCommandDialog, NewTerminalDialog};
 use dioxus::prelude::*;
-use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
 use futures_util::{
     FutureExt,
     future::{Either, select},
     pin_mut,
 };
-use menus::terminal_actions_menu;
 use mobile::{MobileTerminalKeys, ctrl_modified_byte};
 use syntaxis_notifications::NotificationTarget;
 use syntaxis_terminal::{
     ClientMessage, Lifecycle, RunCommand, SessionId, SessionSummary, TerminalSize,
 };
 use syntaxis_ui::prelude::{
-    AppIcon, Button, ButtonKind, ControlSize, Icon, IconButton, MenuButtonTrigger, MenuContent,
-    PanelHeader, PanelTab, PanelTabIndicator, PanelTabList, PanelTabWidth, RunCommandMenu, Toast,
-    Tone,
+    AppIcon, Button, ButtonKind, ControlSize, IconButton, PanelHeader, PanelTab, PanelTabIndicator,
+    PanelTabList, PanelTabWidth, RunCommandMenu, TerminalActionsMenu, TerminalEmptyState,
+    TerminalMenuAction, TerminalMobileTabs, TerminalStatusBar, TerminalTab, Toast, Tone,
 };
 const TERMINAL_SCRIPT: Asset = asset!("/assets/terminal/terminal.bundle.js");
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum TerminalAction {
-    Copy,
-    CopyAll,
-    Paste,
-    Clear,
-    Restart,
-    Detach,
-    Refresh,
-    Close,
-    CloseOthers,
-    CloseAll,
-}
 #[component]
 pub fn Terminal(slug: String, query: TerminalQuery) -> Element {
     let active = use_context::<crate::workspace::ActiveWorkspace>();
@@ -218,7 +201,7 @@ fn RemoteTerminal(
     );
     let menu = use_signal(|| false);
     let mut quick_menu = use_signal(|| false);
-    let mut mobile_tabs_open = use_signal(|| false);
+    let mobile_tabs_open = use_signal(|| false);
     let selected = active().and_then(|id| {
         sessions
             .read()
@@ -429,65 +412,28 @@ fn RemoteTerminal(
                             }
                         }
                     }
-                    DropdownMenu {
-                        class: "relative hidden min-w-0 flex-1 max-md:block",
-                        open: mobile_tabs_open(),
-                        on_open_change: move |open: bool| mobile_tabs_open.set(open),
-                        MenuButtonTrigger {
-                            class: "flex h-10 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-left text-xs text-foreground hover:bg-accent",
-                            label: "Open terminal tabs",
-                            on_toggle: move |()| mobile_tabs_open.toggle(),
-                            span { class: "flex min-w-0 items-center gap-2 overflow-hidden",
-                                if let Some(session) = selected.as_ref() {
-                                    span { class: lifecycle_dot_class(session.lifecycle) }
-                                    span { class: "truncate", "{session.name}" }
-                                } else {
-                                    "No terminal"
-                                }
-                            }
-                            span { class: "text-muted-foreground", "⌄" }
-                        }
-                        MenuContent { class: "!top-[calc(100%+4px)] right-2 left-2 w-auto",
-                            if sessions.read().is_empty() {
-                                div { class: "p-2.5 text-xs text-muted-foreground",
-                                    "No terminal sessions"
-                                }
-                            }
-                            for (index, session) in sessions().into_iter().enumerate() {
-                                DropdownMenuItem::<SessionId> {
-                                    value: session.id.clone(),
-                                    index,
-                                    on_select: move |session_id: SessionId| {
-                                        output.set(None);
-                                        active.set(Some(session_id.clone()));
-                                        client
-                                            .send(ClientMessage::Attach {
-                                                session_id,
-                                            });
-                                        mobile_tabs_open.set(false);
-                                    },
-                                    span { class: lifecycle_dot_class(session.lifecycle) }
-                                    span { class: "flex-1 truncate text-left", "{session.name}" }
-                                    button {
-                                        class: "ml-auto grid size-7 shrink-0 place-items-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground",
-                                        r#type: "button",
-                                        "aria-label": "Close {session.name}",
-                                        title: "Close {session.name}",
-                                        onclick: {
-                                            let session_id = session.id.clone();
-                                            move |event| {
-                                                event.stop_propagation();
-                                                client
-                                                    .send(ClientMessage::Close {
-                                                        session_id: session_id.clone(),
-                                                    });
-                                            }
-                                        },
-                                        Icon { icon: AppIcon::Close, size: 12 }
-                                    }
-                                }
-                            }
-                        }
+                    TerminalMobileTabs {
+                        tabs: sessions()
+                            .into_iter()
+                            .map(|session| TerminalTab {
+                                id: session.id.0,
+                                name: session.name,
+                                tone: lifecycle_tone(session.lifecycle),
+                            })
+                            .collect(),
+                        active_id: active().map(|id| id.0),
+                        open: mobile_tabs_open,
+                        on_select: move |id: String| {
+                            let session_id = SessionId::new(id);
+                            output.set(None);
+                            active.set(Some(session_id.clone()));
+                            client.send(ClientMessage::Attach { session_id });
+                        },
+                        on_close: move |id: String| {
+                            client.send(ClientMessage::Close {
+                                session_id: SessionId::new(id),
+                            });
+                        },
                     }
                     IconButton {
                         label: "New terminal",
@@ -519,16 +465,77 @@ fn RemoteTerminal(
                             }
                         },
                     }
-                    {
-                        terminal_actions_menu(
-                            menu,
-                            selected.as_ref(),
-                            sessions,
-                            connection_ready,
-                            renderer_command,
-                            renderer_command_sequence,
-                            client,
-                        )
+                    TerminalActionsMenu {
+                        open: menu,
+                        terminal_available: selected.is_some(),
+                        renderer_actions: selected.is_some(),
+                        restart_available: selected.is_some(),
+                        detach_available: selected.is_some(),
+                        refresh_available: connection_ready,
+                        terminal_count: sessions.read().len(),
+                        on_action: {
+                            let selected = selected.clone();
+                            move |action| match action {
+                                TerminalMenuAction::CopySelection => send_renderer_action(
+                                    &mut renderer_command,
+                                    &mut renderer_command_sequence,
+                                    RendererAction::Copy,
+                                ),
+                                TerminalMenuAction::CopyAll => send_renderer_action(
+                                    &mut renderer_command,
+                                    &mut renderer_command_sequence,
+                                    RendererAction::CopyAll,
+                                ),
+                                TerminalMenuAction::Paste => send_renderer_action(
+                                    &mut renderer_command,
+                                    &mut renderer_command_sequence,
+                                    RendererAction::Paste,
+                                ),
+                                TerminalMenuAction::Clear => send_renderer_action(
+                                    &mut renderer_command,
+                                    &mut renderer_command_sequence,
+                                    RendererAction::Clear,
+                                ),
+                                TerminalMenuAction::Restart => {
+                                    if let Some(session) = selected.as_ref() {
+                                        client.send(ClientMessage::Close {
+                                            session_id: session.id.clone(),
+                                        });
+                                        client.send(ClientMessage::Create {
+                                            name: Some(session.name.clone()),
+                                            size: session.size,
+                                        });
+                                    }
+                                }
+                                TerminalMenuAction::Detach => {
+                                    if let Some(session) = selected.as_ref() {
+                                        client.send(ClientMessage::Detach {
+                                            session_id: session.id.clone(),
+                                        });
+                                    }
+                                }
+                                TerminalMenuAction::Refresh => client.send(ClientMessage::List),
+                                TerminalMenuAction::Close => {
+                                    if let Some(session) = selected.as_ref() {
+                                        client.send(ClientMessage::Close {
+                                            session_id: session.id.clone(),
+                                        });
+                                    }
+                                }
+                                TerminalMenuAction::CloseOthers => {
+                                    if let Some(selected) = selected.as_ref() {
+                                        for session in sessions() {
+                                            if session.id != selected.id {
+                                                client.send(ClientMessage::Close {
+                                                    session_id: session.id,
+                                                });
+                                            }
+                                        }
+                                    }
+                                }
+                                TerminalMenuAction::CloseAll => client.send(ClientMessage::CloseAll),
+                            }
+                        },
                     }
                 }
             }
@@ -574,14 +581,8 @@ fn RemoteTerminal(
                         }
                     },
                     ConnectionState::Ready if selected.is_none() => rsx! {
-                        div { class: "absolute inset-0 flex flex-col items-center justify-center gap-2 bg-card text-muted-foreground",
-                            strong { class: "text-base text-foreground", "No terminal sessions" }
-                            p { class: "mb-2", "Create a server terminal in this workspace." }
-                            Button {
-                                label: "New terminal",
-                                kind: ButtonKind::Primary,
-                                onclick: move |_| open_new_terminal_dialog.call(()),
-                            }
+                        TerminalEmptyState {
+                            on_new: move |()| open_new_terminal_dialog.call(()),
                         }
                     },
                     ConnectionState::Ready => rsx! {
@@ -634,14 +635,12 @@ fn RemoteTerminal(
                 }
             }
             if !embedded {
-                footer { class: "flex h-6.25 min-h-6.25 items-center justify-between border-t border-border bg-background px-2.75 text-[9px] text-muted-foreground",
-                    span { "{connection_label}" }
-                    span { class: "text-primary md:hidden", "Tap file:line to open" }
-                    span { class: "max-md:hidden",
-                        if let Some(session) = selected.as_ref() {
-                            "{session.size.columns} × {session.size.rows}"
-                        }
-                    }
+                TerminalStatusBar {
+                    label: connection_label,
+                    mobile_hint: "Tap file:line to open",
+                    trailing: selected.as_ref().map(|session| {
+                        format!("{} × {}", session.size.columns, session.size.rows)
+                    }),
                 }
             }
         }
@@ -678,13 +677,5 @@ const fn lifecycle_tone(lifecycle: Lifecycle) -> Tone {
         Lifecycle::Running => Tone::Success,
         Lifecycle::Exited => Tone::Neutral,
         Lifecycle::Failed => Tone::Destructive,
-    }
-}
-const fn lifecycle_dot_class(lifecycle: Lifecycle) -> &'static str {
-    match lifecycle {
-        Lifecycle::Starting | Lifecycle::Closing => "size-1.75 shrink-0 rounded-full bg-warning",
-        Lifecycle::Running => "size-1.75 shrink-0 rounded-full bg-success",
-        Lifecycle::Exited => "size-1.75 shrink-0 rounded-full bg-muted-foreground",
-        Lifecycle::Failed => "size-1.75 shrink-0 rounded-full bg-destructive",
     }
 }

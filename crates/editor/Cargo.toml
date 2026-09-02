@@ -6,6 +6,7 @@ license = "MIT"
 publish = false
 
 [dependencies]
+regex = "1.13.1"
 syntaxis-workspace = { path = "../workspace" }
 
 [lints]

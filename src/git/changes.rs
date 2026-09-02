@@ -5,15 +5,15 @@
 use super::{
     ActionCallback, AnyStorage, AppIcon, ChangeKind, CommitInfo, ConflictChoice, ConflictFile,
     ControlSize, DiffHunk, DiffKind, DiffLayout, DropdownMenu, DropdownMenuItem, Element,
-    EventHandler, FileChange, FileIcon, GitChangeBadge, GlobalAttributesExtension, HasAttributes,
-    History, HistoryAction, HunkAction, Icon, InputExtension, LinkExtension, MenuContent,
-    MenuTrigger, Mutation, OptionExtension, Props, ReadableExt, ReadableHashMapExt,
-    ReadableHashSetExt, ReadableOptionExt, ReadableResultExt, ReadableStrExt, ReadableVecExt,
-    RebaseStatus, RepositorySidebarTabs, RepositorySidebarView, RepositoryStatus, Result,
-    SelectExtension, SelectedChange, ServerFnError, SidebarView, Signal, Storage, StyleExtension,
-    SvgAttributesExtension, TrackExtension, UnifiedDiff, UnifiedDiffView, WritableExt, component,
-    diff_line_class, dioxus_core, dioxus_elements, dioxus_signals, language_slug_for_path,
-    parse_diff_hunks, rsx, use_signal,
+    EventHandler, FileChange, FileIcon, GlobalAttributesExtension, HasAttributes, History,
+    HistoryAction, HunkAction, Icon, InputExtension, LinkExtension, MenuContent, MenuTrigger,
+    Mutation, OptionExtension, Props, ReadableExt, ReadableHashMapExt, ReadableHashSetExt,
+    ReadableOptionExt, ReadableResultExt, ReadableStrExt, ReadableVecExt, RebaseStatus,
+    RepositoryChangeRow, RepositoryChangeSection, RepositorySidebarTabs, RepositorySidebarView,
+    RepositoryStatus, Result, SelectExtension, SelectedChange, ServerFnError, SidebarView, Signal,
+    Storage, StyleExtension, SvgAttributesExtension, TrackExtension, UnifiedDiff, UnifiedDiffView,
+    WritableExt, component, diff_line_class, dioxus_core, dioxus_elements, dioxus_signals,
+    language_slug_for_path, parse_diff_hunks, rsx, use_signal,
 };
 
 const DIFF_TITLEBAR_CLASS: &str = "sticky top-0 z-10 flex min-h-14 min-w-165 items-center justify-between gap-3 border-b border-border bg-background/95 p-3 font-sans backdrop-blur-sm max-md:min-h-13 max-md:min-w-0 max-md:gap-1.5 max-md:px-2 max-md:py-2";
@@ -306,7 +306,6 @@ pub(super) fn ChangeSection(
     on_select: EventHandler<()>,
     on_mutation: EventHandler<Mutation>,
 ) -> Element {
-    let mut expanded = use_signal(|| true);
     if changes.is_empty() {
         return rsx! {};
     }
@@ -315,52 +314,25 @@ pub(super) fn ChangeSection(
         .map(|change| change.path.as_str().to_owned())
         .collect::<Vec<_>>();
     rsx! {
-        section {
-            header { class: "mb-1 flex min-h-7 items-center justify-between px-1 text-xs font-medium text-muted-foreground",
-                if collapsible {
-                    button {
-                        class: "flex min-w-0 flex-1 items-center gap-1.5 text-left hover:text-foreground",
-                        "aria-expanded": expanded(),
-                        onclick: move |_| expanded.toggle(),
-                        span {
-                            class: "w-2.5 shrink-0 text-[9px]",
-                            aria_hidden: "true",
-                            if expanded() {
-                                "▾"
-                            } else {
-                                "▸"
-                            }
-                        }
-                        span { class: "truncate", "{title} ({changes.len()})" }
-                    }
+        RepositoryChangeSection {
+            title,
+            count: changes.len(),
+            batch_label,
+            collapsible,
+            pending,
+            on_batch: move |()| {
+                if kind == DiffKind::Staged {
+                    on_mutation.call(Mutation::Unstage(batch_paths.clone()));
                 } else {
-                    span { "{title} ({changes.len()})" }
+                    on_mutation.call(Mutation::Stage(batch_paths.clone()));
                 }
-                if let Some(label) = batch_label {
-                    button {
-                        class: "h-6 rounded-md border border-border bg-background px-2 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50",
-                        disabled: pending,
-                        onclick: move |_| {
-                            if kind == DiffKind::Staged {
-                                on_mutation.call(Mutation::Unstage(batch_paths.clone()));
-                            } else {
-                                on_mutation.call(Mutation::Stage(batch_paths.clone()));
-                            }
-                        },
-                        "{label} ({changes.len()})"
-                    }
-                }
-            }
-            if !collapsible || expanded() {
-                div { class: "space-y-1",
-                    for change in changes {
-                        ChangeRow {
-                            change,
-                            kind,
-                            selected,
-                            on_select,
-                        }
-                    }
+            },
+            for change in changes {
+                ChangeRow {
+                    change,
+                    kind,
+                    selected,
+                    on_select,
                 }
             }
         }
@@ -394,17 +366,16 @@ pub(super) fn ChangeRow(
         (change.unstaged_additions, change.unstaged_deletions)
     };
     rsx! {
-        button {
-            class: if active { "flex min-h-9 w-full min-w-0 items-center gap-2 rounded-md bg-muted p-2 text-left text-xs text-foreground" } else { "flex min-h-9 w-full min-w-0 items-center gap-2 rounded-md p-2 text-left text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground" },
-            onclick: move |_| {
+        RepositoryChangeRow {
+            path,
+            kind: change_kind,
+            active,
+            additions: Some(additions),
+            deletions: Some(deletions),
+            onclick: move |()| {
                 selected.set(Some(selection.clone()));
                 on_select.call(());
             },
-            FileIcon { path: path.clone(), size: 15 }
-            span { class: "min-w-0 flex-1 truncate", "{path}" }
-            GitChangeBadge { kind: change_kind }
-            span { class: "shrink-0 text-[10px] text-emerald-400", "+{additions}" }
-            span { class: "shrink-0 text-[10px] text-red-400", "−{deletions}" }
         }
     }
 }

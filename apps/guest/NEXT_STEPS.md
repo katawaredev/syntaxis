@@ -17,8 +17,8 @@ The guest application now covers the browser-compatible product surface:
   workspace reconciliation, open-buffer conflict handling, and protected
   omission of generated dependency/build directory contents.
 - Sandboxed static HTML preview with bounded local asset inlining.
-- Offline source-history snapshots with change status, local commits, and
-  explicit two-step restore.
+- An interoperable local `.git` repository with status, staging, commits,
+  history, diffs, branch checkout, and Git Smart HTTP synchronization.
 - Optional provider-neutral BYOK AI chat through an OpenAI-compatible HTTPS
   endpoint, with an opt-in active-file attachment and an in-memory-only key.
 - Static deployment configuration for Vercel or any equivalent host.
@@ -31,9 +31,9 @@ These are platform boundaries rather than unfinished guest features:
   native executables, package installation, and network commands are absent.
   Generated directories remain visible as protected empty directories so large
   projects do not make ordinary browser-shell commands unusable.
-- Browser source history is not an interoperable `.git` repository. Branches,
-  remotes, signing, rebase, worktrees, and provider authentication require a
-  native/server Git runtime. The UI labels this distinction explicitly.
+- Browser Git uses ordinary `.git` metadata, but host CORS policy governs Smart
+  HTTP access. SSH, credential helpers, signing, rebase, hooks, partial-hunk
+  staging, and worktrees require the native/server Git runtime.
 - Static preview does not run framework development servers. It renders a saved
   HTML document in a restrictive sandbox; scripts and network access remain
   disabled.
@@ -81,8 +81,8 @@ possible, Firefox/Safari:
    and navigation protection.
 7. HTML preview reload, local assets, unsupported references, and sandbox
    isolation.
-8. Browser-history initialize/status/commit/restore, empty workspaces, and
-   history-size eviction.
+8. Browser Git initialize/status/stage/unstage/commit/diff/history, branch
+   switching, remote CORS failures, and credential handling.
 9. AI without a key, invalid endpoints, provider errors, CORS rejection,
    context opt-in, and context limits.
 10. Mobile explorer overlay, keyboard navigation, notices, and responsive
@@ -90,11 +90,11 @@ possible, Firefox/Safari:
 
 ## Generated assets and release workflow
 
-The ZIP and terminal bridges are generated and ignored by Git. From the
+The ZIP, Git, and terminal bridges are generated and ignored by Git. From the
 repository root:
 
 ```sh
-just build-guest-archive build-guest-terminal
+just build-guest-archive build-guest-git build-guest-terminal
 dx serve --package syntaxis-guest --platform web
 ```
 

@@ -1,8 +1,8 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 use syntaxis_ui::prelude::{
-    AiChatHeader, AiSendButton, AiSidebarTabs, AppIcon, Button, ButtonKind, ControlSize, Field,
-    Icon, IconButton, TextInput, TextInputType,
+    AiChatHeader, AiComposerFrame, AiComposerToolbar, AiSendButton, AiSidebarTabs, AppIcon, Button,
+    ButtonKind, Field, Icon, IconButton, TextInput, TextInputType,
 };
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
@@ -194,6 +194,7 @@ pub(super) fn GuestAi(
                     p { class: "guest-ai-error", role: "alert", "{message}" }
                 }
                 form {
+                    id: "guest-ai-composer",
                     class: "guest-ai-composer",
                     onsubmit: move |event| {
                         event.prevent_default();
@@ -274,47 +275,67 @@ pub(super) fn GuestAi(
                             pending.set(false);
                         });
                     },
+                    AiComposerFrame {
                     textarea {
+                        class: "ai-composer-input",
                         value: prompt,
-                        rows: 4,
+                        name: "ai-message",
+                        autocomplete: "off",
+                        rows: 3,
                         maxlength: MAX_PROMPT_BYTES,
-                        placeholder: "Ask Syntaxis…",
+                        placeholder: format!("Ask {} to change or inspect this browser project…", model()),
                         aria_label: "AI message",
                         oninput: move |
                                                                                                                                                                                                                                                                                                                                                                                                                                 event | prompt.set(event.value()),
+                        onkeydown: move |event: KeyboardEvent| {
+                            if event.key() == Key::Enter
+                                && !event.modifiers().contains(Modifiers::SHIFT)
+                            {
+                                event.prevent_default();
+                                let _ = document::eval(
+                                    "document.getElementById('guest-ai-composer')?.requestSubmit()",
+                                );
+                            }
+                        },
                     }
-                    div { class: "guest-ai-composer-toolbar",
+                    AiComposerToolbar {
                         IconButton {
                             label: "Attach files (unavailable in browser chat)",
                             icon: AppIcon::Attachment,
-                            size: ControlSize::Small,
                             disabled: true,
                             onclick: move | _ |
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     {},
                         }
                         IconButton {
                             label: if let Some(path) = active_path.as_deref() { format!("Reference {path}") } else { "Open a file to reference it".to_owned() },
-                            icon: AppIcon::LineNumbers,
-                            size: ControlSize::Small,
+                            icon: AppIcon::Code,
                             pressed: include_file(),
                             disabled: active_path.is_none(),
                             onclick: move |_| include_file.toggle(),
                         }
                         IconButton {
+                            label: "Editor selection references require the native editor",
+                            icon: AppIcon::LineNumbers,
+                            disabled: true,
+                            onclick: move |_| {},
+                        }
+                        IconButton {
                             label: "Dictation unavailable in browser chat",
                             icon: AppIcon::Microphone,
-                            size: ControlSize::Small,
                             disabled: true,
                             onclick: move |
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     _ | {},
                         }
-                        span { class: "guest-ai-composer-hint", "Markdown supported · Enter sends" }
+                        span { class: "min-w-0 flex-1 truncate px-1 text-[9px] text-muted-foreground",
+                            "Markdown supported · Enter sends · Shift+Enter adds a line"
+                        }
                         AiSendButton {
                             disabled: pending() ||
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     prompt().trim().is_empty(),
                             submit: true,
                             onclick: move |_| {},
                         }
+                    }
                     }
                 }
             }

@@ -1,7 +1,9 @@
 use crate::files::{SearchScope, WorkspaceSearchOptions, search_workspace_files};
 use dioxus::prelude::*;
 use syntaxis_agent::{ExtensionWidget, ImageAttachment, PiCommand, PromptDelivery};
-use syntaxis_ui::prelude::{AiSendButton, AppIcon, Icon, IconButton};
+use syntaxis_ui::prelude::{
+    AiComposerFrame, AiComposerToolbar, AiSendButton, AppIcon, Icon, IconButton,
+};
 use syntaxis_workspace::{EntryKind, WorkspaceRecord};
 mod attachments;
 mod bridges;
@@ -179,7 +181,7 @@ pub(crate) fn AgentComposer(
                     widgets: extension_widgets.clone(),
                     placement: "aboveEditor",
                 }
-                div { class: "overflow-hidden rounded-2xl border border-input bg-card shadow-[0_8px_30px_#0002] transition-[border,box-shadow] focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/20",
+                AiComposerFrame {
                     if editing_message {
                         div { class: "flex items-center justify-between gap-3 border-b border-border bg-secondary/45 px-3 py-2 text-[11px]",
                             span { class: "min-w-0 text-muted-foreground",
@@ -299,7 +301,7 @@ pub(crate) fn AgentComposer(
                             },
                         }
                     }
-                    div { class: "flex min-h-10 items-center gap-1 px-2 pb-2",
+                    AiComposerToolbar {
                         label {
                             class: if accepts_images && connected { "grid size-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" } else { "grid size-8 cursor-not-allowed place-items-center rounded-lg text-muted-foreground opacity-35" },
                             aria_label: if accepts_images { "Attach images" } else { "Selected model does not accept images" },

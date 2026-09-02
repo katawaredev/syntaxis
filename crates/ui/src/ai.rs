@@ -75,7 +75,7 @@ pub fn AiSendButton(
 ) -> Element {
     rsx! {
         button {
-            class: "grid size-8.5 shrink-0 place-items-center rounded-lg bg-primary p-0 text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-35",
+            class: "grid size-8.5 shrink-0 place-items-center rounded-lg bg-primary p-0 text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-35",
             r#type: if submit { "submit" } else { "button" },
             disabled,
             aria_label: label
@@ -84,5 +84,23 @@ pub fn AiSendButton(
             onclick: move |event| onclick.call(event),
             Icon { icon, size: 15 }
         }
+    }
+}
+
+/// Canonical bordered frame around the AI message editor.
+#[component]
+pub fn AiComposerFrame(children: Element) -> Element {
+    rsx! {
+        div { class: "overflow-hidden rounded-2xl border border-input bg-card shadow-[0_8px_30px_#0002] transition-[border,box-shadow] focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/20",
+            {children}
+        }
+    }
+}
+
+/// Canonical icon and submission row beneath the AI textarea.
+#[component]
+pub fn AiComposerToolbar(children: Element) -> Element {
+    rsx! {
+        div { class: "flex min-h-10 items-center gap-1 px-2 pb-2", {children} }
     }
 }

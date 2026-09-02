@@ -19,12 +19,9 @@ pub fn ProjectIcon(
                 WorkspaceIcon::Image { data_url: Some(source), .. } => rsx! {
                     img { class: "size-full object-contain", src: source, alt: "" }
                 },
-                WorkspaceIcon::Image { data_url: None, .. } => rsx! {
-                    {initial.clone()}
-                },
-                WorkspaceIcon::Symbol { .. } => rsx! {
-                    {initial}
-                },
+                WorkspaceIcon::Image { data_url: None, .. } | WorkspaceIcon::Symbol { .. } => {
+                    rsx! { {initial} }
+                }
             }
         }
     }
