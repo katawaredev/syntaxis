@@ -6,9 +6,10 @@ use serde_json::{Value, json};
 use syntaxis_editor::language_slug_for_path;
 use syntaxis_git::ChangeKind;
 use syntaxis_ui::prelude::{
-    AppIcon, Button, ButtonKind, DialogActions, DialogForm, Field, Icon, Modal,
-    RepositoryChangeRow, RepositoryChangeSection, RepositoryEmptyDetail, RepositoryPanelHeader,
-    RepositoryShell, RepositorySidebarTabs, RepositorySidebarView, TextArea, TextInput,
+    AppIcon, Button, ButtonKind, DialogActions, DialogForm, Field, Icon, Modal, RepositoryBranch,
+    RepositoryBranchAction, RepositoryBranchMenu, RepositoryChangeRow, RepositoryChangeSection,
+    RepositoryEmptyDetail, RepositoryPanelHeader, RepositoryShell, RepositorySidebarTabs,
+    RepositorySidebarView, RepositorySyncAction, RepositorySyncButton, TextArea, TextInput,
     TextInputType,
 };
 use syntaxis_workspace::WorkspaceRecord;
@@ -68,6 +69,9 @@ struct BrowserRepository {
     commits: Vec<BrowserCommit>,
     author_name: Option<String>,
     author_email: Option<String>,
+    upstream: Option<String>,
+    ahead: u32,
+    behind: u32,
 }
 
 impl BrowserRepository {
@@ -158,11 +162,21 @@ pub(super) fn GuestGit(
     let sync_open = use_signal(|| false);
     let branch_open = use_signal(|| false);
     let branch_name = use_signal(String::new);
+    let branch_start_point = use_signal(|| None::<String>);
+    let branch_rename_target = use_signal(|| None::<String>);
+    let branch_delete_target = use_signal(|| None::<String>);
+    let sync_action = use_signal(|| RepositorySyncAction::Fetch);
 
     let repository = use_resource(move || {
-        let _workspace_revision = revision();
+        let workspace_revision = revision();
         let _git_refresh = refresh();
-        async move { git_request::<BrowserRepository>("repository", Value::Null).await }
+        async move {
+            git_request::<BrowserRepository>(
+                "repository",
+                json!({ "revision": workspace_revision }),
+            )
+            .await
+        }
     });
     use_effect(move || {
         let Some(Ok(repository)) = repository() else {
@@ -231,6 +245,10 @@ pub(super) fn GuestGit(
                     sync_open,
                     branch_open,
                     branch_name,
+                    branch_start_point,
+                    branch_rename_target,
+                    branch_delete_target,
+                    sync_action,
                     on_workspace_changed,
                     }
                 }
@@ -309,6 +327,10 @@ fn GitRepositoryContent(
     mut sync_open: Signal<bool>,
     mut branch_open: Signal<bool>,
     mut branch_name: Signal<String>,
+    mut branch_start_point: Signal<Option<String>>,
+    mut branch_rename_target: Signal<Option<String>>,
+    mut branch_delete_target: Signal<Option<String>>,
+    mut sync_action: Signal<RepositorySyncAction>,
     on_workspace_changed: EventHandler<()>,
 ) -> Element {
     let staged = repository.staged();
@@ -374,7 +396,42 @@ fn GitRepositoryContent(
             },
             header: rsx! {
                 RepositoryPanelHeader {
-                    title: branch,
+                    title: branch.clone(),
+                    title_content: rsx! {
+                        RepositoryBranchMenu {
+                            branches: repository.branches.iter().map(|name| RepositoryBranch {
+                                name: name.clone(),
+                                current: repository.branch.as_deref() == Some(name.as_str()),
+                                remote: false,
+                            }).collect::<Vec<_>>(),
+                            current_branch: branch,
+                            pending: busy() || dirty,
+                            on_action: move |action| match action {
+                                RepositoryBranchAction::Switch(name) => {
+                                    run_workspace_git_action("checkout", json!(name), busy, refresh, notice, on_workspace_changed);
+                                }
+                                RepositoryBranchAction::New => {
+                                    branch_name.set(String::new());
+                                    branch_start_point.set(None);
+                                    branch_rename_target.set(None);
+                                    branch_open.set(true);
+                                }
+                                RepositoryBranchAction::NewFrom(name) => {
+                                    branch_name.set(String::new());
+                                    branch_start_point.set(Some(name));
+                                    branch_rename_target.set(None);
+                                    branch_open.set(true);
+                                }
+                                RepositoryBranchAction::Rename(name) => {
+                                    branch_name.set(name.clone());
+                                    branch_start_point.set(None);
+                                    branch_rename_target.set(Some(name));
+                                    branch_open.set(true);
+                                }
+                                RepositoryBranchAction::Delete(name) => branch_delete_target.set(Some(name)),
+                            },
+                        }
+                    },
                     subtitle: Some(if changed_count == 1 { "1 file changed".to_owned() } else { format!("{changed_count} files changed") }),
                     sidebar_open: sidebar_open(),
                     on_toggle_sidebar: move |()| sidebar_open.toggle(),
@@ -385,41 +442,16 @@ fn GitRepositoryContent(
                             disabled: busy() || dirty || staged.is_empty(),
                             onclick: move |_| commit_open.set(true),
                         }
-                        select {
-                            class: "touch-input max-w-32 rounded-md border border-border bg-background px-2 text-xs text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
-                            aria_label: "Current Git branch",
-                            disabled: busy() || dirty,
-                            value: repository.branch.clone().unwrap_or_default(),
-                            onchange: move |event| {
-                                let branch = event.value();
-                                busy.set(true);
-                                spawn(async move {
-                                    match git_request::<BrowserRepository>("checkout", json!(branch)).await {
-                                        Ok(_) => {
-                                            refresh += 1;
-                                            on_workspace_changed.call(());
-                                        }
-                                        Err(error) => notice.set(Some(Notice::error(error))),
-                                    }
-                                    busy.set(false);
-                                });
+                        RepositorySyncButton {
+                            has_remote: !repository.remotes.is_empty(),
+                            has_upstream: repository.upstream.is_some(),
+                            ahead: repository.ahead,
+                            behind: repository.behind,
+                            pending: busy(),
+                            on_action: move |action| {
+                                sync_action.set(action);
+                                sync_open.set(true);
                             },
-                            for branch_name in repository.branches.clone() {
-                                option { value: branch_name.clone(), "{branch_name}" }
-                            }
-                        }
-                        Button {
-                            label: "Branch",
-                            kind: ButtonKind::Ghost,
-                            disabled: busy() || dirty || repository.commits.is_empty(),
-                            onclick: move |_| branch_open.set(true),
-                        }
-                        button {
-                            class: "touch-target px-3 text-xs font-semibold text-muted-foreground hover:text-foreground disabled:opacity-50",
-                            disabled: busy(),
-                            title: "Configure HTTPS remote access",
-                            onclick: move |_| sync_open.set(true),
-                            "Fetch"
                         }
                     },
                 }
@@ -451,6 +483,7 @@ fn GitRepositoryContent(
         }
         if sync_open() {
             SyncDialog {
+                initial_action: sync_action(),
                 initial_url: repository.remotes.iter().find(|remote| remote.remote == "origin").map(|remote| remote.url.clone()).unwrap_or_default(),
                 busy,
                 refresh,
@@ -466,7 +499,18 @@ fn GitRepositoryContent(
                 notice,
                 branch_open,
                 branch_name,
+                start_point: branch_start_point(),
+                rename_target: branch_rename_target(),
                 on_workspace_changed,
+            }
+        }
+        if let Some(name) = branch_delete_target() {
+            DeleteBranchDialog {
+                name,
+                busy,
+                refresh,
+                notice,
+                branch_delete_target,
             }
         }
     }
@@ -708,6 +752,7 @@ fn CommitDialog(
 
 #[component]
 fn SyncDialog(
+    initial_action: RepositorySyncAction,
     initial_url: String,
     mut busy: Signal<bool>,
     mut refresh: Signal<u64>,
@@ -715,7 +760,12 @@ fn SyncDialog(
     mut sync_open: Signal<bool>,
     on_workspace_changed: EventHandler<()>,
 ) -> Element {
-    let mut action = use_signal(|| "fetch".to_owned());
+    let mut action = use_signal(|| match initial_action {
+        RepositorySyncAction::Configure | RepositorySyncAction::Fetch => "fetch".to_owned(),
+        RepositorySyncAction::Publish => "publish".to_owned(),
+        RepositorySyncAction::Pull => "pull".to_owned(),
+        RepositorySyncAction::Push => "push".to_owned(),
+    });
     let mut url = use_signal(|| initial_url);
     let mut cors_proxy = use_signal(String::new);
     let mut username = use_signal(String::new);
@@ -775,6 +825,7 @@ fn SyncDialog(
                                 value: action(),
                                 onchange: move |event| action.set(event.value()),
                                 option { value: "fetch", "Fetch" }
+                                option { value: "publish", "Publish current branch" }
                                 option { value: "pull", "Pull (fast-forward only)" }
                                 option { value: "push", "Push" }
                             }
@@ -839,12 +890,21 @@ fn BranchDialog(
     mut notice: Signal<Option<Notice>>,
     mut branch_open: Signal<bool>,
     mut branch_name: Signal<String>,
+    start_point: Option<String>,
+    rename_target: Option<String>,
     on_workspace_changed: EventHandler<()>,
 ) -> Element {
+    let renaming = rename_target.is_some();
     rsx! {
         Modal {
-            title: "Create branch",
-            description: "Create a local branch at HEAD and switch the workspace to it.",
+            title: if renaming { "Rename branch" } else { "Create branch" },
+            description: if let Some(target) = rename_target.as_deref() {
+                format!("Rename {target} and keep it checked out.")
+            } else if let Some(start) = start_point.as_deref() {
+                format!("Create a local branch from {start} and switch to it.")
+            } else {
+                "Create a local branch at HEAD and switch to it.".to_owned()
+            },
             on_close: move |()| branch_open.set(false),
             form {
                 onsubmit: move |event| {
@@ -852,14 +912,21 @@ fn BranchDialog(
                     let name = branch_name().trim().to_owned();
                     if busy() || name.is_empty() { return; }
                     busy.set(true);
+                    let rename_target = rename_target.clone();
+                    let start_point = start_point.clone();
                     spawn(async move {
-                        match git_request::<BrowserRepository>("createBranch", json!({ "ref": name, "checkout": true })).await {
+                        let request = if let Some(oldref) = rename_target {
+                            git_request::<BrowserRepository>("renameBranch", json!({ "oldref": oldref, "ref": name })).await
+                        } else {
+                            git_request::<BrowserRepository>("createBranch", json!({ "ref": name, "startPoint": start_point, "checkout": true })).await
+                        };
+                        match request {
                             Ok(_) => {
                                 branch_name.set(String::new());
                                 branch_open.set(false);
                                 refresh += 1;
                                 on_workspace_changed.call(());
-                                notice.set(Some(Notice::success("Created and checked out the branch.")));
+                                notice.set(Some(Notice::success(if renaming { "Renamed the branch." } else { "Created and checked out the branch." })));
                             }
                             Err(error) => notice.set(Some(Notice::error(error))),
                         }
@@ -869,7 +936,7 @@ fn BranchDialog(
                 DialogForm {
                     Field {
                         control_id: "guest-git-branch-name",
-                        label: "Branch name",
+                        label: if renaming { "New branch name" } else { "Branch name" },
                         description: "Use a Git ref name such as feature/browser-git.",
                         required: true,
                         TextInput {
@@ -888,7 +955,7 @@ fn BranchDialog(
                             onclick: move |event: MouseEvent| { event.prevent_default(); branch_open.set(false); },
                         }
                         Button {
-                            label: if busy() { "Creating…" } else { "Create branch" },
+                            label: if busy() { "Working…" } else if renaming { "Rename branch" } else { "Create branch" },
                             kind: ButtonKind::Primary,
                             disabled: busy() || branch_name().trim().is_empty(),
                             onclick: move |_| {},
@@ -898,6 +965,77 @@ fn BranchDialog(
             }
         }
     }
+}
+
+#[component]
+fn DeleteBranchDialog(
+    name: String,
+    mut busy: Signal<bool>,
+    mut refresh: Signal<u64>,
+    mut notice: Signal<Option<Notice>>,
+    mut branch_delete_target: Signal<Option<String>>,
+) -> Element {
+    rsx! {
+        Modal {
+            title: "Delete branch",
+            description: "Delete the local branch {name}. Commits not reachable from another ref may become unavailable.",
+            on_close: move |()| branch_delete_target.set(None),
+            DialogActions {
+                Button {
+                    label: "Cancel",
+                    kind: ButtonKind::Ghost,
+                    onclick: move |_| branch_delete_target.set(None),
+                }
+                Button {
+                    label: if busy() { "Deleting…" } else { "Delete branch" },
+                    kind: ButtonKind::Danger,
+                    disabled: busy(),
+                    onclick: {
+                        let name = name.clone();
+                        move |_| {
+                            busy.set(true);
+                            let name = name.clone();
+                            spawn(async move {
+                                match git_request::<BrowserRepository>("deleteBranch", json!(name)).await {
+                                    Ok(_) => {
+                                        branch_delete_target.set(None);
+                                        refresh += 1;
+                                        notice.set(Some(Notice::success("Deleted the branch.")));
+                                    }
+                                    Err(error) => notice.set(Some(Notice::error(error))),
+                                }
+                                busy.set(false);
+                            });
+                        }
+                    },
+                }
+            }
+        }
+    }
+}
+
+fn run_workspace_git_action(
+    method: &'static str,
+    payload: Value,
+    mut busy: Signal<bool>,
+    mut refresh: Signal<u64>,
+    mut notice: Signal<Option<Notice>>,
+    on_workspace_changed: EventHandler<()>,
+) {
+    if busy() {
+        return;
+    }
+    busy.set(true);
+    spawn(async move {
+        match git_request::<BrowserRepository>(method, payload).await {
+            Ok(_) => {
+                refresh += 1;
+                on_workspace_changed.call(());
+            }
+            Err(error) => notice.set(Some(Notice::error(error))),
+        }
+        busy.set(false);
+    });
 }
 
 fn run_change_action(

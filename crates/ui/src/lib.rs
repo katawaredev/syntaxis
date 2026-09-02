@@ -68,8 +68,9 @@ pub use project_badge::{ProjectLanguageBadge, ProjectTechnologyBadge};
 pub use project_icon::ProjectIcon;
 pub use provider_icon::ProviderIcon;
 pub use repository::{
-    RepositoryChangeRow, RepositoryChangeSection, RepositoryEmptyDetail, RepositoryPanelHeader,
-    RepositoryShell, RepositorySidebarTabs, RepositorySidebarView,
+    RepositoryBranch, RepositoryBranchAction, RepositoryBranchMenu, RepositoryChangeRow,
+    RepositoryChangeSection, RepositoryEmptyDetail, RepositoryPanelHeader, RepositoryShell,
+    RepositorySidebarTabs, RepositorySidebarView, RepositorySyncAction, RepositorySyncButton,
 };
 pub use run_command_menu::RunCommandMenu;
 pub use runtime_status::RuntimeStatusPopover;
@@ -95,13 +96,14 @@ pub mod prelude {
         Icon, IconButton, InteractivePopover, MenuButtonTrigger, MenuContent, MenuTrigger, Modal,
         NewTerminalDialog, NotificationPopover, PanelHeader, PanelHeaderKind, PanelTab,
         PanelTabIndicator, PanelTabList, PanelTabWidth, ProjectIcon, ProjectLanguageBadge,
-        ProjectTechnologyBadge, ProjectTemplateIcon, ProviderIcon, RepositoryChangeRow,
-        RepositoryChangeSection, RepositoryEmptyDetail, RepositoryPanelHeader, RepositoryShell,
-        RepositorySidebarTabs, RepositorySidebarView, RunCommandMenu, RuntimeStatusPopover,
-        SearchOptions, SearchPanel, Select, SkipLink, SlideToConfirm, StatusBadge, TemplateIcon,
-        TerminalActionsMenu, TerminalEmptyState, TerminalMenuAction, TerminalMobileTabs,
-        TerminalStatusBar, TerminalTab, TextArea, TextAreaResize, TextInput, TextInputType, Toast,
-        Tone, WorkspaceHeader, WorkspaceModuleNav, WorkspaceSourceAction,
+        ProjectTechnologyBadge, ProjectTemplateIcon, ProviderIcon, RepositoryBranch,
+        RepositoryBranchAction, RepositoryBranchMenu, RepositoryChangeRow, RepositoryChangeSection,
+        RepositoryEmptyDetail, RepositoryPanelHeader, RepositoryShell, RepositorySidebarTabs,
+        RepositorySidebarView, RepositorySyncAction, RepositorySyncButton, RunCommandMenu,
+        RuntimeStatusPopover, SearchOptions, SearchPanel, Select, SkipLink, SlideToConfirm,
+        StatusBadge, TemplateIcon, TerminalActionsMenu, TerminalEmptyState, TerminalMenuAction,
+        TerminalMobileTabs, TerminalStatusBar, TerminalTab, TextArea, TextAreaResize, TextInput,
+        TextInputType, Toast, Tone, WorkspaceHeader, WorkspaceModuleNav, WorkspaceSourceAction,
         WorkspaceSourceFileAction,
     };
 }

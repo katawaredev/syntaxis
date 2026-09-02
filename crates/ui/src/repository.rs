@@ -1,8 +1,272 @@
 use dioxus::prelude::*;
+use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
 
 use syntaxis_git::ChangeKind;
 
-use crate::{AppIcon, FileIcon, GitChangeBadge, Icon, IconButton, PanelHeader, PanelHeaderKind};
+use crate::{
+    AppIcon, ComboButton, FileIcon, GitChangeBadge, Icon, IconButton, MenuButtonTrigger,
+    MenuContent, PanelHeader, PanelHeaderKind,
+};
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RepositoryBranch {
+    pub name: String,
+    pub current: bool,
+    pub remote: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RepositoryBranchAction {
+    Switch(String),
+    New,
+    NewFrom(String),
+    Rename(String),
+    Delete(String),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RepositorySyncAction {
+    Configure,
+    Fetch,
+    Publish,
+    Pull,
+    Push,
+}
+
+/// Browser-compatible branch picker with the same interaction model as the
+/// native branch/worktree menu.
+#[component]
+pub fn RepositoryBranchMenu(
+    branches: Vec<RepositoryBranch>,
+    current_branch: String,
+    #[props(default = false)] pending: bool,
+    on_action: EventHandler<RepositoryBranchAction>,
+) -> Element {
+    let mut open = use_signal(|| false);
+    let mut expanded = use_signal(|| None::<String>);
+    rsx! {
+        DropdownMenu {
+            class: "min-w-0",
+            open: open(),
+            disabled: pending,
+            on_open_change: move |next: bool| {
+                open.set(next);
+                if !next { expanded.set(None); }
+            },
+            div { class: "relative min-w-0",
+                MenuButtonTrigger {
+                    class: "touch-target inline-flex h-7 min-w-0 max-w-52 items-center gap-1.5 overflow-hidden rounded-md bg-transparent px-1.5 text-xs text-foreground hover:bg-accent disabled:opacity-50",
+                    label: "Branches",
+                    title: current_branch.clone(),
+                    on_toggle: move |()| open.toggle(),
+                    Icon { icon: AppIcon::GitBranch, size: 13 }
+                    span { class: "min-w-0 flex-1 truncate text-left", translate: "no", "{current_branch}" }
+                }
+                MenuContent { class: "left-0 w-72",
+                    div { class: "px-2 pt-1 pb-1 text-[9px] font-medium uppercase tracking-wide text-muted-foreground", "Branches" }
+                    for branch in branches.clone() {
+                        {
+                            let options_open = expanded().as_deref() == Some(branch.name.as_str());
+                            rsx! {
+                                div { class: "rounded-md",
+                                    div { class: "flex min-w-0 items-center gap-1",
+                                        button {
+                                            class: if branch.current { "flex min-h-9 min-w-0 flex-1 items-center gap-2 rounded-sm px-2 text-left text-xs text-foreground" } else { "flex min-h-9 min-w-0 flex-1 items-center gap-2 rounded-sm px-2 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground" },
+                                            disabled: branch.current || pending,
+                                            onclick: {
+                                                let name = branch.name.clone();
+                                                move |_| {
+                                                    open.set(false);
+                                                    expanded.set(None);
+                                                    on_action.call(RepositoryBranchAction::Switch(name.clone()));
+                                                }
+                                            },
+                                            Icon { icon: AppIcon::GitBranch, size: 13 }
+                                            span { class: "min-w-0 flex-1",
+                                                span { class: "block truncate", "{branch.name}" }
+                                                if branch.current { span { class: "block text-[9px] text-muted-foreground", "Current checkout" } }
+                                            }
+                                            if branch.remote { span { class: "text-[9px] text-muted-foreground", "remote" } }
+                                        }
+                                        button {
+                                            class: "touch-target grid size-7 shrink-0 place-items-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground",
+                                            aria_label: if options_open { "Hide actions for branch {branch.name}" } else { "Show actions for branch {branch.name}" },
+                                            aria_expanded: options_open,
+                                            onclick: {
+                                                let name = branch.name.clone();
+                                                move |event: MouseEvent| {
+                                                    event.stop_propagation();
+                                                    expanded.set((!options_open).then(|| name.clone()));
+                                                }
+                                            },
+                                            span { class: if options_open { "transition-transform" } else { "-rotate-90 transition-transform" },
+                                                Icon { icon: AppIcon::ChevronDown, size: 14 }
+                                            }
+                                        }
+                                    }
+                                    if options_open {
+                                        div { class: "mx-1 mb-1 grid gap-0.5 border-l border-border pl-2",
+                                            button {
+                                                class: "min-h-7 rounded-sm px-2 text-left text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground",
+                                                disabled: pending,
+                                                onclick: {
+                                                    let name = branch.name.clone();
+                                                    move |_| {
+                                                        open.set(false);
+                                                        expanded.set(None);
+                                                        on_action.call(RepositoryBranchAction::NewFrom(name.clone()));
+                                                    }
+                                                },
+                                                "New branch from here"
+                                            }
+                                            if branch.current && !branch.remote {
+                                                button {
+                                                    class: "min-h-7 rounded-sm px-2 text-left text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground",
+                                                    disabled: pending,
+                                                    onclick: {
+                                                        let name = branch.name.clone();
+                                                        move |_| {
+                                                            open.set(false);
+                                                            expanded.set(None);
+                                                            on_action.call(RepositoryBranchAction::Rename(name.clone()));
+                                                        }
+                                                    },
+                                                    "Rename branch"
+                                                }
+                                            }
+                                            if !branch.current && !branch.remote {
+                                                button {
+                                                    class: "min-h-7 rounded-sm px-2 text-left text-[10px] text-destructive hover:bg-destructive/10",
+                                                    disabled: pending,
+                                                    onclick: {
+                                                        let name = branch.name.clone();
+                                                        move |_| {
+                                                            open.set(false);
+                                                            expanded.set(None);
+                                                            on_action.call(RepositoryBranchAction::Delete(name.clone()));
+                                                        }
+                                                    },
+                                                    "Delete branch"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    hr {}
+                    DropdownMenuItem::<RepositoryBranchAction> {
+                        value: RepositoryBranchAction::New,
+                        index: branches.len() + 1,
+                        disabled: pending,
+                        on_select: move |action| { open.set(false); on_action.call(action); },
+                        span { class: "flex items-center gap-2", Icon { icon: AppIcon::Plus, size: 14 } "New branch" }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Canonical compact sync control for adapters that support Git Smart HTTP.
+#[component]
+pub fn RepositorySyncButton(
+    has_remote: bool,
+    has_upstream: bool,
+    ahead: u32,
+    behind: u32,
+    #[props(default = false)] pending: bool,
+    on_action: EventHandler<RepositorySyncAction>,
+) -> Element {
+    let mut open = use_signal(|| false);
+    let primary = if !has_remote {
+        RepositorySyncAction::Configure
+    } else if !has_upstream {
+        RepositorySyncAction::Publish
+    } else if behind > 0 {
+        RepositorySyncAction::Pull
+    } else if ahead > 0 {
+        RepositorySyncAction::Push
+    } else {
+        RepositorySyncAction::Fetch
+    };
+    let (label, title, icon, count) = match primary {
+        RepositorySyncAction::Configure => ("Add remote", "Add a Git remote", AppIcon::Plus, None),
+        RepositorySyncAction::Publish => (
+            "Publish branch",
+            "Publish the current branch",
+            AppIcon::Push,
+            None,
+        ),
+        RepositorySyncAction::Pull => (
+            "Pull",
+            "Pull changes from the upstream branch",
+            AppIcon::Fetch,
+            Some(behind.to_string()),
+        ),
+        RepositorySyncAction::Push => (
+            "Push",
+            "Push commits to the upstream branch",
+            AppIcon::Push,
+            Some(ahead.to_string()),
+        ),
+        RepositorySyncAction::Fetch => {
+            ("Fetch", "Fetch changes from origin", AppIcon::Refresh, None)
+        }
+    };
+    rsx! {
+        ComboButton {
+            label,
+            title,
+            icon,
+            count,
+            open: open(),
+            disabled: pending,
+            menu_label: "Git actions",
+            on_click: move |()| on_action.call(primary),
+            on_open_change: move |next| open.set(next),
+            if !has_remote {
+                DropdownMenuItem::<RepositorySyncAction> {
+                    value: RepositorySyncAction::Configure,
+                    index: 0_usize,
+                    on_select: move |action| { open.set(false); on_action.call(action); },
+                    span { class: "flex items-center gap-2", Icon { icon: AppIcon::Plus, size: 14 } "Add remote" }
+                }
+            } else {
+                DropdownMenuItem::<RepositorySyncAction> {
+                    value: RepositorySyncAction::Pull,
+                    index: 0_usize,
+                    disabled: !has_upstream || behind == 0,
+                    on_select: move |action| { open.set(false); on_action.call(action); },
+                    span { class: "flex min-w-0 flex-1 items-center gap-2", Icon { icon: AppIcon::Fetch, size: 14 } "Pull" }
+                    span { class: "text-[10px] text-muted-foreground", "{behind}" }
+                }
+                DropdownMenuItem::<RepositorySyncAction> {
+                    value: if has_upstream { RepositorySyncAction::Push } else { RepositorySyncAction::Publish },
+                    index: 1_usize,
+                    disabled: has_upstream && ahead == 0,
+                    on_select: move |action| { open.set(false); on_action.call(action); },
+                    span { class: "flex min-w-0 flex-1 items-center gap-2", Icon { icon: AppIcon::Push, size: 14 } if has_upstream { "Push" } else { "Publish branch" } }
+                    if has_upstream { span { class: "text-[10px] text-muted-foreground", "{ahead}" } }
+                }
+                DropdownMenuItem::<RepositorySyncAction> {
+                    value: RepositorySyncAction::Fetch,
+                    index: 2_usize,
+                    on_select: move |action| { open.set(false); on_action.call(action); },
+                    span { class: "flex items-center gap-2", Icon { icon: AppIcon::Refresh, size: 14 } "Fetch" }
+                }
+                hr {}
+                DropdownMenuItem::<RepositorySyncAction> {
+                    value: RepositorySyncAction::Configure,
+                    index: 3_usize,
+                    on_select: move |action| { open.set(false); on_action.call(action); },
+                    "Remote settings"
+                }
+            }
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum RepositorySidebarView {
@@ -70,6 +334,7 @@ pub fn RepositorySidebarTabs(
 pub fn RepositoryPanelHeader(
     title: String,
     subtitle: Option<String>,
+    #[props(default)] title_content: Option<Element>,
     #[props(default = true)] sidebar_open: bool,
     #[props(default)] on_toggle_sidebar: Option<EventHandler<()>>,
     actions: Element,
@@ -88,8 +353,12 @@ pub fn RepositoryPanelHeader(
                         }
                     },
                 }
-                Icon { icon: AppIcon::GitBranch, size: 13 }
-                strong { class: "truncate text-xs font-medium", "{title}" }
+                if let Some(title_content) = title_content {
+                    {title_content}
+                } else {
+                    Icon { icon: AppIcon::GitBranch, size: 13 }
+                    strong { class: "truncate text-xs font-medium", "{title}" }
+                }
                 if let Some(subtitle) = subtitle {
                     span { class: "ml-auto truncate text-[10px] text-muted-foreground", "{subtitle}" }
                 }
