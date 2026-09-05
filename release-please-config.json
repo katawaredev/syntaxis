@@ -13,7 +13,7 @@
       "extra-files": [
         {
           "type": "toml",
-          "path": "Cargo.toml",
+          "path": "apps/main/Cargo.toml",
           "jsonpath": "$.package.version"
         }
       ]

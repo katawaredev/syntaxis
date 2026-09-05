@@ -1,5 +1,6 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
+use syntaxis_app_shell::{AiQuery, AiSettingsSection};
 use syntaxis_ui::prelude::{
     AiChatHeader, AiComposerFrame, AiComposerToolbar, AiSendButton, AiSidebarTabs, AppIcon, Button,
     ButtonKind, Field, Icon, IconButton, TextInput, TextInputType,
@@ -87,7 +88,7 @@ pub(super) fn GuestAi(
                             navigator
                                 .push(super::GuestRoute::AiSettingsSection {
                                     slug: slug.clone(),
-                                    section: "provider-accounts".to_owned(),
+                                    section: AiSettingsSection::ProviderAccounts,
                                 });
                         }
                     },
@@ -147,7 +148,7 @@ pub(super) fn GuestAi(
                                     navigator
                                         .push(super::GuestRoute::AiSettingsSection {
                                             slug: slug.clone(),
-                                            section: "provider-accounts".to_owned(),
+                                            section: AiSettingsSection::ProviderAccounts,
                                         });
                                 }
                             },
@@ -366,6 +367,7 @@ pub(super) fn GuestAiSettings(slug: String) -> Element {
                             navigator
                                 .push(super::GuestRoute::Ai {
                                     slug: slug.clone(),
+                                    query: AiQuery::default(),
                                 });
                         }
                     },

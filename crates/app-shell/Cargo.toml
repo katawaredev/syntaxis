@@ -1,0 +1,19 @@
+[package]
+name = "syntaxis-app-shell"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+dioxus = { version = "0.7.10" }
+syntaxis-app-contracts = { path = "../app-contracts" }
+syntaxis-git = { path = "../git" }
+syntaxis-module-files = { path = "../module-files" }
+syntaxis-module-git = { path = "../module-git" }
+syntaxis-module-terminal = { path = "../module-terminal" }
+syntaxis-workspace = { path = "../workspace" }
+url = "2.5.8"
+
+[lints]
+workspace = true

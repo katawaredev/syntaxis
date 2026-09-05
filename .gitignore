@@ -4,6 +4,7 @@
 /apps/guest/dist
 /apps/guest/assets/tailwind.css
 /apps/guest/assets/geist-latin-wght-normal.woff2
+/apps/main/assets
 /assets/tailwind.css
 /node_modules
 /.lighthouseci

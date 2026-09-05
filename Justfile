@@ -236,7 +236,7 @@ update mode="compatible":
 
 # Generate an Argon2id PHC hash for SYNTAXIS_PASSWORD_HASH.
 auth-password:
-    cargo run --quiet --no-default-features --features server -- hash-password
+    cargo run --quiet --package syntaxis --no-default-features --features server -- hash-password
 
 # Start the development server.
 serve platform=default_platform host=default_host port=default_port: build-assets
@@ -246,7 +246,7 @@ serve platform=default_platform host=default_host port=default_port: build-asset
     if [[ "$host" == "127.0.0.1" || "$host" == "localhost" || "$host" == "::1" ]]; then
         export SYNTAXIS_AUTH_DISABLED=true
     fi
-    dx serve \
+    dx serve --package syntaxis \
         --platform "{{ platform }}" \
         --addr "$host" \
         --port "{{ port }}" \
@@ -260,7 +260,7 @@ web host=default_host port=default_port: build-assets
     if [[ "$host" == "127.0.0.1" || "$host" == "localhost" || "$host" == "::1" ]]; then
         export SYNTAXIS_AUTH_DISABLED=true
     fi
-    dx serve \
+    dx serve --package syntaxis \
         --platform web \
         --addr "$host" \
         --port "{{ port }}" \
@@ -272,11 +272,11 @@ guest: build-assets
 
 # Start the desktop development server.
 desktop: build-assets
-    dx serve --platform desktop
+    dx serve --package syntaxis --platform desktop
 
 # Start the mobile development server.
 mobile: build-assets
-    dx serve --platform mobile
+    dx serve --package syntaxis --platform mobile
 
 serve-local port=default_port: build-assets
     #!/usr/bin/env bash
@@ -291,7 +291,7 @@ serve-local port=default_port: build-assets
         sudo ufw allow "{{ port }}/tcp"
     fi
 
-    dx serve \
+    dx serve --package syntaxis \
         --platform web \
         --addr 0.0.0.0 \
         --port "{{ port }}" \
@@ -307,7 +307,7 @@ build platform=default_platform profile="debug": build-assets
     #!/usr/bin/env bash
     set -euo pipefail
 
-    args=(build --platform "{{ platform }}")
+    args=(build --package syntaxis --platform "{{ platform }}")
 
     if [[ "{{ profile }}" == "release" ]]; then
         args+=(--release)
@@ -321,7 +321,7 @@ build platform=default_platform profile="debug": build-assets
 
 # Build an optimized release.
 release platform=default_platform: build-assets
-    dx build --platform "{{ platform }}" --release
+    dx build --package syntaxis --platform "{{ platform }}" --release
 
 # Build the production web app and run repeatable local Lighthouse audits.
 lighthouse:
@@ -346,7 +346,7 @@ lighthouse-open:
 [private]
 docker-version:
     @cargo metadata --no-deps --format-version 1 \
-        | bun -e 'const metadata = JSON.parse(await Bun.stdin.text()); const manifest = `${metadata.workspace_root}/Cargo.toml`; console.log(metadata.packages.find((pkg) => pkg.manifest_path === manifest).version);'
+        | bun -e 'const metadata = JSON.parse(await Bun.stdin.text()); console.log(metadata.packages.find((pkg) => pkg.name === "syntaxis").version);'
 
 # Build a Docker target and tag production with the Cargo package version.
 docker-build target="production":
@@ -483,11 +483,11 @@ dx-check platform=default_platform: build-assets
 
     case "{{ platform }}" in
         web)
-            dx check "--{{ platform }}"
+            dx check --package syntaxis "--{{ platform }}"
             dx build --package syntaxis-guest --platform "{{ platform }}"
             ;;
         server | desktop)
-            dx check "--{{ platform }}"
+            dx check --package syntaxis "--{{ platform }}"
             ;;
         *)
             echo "Dioxus check supports web, server, or desktop; got '{{ platform }}'." >&2

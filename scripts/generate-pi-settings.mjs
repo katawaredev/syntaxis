@@ -27,7 +27,7 @@ if (manifest.version !== VERSION) {
   throw new Error(`Pi reports ${VERSION}, but its package manifest reports ${manifest.version}`);
 }
 const documentation = readFileSync(resolve(getDocsPath(), "settings.md"), "utf8");
-const outputPath = resolve(root, "src/ai/generated_settings.rs");
+const outputPath = resolve(root, "apps/main/src/ai/generated_settings.rs");
 
 // This is a product policy, not duplicated setting metadata. Metadata below is
 // scraped from the pinned Pi docs. TUI-only controls (theme, editor/cursor

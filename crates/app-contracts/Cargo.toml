@@ -1,0 +1,18 @@
+[package]
+name = "syntaxis-app-contracts"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+futures-channel = "0.3.34"
+futures-core = "0.3.34"
+serde = { version = "1.0.229", features = ["derive"] }
+syntaxis-workspace = { path = "../workspace" }
+
+[dev-dependencies]
+futures-lite = "2.6.1"
+
+[lints]
+workspace = true

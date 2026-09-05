@@ -1,0 +1,25 @@
+[package]
+name = "syntaxis-runtime-main"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+async-trait = "0.1.92"
+syntaxis-app-contracts = { path = "../app-contracts" }
+syntaxis-app-shell = { path = "../app-shell" }
+syntaxis-module-files = { path = "../module-files" }
+syntaxis-workspace = { path = "../workspace" }
+syntaxis-workspace-host = { path = "../workspace-host", optional = true }
+
+[features]
+host = ["dep:syntaxis-workspace-host"]
+
+[dev-dependencies]
+futures-lite = "2.6.1"
+syntaxis-workspace-host = { path = "../workspace-host" }
+tempfile = "3.27.0"
+
+[lints]
+workspace = true

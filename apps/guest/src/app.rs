@@ -1,9 +1,5 @@
 mod ai;
-mod git;
-use self::{
-    ai::{GuestAi, GuestAiSettings, use_guest_ai_config},
-    git::{GuestGit, LEGACY_HISTORY_PATH as GUEST_HISTORY_PATH},
-};
+use self::ai::{GuestAi, GuestAiSettings, use_guest_ai_config};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use dioxus::html::{ScrollBehavior, geometry::PixelsVector2D};
 use dioxus::prelude::*;
@@ -14,13 +10,22 @@ use dioxus_code_editor::{
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeSet, HashSet},
-    fmt,
     rc::Rc,
 };
+use syntaxis_app_shell::{
+    AiQuery, AiSettingsSection as AiSettingsSectionValue, AppServices, FilesQuery,
+};
+use syntaxis_app_contracts::NavigationIntent;
 use syntaxis_editor::{
     EditorBuffer, EditorConfig, ExplorerTree, ExternalChange, find_matches, language_slug_for_path,
     replace_all_search_matches, replace_search_match,
 };
+use syntaxis_module_files::{
+    FileAction, FileActionDialog, FilesPorts, SearchOptions as WorkspaceSearchOptions,
+    SearchRequest, SearchResult, SearchResults, UploadPolicy, execute_file_action, execute_upload,
+    prepare_upload, suggested_destination,
+};
+use syntaxis_module_terminal::TerminalQuery;
 use syntaxis_terminal::{RunCommand, justfile_commands, makefile_commands, package_json_commands};
 use syntaxis_terminal_browser::{
     WorkspaceChange, WorkspaceChangeKind, cancel as cancel_browser_command,
@@ -43,9 +48,8 @@ use syntaxis_workspace::{
     is_bulky_generated_directory_name,
 };
 use syntaxis_workspace_browser::{
-    BrowserSearchHit, OpfsWorkspaceFiles, SavedDirectory, local_directory_picker_supported,
-    restore_local_directory, search as search_workspace, select_local_directory,
-    set_private_workspace,
+    OpfsWorkspaceFiles, SavedDirectory, local_directory_picker_supported, restore_local_directory,
+    select_local_directory, set_private_workspace,
 };
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
@@ -76,33 +80,10 @@ const UNSAVED_NAVIGATION_MESSAGE: &str =
 const MAX_ARCHIVE_FILES: usize = 10_000;
 const MAX_ARCHIVE_FILE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_ARCHIVE_WORKSPACE_BYTES: u64 = 32 * 1024 * 1024;
+const GUEST_HISTORY_PATH: &str = ".syntaxis-guest-history.json";
 
 fn is_guest_metadata_path(path: &str) -> bool {
     path == GUEST_HISTORY_PATH || path == ".git" || path.starts_with(".git/")
-}
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-struct GuestFilesQuery {
-    path: Option<String>,
-}
-impl From<&str> for GuestFilesQuery {
-    fn from(query: &str) -> Self {
-        Self {
-            path: url::form_urlencoded::parse(query.as_bytes()).find_map(|(key, value)| {
-                (key == "path")
-                    .then(|| value.into_owned())
-                    .filter(|value| !value.trim().is_empty())
-            }),
-        }
-    }
-}
-impl fmt::Display for GuestFilesQuery {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut serializer = url::form_urlencoded::Serializer::new(String::new());
-        if let Some(path) = self.path.as_deref() {
-            serializer.append_pair("path", path);
-        }
-        formatter.write_str(&serializer.finish())
-    }
 }
 #[derive(Clone, Debug, Routable, PartialEq)]
 #[rustfmt::skip]
@@ -110,22 +91,49 @@ enum GuestRoute {
     #[route("/")]
     Home {},
     #[route("/workspaces/:slug/files?:..query")]
-    Files { slug: String, query: GuestFilesQuery },
+    Files { slug: String, query: FilesQuery },
     #[route("/workspaces/:slug/terminal?:..query")]
-    Terminal { slug: String, query: GuestFilesQuery },
+    Terminal { slug: String, query: TerminalQuery },
     #[route("/workspaces/:slug/preview")]
     Preview { slug: String },
     #[route("/workspaces/:slug/git")]
     Git { slug: String },
-    #[route("/workspaces/:slug/ai")]
-    Ai { slug: String },
-    #[route("/workspaces/:slug/ai/settings")]
-    AiSettings { slug: String },
+    #[route("/workspaces/:slug/ai?:..query")]
+    Ai { slug: String, query: AiQuery },
+    #[redirect("/workspaces/:slug/ai/settings", |slug: String| GuestRoute::AiSettingsSection {
+        slug,
+        section: AiSettingsSectionValue::General,
+    })]
     #[route("/workspaces/:slug/ai/settings/:section")]
-    AiSettingsSection { slug: String, section: String },
+    AiSettingsSection { slug: String, section: AiSettingsSectionValue },
 }
 #[component]
 pub fn App() -> Element {
+    let services = use_hook(syntaxis_runtime_browser::services);
+    let files = services
+        .files()
+        .cloned()
+        .expect("The browser application requires the Files service bundle");
+    let workspace_events = services.workspace_events().clone();
+    let terminal = services
+        .terminal()
+        .cloned()
+        .expect("The browser application requires the Terminal service bundle");
+    let git = services
+        .git()
+        .cloned()
+        .expect("The browser application requires the Git service bundle");
+    use_context_provider(|| files.clone());
+    use_context_provider(|| workspace_events);
+    use_context_provider(|| terminal);
+    use_context_provider(|| git);
+    use_context_provider(|| services);
+    let files_controller = syntaxis_module_files::use_files_controller();
+    use_context_provider(|| files_controller);
+    let files_ui = syntaxis_module_files::use_files_ui_state();
+    use_context_provider(|| files_ui);
+    let files_session_writer = syntaxis_module_files::use_files_session_writer(files);
+    use_context_provider(|| files_session_writer);
     use_guest_ai_config();
     let geist_font_face = format!(
         "@font-face {{ font-family: 'Geist Variable'; src: url('{GEIST_FONT}') format('woff2'); font-style: normal; font-weight: 100 900; font-display: swap; }}",
@@ -174,7 +182,7 @@ fn Home() -> Element {
             set_private_workspace();
             navigator.push(GuestRoute::Files {
                 slug: "browser".to_owned(),
-                query: GuestFilesQuery::default(),
+                query: FilesQuery::default(),
             });
         })
     };
@@ -194,7 +202,7 @@ fn Home() -> Element {
                     }
                     navigator.push(GuestRoute::Files {
                         slug: slug_for_project(&selected.name),
-                        query: GuestFilesQuery::default(),
+                        query: FilesQuery::default(),
                     });
                 }
                 Err(error) => notice.set(Some(Notice::error(error.message))),
@@ -266,7 +274,7 @@ fn Home() -> Element {
                                 let navigator = navigator.clone();
                                 spawn(async move {
                                     if import_workspace(selected, guest_workspace("browser".to_owned()), OpfsWorkspaceFiles, busy, revision, notice).await {
-                                        navigator.push(GuestRoute::Files { slug: "browser".to_owned(), query: GuestFilesQuery::default() });
+                                        navigator.push(GuestRoute::Files { slug: "browser".to_owned(), query: FilesQuery::default() });
                                     }
                                 });
                             }
@@ -303,24 +311,57 @@ fn Home() -> Element {
     }
 }
 #[component]
-fn Files(slug: String, query: GuestFilesQuery) -> Element {
+fn Files(slug: String, query: FilesQuery) -> Element {
+    let navigator = use_navigator();
+    let route_slug = slug.clone();
+    let on_navigate = EventHandler::new(move |query| {
+        navigator.replace(GuestRoute::Files {
+            slug: route_slug.clone(),
+            query,
+        });
+    });
     rsx! {
-        GuestWorkspace {
-            slug,
-            initial_view: GuestView::Editor,
-            initial_path: query
-                                                                                                                                                                                            .path,
+        syntaxis_module_files::FilesView {
+            workspace: Some(guest_workspace(slug)),
+            query,
+            on_navigate,
         }
     }
 }
 #[component]
-fn Terminal(slug: String, query: GuestFilesQuery) -> Element {
+fn Terminal(slug: String, query: TerminalQuery) -> Element {
+    let navigator = use_navigator();
+    let navigation_slug = slug.clone();
+    let on_navigate = EventHandler::new(move |intent| match intent {
+        NavigationIntent::Terminal { session_id, .. } => {
+            navigator.replace(GuestRoute::Terminal {
+                slug: navigation_slug.clone(),
+                query: TerminalQuery { session_id },
+            });
+        }
+        NavigationIntent::Files { location, .. } => {
+            let query = location.map_or_else(FilesQuery::default, |location| FilesQuery {
+                path: Some(location.path.as_str().to_owned()),
+                line: location.line,
+                column: location.column,
+                end_line: location.end_line,
+                end_column: location.end_column,
+            });
+            navigator.push(GuestRoute::Files {
+                slug: navigation_slug.clone(),
+                query,
+            });
+        }
+        _ => {}
+    });
     rsx! {
-        GuestWorkspace {
-            slug,
-            initial_view: GuestView::Terminal,
-            initial_path: query
-                                                                                                                                                                                            .path,
+        syntaxis_module_terminal::TerminalView {
+            workspace: Some(guest_workspace(slug)),
+            query,
+            terminal_script: GUEST_TERMINAL_SCRIPT.to_string(),
+            on_navigate,
+            on_view_session: move |_| {},
+            on_stop_viewing: move |_| {},
         }
     }
 }
@@ -333,27 +374,21 @@ fn Preview(slug: String) -> Element {
 #[component]
 fn Git(slug: String) -> Element {
     rsx! {
-        GuestWorkspace { slug, initial_view: GuestView::Git, initial_path: None }
+        syntaxis_module_git::GitView {
+            workspace: guest_workspace(slug),
+            on_activate_worktree: move |_| {},
+        }
     }
 }
 #[component]
-fn Ai(slug: String) -> Element {
+fn Ai(slug: String, query: AiQuery) -> Element {
+    let _query = query;
     rsx! {
         GuestWorkspace { slug, initial_view: GuestView::Ai, initial_path: None }
     }
 }
 #[component]
-fn AiSettings(slug: String) -> Element {
-    rsx! {
-        GuestWorkspace {
-            slug,
-            initial_view: GuestView::AiSettings,
-            initial_path: None,
-        }
-    }
-}
-#[component]
-fn AiSettingsSection(slug: String, section: String) -> Element {
+fn AiSettingsSection(slug: String, section: AiSettingsSectionValue) -> Element {
     let _section = section;
     rsx! {
         GuestWorkspace {
@@ -367,6 +402,12 @@ fn AiSettingsSection(slug: String, section: String) -> Element {
 fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<String>) -> Element {
     let workspace = guest_workspace(slug);
     let files = OpfsWorkspaceFiles;
+    let services = use_context::<AppServices>();
+    let file_ports = services
+        .files()
+        .expect("browser runtime must provide Files ports")
+        .clone();
+    let workspace_search = file_ports.search().clone();
     let requested_path = initial_path
         .and_then(|path| RelativePath::try_from(path).ok())
         .filter(|path| !path.is_root());
@@ -400,7 +441,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
     let mut startup_complete = use_signal(|| false);
     let mut pending_delete = use_signal(|| None::<RelativePath>);
     let mut search_query = use_signal(String::new);
-    let mut file_operation = use_signal(|| None::<FileOperation>);
+    let mut file_operation = use_signal(|| None::<FileActionDialog>);
     let mut operation_destination = use_signal(String::new);
     let editor_menu_open = use_signal(|| false);
     let mut editor_search_open = use_signal(|| false);
@@ -445,9 +486,10 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                 };
                 route_navigator.replace(GuestRoute::Files {
                     slug: route_slug.clone(),
-                    query: GuestFilesQuery {
+                    query: FilesQuery {
                         path: file_path
                             .or_else(|| (!path().is_root()).then(|| path().as_str().to_owned())),
+                        ..FilesQuery::default()
                     },
                 });
             }
@@ -497,25 +539,39 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
             .replace_directory(path.as_str(), items);
     });
     let search_workspace_record = workspace.clone();
-    let search_results: Resource<Result<Vec<BrowserSearchHit>, String>> = use_resource(move || {
+    let search_results: Resource<Result<SearchResults, String>> = use_resource(move || {
         let query = search_query();
         let ready = startup_complete();
         let _revision = revision();
         let include_generated = show_generated();
         let workspace = search_workspace_record.clone();
+        let search = workspace_search.clone();
         async move {
             if !ready || query.trim().is_empty() {
-                Ok(Vec::new())
+                Ok(SearchResults::default())
             } else {
-                let mut hits = search_workspace(&files, &workspace, &query)
+                let mut results = search
+                    .search(
+                        &workspace,
+                        SearchRequest {
+                            query,
+                            options: WorkspaceSearchOptions {
+                                fuzzy: false,
+                                ..WorkspaceSearchOptions::default()
+                            },
+                            ignored_paths: Vec::new(),
+                            show_ignored: include_generated,
+                            max_results: 100,
+                        },
+                    )
                     .await
                     .map_err(|error| error.message)?;
-                hits.retain(|hit| {
-                    !is_guest_metadata_path(hit.entry.path.as_str())
+                results.items.retain(|result| {
+                    !is_guest_metadata_path(result.entry.path.as_str())
                         && (include_generated
-                            || !path_contains_bulky_generated_directory(hit.entry.path.as_str()))
+                            || !path_contains_bulky_generated_directory(result.entry.path.as_str()))
                 });
-                Ok(hits)
+                Ok(results)
             }
         }
     });
@@ -670,6 +726,10 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
             });
         })
     };
+    let create_file_ports = file_ports.clone();
+    let operation_file_ports = file_ports.clone();
+    let upload_file_ports = file_ports.clone();
+    let delete_file_ports = file_ports;
     rsx! {
         document::Title { "{page_title}" }
         document::Script { src: GUEST_ARCHIVE_SCRIPT }
@@ -795,26 +855,18 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                         ExplorerAction::ToggleIgnored => show_generated.toggle(),
                                         ExplorerAction::Move | ExplorerAction::Duplicate => {
                                             let Some(entry) = selected_tree_entry() else { return };
-                                            let kind = if action == ExplorerAction::Move {
-                                                FileOperationKind::Move
+                                            let action = if action == ExplorerAction::Move {
+                                                FileAction::Move
                                             } else {
-                                                FileOperationKind::Duplicate
+                                                FileAction::Duplicate
                                             };
-                                            operation_destination
-                                                .set(
-                                                    if kind == FileOperationKind::Move {
-                                                        entry.path.as_str().to_owned()
-                                                    } else {
-                                                        duplicate_path(&entry.path)
-                                                    },
-                                                );
-                                            file_operation
-                                                .set(
-                                                    Some(FileOperation {
-                                                        source: entry.path,
-                                                        kind,
-                                                    }),
-                                                );
+                                            let dialog = FileActionDialog {
+                                                action,
+                                                source: Some(entry.path.as_str().to_owned()),
+                                                destination_parent: None,
+                                            };
+                                            operation_destination.set(suggested_destination(&dialog));
+                                            file_operation.set(Some(dialog));
                                         }
                                         ExplorerAction::Delete => {
                                             if let Some(entry) = selected_tree_entry() {
@@ -825,13 +877,14 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                     },
                                     on_upload: {
                                         let workspace = workspace.clone();
+                                        let file_ports = upload_file_ports.clone();
                                         move |selected| {
                                             spawn(
                                                 upload_files(
                                                     selected,
                                                     workspace.clone(),
                                                     current_directory(),
-                                                    files,
+                                                    file_ports.clone(),
                                                     busy,
                                                     revision,
                                                     notice,
@@ -907,6 +960,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                     form {
                                         onsubmit: {
                                             let workspace = workspace.clone();
+                                            let file_ports = create_file_ports.clone();
                                             move |event| {
                                                 event.prevent_default();
                                                 let name = new_file_name().trim().to_owned();
@@ -915,15 +969,24 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                     return;
                                                 };
                                                 let workspace = workspace.clone();
+                                                let file_ports = file_ports.clone();
                                                 let kind = new_entry_kind();
                                                 busy.set(true);
                                                 notice.set(None);
                                                 spawn(async move {
-                                                    let result = if kind == EntryKind::Directory {
-                                                        files.create_directory(&workspace, &path).await
+                                                    let action = if kind == EntryKind::Directory {
+                                                        FileAction::CreateFolder
                                                     } else {
-                                                        files.create_file(&workspace, &path).await
+                                                        FileAction::CreateFile
                                                     };
+                                                    let result = execute_file_action(
+                                                        &file_ports,
+                                                        &workspace,
+                                                        action,
+                                                        None,
+                                                        path.as_str(),
+                                                    )
+                                                    .await;
                                                     match result {
                                                         Ok(_) => {
                                                             if kind == EntryKind::File {
@@ -1008,11 +1071,11 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                         Some(Err(error)) => rsx! {
                                             p { class: "guest-error", "{error}" }
                                         },
-                                        Some(Ok(items)) if items.is_empty() => rsx! {
+                                        Some(Ok(results)) if results.items.is_empty() => rsx! {
                                             p { class: "guest-muted", "No matching files." }
                                         },
-                                        Some(Ok(items)) => rsx! {
-                                            for hit in items {
+                                        Some(Ok(results)) => rsx! {
+                                            for hit in results.items {
                                                 SearchRow {
                                                     key: "{hit.entry.path.as_str()}",
                                                     hit: hit.clone(),
@@ -1115,17 +1178,25 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                             }
                             if let Some(operation) = file_operation() {
                                 Modal {
-                                    title: if operation.kind == FileOperationKind::Move { "Rename or move item" } else { "Duplicate item" },
-                                    description: format!("Selected path: {}", operation.source.as_str()),
+                                    title: if operation.action == FileAction::Move { "Rename or move item" } else { "Duplicate item" },
+                                    description: format!("Selected path: {}", operation.source.as_deref().unwrap_or_default()),
                                     on_close: move | () |
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     file_operation.set(None),
                                     form {
                                         onsubmit: {
-                                            let source = operation.source.clone();
-                                            let kind = operation.kind;
+                                            let source = operation
+                                                .source
+                                                .as_deref()
+                                                .and_then(|source| RelativePath::try_from(source.to_owned()).ok());
+                                            let action = operation.action;
                                             let workspace = workspace.clone();
+                                            let file_ports = operation_file_ports.clone();
                                             move |event| {
                                                 event.prevent_default();
+                                                let Some(source) = source.clone() else {
+                                                    notice.set(Some(Notice::error("Choose an existing workspace item.")));
+                                                    return;
+                                                };
                                                 if tab_buffers
                                                     .read()
                                                     .iter()
@@ -1150,7 +1221,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                     return;
                                                 };
                                                 if destination.is_root() || destination == source
-                                                    || (kind == FileOperationKind::Move
+                                                    || (action == FileAction::Move
                                                         && path_is_within(destination.as_str(), source.as_str()))
                                                 {
                                                     notice
@@ -1167,17 +1238,19 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                 notice.set(None);
                                                 let source_for_task = source.clone();
                                                 let workspace_for_task = workspace.clone();
+                                                let file_ports = file_ports.clone();
                                                 spawn(async move {
-                                                    let result = if kind == FileOperationKind::Move {
-                                                        files
-                                                            .move_entry(&workspace_for_task, &source_for_task, &destination)
-                                                            .await
-                                                    } else {
-                                                        files.copy(&workspace_for_task, &source_for_task, &destination).await
-                                                    };
+                                                    let result = execute_file_action(
+                                                        &file_ports,
+                                                        &workspace_for_task,
+                                                        action,
+                                                        Some(source_for_task.as_str()),
+                                                        destination.as_str(),
+                                                    )
+                                                    .await;
                                                     match result {
-                                                        Ok(()) => {
-                                                            if kind == FileOperationKind::Move {
+                                                        Ok(_) => {
+                                                            if action == FileAction::Move {
                                                                 for tab in open_tabs.write().iter_mut() {
                                                                     if let Some(path) = remap_path(
                                                                         tab,
@@ -1239,7 +1312,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                                 .set(
                                                                     Some(
                                                                         Notice::success(
-                                                                            if kind == FileOperationKind::Move {
+                                                                            if action == FileAction::Move {
                                                                                 "Moved locally."
                                                                             } else {
                                                                                 "Duplicated locally."
@@ -1277,7 +1350,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                 button {
                                                     class: "inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50",
                                                     disabled: busy() || operation_destination().trim().is_empty(),
-                                                    if operation.kind == FileOperationKind::Move {
+                                                    if operation.action == FileAction::Move {
                                                         "Move"
                                                     } else {
                                                         "Duplicate"
@@ -1314,6 +1387,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                     let workspace = workspace.clone();
                                                     let active_path = active_path.clone();
                                                     let delete_path = delete_path.clone();
+                                                    let file_ports = delete_file_ports.clone();
                                                     move |_| {
                                                         if tab_buffers
                                                             .read()
@@ -1329,12 +1403,21 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                                         notice.set(None);
                                                         let workspace = workspace.clone();
                                                         let delete_path = delete_path.clone();
+                                                        let file_ports = file_ports.clone();
                                                         let deleting_active = active_path
                                                             .as_deref()
                                                             .is_some_and(|path| { path_is_within(path, delete_path.as_str()) });
                                                         spawn(async move {
-                                                            match files.delete(&workspace, &delete_path).await {
-                                                                Ok(()) => {
+                                                            match execute_file_action(
+                                                                &file_ports,
+                                                                &workspace,
+                                                                FileAction::Delete,
+                                                                Some(delete_path.as_str()),
+                                                                "",
+                                                            )
+                                                            .await
+                                                            {
+                                                                Ok(_) => {
                                                                     if deleting_active {
                                                                         buffer.set(None);
                                                                         binary_preview.set(None);
@@ -1792,18 +1875,9 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                                     }
                                 }
                             } else if active_view() == GuestView::Git {
-                                GuestGit {
+                                syntaxis_module_git::GitView {
                                     workspace: workspace.clone(),
-                                    revision,
-                                    dirty: any_dirty,
-                                    notice,
-                                    on_workspace_changed: move |()| {
-                                        buffer.set(None);
-                                        binary_preview.set(None);
-                                        open_tabs.write().clear();
-                                        tab_buffers.write().clear();
-                                        revision += 1;
-                                    },
+                                    on_activate_worktree: move |_| {},
                                 }
                             } else if active_view() == GuestView::Ai {
                                 GuestAi {
@@ -1896,8 +1970,9 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                             navigator
                                 .push(GuestRoute::Files {
                                     slug: slug.clone(),
-                                    query: GuestFilesQuery {
+                                    query: FilesQuery {
                                         path: route_path.clone(),
+                                        ..FilesQuery::default()
                                     },
                                 });
                         }
@@ -1910,15 +1985,12 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                     onclick: {
                         let navigator = navigator.clone();
                         let slug = workspace.slug.clone();
-                        let route_path = active_path.clone();
                         move |_| {
                             active_view.set(GuestView::Terminal);
                             navigator
                                 .push(GuestRoute::Terminal {
                                     slug: slug.clone(),
-                                    query: GuestFilesQuery {
-                                        path: route_path.clone(),
-                                    },
+                                    query: TerminalQuery::default(),
                                 });
                         }
                     },
@@ -1971,6 +2043,7 @@ fn GuestWorkspace(slug: String, initial_view: GuestView, initial_path: Option<St
                             navigator
                                 .push(GuestRoute::Ai {
                                     slug: slug.clone(),
+                                    query: AiQuery::default(),
                                 });
                         }
                     },
@@ -2605,16 +2678,6 @@ struct BinaryPreviewState {
     data_url: Option<String>,
     hex: String,
 }
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum FileOperationKind {
-    Move,
-    Duplicate,
-}
-#[derive(Clone, Debug, PartialEq)]
-struct FileOperation {
-    source: RelativePath,
-    kind: FileOperationKind,
-}
 #[component]
 fn BinaryFilePreview(preview: BinaryPreviewState) -> Element {
     rsx! {
@@ -2648,7 +2711,7 @@ fn GuestPreview(path: String, source: String) -> Element {
     }
 }
 #[component]
-fn SearchRow(hit: BrowserSearchHit, active: bool, on_open: EventHandler<FileEntry>) -> Element {
+fn SearchRow(hit: SearchResult, active: bool, on_open: EventHandler<FileEntry>) -> Element {
     let entry = hit.entry.clone();
     let label = entry.path.as_str().to_owned();
     rsx! {
@@ -2665,7 +2728,7 @@ fn SearchRow(hit: BrowserSearchHit, active: bool, on_open: EventHandler<FileEntr
                 }
             }
             span { class: "guest-file-name", "{label}" }
-            if hit.content_match {
+            if hit.match_count > 0 {
                 small { "content" }
             }
         }
@@ -2976,7 +3039,7 @@ async fn upload_files(
     selected: Vec<dioxus::html::FileData>,
     workspace: WorkspaceRecord,
     directory: RelativePath,
-    files: OpfsWorkspaceFiles,
+    files: FilesPorts,
     mut busy: Signal<bool>,
     mut revision: Signal<u64>,
     mut notice: Signal<Option<Notice>>,
@@ -2989,32 +3052,23 @@ async fn upload_files(
     let mut uploaded = 0_usize;
     let mut first_error = None;
     for file in selected {
-        let name = file
-            .name()
-            .rsplit(['/', '\\'])
-            .next()
-            .unwrap_or_default()
-            .to_owned();
-        let Ok(path) = child_path(&directory, &name) else {
-            first_error.get_or_insert_with(|| format!("{name} has an invalid name."));
-            continue;
+        let upload = match prepare_upload(
+            &directory,
+            file.name(),
+            file.size(),
+            UploadPolicy::reject_existing(MAX_UPLOAD_BYTES),
+        ) {
+            Ok(upload) => upload,
+            Err(error) => {
+                first_error.get_or_insert(error.message);
+                continue;
+            }
         };
-        if file.size() > MAX_UPLOAD_BYTES {
-            first_error.get_or_insert_with(|| format!("{name} exceeds the 8 MiB limit."));
-            continue;
-        }
-        if files.stat(&workspace, &path).await.is_ok() {
-            first_error.get_or_insert_with(|| format!("{name} already exists."));
-            continue;
-        }
         let Ok(content) = file.read_bytes().await else {
-            first_error.get_or_insert_with(|| format!("Could not read {name}."));
+            first_error.get_or_insert_with(|| format!("Could not read {}.", upload.name()));
             continue;
         };
-        match files
-            .write_binary(&workspace, &path, &content, MAX_UPLOAD_BYTES)
-            .await
-        {
+        match execute_upload(&files, &workspace, &upload, &content).await {
             Ok(_) => uploaded += 1,
             Err(error) => {
                 first_error.get_or_insert(error.message);
@@ -3263,18 +3317,6 @@ fn hex_preview(bytes: &[u8]) -> String {
         result.push_str(" …");
     }
     result
-}
-fn duplicate_path(path: &RelativePath) -> String {
-    let (stem, extension) = path
-        .as_str()
-        .rsplit_once('.')
-        .filter(|(_, extension)| !extension.contains('/'))
-        .unwrap_or((path.as_str(), ""));
-    if extension.is_empty() {
-        format!("{stem}-copy")
-    } else {
-        format!("{stem}-copy.{extension}")
-    }
 }
 fn path_is_within(path: &str, parent: &str) -> bool {
     path == parent

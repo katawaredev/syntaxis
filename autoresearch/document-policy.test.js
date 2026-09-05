@@ -5,7 +5,7 @@ import { describe, expect, test } from "bun:test";
 const root = resolve(import.meta.dirname, "..");
 
 describe("document viewport policy", () => {
-  test.each(["index.html", "src/auth/login.html"])(
+  test.each(["apps/main/index.html", "apps/main/src/auth/login.html"])(
     "%s retains the mobile Safari code-editor auto-zoom workaround",
     async (path) => {
       const document = await readFile(join(root, path), "utf8");

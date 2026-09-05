@@ -119,13 +119,14 @@ COPY --chown=dev:dev . .
 RUN bun run build:editor \
     && bun run build:terminal \
     && bun run generate:pi-settings \
-    && touch assets/tailwind.css
+    && mkdir -p apps/main/assets \
+    && touch apps/main/assets/tailwind.css
 
 RUN --mount=type=cache,id=syntaxis-cargo-registry,target=/home/dev/.cargo/registry,uid=1000,gid=1000 \
     --mount=type=cache,id=syntaxis-cargo-git,target=/home/dev/.cargo/git,uid=1000,gid=1000 \
     --mount=type=cache,id=syntaxis-target,target=/build/target,uid=1000,gid=1000 \
     rm -rf target/dx/syntaxis/release/web/public \
-    && dx build --platform web --release --locked --debug-symbols false \
+    && dx build --package syntaxis --platform web --release --locked --debug-symbols false \
     && cp -a target/dx/syntaxis/release/web/. /build-output/
 
 FROM docker.io/library/node:${NODE_VERSION}-trixie-slim AS production

@@ -8,7 +8,8 @@ server owns filesystem, terminal, Git, language-server, preview, authentication,
 
 ## Repository layout
 
-Application code lives in `src/`. Workspace crates separate shared types from host implementations:
+The main application code lives in `apps/main/src/`, and the browser-only guest lives in
+`apps/guest/`. Workspace crates separate shared types from host implementations:
 
 - `code-editor` and `editor` — editor integration and state;
 - `terminal` and `terminal-host` — terminal contracts and processes;
@@ -62,7 +63,7 @@ just build-assets
 ```
 
 This builds the CodeMirror and terminal bundles and regenerates Pi settings metadata. The settings
-generator reads the pinned Pi package and writes `src/ai/generated_settings.rs`. It validates every
+generator reads the pinned Pi package and writes `apps/main/src/ai/generated_settings.rs`. It validates every
 curated setting and setter on each run and hashes only the extracted metadata, so unrelated Pi
 documentation changes do not churn the generated Rust file. Runtime capability checks are per setter,
 not tied to Pi's version number.

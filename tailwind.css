@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@source "./src/**/*.rs";
+@source "./apps/main/src/**/*.rs";
 @source "./crates/ui/src/**/*.rs";
 
 @theme inline {

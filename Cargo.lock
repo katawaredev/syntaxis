@@ -5930,12 +5930,18 @@ dependencies = [
  "subtle",
  "syntaxis-agent",
  "syntaxis-agent-host",
+ "syntaxis-app-contracts",
+ "syntaxis-app-shell",
  "syntaxis-editor",
  "syntaxis-git",
  "syntaxis-git-host",
  "syntaxis-lsp-host",
+ "syntaxis-module-files",
+ "syntaxis-module-git",
+ "syntaxis-module-terminal",
  "syntaxis-notifications",
  "syntaxis-notifications-host",
+ "syntaxis-runtime-main",
  "syntaxis-terminal",
  "syntaxis-terminal-host",
  "syntaxis-ui",
@@ -5972,6 +5978,31 @@ dependencies = [
  "tempfile",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "syntaxis-app-contracts"
+version = "0.1.0"
+dependencies = [
+ "futures-channel",
+ "futures-core",
+ "futures-lite",
+ "serde",
+ "syntaxis-workspace",
+]
+
+[[package]]
+name = "syntaxis-app-shell"
+version = "0.1.0"
+dependencies = [
+ "dioxus",
+ "syntaxis-app-contracts",
+ "syntaxis-git",
+ "syntaxis-module-files",
+ "syntaxis-module-git",
+ "syntaxis-module-terminal",
+ "syntaxis-workspace",
+ "url",
 ]
 
 [[package]]
@@ -6016,8 +6047,13 @@ dependencies = [
  "js-sys",
  "serde",
  "serde_json",
+ "syntaxis-app-shell",
  "syntaxis-editor",
  "syntaxis-git",
+ "syntaxis-module-files",
+ "syntaxis-module-git",
+ "syntaxis-module-terminal",
+ "syntaxis-runtime-browser",
  "syntaxis-terminal",
  "syntaxis-terminal-browser",
  "syntaxis-ui",
@@ -6039,6 +6075,63 @@ dependencies = [
 ]
 
 [[package]]
+name = "syntaxis-module-files"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64 0.23.1",
+ "csv",
+ "dioxus",
+ "dioxus-code-editor",
+ "dioxus-primitives",
+ "dioxus-sdk-time",
+ "futures-lite",
+ "futures-util",
+ "pulldown-cmark",
+ "regex",
+ "serde",
+ "syntaxis-app-contracts",
+ "syntaxis-editor",
+ "syntaxis-git",
+ "syntaxis-ui",
+ "syntaxis-workspace",
+ "url",
+]
+
+[[package]]
+name = "syntaxis-module-git"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "dioxus",
+ "dioxus-code-editor",
+ "dioxus-primitives",
+ "syntaxis-app-contracts",
+ "syntaxis-editor",
+ "syntaxis-git",
+ "syntaxis-module-files",
+ "syntaxis-ui",
+ "syntaxis-workspace",
+]
+
+[[package]]
+name = "syntaxis-module-terminal"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "dioxus",
+ "dioxus-sdk-time",
+ "futures-util",
+ "serde",
+ "syntaxis-app-contracts",
+ "syntaxis-terminal",
+ "syntaxis-ui",
+ "syntaxis-workspace",
+ "url",
+ "web-time",
+]
+
+[[package]]
 name = "syntaxis-notifications"
 version = "0.1.0"
 dependencies = [
@@ -6052,6 +6145,43 @@ version = "0.1.0"
 dependencies = [
  "syntaxis-notifications",
  "tokio",
+]
+
+[[package]]
+name = "syntaxis-runtime-browser"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "dioxus",
+ "futures-lite",
+ "serde",
+ "serde_json",
+ "syntaxis-app-contracts",
+ "syntaxis-app-shell",
+ "syntaxis-git",
+ "syntaxis-module-files",
+ "syntaxis-module-git",
+ "syntaxis-module-terminal",
+ "syntaxis-terminal-browser",
+ "syntaxis-workspace",
+ "syntaxis-workspace-browser",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
+name = "syntaxis-runtime-main"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "futures-lite",
+ "syntaxis-app-contracts",
+ "syntaxis-app-shell",
+ "syntaxis-module-files",
+ "syntaxis-workspace",
+ "syntaxis-workspace-host",
+ "tempfile",
 ]
 
 [[package]]

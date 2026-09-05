@@ -373,6 +373,24 @@ async function unstage(paths) {
   return repository();
 }
 
+async function discard(paths) {
+  for (const path of paths) {
+    const row = (await git.statusMatrix({ fs, dir: DIR, cache, filepaths: [path] }))[0];
+    if (!row) continue;
+    if (row[3] === 0) {
+      try {
+        await fs.promises.unlink(`/${path}`);
+      } catch {
+        // The untracked file may already have been removed.
+      }
+    } else {
+      await fs.promises.writeFile(`/${path}`, await stageContent(path));
+    }
+  }
+  indexStats.clear();
+  return repository();
+}
+
 async function commit({ message, name, email }) {
   await git.setConfig({ fs, dir: DIR, cache, path: "user.name", value: name });
   await git.setConfig({ fs, dir: DIR, cache, path: "user.email", value: email });
@@ -509,6 +527,7 @@ globalThis.SyntaxisGuestGit = {
   init,
   stage,
   unstage,
+  discard,
   commit,
   diff,
   checkout,

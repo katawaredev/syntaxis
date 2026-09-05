@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { join, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
-const indexHtml = join(root, "index.html");
+const indexHtml = join(root, "apps/main/index.html");
 
 describe("mobile viewport policy", () => {
   test("keeps automatic zoom disabled", async () => {
