@@ -70,13 +70,13 @@ pub(crate) fn serve() -> ! {
         async move {
             let auth_layer =
                 axum::middleware::from_fn_with_state(state.clone(), require_authentication);
-            let preview_layer = axum::middleware::from_fn(crate::preview::server::dispatch);
+            let preview_layer = axum::middleware::from_fn(syntaxis_runtime_main::preview_dispatch);
             let login_page_state = state.clone();
             let login_state = state.clone();
             let logout_state = state.clone();
             let router = Router::new()
                 .route("/health", get(health))
-                .route("/api/lsp-socket", get(crate::lsp::server::socket))
+                .route("/api/lsp-socket", get(syntaxis_runtime_main::lsp_socket))
                 .route(
                     "/login",
                     get(move || login_page(login_page_state.clone()))

@@ -3,7 +3,10 @@
 use dioxus::prelude::*;
 use serde::Deserialize;
 use std::collections::VecDeque;
+use syntaxis_app_contracts::PortHandle;
 use syntaxis_terminal::{SessionId, TerminalSize};
+
+use crate::{TerminalPorts, TerminalRendererSession};
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 pub struct SourceLink {
@@ -58,7 +61,7 @@ pub enum RendererAction {
     Focus,
 }
 impl RendererAction {
-    const fn name(self) -> &'static str {
+    pub const fn name(self) -> &'static str {
         match self {
             Self::Clear => "clear",
             Self::Copy => "copy",
@@ -80,18 +83,15 @@ pub struct RendererActionResult {
     pub ok: bool,
     pub message: String,
 }
-#[derive(Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-enum BridgeEvent {
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum TerminalRendererEvent {
     Input {
         data: String,
     },
     Resize {
         columns: u16,
         rows: u16,
-        #[serde(rename = "pixelWidth")]
         pixel_width: u16,
-        #[serde(rename = "pixelHeight")]
         pixel_height: u16,
     },
     Ready,
@@ -112,6 +112,10 @@ enum BridgeEvent {
     },
 }
 #[component]
+#[allow(
+    clippy::clone_on_ref_ptr,
+    reason = "PortHandle is Rc in the browser and Arc in native runtimes"
+)]
 pub fn XtermRenderer(
     session_id: SessionId,
     output: ReadSignal<Option<RendererOutputBatch>>,
@@ -123,55 +127,33 @@ pub fn XtermRenderer(
     on_source_link: EventHandler<SourceLink>,
     on_error: EventHandler<String>,
 ) -> Element {
+    let ports = use_context::<TerminalPorts>();
     let element_id = format!("xterm-{}", session_id.0);
     let mut last_sequence = use_signal(|| 0_u64);
-    let mut event_bridge = use_signal(|| None::<dioxus::document::Eval>);
+    let mut renderer = use_signal(|| None::<PortHandle<dyn TerminalRendererSession>>);
     use_effect({
         let element_id = element_id.clone();
+        let port = ports.renderer().cloned();
         move || {
-            let mut events = document::eval(
-                r#"
-                const id = await dioxus.recv();
-                const listener = event => {
-                    if (event.detail?.id === id) dioxus.send(event.detail);
-                };
-                window.addEventListener("syntaxis-terminal", listener);
-                const viewport = window.matchMedia("(pointer: coarse)").matches
-                    ? window.visualViewport
-                    : null;
-                const container = document.getElementById(id);
-                const shell = container?.closest("[data-terminal-shell]");
-                const originalMaxHeight = shell?.style.maxHeight ?? "";
-                let fitFrame = null;
-                const fitVisibleTerminal = () => {
-                    if (!viewport || !shell) return;
-                    const visibleBottom = viewport.offsetTop + viewport.height;
-                    const available = Math.max(160, Math.floor(visibleBottom - shell.getBoundingClientRect().top));
-                    shell.style.maxHeight = `${available}px`;
-                    if (fitFrame !== null) cancelAnimationFrame(fitFrame);
-                    fitFrame = requestAnimationFrame(() => {
-                        window.SyntaxisTerminalBridge?.action(id, "fit");
-                        fitFrame = null;
-                    });
-                };
-                viewport?.addEventListener("resize", fitVisibleTerminal);
-                viewport?.addEventListener("scroll", fitVisibleTerminal);
-                fitVisibleTerminal();
-                await dioxus.recv();
-                window.removeEventListener("syntaxis-terminal", listener);
-                viewport?.removeEventListener("resize", fitVisibleTerminal);
-                viewport?.removeEventListener("scroll", fitVisibleTerminal);
-                if (fitFrame !== null) cancelAnimationFrame(fitFrame);
-                if (shell) shell.style.maxHeight = originalMaxHeight;
-                "#,
-            );
-            let _ = events.send(element_id.clone());
-            event_bridge.set(Some(events));
+            let element_id = element_id.clone();
+            let port = port.clone();
             spawn(async move {
-                while let Ok(event) = events.recv::<BridgeEvent>().await {
+                let Some(port) = port else {
+                    on_error.call("The interactive terminal renderer is unavailable.".into());
+                    return;
+                };
+                let session = match port.mount(&element_id).await {
+                    Ok(session) => session,
+                    Err(problem) => {
+                        on_error.call(problem.message);
+                        return;
+                    }
+                };
+                renderer.set(Some(session.clone()));
+                while let Ok(event) = session.receive().await {
                     match event {
-                        BridgeEvent::Input { data } => on_input.call(data.into_bytes()),
-                        BridgeEvent::Resize {
+                        TerminalRendererEvent::Input { data } => on_input.call(data.into_bytes()),
+                        TerminalRendererEvent::Resize {
                             columns,
                             rows,
                             pixel_width,
@@ -182,8 +164,8 @@ pub fn XtermRenderer(
                             pixel_width,
                             pixel_height,
                         }),
-                        BridgeEvent::Ready => on_ready.call(()),
-                        BridgeEvent::ActionResult {
+                        TerminalRendererEvent::Ready => on_ready.call(()),
+                        TerminalRendererEvent::ActionResult {
                             action,
                             ok,
                             message,
@@ -192,7 +174,7 @@ pub fn XtermRenderer(
                             ok,
                             message,
                         }),
-                        BridgeEvent::SourceLink {
+                        TerminalRendererEvent::SourceLink {
                             path,
                             line,
                             column,
@@ -205,46 +187,18 @@ pub fn XtermRenderer(
                             end_line,
                             end_column,
                         }),
-                        BridgeEvent::Error { message } => on_error.call(message),
+                        TerminalRendererEvent::Error { message } => on_error.call(message),
                     }
                 }
             });
-            let mount = document::eval(
-                r#"
-                const id = await dioxus.recv();
-                for (let attempt = 0; attempt < 100 && !window.SyntaxisTerminalBridge; attempt++) {
-                    await new Promise(resolve => setTimeout(resolve, 20));
-                }
-                try {
-                    if (!window.SyntaxisTerminalBridge) throw new Error("Terminal renderer did not load");
-                    await window.SyntaxisTerminalBridge.mount(id);
-                } catch (error) {
-                    window.dispatchEvent(new CustomEvent("syntaxis-terminal", {
-                        detail: { kind: "error", id, message: String(error?.message ?? error) },
-                    }));
-                }
-                "#,
-            );
-            let _ = mount.send(element_id.clone());
         }
     });
-    use_drop({
-        let element_id = element_id.clone();
-        move || {
-            if let Some(events) = event_bridge() {
-                let _ = events.send(true);
-            }
-            let dispose = document::eval(
-                r"
-                const id = await dioxus.recv();
-                window.SyntaxisTerminalBridge?.dispose(id);
-                ",
-            );
-            let _ = dispose.send(element_id);
+    use_drop(move || {
+        if let Some(renderer) = renderer() {
+            renderer.close();
         }
     });
     use_effect({
-        let element_id = element_id.clone();
         let session_id = session_id.clone();
         move || {
             let output = output.read();
@@ -266,34 +220,27 @@ pub fn XtermRenderer(
                 return;
             }
             last_sequence.set(newest);
-            let write = document::eval(
-                r"
-                const [id, data] = await dioxus.recv();
-                window.SyntaxisTerminalBridge?.write(id, data);
-                ",
-            );
-            let _ = write.send((element_id.clone(), data));
+            if let Some(renderer) = renderer() {
+                spawn(async move {
+                    if let Err(problem) = renderer.write(data).await {
+                        on_error.call(problem.message);
+                    }
+                });
+            }
         }
     });
     use_effect({
-        let element_id = element_id.clone();
         move || {
             let Some(command) = command() else {
                 return;
             };
-            let action = document::eval(
-                r#"
-                const [id, action] = await dioxus.recv();
-                if (action === "focus") {
-                    const input = document.getElementById(id)?.querySelector("textarea");
-                    if (input instanceof HTMLTextAreaElement) input.focus({ preventScroll: true });
-                    else window.SyntaxisTerminalBridge?.action(id, action);
-                } else {
-                    window.SyntaxisTerminalBridge?.action(id, action);
-                }
-                "#,
-            );
-            let _ = action.send((element_id.clone(), command.action.name()));
+            if let Some(renderer) = renderer() {
+                spawn(async move {
+                    if let Err(problem) = renderer.action(command.action).await {
+                        on_error.call(problem.message);
+                    }
+                });
+            }
         }
     });
     rsx! {

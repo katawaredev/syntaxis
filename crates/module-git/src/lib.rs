@@ -6,7 +6,8 @@ mod repository;
 mod view;
 
 pub use ports::{
-    GitBranchPort, GitCheckoutPort, GitHistoryPort, GitHunkPort, GitMergePort, GitNetworkPort,
-    GitPorts, GitRebasePort, GitRepositoryPort, GitRevertPort, GitTagPort, GitWorktreePort,
+    GitBranchPort, GitCheckoutPort, GitCommitCapabilities, GitConflictPort, GitHistoryPort,
+    GitHunkPort, GitMergePort, GitNetworkPort, GitPorts, GitRebasePort, GitRepositoryPort,
+    GitRevertPort, GitTagPort, GitWorktreePort,
 };
 pub use view::GitView;

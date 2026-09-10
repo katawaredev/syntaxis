@@ -11,6 +11,7 @@ mod connection;
 mod dialogs;
 mod mobile;
 
+use crate::TerminalPorts;
 use connection::{TerminalConnectionOptions, TerminalConnectionState, use_terminal_connection};
 use dialogs::{AddCommandDialog, NewTerminalDialog};
 use dioxus::prelude::*;
@@ -21,21 +22,19 @@ use futures_util::{
 };
 use mobile::{MobileTerminalKeys, ctrl_modified_byte};
 use syntaxis_app_contracts::{FileLocation, NavigationIntent};
-use crate::TerminalPorts;
 use syntaxis_terminal::{
     ClientMessage, Lifecycle, RunCommand, SessionId, SessionSummary, TerminalSize,
 };
-use syntaxis_workspace::{RelativePath, WorkspaceRecord};
 use syntaxis_ui::prelude::{
     AppIcon, Button, ButtonKind, ControlSize, IconButton, PanelHeader, PanelTab, PanelTabIndicator,
     PanelTabList, PanelTabWidth, RunCommandMenu, TerminalActionsMenu, TerminalEmptyState,
     TerminalMenuAction, TerminalMobileTabs, TerminalStatusBar, TerminalTab, Toast, Tone,
 };
+use syntaxis_workspace::{RelativePath, WorkspaceRecord};
 #[component]
 pub fn TerminalView(
     workspace: Option<WorkspaceRecord>,
     query: TerminalQuery,
-    terminal_script: String,
     on_navigate: EventHandler<NavigationIntent>,
     on_view_session: EventHandler<Option<String>>,
     on_stop_viewing: EventHandler<()>,
@@ -54,11 +53,10 @@ pub fn TerminalView(
                 on_navigate: Some(on_navigate),
                 on_view_session: Some(on_view_session),
                 on_stop_viewing: Some(on_stop_viewing),
-                terminal_script,
             }
         },
         Some(workspace) if ports.command_runner().is_some() => rsx! {
-            crate::command_view::CommandTerminal { workspace, terminal_script }
+            crate::command_view::CommandTerminal { workspace }
         },
         Some(_) => rsx! {
             TerminalEmptyState {
@@ -81,7 +79,6 @@ pub fn ProjectInitializerTerminal(
     workspace: WorkspaceRecord,
     command: String,
     label: String,
-    terminal_script: String,
     on_finished: EventHandler<bool>,
 ) -> Element {
     rsx! {
@@ -96,7 +93,6 @@ pub fn ProjectInitializerTerminal(
             on_navigate: None,
             on_view_session: None,
             on_stop_viewing: None,
-            terminal_script,
         }
     }
 }
@@ -112,7 +108,6 @@ fn RemoteTerminal(
     on_navigate: Option<EventHandler<NavigationIntent>>,
     on_view_session: Option<EventHandler<Option<String>>>,
     on_stop_viewing: Option<EventHandler<()>>,
-    terminal_script: String,
 ) -> Element {
     let ports = use_context::<TerminalPorts>();
     let workspace_id = workspace.id.clone();
@@ -186,7 +181,7 @@ fn RemoteTerminal(
                 let timeout = dioxus_sdk_time::sleep(std::time::Duration::from_secs(2)).fuse();
                 pin_mut!(stored, timeout);
                 if let Either::Left((Ok(Some(id)), _)) = select(stored, timeout).await {
-                    remembered.set(id);
+                    remembered.set(Some(id));
                 }
             });
         }
@@ -355,9 +350,10 @@ fn RemoteTerminal(
         quick_menu.set(false);
     });
     let commands_port = ports.commands().cloned();
+    let command_mutations = ports.command_mutations().cloned();
     let submit_command = EventHandler::new({
         let workspace = workspace.clone();
-        let commands_port = commands_port.clone();
+        let command_mutations = command_mutations.clone();
         move |()| {
             if saving_command() {
                 return;
@@ -369,16 +365,16 @@ fn RemoteTerminal(
             saving_command.set(true);
             command_error.set(None);
             let workspace = workspace.clone();
-            let commands_port = commands_port.clone();
+            let command_mutations = command_mutations.clone();
             let label = command_label();
             let command = command_text();
             spawn(async move {
-                let Some(commands_port) = commands_port else {
+                let Some(command_mutations) = command_mutations else {
                     saving_command.set(false);
-                    command_error.set(Some("Project commands are unavailable.".into()));
+                    command_error.set(Some("Custom project commands are unavailable.".into()));
                     return;
                 };
-                match commands_port.add(&workspace, &label, &command).await {
+                match command_mutations.add(&workspace, &label, &command).await {
                     Ok(commands) => {
                         run_commands.set(commands);
                         saving_command.set(false);
@@ -432,7 +428,6 @@ fn RemoteTerminal(
         }
     });
     rsx! {
-        document::Script { src: terminal_script }
         section {
             class: "flex size-full min-h-0 flex-col bg-background",
             "data-terminal-shell": "true",
@@ -504,21 +499,23 @@ fn RemoteTerminal(
                         open: quick_menu,
                         loading: commands_loading(),
                         disabled: !connection_ready || pending_command.read().is_some(),
+                        show_add: command_mutations.is_some(),
+                        allow_delete: command_mutations.is_some(),
                         on_run: move |command| run_project_command.call(command),
                         on_add: move |()| open_add_command_dialog.call(()),
                         on_refresh: move |()| refresh_commands.call(()),
                         on_delete: {
                             let workspace = workspace.clone();
-                            let commands_port = commands_port.clone();
+                            let command_mutations = command_mutations.clone();
                             move |command_id: String| {
                                 let workspace = workspace.clone();
-                                let commands_port = commands_port.clone();
+                                let command_mutations = command_mutations.clone();
                                 spawn(async move {
-                                    let Some(commands_port) = commands_port else {
-                                        toast.set(Some("Project commands are unavailable.".into()));
+                                    let Some(command_mutations) = command_mutations else {
+                                        toast.set(Some("Custom project commands are unavailable.".into()));
                                         return;
                                     };
-                                    match commands_port.delete(&workspace, &command_id).await {
+                                    match command_mutations.delete(&workspace, &command_id).await {
                                         Ok(commands) => run_commands.set(commands),
                                         Err(error) => {
                                             toast.set(Some(error.message));

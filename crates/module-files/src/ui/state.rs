@@ -3,6 +3,7 @@
 use dioxus::prelude::*;
 use syntaxis_git::{DiffKind, UnifiedDiff};
 use syntaxis_ui::prelude::Tone;
+use syntaxis_workspace::WorkspaceRecord;
 
 pub(super) use crate::{
     ActiveBufferMeta, ActiveDocumentView, CloseRequest, FileAction, FileActionDialog,

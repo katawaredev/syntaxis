@@ -3,5 +3,6 @@
 mod runtime;
 #[cfg(target_arch = "wasm32")]
 pub use runtime::{
-    BrowserCommandResult, WorkspaceChange, WorkspaceChangeKind, cancel, execute, wait_for_bridge,
+    BrowserCommandResult, WorkspaceChange, WorkspaceChangeKind, bridge_ready, cancel, execute,
+    wait_for_bridge,
 };

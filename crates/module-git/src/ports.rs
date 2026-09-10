@@ -10,6 +10,8 @@ use syntaxis_workspace::{RelativePath, WorkspaceRecord};
 
 #[async_trait(?Send)]
 pub trait GitRepositoryPort: Send + Sync {
+    fn commit_capabilities(&self) -> GitCommitCapabilities;
+
     async fn snapshot(&self, workspace: &WorkspaceRecord) -> Result<RepositorySnapshot, AppError>;
     async fn initialize(&self, workspace: &WorkspaceRecord) -> Result<(), AppError>;
     async fn diff(
@@ -19,11 +21,6 @@ pub trait GitRepositoryPort: Send + Sync {
         kind: DiffKind,
         expanded: bool,
     ) -> Result<UnifiedDiff, AppError>;
-    async fn conflict_file(
-        &self,
-        workspace: &WorkspaceRecord,
-        path: &RelativePath,
-    ) -> Result<ConflictFile, AppError>;
     async fn stage(
         &self,
         workspace: &WorkspaceRecord,
@@ -44,6 +41,17 @@ pub trait GitRepositoryPort: Send + Sync {
         workspace: &WorkspaceRecord,
         request: CommitRequest,
     ) -> Result<CommitOutcome, AppError>;
+}
+
+/// Optional conflict inspection and resolution support.
+#[async_trait(?Send)]
+pub trait GitConflictPort: Send + Sync {
+    async fn conflict_file(
+        &self,
+        workspace: &WorkspaceRecord,
+        path: &RelativePath,
+    ) -> Result<ConflictFile, AppError>;
+
     async fn resolve_conflict(
         &self,
         workspace: &WorkspaceRecord,
@@ -52,6 +60,22 @@ pub trait GitRepositoryPort: Send + Sync {
         expected_fingerprint: u64,
         choice: ConflictChoice,
     ) -> Result<bool, AppError>;
+}
+
+/// Observable options supported by the required commit operation.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct GitCommitCapabilities {
+    pub amend: bool,
+    pub skip_hooks: bool,
+    pub signing_retry: bool,
+}
+
+impl GitCommitCapabilities {
+    pub const FULL: Self = Self {
+        amend: true,
+        skip_hooks: true,
+        signing_retry: true,
+    };
 }
 
 #[async_trait(?Send)]
@@ -185,7 +209,8 @@ pub trait GitHunkPort: Send + Sync {
 
 #[async_trait(?Send)]
 pub trait GitRebasePort: Send + Sync {
-    async fn continue_rebase(&self, workspace: &WorkspaceRecord) -> Result<RebaseOutcome, AppError>;
+    async fn continue_rebase(&self, workspace: &WorkspaceRecord)
+    -> Result<RebaseOutcome, AppError>;
     async fn skip_rebase(&self, workspace: &WorkspaceRecord) -> Result<RebaseOutcome, AppError>;
     async fn abort_rebase(&self, workspace: &WorkspaceRecord) -> Result<(), AppError>;
 }
@@ -209,6 +234,7 @@ pub trait GitWorktreePort: Send + Sync {
 #[derive(Clone, Default)]
 pub struct GitPorts {
     repository: Option<PortHandle<dyn GitRepositoryPort>>,
+    conflicts: Option<PortHandle<dyn GitConflictPort>>,
     history: Option<PortHandle<dyn GitHistoryPort>>,
     checkout: Option<PortHandle<dyn GitCheckoutPort>>,
     revert: Option<PortHandle<dyn GitRevertPort>>,
@@ -237,6 +263,7 @@ macro_rules! port_accessors {
 
 impl GitPorts {
     port_accessors!(with_repository, repository, repository, GitRepositoryPort);
+    port_accessors!(with_conflicts, conflicts, conflicts, GitConflictPort);
     port_accessors!(with_history, history, history, GitHistoryPort);
     port_accessors!(with_checkout, checkout, checkout, GitCheckoutPort);
     port_accessors!(with_revert, revert, revert, GitRevertPort);
@@ -247,6 +274,21 @@ impl GitPorts {
     port_accessors!(with_hunks, hunks, hunks, GitHunkPort);
     port_accessors!(with_rebase, rebase, rebase, GitRebasePort);
     port_accessors!(with_worktrees, worktrees, worktrees, GitWorktreePort);
+
+    /// Verifies the required Git repository and history surface.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when required Git capabilities are missing.
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if self.repository.is_none() {
+            return Err("Git requires a repository port");
+        }
+        if self.history.is_none() {
+            return Err("Git requires a history port");
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -257,6 +299,7 @@ mod tests {
     fn optional_capabilities_are_absent_by_default() {
         let ports = GitPorts::default();
         assert!(ports.repository().is_none());
+        assert!(ports.conflicts().is_none());
         assert!(ports.history().is_none());
         assert!(ports.checkout().is_none());
         assert!(ports.revert().is_none());
@@ -267,5 +310,23 @@ mod tests {
         assert!(ports.hunks().is_none());
         assert!(ports.rebase().is_none());
         assert!(ports.worktrees().is_none());
+        assert!(ports.validate().is_err());
+    }
+
+    #[test]
+    fn advanced_commit_options_are_explicit() {
+        assert_eq!(
+            GitCommitCapabilities::default(),
+            GitCommitCapabilities {
+                amend: false,
+                skip_hooks: false,
+                signing_retry: false,
+            }
+        );
+        const {
+            assert!(GitCommitCapabilities::FULL.amend);
+            assert!(GitCommitCapabilities::FULL.skip_hooks);
+            assert!(GitCommitCapabilities::FULL.signing_retry);
+        }
     }
 }

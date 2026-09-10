@@ -1,135 +1,160 @@
-# Shared-module migration baseline
+# Shared-module migration record
 
-This document records the observable starting point for the shared-module architecture migration.
-It is a characterization record, not a second product specification.
+This document records the characterized baseline and the completed implementation of the
+shared-module architecture. It is evidence for the migration, not a second product specification.
 
 ## Source baseline
 
 - Migration baseline: `89c04e5` (`fix: git`)
 - Architecture-spec baseline: `d2df279`
-- Difference: the migration baseline includes the follow-up browser Git parity work in
-  `apps/guest/src/app/git.rs`, `assets/guest-git/bridge-source.js`, and `syntaxis-ui`.
-- Canonical product behavior: the `syntaxis` main application.
+- Canonical product behavior and visuals: the `syntaxis` main application
+- Canonical screenshots: the tracked `screenshots/` references for Home, Files, Terminal, Git,
+  Preview, and AI at desktop widths
 
-The structural move to `apps/main` intentionally preserves the package name `syntaxis`, Cargo
-features, Dioxus output directory, server binary name, and public routes.
+The move to `apps/main` preserves the `syntaxis` package name, Cargo features, Dioxus output
+directory, server binary name, and public routes.
+
+## Final package structure
+
+The root manifest is a virtual workspace. Both executables are composition roots:
+
+- `apps/main` installs document assets, authentication startup, the main runtime services, and
+  `syntaxis_app_shell::SyntaxisApp`.
+- `apps/guest` installs static document assets, the browser runtime services, and the same
+  `SyntaxisApp`.
+- `crates/app-shell` owns Home, the workspace shell, notifications, the only `Routable` enum, and
+  selection of all five shared module entry components.
+- `crates/module-{files,terminal,git,preview,ai}` own feature UI, controllers, models, and ports.
+- `crates/runtime-main` owns server functions, host selection, transports, main adapters, and the
+  versioned interactive-terminal bridge lifecycle.
+- `crates/runtime-browser` owns OPFS/browser bridge DTOs, browser adapters, and idempotent loading
+  and version checks for its generated bridges.
+
+`scripts/check-architecture.sh` enforces those dependency and ownership boundaries in CI.
+
+## Routes
+
+Both applications mount the same route enum and route components.
+
+| Surface | Shared route |
+| --- | --- |
+| Home | `/` |
+| Files | `/workspaces/:slug/files?:..query` |
+| Terminal | `/workspaces/:slug/terminal?:..query` |
+| Git | `/workspaces/:slug/git` |
+| Preview | `/workspaces/:slug/preview` |
+| AI | `/workspaces/:slug/ai?:..query` |
+| AI settings redirect | `/workspaces/:slug/ai/settings` |
+| AI settings section | `/workspaces/:slug/ai/settings/:section` |
+
+The settings redirect targets the canonical section route in both runtimes.
+
+## Runtime capabilities
+
+Optional behavior is represented by an absent typed port or by a typed capability value. Shared UI
+does not branch on a main/guest identity.
+
+| Area | Main runtime | Browser guest runtime |
+| --- | --- | --- |
+| Workspace sources | Registered roots, folders, clone, project bootstrap, management | Private OPFS workspace, local-folder picker, bounded ZIP import/export |
+| Files/editor | Host-backed files, search, sessions, file watching, LSP, transfers | OPFS/local-folder files, bounded search and transfers; no host LSP/watch service |
+| Terminal | Interactive socket transport, renderer, sessions, command discovery and mutation | Bounded cancellable `just-bash` command runner and command discovery; no PTY |
+| Git | Full repository, conflict, history, branches, network, merge/rebase, tags, and worktrees as provided by the host | Local repository, diff, stage/commit, history, checkout, and branches; no network/conflict/merge/rebase/tag/worktree ports |
+| Preview | Target configuration, process lifecycle, gateway leases, refresh, and sharing | Sandboxed bounded static HTML preview; no process/config/share ports |
+| AI | Streaming Pi conversations plus optional usage, auth, resources, extensions, worktrees, and notifications | Bounded cancellable provider HTTP streams, model selection, and in-memory BYOK settings; optional server-management ports absent |
+| Authentication | Server session and sign-out | No authentication action |
+
+The browser terminal snapshots at most 32 MiB total and 8 MiB per file. Archive operations enforce
+entry, per-file, total-size, path, and reserved-metadata limits. AI conversations and event queues
+are bounded; cancellation reaches both main and browser adapters. Cross-module filesystem changes
+publish through the bounded `WorkspaceEventBus`; lag forces an authoritative resync, while dirty
+editor buffers retain conflict semantics. Bridge-load failures are timeout-bounded and surface as
+typed offline errors; shared modules never receive script URLs or select bridge implementations.
 
 ## Build and validation matrix
 
-| Surface | Command | Expected package/features |
-| --- | --- | --- |
-| Main web client | `mise run check` | `syntaxis`, `web` |
-| Main server | `mise run check:server` | `syntaxis`, `server` |
-| Main development server | `mise run serve` | `syntaxis`, default web platform |
-| Guest web client | `dx build --package syntaxis-guest --platform web` | `syntaxis-guest`, `web` |
-| Full requested QA | `mise run qa` | workspace web checks, tests, and doctests |
+Run these from the repository root. In the managed container, `mise` supplies the pinned tools.
 
-The root manifest is now a virtual workspace. Main-specific Dioxus commands must select
-`--package syntaxis`; guest commands already select `--package syntaxis-guest`.
+| Surface | Command |
+| --- | --- |
+| Main web client and server debug build | `dx build --package syntaxis --platform web` |
+| Guest web debug build | `dx build --package syntaxis-guest --platform web --debug-symbols false` |
+| Main server check | `just check server` |
+| Shared/domain/adapter tests | `just test "" web` |
+| Browser/JavaScript tests | `just test-web` |
+| Architecture boundaries | `just architecture` |
+| Optimized size report | `just bundle-report` |
+| Optimized size gate | `just bundle-check` |
+| Complete validation | `mise run qa` |
 
-## Route characterization
+CI builds the main web/server surface and guest WASM surface, runs host and JavaScript tests, runs
+the guest Chromium smoke, checks generated files, enforces architecture boundaries and bundle
+budgets, and builds the production container.
 
-| Product location | Main route | Guest route at baseline |
-| --- | --- | --- |
-| Home | `/` | `/` |
-| Files | `/workspaces/:slug/files?:..query` | `/workspaces/:slug/files?:..query` |
-| Terminal | `/workspaces/:slug/terminal?:..query` | `/workspaces/:slug/terminal?:..query` |
-| Git | `/workspaces/:slug/git` | `/workspaces/:slug/git` |
-| Preview | `/workspaces/:slug/preview` | `/workspaces/:slug/preview` |
-| AI | `/workspaces/:slug/ai?:..query` | `/workspaces/:slug/ai` |
-| AI settings redirect | `/workspaces/:slug/ai/settings` | `/workspaces/:slug/ai/settings` component |
-| AI settings section | `/workspaces/:slug/ai/settings/:section` | `/workspaces/:slug/ai/settings/:section` |
+## Browser and visual evidence
 
-The shared route extraction must retain the main query models and redirect behavior. Guest route
-wrappers may temporarily adapt their smaller state model, but no new route shapes should be added.
+The tracked `screenshots/` directory remains the canonical main visual reference; the extraction
+made no deliberate visual redesign. The existing main autoresearch workload passed against the
+optimized app for Home/Recent Projects, New Project, Files/editor readiness, and Git diff. Its
+320x700 mobile and 1440x900 desktop audits found no horizontal overflow, console error, page error,
+or failed request. A focused optimized Chromium smoke also created a server terminal and verified
+that the versioned runtime-main renderer bridge loaded and mounted xterm without browser failures.
 
-## Guest capability characterization
+`autoresearch/guest-smoke.mjs` is the runtime-specific guest integration check. It opens the OPFS
+workspace through a real bounded ZIP import and opens every shared module route. It opens a file in
+the shared editor, renders an imported HTML document and stylesheet through the sandboxed static
+Preview adapter, executes and cancels commands through the Terminal adapter, and initializes a
+repository through the Git adapter. Its intercepted provider exercises progressive AI deltas,
+request cancellation, the 1 MiB response limit, streaming request configuration, and browser-local
+authorization. The check also verifies the versioned archive, Terminal, and Git bridges, exercises
+the AI settings deep link, fails on unexpected browser errors, and rejects any local flow that
+attempts a Syntaxis `/api/` request. It passed against both the completed debug and optimized
+release guest artifacts.
 
-| Area | Supported in the browser guest | Intentionally unavailable or constrained |
-| --- | --- | --- |
-| Workspace sources | Private OPFS workspace, local-folder picker when supported, ZIP import/export | Registered server roots, server project bootstrap, account sync |
-| Files/editor | Text editing, explorer operations, bounded browser search, image/Markdown preview, session-local state | Language servers and server file watching |
-| Terminal | Detected command execution through the browser command runtime, cancellation, structured output | Interactive PTY, arbitrary native processes, server terminal sessions |
-| Git | Local repository/status/diff/history/commit operations through the browser bridge; HTTPS remotes when CORS or a trusted proxy permits | SSH transport, host credential helpers, operations unsupported by the browser engine |
-| Preview | Static HTML prepared from workspace files with bounded local assets | Process discovery/control, gateway leases, public sharing |
-| AI | Browser-side provider configuration and HTTP chat requests; credentials remain in browser storage | Server Pi sessions, worktrees, extensions, server resources, provider login flows |
-| Authentication | No logout action | Server authentication/session management |
+## Release WASM comparison and budgets
 
-Capability claims must be converted to optional ports or typed capability values during each
-vertical extraction. This table documents behavior; it must not become a boolean feature matrix in
-shared UI code.
+The baseline release artifacts were reconstructed from commit `89c04e5` with Dioxus CLI 0.7.10,
+the pinned lockfile, `--release --locked --debug-symbols false`, and generated assets reproduced
+from that commit. Compression uses gzip level 9 and Brotli quality 11.
 
-## Existing visual and smoke evidence
+| Client | Baseline raw | Final raw | Change | Baseline Brotli | Final Brotli | Change |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Main | 7,309,211 | 6,572,411 | -10.1% | 1,742,228 | 1,558,369 | -10.6% |
+| Guest | 3,228,545 | 5,237,154 | +62.2% | 841,377 | 1,296,133 | +54.0% |
+| Combined | 10,537,756 | 11,809,565 | +12.1% | 2,583,605 | 2,854,502 | +10.5% |
 
-The tracked `screenshots/` directory provides the canonical desktop reference for Home, Files,
-Terminal, Git, Preview, and AI. The `autoresearch` browser workload covers main startup, workspace
-selection, file opening, and editor rendering at desktop and mobile viewport sizes. Guest smoke
-coverage still needs to be added before guest routing or chrome is deleted.
+The guest increase is the measured cost of replacing its smaller parallel feature implementations
+with the canonical shell and five shared modules, including the richer Files, Terminal, Git,
+Preview, and AI flows required by the architecture. Main shrank despite moving the same UI into
+libraries. Dioxus route splitting remains unavailable, so this migration does not rely on it.
 
-Existing debug artifacts at the baseline were:
+No release threshold was committed before implementation; the old record explicitly left it
+pending. The permanent completion budgets therefore use the measured final artifacts with less
+than six percent headroom for toolchain noise and small follow-up changes:
 
-| Artifact | Bytes | Notes |
-| --- | ---: | --- |
-| Main web WASM | 275,821,256 | Debug, uncompressed; not a regression budget |
-| Main server | 563,277,032 | Debug binary; not a regression budget |
-| Guest web WASM | 141,284,580 | Debug, uncompressed; not a regression budget |
+| Client | Raw limit | Brotli limit |
+| --- | ---: | ---: |
+| Main | 6,900,000 | 1,640,000 |
+| Guest | 5,500,000 | 1,370,000 |
 
-Release and compressed WASM budgets remain pending. They should be recorded after the first
-approved validation/build run and before shared feature code begins moving.
+The source measurements and limits are checked in at `scripts/bundle-budgets.json`.
+`scripts/report-bundle-sizes.mjs release --check` fails when either raw or Brotli bytes exceed its
+limit, and `just bundle-check` builds both release clients before invoking that gate.
 
-## Phase status
+## Phase completion
 
-- Phase 0: source, routes, commands, capabilities, existing screenshots, and provisional artifact
-  sizes recorded. Guest browser smoke coverage and release-size budgets remain open.
-- Phase 1: main executable moved into `apps/main`; Files and AI route query models are shared and
-  the guest AI settings route now follows the canonical redirect/section model. Full shell and
-  navigation adoption remain open until feature entry points leave the app binaries.
-- Phase 2: typed errors, navigation intents, stable application services, runtime composition
-  packages, and a bounded workspace event bus are in place. Main watcher events publish into the
-  bus, and Files consumes a workspace-scoped bounded subscription with exact-path coalescing and
-  explicit authoritative resync on lag. The browser runtime now composes concrete
-  OPFS Files, bounded search, and browser-session adapters. The main runtime now owns desktop host
-  Files composition, the desktop registry singleton, and the remote Files adapter/transport
-  mapping. Dioxus endpoint declarations remain in the main composition package so their server
-  bodies retain the existing authorized workspace lookup; broader non-Files runtime extraction
-  remains open.
-- Phase 3: `syntaxis-module-files` owns the initial Files port bundle and normalized search
-  contracts, shared matching and bounded filesystem traversal, and reusable in-memory test
-  adapters. Guest workspace search, main Explorer search, and AI file-mention search now consume
-  the port through `AppServices`; browser, desktop, and remote-server runtimes select adapters over
-  the same contracts and matching implementation. The old main search endpoint and matching copy
-  have been removed. Canonical main Files initialization, session persistence, explorer traversal,
-  document I/O, mutations, uploads, and post-Git reloads also consume the injected port bundle; the
-  obsolete combined bootstrap endpoint and app-local file-operation selection wrappers have been
-  removed. `syntaxis-module-files` now owns the narrow cross-module Files UI state, source-reference
-  formatting, debounced session persistence controller, workspace-event inbox, canonical open
-  document/view models, private document/selection controller state, edit application, dirty-close
-  decisions, active-tab repair, typed version-checked saves/reloads, and external-change buffer
-  reconciliation. Validated file create/copy/move/delete use cases, mutation outcomes, dialog
-  destination suggestions, and open-tab rename propagation are shared as well. Git and AI consume
-  only the narrow published snapshot instead of importing the controller's full signal graph; the
-  former app-local revision bridge has been removed. The browser guest now resolves the runtime's
-  Files port bundle for uploads and runs create/copy/move/delete through the same validated mutation
-  use cases and request models as the main application. Archive import remains browser transfer
-  infrastructure rather than ordinary explorer mutation behavior. Shared Files startup now owns
-  root listing, optional root editor-configuration discovery, and session loading; the main app
-  wrapper adds only its transitional Git status decoration. Lazy directory loading and scoped
-  `.editorconfig` discovery are shared use cases as well, leaving the main explorer responsible
-  only for applying the returned state to its transitional signals. Document classification,
-  bounded text/image loading, editor-buffer construction, missing restored-tab handling, and the
-  merge/order policy that protects documents opened while restoration is running are shared too;
-  the app wrapper temporarily converts image bytes into its existing preview source. Ordinary
-  uploads now share picker-name/path validation, declared and actual byte limits, collision policy,
-  and port-driven binary writes while retaining the characterized main overwrite and browser
-  reject-existing policies. Browser-native file picking and byte reads remain adapter-adjacent, and
-  archive import remains separate transfer infrastructure. The remaining canonical controller/UI
-  and guest file operations still need to move into the shared module crate. Main and browser
-  `AppServices` now both advertise complete required Files port bundles.
+| Phase | Result |
+| --- | --- |
+| 0 — Baseline | Source/routes/capabilities/screenshots characterized; guest smoke and reproducible release comparison added. |
+| 1 — Explicit apps | Virtual workspace and two composition-only apps use one shared route, Home, shell, and navigation. |
+| 2 — Services/adapters | Typed service graph, errors, navigation intents, bounded event bus, main runtime, browser runtime, and in-memory test adapters established. |
+| 3 — Files | One shared Files/editor module owns startup, tree, documents, sessions, search, mutations, uploads/transfers, conflicts, and UI. Guest duplicate controllers were removed. |
+| 4 — Terminal | One shared Terminal module owns interactive and command-runner presentations; runtime transports and renderer are injected ports. |
+| 5 — Git | One shared Git module owns repository UI and workflows; capabilities are split into optional port groups and browser bridge DTOs remain runtime-local. |
+| 6 — Preview | One shared Preview module owns its lifecycle and presentations; main process/gateway and browser static-document behavior are adapters. |
+| 7 — AI | One shared AI module owns conversations/settings and optional panels over normalized progressive streams; both adapters are bounded and cancellable. |
+| 8 — Cleanup/enforcement | Parallel guest/app-local feature trees and CSS were removed, runtime ownership was tightened, architecture and bundle CI gates were added, and final size evidence was recorded. |
 
-## Sequencing note
-
-The proposed plan placed the final shared `Routable` enum before feature extraction. That would
-force `app-shell` either to import app-local components or to resolve feature components through a
-temporary service locator. The migration instead shares route query contracts now and will move the
-actual route enum once the corresponding feature entry points live in shared module crates. This
-preserves the target dependency direction throughout the migration.
+The implementation phases are complete. The repository's full `mise run qa` workflow is the final
+validation gate and is intentionally run only after explicit confirmation because it affects Rust
+and build configuration validation.

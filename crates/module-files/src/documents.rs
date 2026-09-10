@@ -2,10 +2,60 @@ use std::collections::{BTreeSet, HashMap};
 
 use dioxus::prelude::{ReadableExt, Signal, WritableExt, use_signal};
 use dioxus_code_editor::{EditorEdit, EditorSelection};
+use syntaxis_app_contracts::PortHandle;
 use syntaxis_editor::{BufferStatus, EditorBuffer, EditorConfig};
 use syntaxis_workspace::{FileSession, WorkspaceId};
 
 use crate::format_file_reference;
+
+#[derive(Clone)]
+pub struct ImageSource {
+    inner: PortHandle<ImageSourceInner>,
+}
+
+impl ImageSource {
+    pub fn new(url: String, cleanup: Option<PortHandle<dyn ImageSourceCleanup>>) -> Self {
+        Self {
+            inner: PortHandle::new(ImageSourceInner { url, cleanup }),
+        }
+    }
+
+    pub fn url(&self) -> &str {
+        &self.inner.url
+    }
+}
+
+impl std::fmt::Debug for ImageSource {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_tuple("ImageSource")
+            .field(&self.url())
+            .finish()
+    }
+}
+
+impl PartialEq for ImageSource {
+    fn eq(&self, other: &Self) -> bool {
+        self.url() == other.url()
+    }
+}
+
+pub trait ImageSourceCleanup: Send + Sync {
+    fn release(&self, url: &str);
+}
+
+struct ImageSourceInner {
+    url: String,
+    cleanup: Option<PortHandle<dyn ImageSourceCleanup>>,
+}
+
+impl Drop for ImageSourceInner {
+    fn drop(&mut self) {
+        if let Some(cleanup) = self.cleanup.as_ref() {
+            cleanup.release(&self.url);
+        }
+    }
+}
 
 /// A document owned by the canonical Files controller.
 #[derive(Clone, Debug, PartialEq)]
@@ -13,7 +63,7 @@ pub enum OpenDocument {
     Text(EditorBuffer),
     Image {
         path: String,
-        data_url: String,
+        source: ImageSource,
         size: u64,
     },
     Large {
@@ -57,7 +107,7 @@ pub enum ActiveDocumentView {
     },
     Image {
         path: String,
-        data_url: String,
+        source_url: String,
         size: u64,
     },
     Large {
@@ -80,13 +130,9 @@ impl From<&OpenDocument> for ActiveDocumentView {
                 status: buffer.status,
                 config: buffer.config.clone(),
             },
-            OpenDocument::Image {
-                path,
-                data_url,
-                size,
-            } => Self::Image {
+            OpenDocument::Image { path, source, size } => Self::Image {
                 path: path.clone(),
-                data_url: data_url.clone(),
+                source_url: source.url().to_owned(),
                 size: *size,
             },
             OpenDocument::Large { path, size } => Self::Large {

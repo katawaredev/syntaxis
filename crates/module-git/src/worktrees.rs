@@ -63,7 +63,10 @@ pub(super) fn BranchWorktreeMenu(
         let _ = repository_revision();
         async move {
             match worktrees {
-                Some(worktrees) => worktrees.list(&workspace).await.map_err(|error| error.to_string()),
+                Some(worktrees) => worktrees
+                    .list(&workspace)
+                    .await
+                    .map_err(|error| error.to_string()),
                 None => Ok(Vec::new()),
             }
         }
@@ -119,6 +122,10 @@ pub(super) fn BranchWorktreeMenu(
     };
     let loading = worktrees().is_none();
     let trigger_disabled = busy || branches.is_empty() || loading;
+    let create_workspace = workspace.clone();
+    let create_ports = ports.clone();
+    let remove_workspace = workspace.clone();
+    let remove_ports = ports.clone();
 
     let mut activate_worktree = move |worktree: WorktreeInfo| {
         if files_dirty {
@@ -463,8 +470,8 @@ pub(super) fn BranchWorktreeMenu(
                                 };
                                 operation_pending.set(true);
                                 error.set(None);
-                                let workspace = workspace.clone();
-                                let worktrees = ports.worktrees().cloned();
+                                let workspace = create_workspace.clone();
+                                let worktrees = create_ports.worktrees().cloned();
                                 spawn(async move {
                                     let Some(worktrees) = worktrees else {
                                         error.set(Some("Worktrees are unavailable in this runtime.".into()));
@@ -485,7 +492,7 @@ pub(super) fn BranchWorktreeMenu(
                                                 );
                                             on_activate_worktree.call(worktree);
                                         }
-                                        Err(message) => error.set(Some(message)),
+                                        Err(message) => error.set(Some(message.to_string())),
                                     }
                                     operation_pending.set(false);
                                 });
@@ -528,8 +535,8 @@ pub(super) fn BranchWorktreeMenu(
                                 let target_id = target.workspace.id.0.clone();
                                 operation_pending.set(true);
                                 error.set(None);
-                                let workspace = workspace.clone();
-                                let worktrees = ports.worktrees().cloned();
+                                let workspace = remove_workspace.clone();
+                                let worktrees = remove_ports.worktrees().cloned();
                                 spawn(async move {
                                     let Some(worktrees) = worktrees else {
                                         error.set(Some("Worktrees are unavailable in this runtime.".into()));
@@ -549,7 +556,7 @@ pub(super) fn BranchWorktreeMenu(
                                                     )),
                                                 );
                                         }
-                                        Err(message) => error.set(Some(message)),
+                                        Err(message) => error.set(Some(message.to_string())),
                                     }
                                     operation_pending.set(false);
                                 });

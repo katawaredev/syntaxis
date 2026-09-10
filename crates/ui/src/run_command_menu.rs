@@ -11,6 +11,7 @@ pub fn RunCommandMenu(
     disabled: bool,
     #[props(default)] disabled_reason: Option<String>,
     #[props(default = true)] show_add: bool,
+    #[props(default = true)] allow_delete: bool,
     on_run: EventHandler<RunCommand>,
     on_add: EventHandler<()>,
     on_refresh: EventHandler<()>,
@@ -57,7 +58,7 @@ pub fn RunCommandMenu(
                                 "{command.command}"
                             }
                         }
-                        if command.custom {
+                        if command.custom && allow_delete {
                             button {
                                 class: "-my-1 -mr-1 inline-flex size-7 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-destructive/12 hover:text-destructive",
                                 r#type: "button",

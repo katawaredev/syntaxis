@@ -51,11 +51,7 @@ impl PreparedUpload {
     }
 }
 
-fn upload_error(
-    code: AppErrorCode,
-    message: impl Into<String>,
-    retry: RetryAdvice,
-) -> AppError {
+fn upload_error(code: AppErrorCode, message: impl Into<String>, retry: RetryAdvice) -> AppError {
     AppError::new(code, message, retry, ErrorSource::Files)
 }
 
@@ -75,16 +71,17 @@ fn readable_limit(max_bytes: u64) -> String {
 ///
 /// This deliberately accepts picker paths but retains only their final component, matching the
 /// browser file-input behavior used by both application runtimes.
+///
+/// # Errors
+///
+/// Returns an error when the selected name, declared size, or relative destination is invalid.
 pub fn prepare_upload(
     directory: &RelativePath,
     picker_name: &str,
     declared_size: u64,
     policy: UploadPolicy,
 ) -> Result<PreparedUpload, AppError> {
-    let name = picker_name
-        .rsplit(['/', '\\'])
-        .next()
-        .unwrap_or_default();
+    let name = picker_name.rsplit(['/', '\\']).next().unwrap_or_default();
     if name.is_empty() || name == "." || name == ".." {
         return Err(upload_error(
             AppErrorCode::InvalidInput,
@@ -119,6 +116,11 @@ pub fn prepare_upload(
 /// Writes a prepared upload through the injected workspace Files port.
 ///
 /// The actual byte length is checked again because picker metadata is not an authority boundary.
+///
+/// # Errors
+///
+/// Returns an error when the content exceeds policy, conflicts with an existing file, or cannot
+/// be written.
 pub async fn execute_upload(
     files: &FilesPorts,
     workspace: &WorkspaceRecord,
@@ -257,13 +259,9 @@ mod tests {
             b"new"
         );
 
-        let actual_too_large = block_on(execute_upload(
-            &ports,
-            &workspace,
-            &overwrite,
-            b"too large",
-        ))
-        .expect_err("actual bytes must be bounded independently of picker metadata");
+        let actual_too_large =
+            block_on(execute_upload(&ports, &workspace, &overwrite, b"too large"))
+                .expect_err("actual bytes must be bounded independently of picker metadata");
         assert_eq!(actual_too_large.code, AppErrorCode::TooLarge);
     }
 }

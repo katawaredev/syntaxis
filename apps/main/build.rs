@@ -1,16 +1,12 @@
 use std::{env, fs, path::PathBuf};
 
 const COPIED_ASSETS: &[&str] = &[
-    "ai-chat.js",
-    "ai/chat.css",
     "apple-touch-icon.png",
     "favicon-96x96.png",
     "favicon.ico",
     "favicon.svg",
-    "files/markdown-preview.css",
     "geist-latin-wght-normal.woff2",
     "site.webmanifest",
-    "terminal/terminal.bundle.js",
     "ui.js",
     "web-app-manifest-192x192.png",
     "web-app-manifest-512x512.png",

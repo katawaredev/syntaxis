@@ -55,7 +55,7 @@ the same script in CI and deploy the resulting static directory.
 - Detect conflicting writes using the shared Syntaxis file-version model.
 - Reuse the shared CodeMirror editor, file-tree viewport, AI chrome, and terminal run menu.
 - Use a real local Git repository for status, staging, commits, history, branches,
-  diffs, and HTTPS remote synchronization.
+  diffs, and checkout operations.
 - Detect package.json, Justfile, and Makefile commands; native-runtime commands remain visibly disabled.
 - Use optional BYOK AI chat with provider credentials configured under AI Settings.
 - Access the shared, scrollable file explorer on desktop and mobile layouts.
@@ -68,10 +68,10 @@ working-directory state reset between commands, interactive processes are
 unavailable, and network access is disabled.
 
 The guest stores and mutates ordinary `.git` metadata through isomorphic-git.
-Remote operations use Git Smart HTTP and normally require a trusted CORS proxy;
-credentials are held only for the request. SSH, credential helpers, GPG
-signing, rebase, worktrees, hooks, and partial-hunk staging still require the
-native/server Git runtime. AI keys
+The browser runtime does not advertise a Git network capability, so remote
+management, fetch, pull, publish, and push controls are absent. SSH, credential
+helpers, GPG signing, rebase, worktrees, hooks, and partial-hunk staging still
+require the native/server Git runtime. AI keys
 remain in memory, are configured at `/workspaces/<slug>/ai/settings/provider-accounts`, and go
 directly to the selected provider, so that provider must allow browser CORS. ZIP import/export is
 intentionally merge-only: existing workspace paths are never overwritten by an

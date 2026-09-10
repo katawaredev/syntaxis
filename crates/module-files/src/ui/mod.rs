@@ -2,7 +2,14 @@
 
 use std::collections::BTreeSet;
 
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+use crate::{
+    ActivePathRepair, DocumentLoad, FileMutationOutcome, FilesSessionWriter, UploadPolicy,
+    apply_document_edits, close_documents, execute_file_action, execute_upload,
+    load_document_content, load_files_directory, load_restored_document_content,
+    merge_restored_documents, prepare_upload, reconcile_text_document, reload_text_document,
+    rename_documents, repaired_active_path, request_close, request_close_many,
+    revert_text_document, save_text_document, save_text_documents, suggested_destination,
+};
 use dioxus::prelude::*;
 use dioxus_code_editor::{
     CodeEditor, EditorCommand, EditorCommandKind, EditorEdit, EditorRange, EditorSearchQuery,
@@ -16,14 +23,6 @@ use syntaxis_editor::{
     lsp_language_id_for_path, replace_all_search_matches, replace_search_match,
 };
 use syntaxis_git::{ChangeKind as GitChangeKind, DiffKind, RepositoryStatus, UnifiedDiff};
-use crate::{
-    ActivePathRepair, DocumentLoad, FileMutationOutcome, FilesSessionWriter, apply_document_edits,
-    close_documents, execute_file_action, execute_upload, load_document_content,
-    load_files_directory, load_restored_document_content, merge_restored_documents,
-    prepare_upload, reconcile_text_document, reload_text_document, rename_documents,
-    repaired_active_path, request_close, request_close_many, revert_text_document,
-    save_text_document, save_text_documents, suggested_destination, UploadPolicy,
-};
 use syntaxis_ui::prelude::{
     AppIcon, Button, ButtonKind, ControlSize, DangerNote, DialogActions, DialogForm, Drawer,
     EditorMenuItem, ExplorerAction, ExplorerToolbar, Field, FileIcon, GitChangeBadge, Icon,
@@ -92,8 +91,8 @@ use preview::{
     CsvPreview, EditorStatus, EmptyEditor, ImagePreview, MarkdownPreview, SafeSvgPreview,
     UnsupportedPreview, file_glyph, file_label, is_csv, is_markdown, is_svg,
 };
-use search::WorkspaceSearchResult;
 pub use preview::{render_markdown, render_markdown_preserving_newlines};
+use search::WorkspaceSearchResult;
 pub use search::search_workspace_files;
 use view_helpers::{changed_parent_directories, diff_kind_for_change, open_diff_request};
 use workspace_sync::{WorkspaceSyncState, use_workspace_sync};
@@ -138,10 +137,8 @@ fn WorkspaceFiles(
     let files = use_context::<crate::FilesPorts>();
     let workspace_event_bus = use_context::<syntaxis_app_contracts::WorkspaceEventBus>();
     let files_ui = use_context::<crate::FilesUiState>();
-    let workspace_events = crate::use_files_workspace_events(
-        workspace_event_bus,
-        target.id.clone(),
-    );
+    let workspace_events =
+        crate::use_files_workspace_events(workspace_event_bus, target.id.clone());
     let initial_files = files.clone();
     let mut refresh = use_signal(|| 0_u64);
     let load_target = target.clone();
@@ -151,7 +148,6 @@ fn WorkspaceFiles(
         let _ = refresh();
         async move { load_initial(&files, workspace).await }
     });
-    let target_id = target.id.0.clone();
     let restore_workspace = target.clone();
     let activate_workspace_id = target.id.clone();
     let session_workspace_id = target.id.0.clone();
@@ -626,6 +622,7 @@ fn WorkspaceFiles(
         ));
     });
     let explorer_refresh = EventHandler::new(move |()| refresh += 1);
+    let copy_reference_files = files.clone();
 
     rsx! {
         div { class: if sidebar_open() { "grid size-full min-h-0 min-w-0 grid-cols-[248px_minmax(0,1fr)] overflow-hidden max-md:block" } else { "grid size-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] overflow-hidden max-md:block" },
@@ -822,7 +819,11 @@ fn WorkspaceFiles(
                                     disabled: active_reference.is_none() || !clipboard_available,
                                     onclick: move |()| {
                                         if let Some(reference) = active_reference.clone() {
-                                            copy_editor_reference(files.clone(), reference, toast);
+                                            copy_editor_reference(
+                                                copy_reference_files.clone(),
+                                                reference,
+                                                toast,
+                                            );
                                         }
                                     },
                                 }
@@ -1214,9 +1215,10 @@ async fn upload_files(
     let mut uploaded = 0_usize;
     let mut first_error = None;
     for file in files {
+        let picker_name = file.name();
         let upload = match prepare_upload(
             &destination,
-            file.name(),
+            &picker_name,
             file.size(),
             UploadPolicy::overwrite(MAX_UPLOAD_BYTES),
         ) {
@@ -1233,9 +1235,8 @@ async fn upload_files(
         match execute_upload(&file_ports, &workspace, &upload, &content).await {
             Ok(_) => uploaded += 1,
             Err(error) => {
-                first_error.get_or_insert_with(|| {
-                    upload_error_message(upload.name(), &error.message)
-                });
+                first_error
+                    .get_or_insert_with(|| upload_error_message(upload.name(), &error.message));
             }
         }
     }

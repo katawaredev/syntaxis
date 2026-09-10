@@ -13,6 +13,8 @@ members = [
   "crates/lsp-host",
   "crates/module-files",
   "crates/module-git",
+  "crates/module-ai",
+  "crates/module-preview",
   "crates/module-terminal",
   "crates/notifications",
   "crates/notifications-host",

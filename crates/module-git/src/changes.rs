@@ -3,15 +3,15 @@
     reason = "Dioxus expands the parent glob for RSX hot-reload analysis"
 )]
 use super::{
-    ActionCallback, AnyStorage, AppError, AppIcon, ChangeKind, CommitInfo, ConflictChoice, ConflictFile,
-    ControlSize, DiffHunk, DiffKind, DiffLayout, DropdownMenu, DropdownMenuItem, Element,
-    EventHandler, FileChange, FileIcon, GlobalAttributesExtension, HasAttributes, History,
+    ActionCallback, AnyStorage, AppError, AppIcon, ChangeKind, CommitInfo, ConflictChoice,
+    ConflictFile, ControlSize, DiffHunk, DiffKind, DiffLayout, DropdownMenu, DropdownMenuItem,
+    Element, EventHandler, FileChange, FileIcon, GlobalAttributesExtension, HasAttributes, History,
     HistoryAction, HunkAction, Icon, InputExtension, LinkExtension, MenuContent, MenuTrigger,
     Mutation, OptionExtension, Props, ReadableExt, ReadableHashMapExt, ReadableHashSetExt,
     ReadableOptionExt, ReadableResultExt, ReadableStrExt, ReadableVecExt, RebaseStatus,
     RepositoryChangeRow, RepositoryChangeSection, RepositorySidebarTabs, RepositorySidebarView,
-    RepositoryStatus, Result, SelectExtension, SelectedChange, SidebarView, Signal,
-    Storage, StyleExtension, SvgAttributesExtension, TrackExtension, UnifiedDiff, UnifiedDiffView,
+    RepositoryStatus, Result, SelectExtension, SelectedChange, SidebarView, Signal, Storage,
+    StyleExtension, SvgAttributesExtension, TrackExtension, UnifiedDiff, UnifiedDiffView,
     WritableExt, component, diff_line_class, dioxus_core, dioxus_elements, dioxus_signals,
     language_slug_for_path, parse_diff_hunks, rsx, use_signal,
 };
@@ -101,10 +101,6 @@ pub(super) fn GitSidebar(
                                 kind: DiffKind::Worktree,
                                 selected,
                                 pending,
-                                can_checkout,
-                                can_branch,
-                                can_tag,
-                                can_revert,
                                 batch_label: None,
                                 collapsible: false,
                                 on_select,

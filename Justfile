@@ -323,6 +323,18 @@ build platform=default_platform profile="debug": build-assets
 release platform=default_platform: build-assets
     dx build --package syntaxis --platform "{{ platform }}" --release
 
+# Build both web applications in release mode and report raw/gzip/Brotli WASM sizes.
+bundle-report: build-assets
+    dx build --package syntaxis --platform web --release --locked --debug-symbols false
+    dx build --package syntaxis-guest --platform web --release --locked --debug-symbols false
+    bun scripts/report-bundle-sizes.mjs release
+
+# Build both web clients and fail when their release WASM exceeds the checked-in budgets.
+bundle-check: build-assets
+    dx build --package syntaxis --platform web --release --locked --debug-symbols false
+    dx build --package syntaxis-guest --platform web --release --locked --debug-symbols false
+    bun scripts/report-bundle-sizes.mjs release --check
+
 # Build the production web app and run repeatable local Lighthouse audits.
 lighthouse:
     #!/usr/bin/env bash
@@ -484,7 +496,7 @@ dx-check platform=default_platform: build-assets
     case "{{ platform }}" in
         web)
             dx check --package syntaxis "--{{ platform }}"
-            dx build --package syntaxis-guest --platform "{{ platform }}"
+            dx build --package syntaxis-guest --platform "{{ platform }}" --debug-symbols false
             ;;
         server | desktop)
             dx check --package syntaxis "--{{ platform }}"
@@ -557,6 +569,10 @@ lint-web:
 # Run all language-specific lint gates.
 lint platform=default_platform: (clippy platform) lint-web
 
+# Enforce shared-module dependency direction and composition-root ownership.
+architecture:
+    bash scripts/check-architecture.sh
+
 # Run tests using cargo-nextest. The filter remains the first argument for convenience.
 test filter="" platform=default_platform: build-assets
     #!/usr/bin/env bash
@@ -587,6 +603,10 @@ test-cargo platform=default_platform: build-assets
         --workspace \
         --no-default-features \
         --features "{{ platform }}"
+
+# Run authored JavaScript and browser-harness unit tests.
+test-web: build-assets
+    bun test autoresearch/*.test.js crates/runtime-main/bridge-src/terminal/source-links.test.js
 
 # Run doctests, which cargo-nextest does not replace.
 test-doc platform=default_platform: build-assets
@@ -655,15 +675,15 @@ expand *args:
 # -----------------------------------------------------------------------------
 
 # Fast, non-mutating local validation for one platform.
-check platform=default_platform: format-check (dx-check platform) (lint platform) (test "" platform)
+check platform=default_platform: architecture format-check (dx-check platform) (lint platform) (test "" platform) test-web
 
 # Full validation suitable for a manually requested CI run.
-ci platform=default_platform: format-check (dx-check platform) (lint platform) (test "" platform) (test-doc platform) deny machete
+ci platform=default_platform: architecture format-check (dx-check platform) (lint platform) (test "" platform) (test-doc platform) test-web deny machete
     @echo
     @echo "All quality gates passed."
 
 # Lazy-developer workflow: apply safe fixes, then validate one platform and its doctests.
-qa platform=default_platform: build-assets (fix platform) (test-doc platform)
+qa platform=default_platform: architecture build-assets (fix platform) (test-doc platform)
     @echo
     @echo "All code quality gates passed."
 

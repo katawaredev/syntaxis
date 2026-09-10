@@ -2,9 +2,9 @@
 
 use std::collections::BTreeSet;
 
+use crate::FilesPorts;
 use syntaxis_editor::EditorConfigSource;
 use syntaxis_git::RepositoryStatus;
-use crate::FilesPorts;
 use syntaxis_workspace::{FileEntry, FileSession, WorkspaceRecord};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -27,10 +27,8 @@ pub(super) async fn load_initial(
         let Some(git) = git else {
             return (None, BTreeSet::new());
         };
-        let (status, ignored) = futures_util::join!(
-            git.status(&workspace),
-            git.ignored_paths(&workspace),
-        );
+        let (status, ignored) =
+            futures_util::join!(git.status(&workspace), git.ignored_paths(&workspace),);
         (
             status.ok(),
             ignored

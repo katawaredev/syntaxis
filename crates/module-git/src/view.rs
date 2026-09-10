@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
 use dioxus_code_editor::{DiffLayout, UnifiedDiffView};
 use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
+use syntaxis_app_contracts::AppError;
 use syntaxis_editor::language_slug_for_path;
 use syntaxis_git::{
     BranchComparison, BranchInfo, ChangeKind, CommitDetail, CommitInfo, CommitOutcome,
@@ -14,7 +15,6 @@ use syntaxis_ui::prelude::{
     PanelHeaderKind, RepositoryChangeRow, RepositoryChangeSection, RepositorySidebarTabs,
     RepositorySidebarView, TextArea, TextInput, TextInputType, Toast, Tone,
 };
-use syntaxis_app_contracts::AppError;
 use syntaxis_workspace::WorkspaceRecord;
 
 #[path = "changes.rs"]
@@ -51,9 +51,9 @@ use self::support::{
 };
 use self::sync::{GitSyncAction, GitSyncButton};
 use self::worktrees::{BranchWorktreeAction, BranchWorktreeMenu};
-use super::GitPorts;
 use super::operations::{Mutation, RepositoryAction};
 use super::repository::{RepositoryResources, SelectedChange, use_repository_resources};
+use super::{GitCommitCapabilities, GitPorts};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) enum GitDialog {
@@ -214,6 +214,10 @@ pub fn GitView(
     let can_network = ports.network().is_some();
     let can_revert = ports.revert().is_some();
     let can_tag = ports.tags().is_some();
+    let commit_capabilities = ports
+        .repository()
+        .map(|repository| repository.commit_capabilities())
+        .unwrap_or_default();
     let mut refresh_key = use_signal(|| 0_u64);
     let mut selected = use_signal(|| None::<SelectedChange>);
     let mut expanded_diff = use_signal(|| false);
@@ -224,7 +228,13 @@ pub fn GitView(
         diff,
         conflict,
         commit_detail,
-    } = use_repository_resources(&workspace, refresh_key, selected, expanded_diff, selected_commit);
+    } = use_repository_resources(
+        &workspace,
+        refresh_key,
+        selected,
+        expanded_diff,
+        selected_commit,
+    );
     let mut drawer = use_signal(|| false);
     let mut sidebar_open = use_signal(|| true);
     let mut branch_dialog_target = use_signal(|| None::<String>);
@@ -293,7 +303,9 @@ pub fn GitView(
         spawn(async move {
             let Some(mutations) = mutations else {
                 pending.set(false);
-                operation_error.set(Some("Repository initialization is unavailable in this runtime.".into()));
+                operation_error.set(Some(
+                    "Repository initialization is unavailable in this runtime.".into(),
+                ));
                 return;
             };
             let result = mutations.initialize(&workspace).await;
@@ -371,9 +383,15 @@ pub fn GitView(
                     )));
                 }
                 Ok(CommitOutcome::SigningPassphraseRequired { message }) => {
-                    retry_commit.set(Some(retry));
-                    operation_error.set(Some(message));
-                    dialog.set(GitDialog::SigningRetry);
+                    if commit_capabilities.signing_retry {
+                        retry_commit.set(Some(retry));
+                        operation_error.set(Some(message));
+                        dialog.set(GitDialog::SigningRetry);
+                    } else {
+                        operation_error.set(Some(
+                            "This runtime cannot complete a signing-passphrase prompt.".into(),
+                        ));
+                    }
                 }
                 Err(error) => operation_error.set(Some(error.to_string())),
             }
@@ -421,7 +439,9 @@ pub fn GitView(
                 history_page_error.set(Some("Git history is unavailable in this runtime.".into()));
                 return;
             };
-            let result = read.history(&workspace, offset, HISTORY_PAGE_FETCH_LIMIT).await;
+            let result = read
+                .history(&workspace, offset, HISTORY_PAGE_FETCH_LIMIT)
+                .await;
             if refresh_key() != refresh_generation {
                 return;
             }
@@ -458,7 +478,9 @@ pub fn GitView(
         spawn(async move {
             let Some(mutations) = mutations else {
                 pending.set(false);
-                operation_error.set(Some("Signed commits are unavailable in this runtime.".into()));
+                operation_error.set(Some(
+                    "Signed commits are unavailable in this runtime.".into(),
+                ));
                 return;
             };
             let result = mutations.commit(&workspace, request).await;
@@ -703,14 +725,14 @@ pub fn GitView(
                                                     },
                                                     "New branch"
                                                 } }
-                                                if can_tag { DropdownMenuItem::<GitDialog> {
+                                                if can_branch { DropdownMenuItem::<GitDialog> {
                                                     value: GitDialog::RenameBranch,
                                                     index: 2_usize,
                                                     disabled: pending() || repository.branch.head.is_none(),
                                                     on_select: move |_| dialog.set(GitDialog::RenameBranch),
                                                     "Rename branch"
                                                 } }
-                                                DropdownMenuItem::<GitDialog> {
+                                                if can_tag { DropdownMenuItem::<GitDialog> {
                                                     value: GitDialog::Tags,
                                                     index: 3_usize,
                                                     disabled: pending(),
@@ -720,7 +742,7 @@ pub fn GitView(
                                                         dialog.set(GitDialog::Tags);
                                                     },
                                                     "Tags ({tag_list.len()})"
-                                                }
+                                                } }
                                                 hr {}
                                                 DropdownMenuItem::<GitDialog> {
                                                     class: "!text-destructive",
@@ -954,6 +976,7 @@ pub fn GitView(
         if dialog() == GitDialog::Commit {
             CommitDialog {
                 workspace: workspace.clone(),
+                capabilities: commit_capabilities,
                 initial_message: retry_commit().map(|request| request.message).unwrap_or_default(),
                 pending: pending(),
                 error: operation_error(),

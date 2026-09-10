@@ -3,8 +3,16 @@ use syntaxis_app_contracts::{AppError, PortHandle};
 use syntaxis_workspace::{FileSession, WorkspaceFiles, WorkspaceId, WorkspaceRecord};
 
 use crate::{
-    FileGitPort, FilesClipboardPort, LanguageServicesPort, SearchRequest, SearchResults,
+    FileGitPort, FilesClipboardPort, ImageSource, LanguageServicesPort, LocalFolderPermissionPort,
+    SearchRequest, SearchResults, WorkspaceTransferPort,
 };
+
+pub trait ImagePreviewPort: Send + Sync {
+    /// # Errors
+    ///
+    /// Returns an error when the image cannot be created.
+    fn create(&self, mime: &str, content: Vec<u8>) -> Result<ImageSource, AppError>;
+}
 
 #[async_trait(?Send)]
 pub trait WorkspaceSearchPort: Send + Sync {
@@ -29,6 +37,9 @@ pub struct FilesPorts {
     git: Option<PortHandle<dyn FileGitPort>>,
     language_services: Option<PortHandle<dyn LanguageServicesPort>>,
     clipboard: Option<PortHandle<dyn FilesClipboardPort>>,
+    transfer: Option<PortHandle<dyn WorkspaceTransferPort>>,
+    local_folders: Option<PortHandle<dyn LocalFolderPermissionPort>>,
+    image_preview: Option<PortHandle<dyn ImagePreviewPort>>,
 }
 
 impl FilesPorts {
@@ -44,6 +55,9 @@ impl FilesPorts {
             git: None,
             language_services: None,
             clipboard: None,
+            transfer: None,
+            local_folders: None,
+            image_preview: None,
         }
     }
 
@@ -90,5 +104,38 @@ impl FilesPorts {
 
     pub fn clipboard(&self) -> Option<&PortHandle<dyn FilesClipboardPort>> {
         self.clipboard.as_ref()
+    }
+
+    #[must_use]
+    pub fn with_transfer(mut self, transfer: PortHandle<dyn WorkspaceTransferPort>) -> Self {
+        self.transfer = Some(transfer);
+        self
+    }
+
+    pub fn transfer(&self) -> Option<&PortHandle<dyn WorkspaceTransferPort>> {
+        self.transfer.as_ref()
+    }
+
+    #[must_use]
+    pub fn with_local_folders(
+        mut self,
+        local_folders: PortHandle<dyn LocalFolderPermissionPort>,
+    ) -> Self {
+        self.local_folders = Some(local_folders);
+        self
+    }
+
+    pub fn local_folders(&self) -> Option<&PortHandle<dyn LocalFolderPermissionPort>> {
+        self.local_folders.as_ref()
+    }
+
+    #[must_use]
+    pub fn with_image_preview(mut self, preview: PortHandle<dyn ImagePreviewPort>) -> Self {
+        self.image_preview = Some(preview);
+        self
+    }
+
+    pub fn image_preview(&self) -> Option<&PortHandle<dyn ImagePreviewPort>> {
+        self.image_preview.as_ref()
     }
 }

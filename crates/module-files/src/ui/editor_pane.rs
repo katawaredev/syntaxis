@@ -210,8 +210,8 @@ pub(super) fn EditorPane(
                         }
                     }
                 }
-                Some(ActiveDocumentView::Image { path, data_url, size }) => rsx! {
-                    ImagePreview { path, data_url, size }
+                Some(ActiveDocumentView::Image { path, source_url, size }) => rsx! {
+                    ImagePreview { path, source_url, size }
                 },
                 Some(ActiveDocumentView::Large { path, size }) => rsx! {
                     UnsupportedPreview {

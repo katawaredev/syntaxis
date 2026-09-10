@@ -1,11 +1,13 @@
 use std::fmt;
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicUsize, Ordering},
+};
 
 use futures_channel::mpsc;
 use futures_core::Stream;
 use serde::{Deserialize, Serialize};
 use syntaxis_workspace::{WorkspaceChange, WorkspaceId};
-
-use crate::PortHandle;
 
 const DEFAULT_SUBSCRIBER_CAPACITY: usize = 64;
 
@@ -52,49 +54,20 @@ pub enum WorkspaceEventDelivery {
     Closed,
 }
 
-#[cfg(target_arch = "wasm32")]
-type BusState = std::cell::RefCell<BusInner>;
-#[cfg(not(target_arch = "wasm32"))]
-type BusState = std::sync::Mutex<BusInner>;
-
-#[cfg(target_arch = "wasm32")]
 #[derive(Clone, Default)]
-struct LagState(PortHandle<std::cell::Cell<usize>>);
-
-#[cfg(not(target_arch = "wasm32"))]
-#[derive(Clone, Default)]
-struct LagState(PortHandle<std::sync::atomic::AtomicUsize>);
+struct LagState(Arc<AtomicUsize>);
 
 impl LagState {
-    #[cfg(target_arch = "wasm32")]
     fn add(&self, amount: usize) {
-        self.0.set(self.0.get().saturating_add(amount));
+        self.0.fetch_add(amount, Ordering::Relaxed);
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
-    fn add(&self, amount: usize) {
-        self.0
-            .fetch_add(amount, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    #[cfg(target_arch = "wasm32")]
     fn take(&self) -> usize {
-        self.0.replace(0)
+        self.0.swap(0, Ordering::Relaxed)
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
-    fn take(&self) -> usize {
-        self.0.swap(0, std::sync::atomic::Ordering::Relaxed)
-    }
-
-    #[cfg(target_arch = "wasm32")]
     fn is_lagged(&self) -> bool {
-        self.0.get() > 0
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn is_lagged(&self) -> bool {
-        self.0.load(std::sync::atomic::Ordering::Relaxed) > 0
+        self.0.load(Ordering::Relaxed) > 0
     }
 }
 
@@ -110,14 +83,14 @@ struct BusInner {
 
 #[derive(Clone)]
 pub struct WorkspaceEventBus {
-    inner: PortHandle<BusState>,
+    inner: Arc<Mutex<BusInner>>,
     subscriber_capacity: usize,
 }
 
 impl WorkspaceEventBus {
     pub fn new(subscriber_capacity: usize) -> Self {
         Self {
-            inner: PortHandle::new(BusState::new(BusInner {
+            inner: Arc::new(Mutex::new(BusInner {
                 next_sequence: 1,
                 subscribers: Vec::new(),
             })),
@@ -218,12 +191,6 @@ impl WorkspaceEventBus {
         })
     }
 
-    #[cfg(target_arch = "wasm32")]
-    fn with_inner<T>(&self, operation: impl FnOnce(&mut BusInner) -> T) -> T {
-        operation(&mut self.inner.borrow_mut())
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
     fn with_inner<T>(&self, operation: impl FnOnce(&mut BusInner) -> T) -> T {
         let mut inner = self
             .inner
@@ -302,6 +269,17 @@ mod tests {
             path: RelativePath::try_from(path).expect("test path should be valid"),
             kind: ChangeKind::Modified,
         }
+    }
+
+    #[test]
+    fn event_bus_is_safe_to_share_between_runtime_ports() {
+        fn assert_send_sync<T>()
+        where
+            T: Send + Sync,
+        {
+        }
+
+        assert_send_sync::<WorkspaceEventBus>();
     }
 
     #[test]

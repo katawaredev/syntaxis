@@ -1,10 +1,15 @@
 use async_trait::async_trait;
-use syntaxis_app_contracts::{AppError, AppErrorCode, ErrorSource, RetryAdvice};
-use syntaxis_module_files::{
-    FilesClipboardPort, FilesSessionPort, FilesystemWorkspaceSearch, SearchLimits,
-    WorkspaceSearchPort,
+use syntaxis_app_contracts::{
+    AppError, AppErrorCode, ChangeOrigin, ErrorSource, RetryAdvice, WorkspaceEventBus,
 };
-use syntaxis_workspace::{FileSession, WorkspaceId, WorkspaceRecord};
+use syntaxis_module_files::{
+    FilesClipboardPort, FilesSessionPort, FilesystemWorkspaceSearch, ImagePreviewPort, ImageSource,
+    ImageSourceCleanup, SearchLimits, WorkspaceSearchPort,
+};
+use syntaxis_workspace::{
+    BinaryFile, ChangeKind, FileEntry, FileSession, FileVersion, RelativePath, TextFile,
+    WorkspaceChange, WorkspaceFiles, WorkspaceId, WorkspaceRecord, WorkspaceResult,
+};
 use syntaxis_workspace_browser::OpfsWorkspaceFiles;
 
 const SEARCH_LIMITS: SearchLimits = SearchLimits {
@@ -12,6 +17,163 @@ const SEARCH_LIMITS: SearchLimits = SearchLimits {
     max_file_content_bytes: 1024 * 1024,
     max_scanned_content_bytes: 16 * 1024 * 1024,
 };
+
+#[derive(Clone)]
+pub struct BrowserWorkspaceFiles {
+    inner: OpfsWorkspaceFiles,
+    events: WorkspaceEventBus,
+}
+
+impl BrowserWorkspaceFiles {
+    pub fn new(events: WorkspaceEventBus) -> Self {
+        Self {
+            inner: OpfsWorkspaceFiles,
+            events,
+        }
+    }
+
+    fn changed(&self, workspace: &WorkspaceRecord, changes: Vec<(RelativePath, ChangeKind)>) {
+        let changes = changes
+            .into_iter()
+            .map(|(path, kind)| WorkspaceChange {
+                workspace_id: workspace.id.clone(),
+                path,
+                kind,
+            })
+            .collect();
+        let _ =
+            self.events
+                .publish_changes(workspace.id.clone(), None, ChangeOrigin::Files, changes);
+    }
+}
+
+#[async_trait(?Send)]
+impl WorkspaceFiles for BrowserWorkspaceFiles {
+    async fn list(
+        &self,
+        workspace: &WorkspaceRecord,
+        path: &RelativePath,
+    ) -> WorkspaceResult<Vec<FileEntry>> {
+        self.inner.list(workspace, path).await
+    }
+
+    async fn stat(
+        &self,
+        workspace: &WorkspaceRecord,
+        path: &RelativePath,
+    ) -> WorkspaceResult<FileEntry> {
+        self.inner.stat(workspace, path).await
+    }
+
+    async fn read_text(
+        &self,
+        workspace: &WorkspaceRecord,
+        path: &RelativePath,
+        max_bytes: u64,
+    ) -> WorkspaceResult<TextFile> {
+        self.inner.read_text(workspace, path, max_bytes).await
+    }
+
+    async fn read_binary(
+        &self,
+        workspace: &WorkspaceRecord,
+        path: &RelativePath,
+        max_bytes: u64,
+    ) -> WorkspaceResult<BinaryFile> {
+        self.inner.read_binary(workspace, path, max_bytes).await
+    }
+
+    async fn create_file(
+        &self,
+        workspace: &WorkspaceRecord,
+        path: &RelativePath,
+    ) -> WorkspaceResult<FileEntry> {
+        let entry = self.inner.create_file(workspace, path).await?;
+        self.changed(workspace, vec![(path.clone(), ChangeKind::Created)]);
+        Ok(entry)
+    }
+
+    async fn create_directory(
+        &self,
+        workspace: &WorkspaceRecord,
+        path: &RelativePath,
+    ) -> WorkspaceResult<FileEntry> {
+        let entry = self.inner.create_directory(workspace, path).await?;
+        self.changed(workspace, vec![(path.clone(), ChangeKind::Created)]);
+        Ok(entry)
+    }
+
+    async fn copy(
+        &self,
+        workspace: &WorkspaceRecord,
+        source: &RelativePath,
+        destination: &RelativePath,
+    ) -> WorkspaceResult<()> {
+        self.inner.copy(workspace, source, destination).await?;
+        self.changed(workspace, vec![(destination.clone(), ChangeKind::Created)]);
+        Ok(())
+    }
+
+    async fn move_entry(
+        &self,
+        workspace: &WorkspaceRecord,
+        source: &RelativePath,
+        destination: &RelativePath,
+    ) -> WorkspaceResult<()> {
+        self.inner
+            .move_entry(workspace, source, destination)
+            .await?;
+        self.changed(
+            workspace,
+            vec![
+                (source.clone(), ChangeKind::Removed),
+                (destination.clone(), ChangeKind::Created),
+            ],
+        );
+        Ok(())
+    }
+
+    async fn delete(
+        &self,
+        workspace: &WorkspaceRecord,
+        path: &RelativePath,
+    ) -> WorkspaceResult<()> {
+        self.inner.delete(workspace, path).await?;
+        self.changed(workspace, vec![(path.clone(), ChangeKind::Removed)]);
+        Ok(())
+    }
+
+    async fn write_text(
+        &self,
+        workspace: &WorkspaceRecord,
+        path: &RelativePath,
+        content: &str,
+        expected: Option<&FileVersion>,
+        max_bytes: u64,
+    ) -> WorkspaceResult<FileVersion> {
+        let version = self
+            .inner
+            .write_text(workspace, path, content, expected, max_bytes)
+            .await?;
+        self.changed(workspace, vec![(path.clone(), ChangeKind::Modified)]);
+        Ok(version)
+    }
+
+    async fn write_binary(
+        &self,
+        workspace: &WorkspaceRecord,
+        path: &RelativePath,
+        content: &[u8],
+        max_bytes: u64,
+    ) -> WorkspaceResult<FileVersion> {
+        let version = self
+            .inner
+            .write_binary(workspace, path, content, max_bytes)
+            .await?;
+        self.changed(workspace, vec![(path.clone(), ChangeKind::Modified)]);
+        Ok(version)
+    }
+}
 
 /// Bounded recursive search over the active browser workspace.
 pub struct BrowserWorkspaceSearch {
@@ -83,6 +245,39 @@ impl FilesClipboardPort for BrowserFilesClipboard {
                         .unwrap_or_else(|| "The browser rejected clipboard access.".to_owned()),
                 )
             })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct BrowserImagePreview;
+
+impl ImagePreviewPort for BrowserImagePreview {
+    fn create(&self, mime: &str, content: Vec<u8>) -> Result<ImageSource, AppError> {
+        use js_sys::{Array, Uint8Array};
+        use syntaxis_app_contracts::PortHandle;
+        use web_sys::{Blob, BlobPropertyBag, Url};
+
+        let parts = Array::new();
+        parts.push(&Uint8Array::from(content.as_slice()));
+        let options = BlobPropertyBag::new();
+        options.set_type(mime);
+        let blob = Blob::new_with_u8_array_sequence_and_options(&parts, &options)
+            .map_err(|_| storage_error("Could not create an image preview blob."))?;
+        let url = Url::create_object_url_with_blob(&blob)
+            .map_err(|_| storage_error("Could not create an image preview URL."))?;
+        Ok(ImageSource::new(
+            url,
+            Some(PortHandle::new(BrowserImageCleanup)),
+        ))
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct BrowserImageCleanup;
+
+impl ImageSourceCleanup for BrowserImageCleanup {
+    fn release(&self, url: &str) {
+        let _ = web_sys::Url::revoke_object_url(url);
     }
 }
 

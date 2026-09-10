@@ -6,6 +6,7 @@ use super::super::runtime::{
     push_renderer_output, reconnect_delay_ms,
 };
 use super::super::session::{choose_active, remove_session, upsert_session};
+use crate::TerminalPorts;
 use dioxus::prelude::*;
 use futures_util::{
     FutureExt, StreamExt,
@@ -16,7 +17,6 @@ use syntaxis_terminal::{
     ClientMessage, Lifecycle, PROTOCOL_VERSION, ServerMessage, SessionId, SessionSummary,
     TerminalErrorCode, TerminalSize,
 };
-use crate::TerminalPorts;
 use syntaxis_workspace::WorkspaceRecord;
 
 const HEARTBEAT_INTERVAL_SECONDS: u64 = 10;

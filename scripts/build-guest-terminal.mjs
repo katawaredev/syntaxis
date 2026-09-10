@@ -1,15 +1,16 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const source = resolve(root, "assets/guest-terminal/bridge-source.js");
-const zlibShim = resolve(root, "assets/guest-terminal/zlib-shim.js");
-const destination = resolve(root, "apps/guest/assets/guest-terminal.bundle.js");
-const stamp = resolve(root, "apps/guest/assets/guest-terminal.bundle.stamp");
+const source = resolve(root, "crates/runtime-browser/bridge-src/terminal/bridge-source.js");
+const zlibShim = resolve(root, "crates/runtime-browser/bridge-src/terminal/zlib-shim.js");
+const outputDir = resolve(root, "crates/runtime-browser/assets");
+const destination = resolve(outputDir, "guest-terminal.bundle.js");
+const stamp = resolve(outputDir, "guest-terminal.bundle.stamp");
 const manifest = resolve(root, "package.json");
 const lockfile = resolve(root, "bun.lock");
 const script = fileURLToPath(import.meta.url);
@@ -32,6 +33,7 @@ if (
 }
 
 const { default: esbuild } = await import("esbuild");
+mkdirSync(outputDir, { recursive: true });
 const result = await esbuild.build({
   entryPoints: [source],
   bundle: true,

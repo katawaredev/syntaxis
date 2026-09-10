@@ -53,10 +53,7 @@ fn replacement_supports_literal_dollars_and_regex_captures() {
 }
 #[test]
 fn image_detection_is_explicit() {
-    assert_eq!(
-        crate::image_mime("assets/photo.PNG"),
-        Some("image/png")
-    );
+    assert_eq!(crate::image_mime("assets/photo.PNG"), Some("image/png"));
     assert_eq!(crate::image_mime("archive.bin"), None);
 }
 

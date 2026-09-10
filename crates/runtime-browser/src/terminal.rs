@@ -9,12 +9,14 @@ use syntaxis_module_terminal::{
 };
 use syntaxis_terminal::{RunCommand, justfile_commands, makefile_commands, package_json_commands};
 use syntaxis_terminal_browser::{
-    WorkspaceChangeKind, cancel, execute, wait_for_bridge,
+    WorkspaceChangeKind, bridge_ready, cancel, execute, wait_for_bridge,
 };
 use syntaxis_workspace::{
     ChangeKind, EntryKind, RelativePath, WorkspaceChange, WorkspaceFiles, WorkspaceRecord,
 };
 use syntaxis_workspace_browser::OpfsWorkspaceFiles;
+
+use crate::bridge::{BrowserBridge, ensure_bridge};
 
 const MAX_COMMAND_MANIFEST_BYTES: u64 = 512 * 1024;
 
@@ -33,7 +35,12 @@ impl BrowserTerminalAdapter {
 #[async_trait(?Send)]
 impl TerminalCommandRunnerPort for BrowserTerminalAdapter {
     async fn ready(&self) -> Result<(), AppError> {
-        wait_for_bridge().await.map_err(browser_terminal_error)
+        ensure_bridge(BrowserBridge::Terminal)
+            .await
+            .map_err(browser_terminal_unavailable)?;
+        wait_for_bridge()
+            .await
+            .map_err(browser_terminal_unavailable)
     }
 
     async fn execute(
@@ -41,6 +48,7 @@ impl TerminalCommandRunnerPort for BrowserTerminalAdapter {
         workspace: &WorkspaceRecord,
         command: &str,
     ) -> Result<TerminalCommandResult, AppError> {
+        self.ready().await?;
         let result = execute(&self.files, workspace, command)
             .await
             .map_err(browser_terminal_error)?;
@@ -86,6 +94,11 @@ impl TerminalCommandRunnerPort for BrowserTerminalAdapter {
     }
 
     fn cancel(&self) -> Result<(), AppError> {
+        if !bridge_ready() {
+            return Err(browser_terminal_unavailable(
+                "The browser command bridge is unavailable or incompatible.".to_owned(),
+            ));
+        }
         cancel().map_err(browser_terminal_error)
     }
 }
@@ -98,29 +111,6 @@ impl TerminalCommandsPort for BrowserTerminalAdapter {
 
     async fn refresh(&self, workspace: &WorkspaceRecord) -> Result<Vec<RunCommand>, AppError> {
         discover_commands(&self.files, workspace).await
-    }
-
-    async fn add(
-        &self,
-        _workspace: &WorkspaceRecord,
-        _label: &str,
-        _command: &str,
-    ) -> Result<Vec<RunCommand>, AppError> {
-        Err(AppError::unsupported(
-            "Custom project commands are unavailable in the browser runtime.",
-            ErrorSource::Terminal,
-        ))
-    }
-
-    async fn delete(
-        &self,
-        _workspace: &WorkspaceRecord,
-        _command_id: &str,
-    ) -> Result<Vec<RunCommand>, AppError> {
-        Err(AppError::unsupported(
-            "Custom project commands are unavailable in the browser runtime.",
-            ErrorSource::Terminal,
-        ))
     }
 }
 
@@ -178,6 +168,15 @@ fn browser_terminal_error(message: String) -> AppError {
         AppErrorCode::Internal,
         message,
         RetryAdvice::AfterUserAction,
+        ErrorSource::Terminal,
+    )
+}
+
+fn browser_terminal_unavailable(message: String) -> AppError {
+    AppError::new(
+        AppErrorCode::Offline,
+        message,
+        RetryAdvice::Backoff,
         ErrorSource::Terminal,
     )
 }

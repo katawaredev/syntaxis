@@ -23,10 +23,10 @@ use super::{
     WritableExt, WritableStringExt, WritableVecExt, component, dioxus_core, dioxus_elements,
     dioxus_signals, load_files_directory, rsx, set_error, spawn,
 };
+use crate::FilesPorts;
 use dioxus::prelude::{UseResourceState, use_context, use_resource, use_signal};
 use dioxus_primitives::dropdown_menu::{DropdownMenu, DropdownMenuItem};
 use std::collections::{BTreeMap, BTreeSet};
-use crate::FilesPorts;
 use syntaxis_ui::prelude::{FileTree, Icon, MenuContent, MenuTrigger};
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) enum ExplorerView {

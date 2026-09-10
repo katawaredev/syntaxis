@@ -3,6 +3,7 @@ use super::*;
 #[component]
 pub(crate) fn CommitDialog(
     workspace: WorkspaceRecord,
+    capabilities: GitCommitCapabilities,
     initial_message: String,
     pending: bool,
     error: Option<String>,
@@ -29,7 +30,7 @@ pub(crate) fn CommitDialog(
                         oninput: move |event: FormEvent| message.set(event.value()),
                     }
                 }
-                label { class: "compact flex items-center gap-2.5 py-1.75",
+                if capabilities.amend { label { class: "compact flex items-center gap-2.5 py-1.75",
                     Checkbox {
                         checked: amend(),
                         aria_label: "Amend previous commit",
@@ -53,8 +54,8 @@ pub(crate) fn CommitDialog(
                         },
                     }
                     span { "Amend previous commit" }
-                }
-                label { class: "compact flex items-center gap-2.5 py-1.75",
+                } }
+                if capabilities.skip_hooks { label { class: "compact flex items-center gap-2.5 py-1.75",
                     Checkbox {
                         checked: skip_hooks(),
                         aria_label: "Skip Git commit validation hooks",
@@ -62,7 +63,7 @@ pub(crate) fn CommitDialog(
                         on_checked_change: move |checked| skip_hooks.set(checked),
                     }
                     span { "Skip validations (--no-verify)" }
-                }
+                } }
                 if let Some(error) = error {
                     p { class: "text-xs text-destructive", role: "alert", "{error}" }
                 }

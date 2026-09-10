@@ -10,6 +10,8 @@ use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 use wasm_bindgen_futures::JsFuture;
 const MAX_WORKSPACE_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_FILE_BYTES: u64 = 8 * 1024 * 1024;
+const MAX_OUTPUT_BYTES: usize = 2 * 1024 * 1024;
+const BRIDGE_VERSION: f64 = 1.0;
 const GUEST_HISTORY_PATH: &str = ".syntaxis-guest-history.json";
 #[wasm_bindgen]
 extern "C" {
@@ -137,13 +139,26 @@ where
             .map_err(error_message)?;
     }
     Ok(BrowserCommandResult {
-        stdout: result.stdout,
-        stderr: result.stderr,
+        stdout: bounded_output(result.stdout),
+        stderr: bounded_output(result.stderr),
         exit_code: result.exit_code,
         workspace_changed,
         changes,
         reconciliation_succeeded: true,
     })
+}
+
+fn bounded_output(mut output: String) -> String {
+    if output.len() <= MAX_OUTPUT_BYTES {
+        return output;
+    }
+    let mut boundary = MAX_OUTPUT_BYTES;
+    while !output.is_char_boundary(boundary) {
+        boundary = boundary.saturating_sub(1);
+    }
+    output.truncate(boundary);
+    output.push_str("\n[output truncated by Syntaxis]\n");
+    output
 }
 /// Waits for the guest-only just-bash bundle to install its global bridge.
 ///
@@ -158,11 +173,17 @@ pub async fn wait_for_bridge() -> Result<(), String> {
     }
     Err("The browser shell could not be loaded. Reload the page and try again.".into())
 }
-fn bridge_ready() -> bool {
-    Reflect::get(&js_sys::global(), &JsValue::from_str("SyntaxisGuestBash"))
+/// Reports whether the expected version of the guest command bridge is ready.
+pub fn bridge_ready() -> bool {
+    let Ok(bridge) = Reflect::get(&js_sys::global(), &JsValue::from_str("SyntaxisGuestBash"))
+    else {
+        return false;
+    };
+    let version = Reflect::get(&bridge, &JsValue::from_str("version"))
         .ok()
-        .and_then(|bridge| Reflect::get(&bridge, &JsValue::from_str("execute")).ok())
-        .is_some_and(|execute| execute.is_function())
+        .and_then(|value| value.as_f64());
+    let execute = Reflect::get(&bridge, &JsValue::from_str("execute")).ok();
+    version == Some(BRIDGE_VERSION) && execute.is_some_and(|value| value.is_function())
 }
 /// Requests cancellation of the currently running browser-shell command.
 ///

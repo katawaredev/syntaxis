@@ -1,18 +1,6 @@
-mod ai;
 mod app;
 #[cfg(feature = "server")]
 mod auth;
-mod client_error;
-mod clipboard;
-mod files;
-mod git;
-mod lsp;
-mod mock;
-mod notification;
-mod preview;
-mod storage;
-mod terminal;
-mod workspace;
 
 #[cfg(not(feature = "server"))]
 fn main() {

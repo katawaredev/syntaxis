@@ -12,13 +12,15 @@ use syntaxis_app_contracts::{
 };
 use syntaxis_git::{
     BranchInfo, BranchRequest, BranchStatus, ChangeKind, CommitDetail, CommitInfo, CommitOutcome,
-    CommitRequest, CommitResult, ConflictChoice, ConflictFile, DiffKind, FileChange,
-    RepositorySnapshot, RepositoryState, RepositoryStatus, RemoteInfo, UnifiedDiff,
+    CommitRequest, CommitResult, DiffKind, FileChange, RemoteInfo, RepositorySnapshot,
+    RepositoryState, RepositoryStatus, UnifiedDiff,
 };
 use syntaxis_module_git::{
-    GitBranchPort, GitCheckoutPort, GitHistoryPort, GitRepositoryPort,
+    GitBranchPort, GitCheckoutPort, GitCommitCapabilities, GitHistoryPort, GitRepositoryPort,
 };
 use syntaxis_workspace::{RelativePath, WorkspaceRecord};
+
+use crate::bridge::{BrowserBridge, ensure_bridge};
 
 #[derive(Clone)]
 pub struct BrowserGitAdapter {
@@ -200,6 +202,10 @@ struct BrowserCommitResult {
 
 #[async_trait(?Send)]
 impl GitRepositoryPort for BrowserGitAdapter {
+    fn commit_capabilities(&self) -> GitCommitCapabilities {
+        GitCommitCapabilities::default()
+    }
+
     async fn snapshot(&self, _workspace: &WorkspaceRecord) -> Result<RepositorySnapshot, AppError> {
         self.repository().await?.snapshot()
     }
@@ -230,17 +236,6 @@ impl GitRepositoryPort for BrowserGitAdapter {
             original: (!diff.binary).then_some(diff.before),
             current: (!diff.binary).then_some(diff.after),
         })
-    }
-
-    async fn conflict_file(
-        &self,
-        _workspace: &WorkspaceRecord,
-        _path: &RelativePath,
-    ) -> Result<ConflictFile, AppError> {
-        Err(AppError::unsupported(
-            "Conflict resolution is unavailable in browser Git.",
-            ErrorSource::Git,
-        ))
     }
 
     async fn stage(
@@ -278,13 +273,18 @@ impl GitRepositoryPort for BrowserGitAdapter {
         workspace: &WorkspaceRecord,
         request: CommitRequest,
     ) -> Result<CommitOutcome, AppError> {
-        if request.amend {
+        if request.amend || request.skip_hooks || request.signing_passphrase.is_some() {
             return Err(AppError::unsupported(
-                "Amending commits is unavailable in browser Git.",
+                "Advanced commit options are unavailable in browser Git.",
                 ErrorSource::Git,
             ));
         }
-        let summary = request.message.lines().next().unwrap_or_default().to_owned();
+        let summary = request
+            .message
+            .lines()
+            .next()
+            .unwrap_or_default()
+            .to_owned();
         let result: BrowserCommitResult = git_request(
             "commit",
             json!({
@@ -301,20 +301,6 @@ impl GitRepositoryPort for BrowserGitAdapter {
                 summary,
             },
         })
-    }
-
-    async fn resolve_conflict(
-        &self,
-        _workspace: &WorkspaceRecord,
-        _path: &RelativePath,
-        _block_index: usize,
-        _expected_fingerprint: u64,
-        _choice: ConflictChoice,
-    ) -> Result<bool, AppError> {
-        Err(AppError::unsupported(
-            "Conflict resolution is unavailable in browser Git.",
-            ErrorSource::Git,
-        ))
     }
 }
 
@@ -417,11 +403,8 @@ impl GitBranchPort for BrowserGitAdapter {
                 ErrorSource::Git,
             )
         })?;
-        git_request::<BrowserRepository>(
-            "renameBranch",
-            json!({ "oldref": oldref, "ref": name }),
-        )
-        .await?;
+        git_request::<BrowserRepository>("renameBranch", json!({ "oldref": oldref, "ref": name }))
+            .await?;
         self.changed(workspace);
         Ok(())
     }
@@ -439,10 +422,7 @@ impl GitBranchPort for BrowserGitAdapter {
 }
 
 fn path_payload(paths: &[RelativePath]) -> Value {
-    json!(paths
-        .iter()
-        .map(|path| path.as_str())
-        .collect::<Vec<_>>())
+    json!(paths.iter().map(|path| path.as_str()).collect::<Vec<_>>())
 }
 
 fn not_found(message: &str) -> AppError {
@@ -463,6 +443,15 @@ fn bridge_error(message: impl Into<String>) -> AppError {
     )
 }
 
+fn bridge_unavailable(message: impl Into<String>) -> AppError {
+    AppError::new(
+        AppErrorCode::Offline,
+        message,
+        RetryAdvice::Backoff,
+        ErrorSource::Git,
+    )
+}
+
 #[derive(Serialize)]
 struct GitBridgeRequest {
     method: String,
@@ -474,22 +463,27 @@ struct GitBridgeResponse<T> {
     ok: bool,
     value: Option<T>,
     error: Option<String>,
+    #[serde(default)]
+    unavailable: bool,
 }
 
 async fn git_request<T>(method: &str, payload: Value) -> Result<T, AppError>
 where
     T: DeserializeOwned,
 {
+    ensure_bridge(BrowserBridge::Git)
+        .await
+        .map_err(bridge_unavailable)?;
     let mut eval = document::eval(
         r#"
         const request = await dioxus.recv();
-        let bridge = globalThis.SyntaxisGuestGit;
-        for (let attempt = 0; !bridge && attempt < 200; attempt += 1) {
-          await new Promise((resolve) => setTimeout(resolve, 25));
-          bridge = globalThis.SyntaxisGuestGit;
-        }
-        if (!bridge) {
-          await dioxus.send({ ok: false, error: "The browser Git bridge is unavailable." });
+        const bridge = globalThis.SyntaxisGuestGit;
+        if (!bridge || bridge.version !== 1) {
+          await dioxus.send({
+            ok: false,
+            unavailable: true,
+            error: "The browser Git bridge is unavailable or incompatible.",
+          });
         } else if (typeof bridge[request.method] !== "function") {
           await dioxus.send({ ok: false, error: `Unknown browser Git operation: ${request.method}` });
         } else {
@@ -520,10 +514,13 @@ where
             .value
             .ok_or_else(|| bridge_error("Browser Git returned no result."))
     } else {
-        Err(bridge_error(
-            response
-                .error
-                .unwrap_or_else(|| "Browser Git operation failed.".to_owned()),
-        ))
+        let message = response
+            .error
+            .unwrap_or_else(|| "Browser Git operation failed.".to_owned());
+        if response.unavailable {
+            Err(bridge_unavailable(message))
+        } else {
+            Err(bridge_error(message))
+        }
     }
 }

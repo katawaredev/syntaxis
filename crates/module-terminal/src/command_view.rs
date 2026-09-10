@@ -43,7 +43,11 @@ impl CommandTab {
 }
 
 #[component]
-pub(crate) fn CommandTerminal(workspace: WorkspaceRecord, terminal_script: String) -> Element {
+#[allow(
+    clippy::clone_on_ref_ptr,
+    reason = "PortHandle is Rc in the browser and Arc in native runtimes"
+)]
+pub(crate) fn CommandTerminal(workspace: WorkspaceRecord) -> Element {
     let ports = use_context::<TerminalPorts>();
     let runner = ports
         .command_runner()
@@ -132,13 +136,18 @@ pub(crate) fn CommandTerminal(workspace: WorkspaceRecord, terminal_script: Strin
             }
             records.push(record);
             drop(records);
-            persist_active_tab(tabs, active_tab_id(), &command(), &history(), history_cursor());
+            persist_active_tab(
+                tabs,
+                active_tab_id(),
+                &command(),
+                &history(),
+                history_cursor(),
+            );
             running.set(false);
         });
     });
 
     rsx! {
-        document::Script { src: terminal_script }
         section {
             class: "flex size-full min-h-0 flex-col bg-background",
             "aria-label": "Browser terminal",
@@ -195,6 +204,7 @@ pub(crate) fn CommandTerminal(workspace: WorkspaceRecord, terminal_script: Strin
                     loading: project_commands.state() == UseResourceState::Pending,
                     disabled: !bridge_ready || running() || active_tab_id().is_none(),
                     show_add: false,
+                    allow_delete: false,
                     on_run: move |command| run_command.call(Some(command)),
                     on_add: move |()| {},
                     on_refresh: move |()| command_refresh += 1,
@@ -373,7 +383,7 @@ fn persist_active_tab(
 ) {
     let Some(active_id) = active_id else { return };
     if let Some(tab) = tabs.write().iter_mut().find(|tab| tab.id == active_id) {
-        tab.command = command.to_owned();
+        command.clone_into(&mut tab.command);
         tab.history = history.to_vec();
         tab.history_cursor = history_cursor;
     }
@@ -388,7 +398,9 @@ fn select_tab(
     mut history_cursor: Signal<Option<usize>>,
 ) {
     persist_active_tab(tabs, active_id(), &command(), &history(), history_cursor());
-    let Some(tab) = tabs.read().iter().find(|tab| tab.id == id).cloned() else { return };
+    let Some(tab) = tabs.read().iter().find(|tab| tab.id == id).cloned() else {
+        return;
+    };
     active_id.set(Some(id));
     command.set(tab.command);
     history.set(tab.history);
@@ -421,9 +433,18 @@ fn close_tab(
 }
 
 fn change_summary(changes: &[WorkspaceChange]) -> String {
-    let created = changes.iter().filter(|change| change.kind == ChangeKind::Created).count();
-    let modified = changes.iter().filter(|change| change.kind == ChangeKind::Modified).count();
-    let removed = changes.iter().filter(|change| change.kind == ChangeKind::Removed).count();
+    let created = changes
+        .iter()
+        .filter(|change| change.kind == ChangeKind::Created)
+        .count();
+    let modified = changes
+        .iter()
+        .filter(|change| change.kind == ChangeKind::Modified)
+        .count();
+    let removed = changes
+        .iter()
+        .filter(|change| change.kind == ChangeKind::Removed)
+        .count();
     [
         (created, "created"),
         (modified, "modified"),

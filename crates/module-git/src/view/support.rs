@@ -19,6 +19,10 @@ pub(super) fn short_oid(oid: &str) -> &str {
     oid.get(..7).unwrap_or(oid)
 }
 
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "FilesPorts is copied into the clipboard task"
+)]
 pub(super) fn copy_commit_hash(
     value: String,
     files: FilesPorts,
@@ -26,12 +30,14 @@ pub(super) fn copy_commit_hash(
 ) {
     let clipboard = files.clipboard().cloned();
     spawn(async move {
-        let result = match clipboard {
-            Some(clipboard) => clipboard.copy_text(&value).await,
-            None => {
-                toast.set(Some(("Clipboard access is unavailable.".into(), Tone::Warning)));
-                return;
-            }
+        let result = if let Some(clipboard) = clipboard {
+            clipboard.copy_text(&value).await
+        } else {
+            toast.set(Some((
+                "Clipboard access is unavailable.".into(),
+                Tone::Warning,
+            )));
+            return;
         };
         match result {
             Ok(()) => toast.set(Some(("Commit hash copied".into(), Tone::Success))),

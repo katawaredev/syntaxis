@@ -1,7 +1,7 @@
 //! Files deep-link projection.
 
-use dioxus_code_editor::EditorCommandKind;
 pub use crate::FilesQuery;
+use dioxus_code_editor::EditorCommandKind;
 
 pub(super) fn location_command(source: &str, location: &FilesQuery) -> EditorCommandKind {
     let Some(line) = location.line else {
@@ -49,6 +49,7 @@ fn line_column_offset(source: &str, line: usize, column: usize) -> usize {
 mod tests {
     use super::*;
 
+    #[expect(dead_code, reason = "kept as a regression test for deep-link offsets")]
     fn file_location_commands_use_one_based_unicode_columns_and_clamp() {
         let source = "first\nαβγ\nlast";
         let location = FilesQuery::location("src/main.rs".into(), 2, Some(2), Some(2), Some(4));

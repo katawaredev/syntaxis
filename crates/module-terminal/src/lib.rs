@@ -9,8 +9,10 @@ mod session;
 mod view;
 
 pub use ports::{
-    TerminalCommandResult, TerminalCommandRunnerPort, TerminalCommandsPort, TerminalPorts,
+    TerminalCommandMutationsPort, TerminalCommandResult, TerminalCommandRunnerPort,
+    TerminalCommandsPort, TerminalPorts, TerminalRendererPort, TerminalRendererSession,
     TerminalSessionPort, TerminalSocket, TerminalTransportPort,
 };
 pub use query::TerminalQuery;
+pub use renderer::{RendererAction, RendererActionResult, SourceLink, TerminalRendererEvent};
 pub use view::{ProjectInitializerTerminal, TerminalView};

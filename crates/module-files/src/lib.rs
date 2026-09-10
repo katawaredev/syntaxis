@@ -19,6 +19,7 @@ mod query;
 mod reference;
 mod search;
 mod testing;
+mod transfer;
 mod ui;
 mod uploads;
 
@@ -34,9 +35,10 @@ pub use document_io::{
 };
 pub use documents::{
     ActiveBufferMeta, ActiveDocumentView, ActivePathRepair, CloseRequest, FilesController,
-    OpenDocument, OpenTab, RestoredDocuments, apply_document_edits, close_documents,
-    merge_restored_documents, rename_documents, repaired_active_path, request_close,
-    request_close_many, revert_text_document, use_files_controller,
+    ImageSource, ImageSourceCleanup, OpenDocument, OpenTab, RestoredDocuments,
+    apply_document_edits, close_documents, merge_restored_documents, rename_documents,
+    repaired_active_path, request_close, request_close_many, revert_text_document,
+    use_files_controller,
 };
 pub use filesystem_search::{FilesystemWorkspaceSearch, SearchLimits};
 pub use git::FileGitPort;
@@ -49,7 +51,7 @@ pub use loading::{
 pub use mutations::{
     FileAction, FileActionDialog, FileMutationOutcome, execute_file_action, suggested_destination,
 };
-pub use ports::{FilesPorts, FilesSessionPort, WorkspaceSearchPort};
+pub use ports::{FilesPorts, FilesSessionPort, ImagePreviewPort, WorkspaceSearchPort};
 pub use query::FilesQuery;
 pub use reference::format_file_reference;
 pub use search::{
@@ -57,6 +59,10 @@ pub use search::{
     SearchResult, SearchResults, SearchScope, TextRange,
 };
 pub use testing::{FixedWorkspaceSearch, MemoryFilesSession};
+pub use transfer::{
+    LocalFolderAccess, LocalFolderPermissionPort, TransferSummary, WorkspaceArchive,
+    WorkspaceTransferPort,
+};
 pub use ui::{
     FilesView, render_markdown, render_markdown_preserving_newlines, search_workspace_files,
 };

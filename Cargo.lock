@@ -5908,52 +5908,17 @@ name = "syntaxis"
 version = "0.11.2"
 dependencies = [
  "argon2",
- "async-trait",
- "axum",
  "base64 0.23.1",
- "bytes",
  "cc",
- "csv",
  "dioxus",
- "dioxus-code-editor",
- "dioxus-primitives",
- "dioxus-sdk-time",
- "futures-util",
- "gloo-timers 0.4.0",
- "pulldown-cmark",
  "rand_core 0.6.4",
- "regex",
- "reqwest",
  "rpassword",
  "serde",
- "serde_json",
  "subtle",
- "syntaxis-agent",
- "syntaxis-agent-host",
- "syntaxis-app-contracts",
  "syntaxis-app-shell",
- "syntaxis-editor",
- "syntaxis-git",
- "syntaxis-git-host",
- "syntaxis-lsp-host",
- "syntaxis-module-files",
- "syntaxis-module-git",
- "syntaxis-module-terminal",
- "syntaxis-notifications",
- "syntaxis-notifications-host",
  "syntaxis-runtime-main",
- "syntaxis-terminal",
- "syntaxis-terminal-host",
- "syntaxis-ui",
- "syntaxis-workspace",
- "syntaxis-workspace-host",
- "tempfile",
  "tokio",
- "tokio-tungstenite 0.30.0",
- "tokio-util",
- "toml 1.1.4+spec-1.1.0",
  "url",
- "web-time",
 ]
 
 [[package]]
@@ -5995,12 +5960,19 @@ dependencies = [
 name = "syntaxis-app-shell"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "dioxus",
+ "dioxus-sdk-time",
+ "futures-util",
  "syntaxis-app-contracts",
  "syntaxis-git",
+ "syntaxis-module-ai",
  "syntaxis-module-files",
  "syntaxis-module-git",
+ "syntaxis-module-preview",
  "syntaxis-module-terminal",
+ "syntaxis-notifications",
+ "syntaxis-ui",
  "syntaxis-workspace",
  "url",
 ]
@@ -6041,28 +6013,9 @@ dependencies = [
 name = "syntaxis-guest"
 version = "0.1.0"
 dependencies = [
- "base64 0.23.1",
  "dioxus",
- "dioxus-code-editor",
- "js-sys",
- "serde",
- "serde_json",
  "syntaxis-app-shell",
- "syntaxis-editor",
- "syntaxis-git",
- "syntaxis-module-files",
- "syntaxis-module-git",
- "syntaxis-module-terminal",
  "syntaxis-runtime-browser",
- "syntaxis-terminal",
- "syntaxis-terminal-browser",
- "syntaxis-ui",
- "syntaxis-workspace",
- "syntaxis-workspace-browser",
- "url",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
 ]
 
 [[package]]
@@ -6072,6 +6025,22 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "syntaxis-module-ai"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "dioxus",
+ "dioxus-sdk-time",
+ "serde",
+ "syntaxis-app-contracts",
+ "syntaxis-git",
+ "syntaxis-module-files",
+ "syntaxis-ui",
+ "syntaxis-workspace",
+ "web-time",
 ]
 
 [[package]]
@@ -6115,6 +6084,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "syntaxis-module-preview"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "dioxus",
+ "dioxus-primitives",
+ "dioxus-sdk-time",
+ "futures-util",
+ "serde",
+ "syntaxis-app-contracts",
+ "syntaxis-module-files",
+ "syntaxis-terminal",
+ "syntaxis-ui",
+ "syntaxis-workspace",
+ "url",
+]
+
+[[package]]
 name = "syntaxis-module-terminal"
 version = "0.1.0"
 dependencies = [
@@ -6152,16 +6139,22 @@ name = "syntaxis-runtime-browser"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "base64 0.23.1",
  "dioxus",
  "futures-lite",
+ "js-sys",
+ "manganis",
  "serde",
  "serde_json",
  "syntaxis-app-contracts",
  "syntaxis-app-shell",
  "syntaxis-git",
+ "syntaxis-module-ai",
  "syntaxis-module-files",
  "syntaxis-module-git",
+ "syntaxis-module-preview",
  "syntaxis-module-terminal",
+ "syntaxis-terminal",
  "syntaxis-terminal-browser",
  "syntaxis-workspace",
  "syntaxis-workspace-browser",
@@ -6175,13 +6168,47 @@ name = "syntaxis-runtime-main"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "axum",
+ "base64 0.23.1",
+ "bytes",
+ "dioxus",
+ "futures",
  "futures-lite",
+ "futures-util",
+ "js-sys",
+ "manganis",
+ "rand_core 0.6.4",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "subtle",
+ "syntaxis-agent",
+ "syntaxis-agent-host",
  "syntaxis-app-contracts",
  "syntaxis-app-shell",
+ "syntaxis-editor",
+ "syntaxis-git",
+ "syntaxis-git-host",
+ "syntaxis-lsp-host",
+ "syntaxis-module-ai",
  "syntaxis-module-files",
+ "syntaxis-module-git",
+ "syntaxis-module-preview",
+ "syntaxis-module-terminal",
+ "syntaxis-notifications",
+ "syntaxis-notifications-host",
+ "syntaxis-terminal",
+ "syntaxis-terminal-host",
  "syntaxis-workspace",
  "syntaxis-workspace-host",
  "tempfile",
+ "tokio",
+ "tokio-tungstenite 0.30.0",
+ "tokio-util",
+ "toml 1.1.4+spec-1.1.0",
+ "url",
+ "web-sys",
 ]
 
 [[package]]

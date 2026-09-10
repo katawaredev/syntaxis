@@ -13,19 +13,18 @@ contain benchmark-only behavior in the application.
   setting is an intentional mobile Safari workaround that prevents the focused
   code editor from auto-zooming; do not remove it to improve Lighthouse scores.
   Dioxus renders `apps/main/src/app.rs`, which installs global links, the Tailwind
-  stylesheet, the UI and websocket compatibility scripts, then mounts the
-  router. The AI helper is installed only by AI routes.
-- **Startup/UI path:** the home route (`apps/main/src/workspace/home.rs`) immediately starts
-  the workspace-list cache and runtime-state resource. Workspace routes use
-  `apps/main/src/workspace/shell.rs`; files/editor UI is under `apps/main/src/files/` and
+  stylesheet, and compatibility scripts, then mounts `syntaxis-app-shell`.
+- **Startup/UI path:** `crates/app-shell/src/route.rs` owns Home, the shared route
+  enum, and workspace route composition. `crates/app-shell/src/shell.rs` owns the
+  shared workspace chrome; Files/editor UI is under `crates/module-files/` and
   `crates/code-editor/`.
-- **Editor boundary:** `assets/code-editor/bridge-source.js` and
-  `assets/code-editor/lsp-source.js` are bundled by
+- **Editor boundary:** sources under `crates/code-editor/bridge-src/` are bundled by
   `scripts/build-code-editor.mjs`. The generated bridge is a route-local Dioxus
   ES module imported when the editor mounts; repeated mounts reuse the browser's
   module cache. Language-server code is loaded separately by the browser bridge.
-- **Terminal boundary:** xterm sources under `assets/terminal/` are bundled by
-  `scripts/build-terminal.mjs` and loaded only by terminal UI.
+- **Terminal boundary:** xterm sources under `crates/runtime-main/bridge-src/terminal/` are bundled by
+  `scripts/build-terminal.mjs` into `runtime-main` and loaded idempotently by the
+  renderer adapter only when an interactive terminal mounts.
 - **Server responsibilities:** the fullstack server and host crates perform
   filesystem and process work. The Lighthouse server helper starts the optimized
   web server at `127.0.0.1:4173` and is already used by `lighthouserc.json`.
@@ -46,6 +45,20 @@ available:
 bun run autoresearch:benchmark
 bun run autoresearch:verify
 ```
+
+The browser-only app has a separate shared-shell smoke harness. Start an optimized
+guest static server on port 4174, then run:
+
+```sh
+bun run autoresearch:guest-smoke
+```
+
+Set `GUEST_URL` when using another origin. The smoke imports a real ZIP into OPFS,
+opens all shared module routes, renders a static HTML document and local stylesheet,
+executes and cancels a browser command, initializes Git, and exercises progressive,
+cancellable, size-bounded provider streaming. It also checks AI settings routing,
+captures unexpected browser failures, and fails if local guest flows attempt a
+Syntaxis `/api/` request.
 
 `benchmark` runs the existing release Lighthouse setup, collects raw audit
 reports, records the configured mobile inputs, computes medians/ranges, and

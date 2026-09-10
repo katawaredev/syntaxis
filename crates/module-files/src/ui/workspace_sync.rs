@@ -441,10 +441,8 @@ fn reconcile_workspace_changes(
             ignored_paths.set(BTreeSet::new());
             return;
         };
-        let (status, ignored) = futures_util::join!(
-            git.status(&workspace),
-            git.ignored_paths(&workspace),
-        );
+        let (status, ignored) =
+            futures_util::join!(git.status(&workspace), git.ignored_paths(&workspace),);
         if let Ok(status) = status {
             git_status.set(Some(status));
         }

@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const source = resolve(root, "assets/guest-git/bridge-source.js");
-const destination = resolve(root, "apps/guest/assets/guest-git.bundle.js");
-const stamp = resolve(root, "apps/guest/assets/guest-git.bundle.stamp");
+const source = resolve(root, "crates/runtime-browser/bridge-src/git/bridge-source.js");
+const outputDir = resolve(root, "crates/runtime-browser/assets");
+const destination = resolve(outputDir, "guest-git.bundle.js");
+const stamp = resolve(outputDir, "guest-git.bundle.stamp");
 const manifest = resolve(root, "package.json");
 const lockfile = resolve(root, "bun.lock");
 const script = fileURLToPath(import.meta.url);
@@ -30,6 +31,7 @@ if (
 }
 
 const { default: esbuild } = await import("esbuild");
+mkdirSync(outputDir, { recursive: true });
 const result = await esbuild.build({
   entryPoints: [source],
   bundle: true,

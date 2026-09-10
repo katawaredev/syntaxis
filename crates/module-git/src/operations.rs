@@ -38,10 +38,12 @@ pub(super) async fn run_mutation(
     ports: GitPorts,
     mutation: Mutation,
 ) -> Result<MutationSuccess, AppError> {
-    let mutations = ports
-        .repository()
-        .cloned()
-        .ok_or_else(|| AppError::unsupported("Git changes are read-only in this runtime.", ErrorSource::Git))?;
+    let mutations = ports.repository().cloned().ok_or_else(|| {
+        AppError::unsupported(
+            "Git changes are read-only in this runtime.",
+            ErrorSource::Git,
+        )
+    })?;
     let closes_dialog = matches!(&mutation, Mutation::DiscardAll(_));
     let mut selection = match &mutation {
         Mutation::Hunk { path, kind, .. } => Some(SelectedChange {
@@ -71,9 +73,14 @@ pub(super) async fn run_mutation(
         } => {
             let path = RelativePath::try_from(path).map_err(AppError::from)?;
             let hunks = ports.hunks().cloned().ok_or_else(|| {
-                AppError::unsupported("Partial-hunk operations are unavailable in this runtime.", ErrorSource::Git)
+                AppError::unsupported(
+                    "Partial-hunk operations are unavailable in this runtime.",
+                    ErrorSource::Git,
+                )
             })?;
-            hunks.apply_hunk(&workspace, &path, kind, index, fingerprint, action).await
+            hunks
+                .apply_hunk(&workspace, &path, kind, index, fingerprint, action)
+                .await
         }
         Mutation::ResolveConflict {
             path,
@@ -82,19 +89,25 @@ pub(super) async fn run_mutation(
             choice,
         } => {
             let relative_path = RelativePath::try_from(path.clone()).map_err(AppError::from)?;
-            match mutations
+            let conflicts = ports.conflicts().cloned().ok_or_else(|| {
+                AppError::unsupported(
+                    "Conflict resolution is unavailable in this runtime.",
+                    ErrorSource::Git,
+                )
+            })?;
+            match conflicts
                 .resolve_conflict(&workspace, &relative_path, index, fingerprint, choice)
                 .await
             {
-            Ok(complete) => {
-                selection = (!complete).then_some(SelectedChange {
-                    path,
-                    kind: DiffKind::Worktree,
-                    conflicted: true,
-                });
-                Ok(())
-            }
-            Err(error) => Err(error),
+                Ok(complete) => {
+                    selection = (!complete).then_some(SelectedChange {
+                        path,
+                        kind: DiffKind::Worktree,
+                        conflicted: true,
+                    });
+                    Ok(())
+                }
+                Err(error) => Err(error),
             }
         }
     };
@@ -162,6 +175,10 @@ pub(super) enum RepositoryActionSuccess {
     ForceWithLeaseRequired(String),
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "Repository actions intentionally share one exhaustive capability dispatcher"
+)]
 pub(super) async fn run_repository_action(
     workspace: WorkspaceRecord,
     ports: GitPorts,
@@ -176,78 +193,179 @@ pub(super) async fn run_repository_action(
     let rebase = ports.rebase().cloned();
     let branch = || {
         branches.clone().ok_or_else(|| {
-            AppError::unsupported("Git branch operations are unavailable in this runtime.", ErrorSource::Git)
+            AppError::unsupported(
+                "Git branch operations are unavailable in this runtime.",
+                ErrorSource::Git,
+            )
         })
     };
     let remote = || {
         network.clone().ok_or_else(|| {
-            AppError::unsupported("Git network operations are unavailable in this runtime.", ErrorSource::Git)
+            AppError::unsupported(
+                "Git network operations are unavailable in this runtime.",
+                ErrorSource::Git,
+            )
         })
     };
     let result = match action {
-        RepositoryAction::SwitchBranch(name) => branch()?.switch_branch(&workspace, &name)
+        RepositoryAction::SwitchBranch(name) => branch()?
+            .switch_branch(&workspace, &name)
             .await
             .map(|()| "Switched branch".to_owned()),
-        RepositoryAction::CreateBranch(request) => branch()?.create_branch(&workspace, request)
+        RepositoryAction::CreateBranch(request) => branch()?
+            .create_branch(&workspace, request)
             .await
             .map(|()| "Created and switched branch".to_owned()),
-        RepositoryAction::RenameBranch(name) => branch()?.rename_branch(&workspace, &name)
+        RepositoryAction::RenameBranch(name) => branch()?
+            .rename_branch(&workspace, &name)
             .await
             .map(|()| "Renamed branch".to_owned()),
-        RepositoryAction::DeleteBranch(name) => branch()?.delete_branch(&workspace, &name, false)
+        RepositoryAction::DeleteBranch(name) => branch()?
+            .delete_branch(&workspace, &name, false)
             .await
             .map(|()| "Deleted branch".to_owned()),
-        RepositoryAction::CreateTag(request) => tags.clone().ok_or_else(|| AppError::unsupported("Git tags are unavailable in this runtime.", ErrorSource::Git))?.create_tag(&workspace, request)
+        RepositoryAction::CreateTag(request) => tags
+            .clone()
+            .ok_or_else(|| {
+                AppError::unsupported(
+                    "Git tags are unavailable in this runtime.",
+                    ErrorSource::Git,
+                )
+            })?
+            .create_tag(&workspace, request)
             .await
             .map(|()| "Created tag".to_owned()),
-        RepositoryAction::DeleteTag(name) => tags.clone().ok_or_else(|| AppError::unsupported("Git tags are unavailable in this runtime.", ErrorSource::Git))?.delete_tag(&workspace, &name)
+        RepositoryAction::DeleteTag(name) => tags
+            .clone()
+            .ok_or_else(|| {
+                AppError::unsupported(
+                    "Git tags are unavailable in this runtime.",
+                    ErrorSource::Git,
+                )
+            })?
+            .delete_tag(&workspace, &name)
             .await
             .map(|()| "Deleted tag".to_owned()),
-        RepositoryAction::CheckoutCommit(revision) => checkout.clone().ok_or_else(|| AppError::unsupported("Checking out commits is unavailable in this runtime.", ErrorSource::Git))?.checkout_commit(&workspace, &revision)
+        RepositoryAction::CheckoutCommit(revision) => checkout
+            .clone()
+            .ok_or_else(|| {
+                AppError::unsupported(
+                    "Checking out commits is unavailable in this runtime.",
+                    ErrorSource::Git,
+                )
+            })?
+            .checkout_commit(&workspace, &revision)
             .await
             .map(|()| "Checked out commit in detached HEAD mode".to_owned()),
-        RepositoryAction::RevertCommit(revision) => revert.clone().ok_or_else(|| AppError::unsupported("Reverting commits is unavailable in this runtime.", ErrorSource::Git))?.revert_commit(&workspace, &revision)
+        RepositoryAction::RevertCommit(revision) => revert
+            .clone()
+            .ok_or_else(|| {
+                AppError::unsupported(
+                    "Reverting commits is unavailable in this runtime.",
+                    ErrorSource::Git,
+                )
+            })?
+            .revert_commit(&workspace, &revision)
             .await
             .map(|()| "Created revert commit".to_owned()),
-        RepositoryAction::Merge(name) => match merge.clone().ok_or_else(|| AppError::unsupported("Merging branches is unavailable in this runtime.", ErrorSource::Git))?.merge(&workspace, &name).await? {
+        RepositoryAction::Merge(name) => match merge
+            .clone()
+            .ok_or_else(|| {
+                AppError::unsupported(
+                    "Merging branches is unavailable in this runtime.",
+                    ErrorSource::Git,
+                )
+            })?
+            .merge(&workspace, &name)
+            .await?
+        {
             MergeOutcome::Merged { message } => Ok(message),
             MergeOutcome::Conflicts { paths } => {
                 return Ok(RepositoryActionSuccess::MergeConflicts(paths.len()));
             }
         },
-        RepositoryAction::AbortMerge => merge.clone().ok_or_else(|| AppError::unsupported("Merging branches is unavailable in this runtime.", ErrorSource::Git))?.abort_merge(&workspace)
+        RepositoryAction::AbortMerge => merge
+            .clone()
+            .ok_or_else(|| {
+                AppError::unsupported(
+                    "Merging branches is unavailable in this runtime.",
+                    ErrorSource::Git,
+                )
+            })?
+            .abort_merge(&workspace)
             .await
             .map(|()| "Aborted merge".to_owned()),
-        RepositoryAction::Pull => remote()?.pull(&workspace).await.map(|result| result.message),
+        RepositoryAction::Pull => remote()?
+            .pull(&workspace)
+            .await
+            .map(|result| result.message),
         RepositoryAction::PullRebase => {
             return Ok(rebase_result(remote()?.pull_rebase(&workspace).await?));
         }
         RepositoryAction::ContinueRebase => {
-            return Ok(rebase_result(rebase.clone().ok_or_else(|| AppError::unsupported("Git rebase is unavailable in this runtime.", ErrorSource::Git))?.continue_rebase(&workspace).await?));
+            return Ok(rebase_result(
+                rebase
+                    .clone()
+                    .ok_or_else(|| {
+                        AppError::unsupported(
+                            "Git rebase is unavailable in this runtime.",
+                            ErrorSource::Git,
+                        )
+                    })?
+                    .continue_rebase(&workspace)
+                    .await?,
+            ));
         }
         RepositoryAction::SkipRebase => {
-            return Ok(rebase_result(rebase.clone().ok_or_else(|| AppError::unsupported("Git rebase is unavailable in this runtime.", ErrorSource::Git))?.skip_rebase(&workspace).await?));
+            return Ok(rebase_result(
+                rebase
+                    .clone()
+                    .ok_or_else(|| {
+                        AppError::unsupported(
+                            "Git rebase is unavailable in this runtime.",
+                            ErrorSource::Git,
+                        )
+                    })?
+                    .skip_rebase(&workspace)
+                    .await?,
+            ));
         }
-        RepositoryAction::AbortRebase => rebase.clone().ok_or_else(|| AppError::unsupported("Git rebase is unavailable in this runtime.", ErrorSource::Git))?.abort_rebase(&workspace)
+        RepositoryAction::AbortRebase => rebase
+            .clone()
+            .ok_or_else(|| {
+                AppError::unsupported(
+                    "Git rebase is unavailable in this runtime.",
+                    ErrorSource::Git,
+                )
+            })?
+            .abort_rebase(&workspace)
             .await
             .map(|()| "Aborted rebase".to_owned()),
-        RepositoryAction::Publish(remote_name) => remote()?.publish(&workspace, &remote_name)
+        RepositoryAction::Publish(remote_name) => remote()?
+            .publish(&workspace, &remote_name)
             .await
             .map(|result| result.message),
-        RepositoryAction::Refresh => remote()?.fetch(&workspace).await.map(|result| result.message),
-        RepositoryAction::FetchRemote(name) => remote()?.fetch_remote(&workspace, &name)
+        RepositoryAction::Refresh => remote()?
+            .fetch(&workspace)
             .await
             .map(|result| result.message),
-        RepositoryAction::AddRemote(request) => remote()?.add(&workspace, request)
+        RepositoryAction::FetchRemote(name) => remote()?
+            .fetch_remote(&workspace, &name)
+            .await
+            .map(|result| result.message),
+        RepositoryAction::AddRemote(request) => remote()?
+            .add(&workspace, request)
             .await
             .map(|()| "Added remote".to_owned()),
         RepositoryAction::UpdateRemote {
             previous_name,
             request,
-        } => remote()?.update(&workspace, &previous_name, request)
+        } => remote()?
+            .update(&workspace, &previous_name, request)
             .await
             .map(|()| "Updated remote".to_owned()),
-        RepositoryAction::RemoveRemote(name) => remote()?.remove(&workspace, &name)
+        RepositoryAction::RemoveRemote(name) => remote()?
+            .remove(&workspace, &name)
             .await
             .map(|()| "Removed remote".to_owned()),
         RepositoryAction::Push { force_with_lease } => {

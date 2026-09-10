@@ -5,9 +5,10 @@
     reason = "Dioxus expands the parent glob for RSX hot-reload analysis"
 )]
 use super::*;
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use pulldown_cmark::{CowStr, Event, Options, Parser, Tag, html};
 
-const MARKDOWN_PREVIEW_CSS: Asset = asset!("/assets/files/markdown-preview.css");
+const MARKDOWN_PREVIEW_CSS: &str = include_str!("../../assets/markdown-preview.css");
 const CHECKERBOARD_STYLE: &str = "background-image: linear-gradient(45deg,#aaa 25%,transparent 25%),linear-gradient(-45deg,#aaa 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#aaa 75%),linear-gradient(-45deg,transparent 75%,#aaa 75%); background-size: 20px 20px; background-position: 0 0,0 10px,10px -10px,-10px 0";
 const MAX_CSV_PREVIEW_ROWS: usize = 500;
 const MAX_CSV_PREVIEW_COLUMNS: usize = 100;
@@ -126,7 +127,7 @@ pub(super) fn EmptyEditor(loading: Option<String>, #[props(default)] unavailable
 pub(super) fn MarkdownPreview(source: String) -> Element {
     let rendered = render_markdown(&source);
     rsx! {
-        document::Stylesheet { href: MARKDOWN_PREVIEW_CSS }
+        document::Style { {MARKDOWN_PREVIEW_CSS} }
         div {
             class: "min-h-full bg-card p-4",
             role: "region",
@@ -140,7 +141,7 @@ pub(super) fn MarkdownPreview(source: String) -> Element {
 pub(super) fn CsvPreview(source: String, path: String) -> Element {
     let table = parse_csv(&source);
     rsx! {
-        document::Stylesheet { href: MARKDOWN_PREVIEW_CSS }
+        document::Style { {MARKDOWN_PREVIEW_CSS} }
         div {
             class: "min-h-full bg-card p-4",
             role: "region",
@@ -324,7 +325,7 @@ pub(super) fn SafeSvgPreview(source: String, path: String) -> Element {
 }
 
 #[component]
-pub(super) fn ImagePreview(path: String, data_url: String, size: u64) -> Element {
+pub(super) fn ImagePreview(path: String, source_url: String, size: u64) -> Element {
     rsx! {
         div { class: "flex min-h-full flex-col items-center justify-center gap-4 p-6",
             p { class: "text-[10px] font-[750] tracking-[.14em] text-primary",
@@ -335,7 +336,7 @@ pub(super) fn ImagePreview(path: String, data_url: String, size: u64) -> Element
                 style: CHECKERBOARD_STYLE,
                 img {
                     class: "block size-full max-h-[70svh] max-w-full object-contain",
-                    src: data_url,
+                    src: source_url,
                     alt: "Preview of {path}",
                 }
             }

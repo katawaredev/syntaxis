@@ -20,7 +20,9 @@ The main application code lives in `apps/main/src/`, and the browser-only guest 
 - `notifications` and `notifications-host` — notification support;
 - `ui` — shared components.
 
-Browser-side editor and terminal sources are under `assets/`.
+Authored browser bridge sources live with their owners under
+`crates/code-editor/bridge-src/`, `crates/runtime-main/bridge-src/`, and
+`crates/runtime-browser/bridge-src/`. Their generated bundles are crate-local assets.
 
 ## Setup
 
@@ -63,7 +65,7 @@ just build-assets
 ```
 
 This builds the CodeMirror and terminal bundles and regenerates Pi settings metadata. The settings
-generator reads the pinned Pi package and writes `apps/main/src/ai/generated_settings.rs`. It validates every
+generator reads the pinned Pi package and writes `crates/runtime-main/src/ai/generated_settings.rs`. It validates every
 curated setting and setter on each run and hashes only the extracted metadata, so unrelated Pi
 documentation changes do not churn the generated Rust file. Runtime capability checks are per setter,
 not tied to Pi's version number.

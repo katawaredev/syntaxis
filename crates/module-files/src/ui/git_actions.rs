@@ -75,6 +75,10 @@ pub(super) fn show_diff(
     });
 }
 
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "FilesPorts is copied into the event handler's async task"
+)]
 pub(super) fn toggle_stage(
     files: FilesPorts,
     workspace: Option<WorkspaceRecord>,
@@ -91,9 +95,10 @@ pub(super) fn toggle_stage(
     let Some(git) = files.git().cloned() else {
         return;
     };
+    let unstaged = change.is_unstaged();
     let path = change.path;
     spawn(async move {
-        let result = if change.is_unstaged() {
+        let result = if unstaged {
             git.stage(&workspace, std::slice::from_ref(&path)).await
         } else {
             git.unstage(&workspace, std::slice::from_ref(&path)).await
@@ -116,11 +121,7 @@ pub(super) struct GitDiscardContext {
     pub(super) toast: Signal<Option<ToastState>>,
 }
 
-pub(super) fn discard_git_change(
-    path: String,
-    revert_staged: bool,
-    context: GitDiscardContext,
-) {
+pub(super) fn discard_git_change(path: String, revert_staged: bool, context: GitDiscardContext) {
     let Some(workspace) = context.workspace else {
         return;
     };
@@ -182,7 +183,7 @@ pub(super) fn discard_git_change(
 
 #[expect(
     clippy::too_many_arguments,
-    reason = "the transitional dispatcher receives independent controller handles while Files is extracted"
+    reason = "the action dispatcher coordinates independent reactive document and dialog handles"
 )]
 pub(super) fn run_file_action(
     files: FilesPorts,

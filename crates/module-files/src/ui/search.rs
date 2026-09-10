@@ -10,6 +10,9 @@ pub(super) use crate::{
 
 const MAX_SEARCH_RESULTS: usize = 500;
 
+/// # Errors
+///
+/// Returns an error when the query cannot be executed or an ignored path is invalid.
 pub async fn search_workspace_files(
     files: &FilesPorts,
     workspace: WorkspaceRecord,

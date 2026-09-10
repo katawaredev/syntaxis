@@ -1,5 +1,12 @@
 @import "tailwindcss";
 @source "./apps/main/src/**/*.rs";
+@source "./apps/guest/src/**/*.rs";
+@source "./crates/app-shell/src/**/*.rs";
+@source "./crates/module-ai/src/**/*.rs";
+@source "./crates/module-files/src/**/*.rs";
+@source "./crates/module-git/src/**/*.rs";
+@source "./crates/module-preview/src/**/*.rs";
+@source "./crates/module-terminal/src/**/*.rs";
 @source "./crates/ui/src/**/*.rs";
 
 @theme inline {

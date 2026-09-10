@@ -77,6 +77,9 @@ jobs:
           cc --version
           clang --version
 
+      - name: Enforce architecture boundaries
+        run: bash scripts/check-architecture.sh
+
       - name: Validate web and server
         if: github.event_name == 'pull_request'
         run: |
@@ -88,6 +91,16 @@ jobs:
         run: |
           just ci web
           just check server
+
+      - name: Enforce web bundle budgets
+        run: just bundle-check
+
+      - name: Smoke-test browser runtime contracts
+        run: |
+          browser="$(command -v google-chrome || command -v chromium)"
+          GUEST_DIST=target/dx/syntaxis-guest/debug/web/public \
+            AUTORESEARCH_BROWSER_PATH="$browser" \
+            bun autoresearch/guest-smoke.mjs
 
       - name: Verify tracked generated files are current
         run: git diff --exit-code

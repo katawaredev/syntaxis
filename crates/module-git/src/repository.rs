@@ -1,3 +1,9 @@
+#![allow(
+    clippy::clone_on_ref_ptr,
+    clippy::needless_pass_by_value,
+    reason = "Git resources cross async boundaries through runtime-specific PortHandle values"
+)]
+
 use dioxus::prelude::*;
 use syntaxis_app_contracts::AppError;
 use syntaxis_git::{CommitDetail, ConflictFile, DiffKind, RepositorySnapshot, UnifiedDiff};
@@ -97,10 +103,7 @@ fn use_selection_resources(
         }
     });
     let conflict_workspace = workspace.clone();
-    let conflict_read = ports
-        .repository()
-        .cloned()
-        .expect("GitView requires the Git read port");
+    let conflict_read = ports.conflicts().cloned();
     let conflict = use_resource(move || {
         let workspace = conflict_workspace.clone();
         let read = conflict_read.clone();
@@ -108,9 +111,13 @@ fn use_selection_resources(
         let selection = selected();
         async move {
             if let Some(selection) = selection.filter(|selection| selection.conflicted) {
-                Some(match RelativePath::try_from(selection.path) {
-                    Ok(path) => read.conflict_file(&workspace, &path).await,
-                    Err(error) => Err(error.into()),
+                Some(match (read, RelativePath::try_from(selection.path)) {
+                    (Some(read), Ok(path)) => read.conflict_file(&workspace, &path).await,
+                    (None, _) => Err(AppError::unsupported(
+                        "Conflict resolution is unavailable in this runtime.",
+                        syntaxis_app_contracts::ErrorSource::Git,
+                    )),
+                    (_, Err(error)) => Err(error.into()),
                 })
             } else {
                 None

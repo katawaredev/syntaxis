@@ -3,11 +3,11 @@ use syntaxis_git::BranchComparison;
 use syntaxis_ui::prelude::Tone;
 use syntaxis_workspace::WorkspaceRecord;
 
+use super::super::GitPorts;
 use super::super::operations::{
     Mutation, RepositoryAction, RepositoryActionSuccess, run_mutation, run_repository_action,
 };
 use super::super::repository::SelectedChange;
-use super::super::GitPorts;
 use super::GitDialog;
 
 #[derive(Clone, Copy)]
@@ -133,7 +133,7 @@ pub(super) fn compare_handler(
     mut operation_error: Signal<Option<String>>,
     mut comparison: Signal<Option<BranchComparison>>,
 ) -> EventHandler<(String, String)> {
-    EventHandler::new(move |(base, head)| {
+    EventHandler::new(move |(base, head): (String, String)| {
         let workspace = workspace.clone();
         let read = ports.merge().cloned();
         pending.set(true);

@@ -143,7 +143,7 @@ async fn load_restored_document(
 ) -> Option<OpenDocument> {
     load_restored_document_content(files, workspace, configs, path)
         .await
-        .map(into_open_document)
+        .map(|document| into_open_document(files, document))
 }
 
 async fn load_document(
@@ -152,10 +152,13 @@ async fn load_document(
     workspace: WorkspaceRecord,
     configs: Vec<EditorConfigSource>,
 ) -> OpenDocument {
-    into_open_document(load_document_content(files, &workspace, entry, &configs).await)
+    into_open_document(
+        files,
+        load_document_content(files, &workspace, entry, &configs).await,
+    )
 }
 
-fn into_open_document(document: DocumentLoad) -> OpenDocument {
+fn into_open_document(files: &FilesPorts, document: DocumentLoad) -> OpenDocument {
     match document {
         DocumentLoad::Text(buffer) => OpenDocument::Text(buffer),
         DocumentLoad::Image {
@@ -163,10 +166,20 @@ fn into_open_document(document: DocumentLoad) -> OpenDocument {
             mime,
             content,
             size,
-        } => OpenDocument::Image {
-            path,
-            data_url: format!("data:{mime};base64:{}", BASE64.encode(content)),
-            size,
+        } => match files.image_preview() {
+            Some(preview) => match preview.create(mime, content) {
+                Ok(source) => OpenDocument::Image { path, source, size },
+                Err(problem) => OpenDocument::Unsupported {
+                    path,
+                    size,
+                    reason: problem.message,
+                },
+            },
+            None => OpenDocument::Unsupported {
+                path,
+                size,
+                reason: "Image previews are unavailable in this runtime.".into(),
+            },
         },
         DocumentLoad::Large { path, size } => OpenDocument::Large { path, size },
         DocumentLoad::Unsupported { path, size, reason } => {

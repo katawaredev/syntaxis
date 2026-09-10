@@ -37,7 +37,7 @@ workspace search remains application-owned. The product separately refuses
 text files over 4 MiB and renders a clear large-file state.
 
 Run `bun run build:editor` after changing
-`assets/code-editor/bridge-source.js`, `package.json`, or `bun.lock`. Standard
+`crates/code-editor/bridge-src/bridge-source.js`, `package.json`, or `bun.lock`. Standard
 `just` build, serve, QA, and pre-commit recipes build the cached bundle
 automatically.
 
