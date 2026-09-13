@@ -1,9 +1,11 @@
 use async_trait::async_trait;
+use dioxus::fullstack::WebSocketOptions;
 use syntaxis_app_contracts::{AppError, AppErrorCode, ErrorSource, PortHandle, RetryAdvice};
 use syntaxis_app_shell::{
-    RuntimeStatusPort, WorkspaceCatalogPort, WorkspaceClonePort, WorkspaceFolderPort,
-    WorkspaceManagementPort, WorkspaceProjectPort,
+    RuntimeStatusPort, WorkspaceCatalogPort, WorkspaceCloneEvent, WorkspaceClonePort,
+    WorkspaceCloneStream, WorkspaceFolderPort, WorkspaceManagementPort, WorkspaceProjectPort,
 };
+use syntaxis_git::{CLONE_PROTOCOL_VERSION, CloneClientMessage, CloneRequest, CloneServerMessage};
 use syntaxis_workspace::{
     BrowseDirectory, BrowseRoot, RuntimeState, WorkspaceCleanupEntry, WorkspaceRecord,
     WorkspaceSection,
@@ -106,15 +108,58 @@ impl WorkspaceFolderPort for MainWorkspaceCatalog {
 
 #[async_trait(?Send)]
 impl WorkspaceClonePort for MainWorkspaceCatalog {
-    async fn clone_repository(
+    async fn start(
         &self,
-        url: &str,
-        destination_parent: &str,
-    ) -> Result<WorkspaceRecord, AppError> {
-        crate::git::api::clone_repository(url.to_owned(), destination_parent.to_owned())
+        request: CloneRequest,
+    ) -> Result<Box<dyn WorkspaceCloneStream>, AppError> {
+        let socket = crate::git::api::clone_repository_stream(WebSocketOptions::new())
             .await
-            .map_err(|error| catalog_error(crate::client_error::server_error_message(error)))
+            .map_err(|error| catalog_error(crate::client_error::server_error_message(error)))?;
+        socket
+            .send(CloneClientMessage::Start {
+                version: CLONE_PROTOCOL_VERSION,
+                url: request.url,
+                destination_parent: request.destination_parent,
+                directory_name: request.directory_name.unwrap_or_default(),
+                mode: request.mode,
+            })
+            .await
+            .map_err(clone_socket_error)?;
+        Ok(Box::new(MainWorkspaceCloneStream { socket }))
     }
+}
+
+struct MainWorkspaceCloneStream {
+    socket: dioxus::fullstack::Websocket<CloneClientMessage, CloneServerMessage>,
+}
+
+#[async_trait(?Send)]
+impl WorkspaceCloneStream for MainWorkspaceCloneStream {
+    async fn receive(&mut self) -> Result<Option<WorkspaceCloneEvent>, AppError> {
+        let message = self.socket.recv().await.map_err(clone_socket_error)?;
+        match message {
+            CloneServerMessage::Started => Ok(Some(WorkspaceCloneEvent::Started)),
+            CloneServerMessage::Progress { progress } => {
+                Ok(Some(WorkspaceCloneEvent::Progress(progress)))
+            }
+            CloneServerMessage::Completed { workspace } => {
+                Ok(Some(WorkspaceCloneEvent::Completed(Box::new(workspace))))
+            }
+            CloneServerMessage::Cancelled => Ok(Some(WorkspaceCloneEvent::Cancelled)),
+            CloneServerMessage::Error { message } => Err(catalog_error(message)),
+        }
+    }
+
+    async fn cancel(&self) -> Result<(), AppError> {
+        self.socket
+            .send(CloneClientMessage::Cancel)
+            .await
+            .map_err(clone_socket_error)
+    }
+}
+
+fn clone_socket_error(error: impl std::fmt::Display) -> AppError {
+    catalog_error(format!("The repository clone connection failed: {error}"))
 }
 
 #[async_trait(?Send)]

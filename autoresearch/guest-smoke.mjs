@@ -301,14 +301,11 @@ try {
     timeout: 30_000,
   });
   stage = "AI conversation startup";
-  await clickButton(page, "Back to chat");
+  await clickButton(page, "Chat");
   await page.waitForSelector("[aria-label='AI assistant']", { timeout: 30_000 });
-  await setTextAreaValue(page, 'textarea[placeholder="Ask the assistant…"]', "Stream a reply");
+  await setTextAreaValue(page, "#syntaxis-ai-composer", "Stream a reply");
   await page.waitForFunction(
-    () =>
-      [...document.querySelectorAll("button")].some(
-        (button) => button.textContent?.trim() === "Send" && !button.disabled,
-      ),
+    () => !document.querySelector('button[aria-label="Send message"]')?.disabled,
     { timeout: 30_000 },
   );
   await page.evaluate(() => {
@@ -319,7 +316,7 @@ try {
     }).observe(log, { childList: true, characterData: true, subtree: true });
   });
   stage = "AI progressive response";
-  await clickButton(page, "Send");
+  await page.click('button[aria-label="Send message"]');
   await page.waitForFunction(
     () => document.querySelector('[role="log"]')?.innerText.includes("hello!"),
     { timeout: 30_000 },
@@ -336,16 +333,18 @@ try {
   }
 
   stage = "AI cancellation";
-  await setTextAreaValue(page, 'textarea[placeholder="Ask the assistant…"]', "Cancel me");
-  await waitForEnabledButton(page, "Send");
-  await clickButton(page, "Send");
-  await waitForProviderRequests(providerRequests, 2);
+  await setTextAreaValue(page, "#syntaxis-ai-composer", "Cancel me");
   await page.waitForFunction(
-    () =>
-      [...document.querySelectorAll("button")].some((button) => button.textContent === "Cancel"),
+    () => !document.querySelector('button[aria-label="Send message"]')?.disabled,
     { timeout: 30_000 },
   );
-  await clickButton(page, "Cancel");
+  await page.click('button[aria-label="Send message"]');
+  await waitForProviderRequests(providerRequests, 2);
+  await page.waitForFunction(
+    () => Boolean(document.querySelector('button[aria-label="Cancel response"]')),
+    { timeout: 30_000 },
+  );
+  await page.click('button[aria-label="Cancel response"]');
   await page.waitForFunction(
     () => document.body.innerText.includes("The AI request was cancelled."),
     {
@@ -354,9 +353,12 @@ try {
   );
 
   stage = "AI response limit";
-  await setTextAreaValue(page, 'textarea[placeholder="Ask the assistant…"]', "Exceed limit");
-  await waitForEnabledButton(page, "Send");
-  await clickButton(page, "Send");
+  await setTextAreaValue(page, "#syntaxis-ai-composer", "Exceed limit");
+  await page.waitForFunction(
+    () => !document.querySelector('button[aria-label="Send message"]')?.disabled,
+    { timeout: 30_000 },
+  );
+  await page.click('button[aria-label="Send message"]');
   await waitForProviderRequests(providerRequests, 3);
   await page.waitForFunction(
     () =>
@@ -419,17 +421,6 @@ async function clickButton(page, label) {
     return Boolean(button);
   }, label);
   if (!clicked) throw new Error(`Guest action was not rendered: ${label}`);
-}
-
-async function waitForEnabledButton(page, label) {
-  await page.waitForFunction(
-    (text) =>
-      [...document.querySelectorAll("button")].some(
-        (button) => button.textContent?.trim() === text && !button.disabled,
-      ),
-    { timeout: 30_000 },
-    label,
-  );
 }
 
 async function clickLink(page, label) {

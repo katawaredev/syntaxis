@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use syntaxis_app_contracts::AppError;
+use syntaxis_git::{CloneProgress, CloneRequest};
 use syntaxis_workspace::{
     BrowseDirectory, BrowseRoot, EventBatch, RuntimeState, WorkspaceCleanupEntry, WorkspaceRecord,
     WorkspaceSection,
@@ -25,11 +26,22 @@ pub trait WorkspaceFolderPort: Send + Sync {
 
 #[async_trait(?Send)]
 pub trait WorkspaceClonePort: Send + Sync {
-    async fn clone_repository(
-        &self,
-        url: &str,
-        destination_parent: &str,
-    ) -> Result<WorkspaceRecord, AppError>;
+    async fn start(&self, request: CloneRequest)
+    -> Result<Box<dyn WorkspaceCloneStream>, AppError>;
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum WorkspaceCloneEvent {
+    Started,
+    Progress(CloneProgress),
+    Completed(Box<WorkspaceRecord>),
+    Cancelled,
+}
+
+#[async_trait(?Send)]
+pub trait WorkspaceCloneStream {
+    async fn receive(&mut self) -> Result<Option<WorkspaceCloneEvent>, AppError>;
+    async fn cancel(&self) -> Result<(), AppError>;
 }
 
 #[async_trait(?Send)]

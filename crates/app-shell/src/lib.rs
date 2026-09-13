@@ -20,7 +20,7 @@ pub use syntaxis_app_contracts::AiSettingsSection;
 pub use syntaxis_module_files::FilesQuery;
 pub use syntaxis_module_terminal::TerminalQuery;
 pub use workspaces::{
-    AuthAction, RuntimeStatusPort, WorkspaceCatalogPort, WorkspaceClonePort,
-    WorkspaceEventSourcePort, WorkspaceEventStream, WorkspaceFolderPort, WorkspaceManagementPort,
-    WorkspaceProjectPort,
+    AuthAction, RuntimeStatusPort, WorkspaceCatalogPort, WorkspaceCloneEvent, WorkspaceClonePort,
+    WorkspaceCloneStream, WorkspaceEventSourcePort, WorkspaceEventStream, WorkspaceFolderPort,
+    WorkspaceManagementPort, WorkspaceProjectPort,
 };

@@ -93,7 +93,8 @@ pub fn services() -> AppServices {
                 AiPorts::default()
                     .with_conversation(ai.clone())
                     .with_models(ai.clone())
-                    .with_settings(ai),
+                    .with_settings(ai.clone())
+                    .with_client(ai),
             );
     }
     #[cfg(not(target_arch = "wasm32"))]

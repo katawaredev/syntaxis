@@ -4,9 +4,11 @@ use syntaxis_git::{WorktreeCreateRequest, WorktreeInfo};
 use syntaxis_workspace::WorkspaceRecord;
 
 use crate::{
-    AiAuthFlow, AiConversation, AiConversationSummary, AiEvent, AiExtensionAction, AiExtensionPage,
-    AiFeatureSummary, AiManagedFeature, AiModel, AiPrompt, AiPromptTemplate, AiProviderAccount,
-    AiProviderAuthKind, AiProviderSettings, AiSkill,
+    AiAdvancedSettings, AiAuthFlow, AiClientEvent, AiConversation, AiConversationMatch,
+    AiConversationSummary, AiEvent, AiExtensionAction, AiExtensionPage, AiFeatureSummary,
+    AiGeneralSetting, AiManagedFeature, AiModel, AiModelPreferences, AiPrompt, AiPromptTemplate,
+    AiProviderAccount, AiProviderAuthKind, AiProviderSettings, AiResourceScope, AiSkill,
+    AiSkillCatalogView, AiSkillSearchPage, AiThinkingLevel,
 };
 
 #[async_trait(?Send)]
@@ -17,24 +19,98 @@ pub trait AiEventStream {
 }
 
 #[async_trait(?Send)]
+pub trait AiClientEventStream {
+    async fn receive(&mut self) -> Result<Option<AiClientEvent>, AppError>;
+}
+
+#[async_trait(?Send)]
+pub trait AiClientPort: Send + Sync {
+    async fn listen(&self, composer_id: &str) -> Result<Box<dyn AiClientEventStream>, AppError>;
+    async fn load_draft(&self, key: &str) -> Result<Option<String>, AppError>;
+    async fn save_draft(&self, key: &str, value: Option<&str>) -> Result<(), AppError>;
+    async fn copy_text(&self, value: &str) -> Result<(), AppError>;
+    async fn focus(&self, element_id: &str) -> Result<(), AppError>;
+    async fn toggle_speech(&self, composer_id: &str) -> Result<(), AppError>;
+    async fn toggle_read_aloud(&self, message_id: &str) -> Result<(), AppError>;
+}
+
+#[async_trait(?Send)]
 pub trait AiConversationPort: Send + Sync {
     async fn list(
         &self,
         workspace: &WorkspaceRecord,
     ) -> Result<Vec<AiConversationSummary>, AppError>;
+    async fn search(
+        &self,
+        workspace: &WorkspaceRecord,
+        query: &str,
+    ) -> Result<Vec<AiConversationMatch>, AppError>;
     async fn create(&self, workspace: &WorkspaceRecord) -> Result<AiConversation, AppError>;
     async fn open(
         &self,
         workspace: &WorkspaceRecord,
         conversation_id: &str,
     ) -> Result<AiConversation, AppError>;
+    async fn watch(
+        &self,
+        workspace: &WorkspaceRecord,
+        conversation_id: &str,
+    ) -> Result<Box<dyn AiEventStream>, AppError>;
     async fn send(
         &self,
         workspace: &WorkspaceRecord,
         conversation_id: &str,
         prompt: AiPrompt,
     ) -> Result<Box<dyn AiEventStream>, AppError>;
+    async fn deliver(
+        &self,
+        workspace: &WorkspaceRecord,
+        conversation_id: &str,
+        prompt: AiPrompt,
+    ) -> Result<(), AppError>;
+    async fn respond_to_extension(
+        &self,
+        workspace: &WorkspaceRecord,
+        conversation_id: &str,
+        request_id: &str,
+        value: Option<String>,
+        confirmed: Option<bool>,
+        cancelled: bool,
+    ) -> Result<(), AppError>;
+    async fn fork_at(
+        &self,
+        workspace: &WorkspaceRecord,
+        conversation_id: &str,
+        entry_id: &str,
+    ) -> Result<AiConversation, AppError>;
+    async fn compact(
+        &self,
+        workspace: &WorkspaceRecord,
+        conversation_id: &str,
+        custom_instructions: Option<String>,
+    ) -> Result<Box<dyn AiEventStream>, AppError>;
     async fn cancel(
+        &self,
+        workspace: &WorkspaceRecord,
+        conversation_id: &str,
+    ) -> Result<(), AppError>;
+    async fn clone_conversation(
+        &self,
+        workspace: &WorkspaceRecord,
+        conversation_id: &str,
+    ) -> Result<AiConversation, AppError>;
+    async fn export_conversation(
+        &self,
+        workspace: &WorkspaceRecord,
+        conversation_id: &str,
+    ) -> Result<(), AppError>;
+    async fn rename(
+        &self,
+        workspace: &WorkspaceRecord,
+        conversation_id: &str,
+        title: &str,
+    ) -> Result<(), AppError>;
+    async fn delete(
         &self,
         workspace: &WorkspaceRecord,
         conversation_id: &str,
@@ -54,6 +130,35 @@ pub trait AiModelPort: Send + Sync {
         conversation_id: &str,
         model_id: &str,
     ) -> Result<(), AppError>;
+    async fn select_thinking_level(
+        &self,
+        workspace: &WorkspaceRecord,
+        conversation_id: &str,
+        level: AiThinkingLevel,
+    ) -> Result<(), AppError>;
+    async fn sync_preferences(
+        &self,
+        _workspace: &WorkspaceRecord,
+        _available_models: Vec<String>,
+    ) -> Result<AiModelPreferences, AppError> {
+        Ok(AiModelPreferences::default())
+    }
+    async fn set_favourite(
+        &self,
+        _workspace: &WorkspaceRecord,
+        _model_id: &str,
+        _favourite: bool,
+    ) -> Result<AiModelPreferences, AppError> {
+        Ok(AiModelPreferences::default())
+    }
+    async fn remember_effort(
+        &self,
+        _workspace: &WorkspaceRecord,
+        _model_id: &str,
+        _level: AiThinkingLevel,
+    ) -> Result<AiModelPreferences, AppError> {
+        Ok(AiModelPreferences::default())
+    }
 }
 
 #[async_trait(?Send)]
@@ -64,6 +169,28 @@ pub trait AiSettingsPort: Send + Sync {
         workspace: &WorkspaceRecord,
         settings: AiProviderSettings,
     ) -> Result<(), AppError>;
+}
+
+#[async_trait(?Send)]
+pub trait AiGeneralSettingsPort: Send + Sync {
+    async fn load(&self, workspace: &WorkspaceRecord) -> Result<Vec<AiGeneralSetting>, AppError>;
+    async fn save(
+        &self,
+        workspace: &WorkspaceRecord,
+        path: &str,
+        value: &str,
+    ) -> Result<Vec<AiGeneralSetting>, AppError>;
+    async fn update_runtime(&self, workspace: &WorkspaceRecord) -> Result<String, AppError>;
+    async fn load_advanced(
+        &self,
+        workspace: &WorkspaceRecord,
+        scope: AiResourceScope,
+    ) -> Result<AiAdvancedSettings, AppError>;
+    async fn save_advanced(
+        &self,
+        workspace: &WorkspaceRecord,
+        settings: AiAdvancedSettings,
+    ) -> Result<AiAdvancedSettings, AppError>;
 }
 
 #[async_trait(?Send)]
@@ -135,6 +262,23 @@ pub trait AiResourcesPort: Send + Sync {
         workspace: &WorkspaceRecord,
         skill: &AiSkill,
     ) -> Result<(), AppError>;
+    async fn skill_catalog_available(&self) -> Result<bool, AppError>;
+    async fn search_skills(
+        &self,
+        query: &str,
+        offset: usize,
+    ) -> Result<AiSkillSearchPage, AppError>;
+    async fn browse_skills(
+        &self,
+        view: AiSkillCatalogView,
+        offset: usize,
+    ) -> Result<AiSkillSearchPage, AppError>;
+    async fn install_skill(
+        &self,
+        workspace: &WorkspaceRecord,
+        slug: &str,
+        scope: AiResourceScope,
+    ) -> Result<(), AppError>;
 }
 
 #[async_trait(?Send)]
@@ -168,12 +312,14 @@ pub struct AiPorts {
     conversation: Option<PortHandle<dyn AiConversationPort>>,
     models: Option<PortHandle<dyn AiModelPort>>,
     settings: Option<PortHandle<dyn AiSettingsPort>>,
+    general_settings: Option<PortHandle<dyn AiGeneralSettingsPort>>,
     usage: Option<PortHandle<dyn AiManagedFeaturePort>>,
     provider_auth: Option<PortHandle<dyn AiProviderAuthPort>>,
     resources: Option<PortHandle<dyn AiResourcesPort>>,
     extensions: Option<PortHandle<dyn AiExtensionsPort>>,
     worktrees: Option<PortHandle<dyn AiWorktreePort>>,
     notifications: Option<PortHandle<dyn AiManagedFeaturePort>>,
+    client: Option<PortHandle<dyn AiClientPort>>,
 }
 
 impl AiPorts {
@@ -205,6 +351,16 @@ impl AiPorts {
 
     pub fn settings(&self) -> Option<&PortHandle<dyn AiSettingsPort>> {
         self.settings.as_ref()
+    }
+
+    #[must_use]
+    pub fn with_general_settings(mut self, port: PortHandle<dyn AiGeneralSettingsPort>) -> Self {
+        self.general_settings = Some(port);
+        self
+    }
+
+    pub fn general_settings(&self) -> Option<&PortHandle<dyn AiGeneralSettingsPort>> {
+        self.general_settings.as_ref()
     }
 
     #[must_use]
@@ -267,6 +423,16 @@ impl AiPorts {
         self.notifications.as_ref()
     }
 
+    #[must_use]
+    pub fn with_client(mut self, port: PortHandle<dyn AiClientPort>) -> Self {
+        self.client = Some(port);
+        self
+    }
+
+    pub fn client(&self) -> Option<&PortHandle<dyn AiClientPort>> {
+        self.client.as_ref()
+    }
+
     /// Verifies the required conversation/model surface and one settings path.
     ///
     /// # Errors
@@ -299,6 +465,7 @@ mod tests {
         assert!(ports.extensions().is_none());
         assert!(ports.worktrees().is_none());
         assert!(ports.notifications().is_none());
+        assert!(ports.client().is_none());
         assert!(ports.validate().is_err());
     }
 }

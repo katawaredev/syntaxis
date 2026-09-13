@@ -7,12 +7,15 @@ use std::{
 };
 
 use async_trait::async_trait;
+#[cfg(target_arch = "wasm32")]
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use dioxus::prelude::document;
 use serde::{Deserialize, Serialize};
 use syntaxis_app_contracts::{AppError, AppErrorCode, ErrorSource, RetryAdvice};
 use syntaxis_module_ai::{
-    AiConversation, AiConversationPort, AiConversationSummary, AiEvent, AiEventStream, AiMessage,
-    AiModel, AiModelPort, AiPrompt, AiProviderSettings, AiRole, AiSettingsPort,
+    AiClientEvent, AiClientEventStream, AiClientPort, AiConversation, AiConversationMatch,
+    AiConversationPort, AiConversationSummary, AiEvent, AiEventStream, AiMessage, AiModel,
+    AiModelPort, AiPrompt, AiProviderSettings, AiRole, AiSettingsPort, AiThinkingLevel,
 };
 use syntaxis_workspace::WorkspaceRecord;
 const DEFAULT_ENDPOINT: &str = "https://api.openai.com/v1/chat/completions";
@@ -70,6 +73,58 @@ impl BrowserAiAdapter {
     }
 }
 
+struct BrowserAiClientEventStream {
+    events: dioxus::document::Eval,
+}
+
+#[async_trait(?Send)]
+impl AiClientEventStream for BrowserAiClientEventStream {
+    async fn receive(&mut self) -> Result<Option<AiClientEvent>, AppError> {
+        match self.events.recv::<AiClientEvent>().await {
+            Ok(event) => Ok(Some(event)),
+            Err(_) => Ok(None),
+        }
+    }
+}
+
+#[async_trait(?Send)]
+impl AiClientPort for BrowserAiAdapter {
+    async fn listen(&self, composer_id: &str) -> Result<Box<dyn AiClientEventStream>, AppError> {
+        let events = ai_client_listener();
+        events.send(composer_id).map_err(|error| {
+            ai_error(
+                AppErrorCode::Internal,
+                format!("Could not start AI client events: {error}"),
+            )
+        })?;
+        Ok(Box::new(BrowserAiClientEventStream { events }))
+    }
+
+    async fn load_draft(&self, key: &str) -> Result<Option<String>, AppError> {
+        load_client_draft(key).await
+    }
+
+    async fn save_draft(&self, key: &str, value: Option<&str>) -> Result<(), AppError> {
+        save_client_draft(key, value).await
+    }
+
+    async fn copy_text(&self, value: &str) -> Result<(), AppError> {
+        copy_client_text(value).await
+    }
+
+    async fn focus(&self, element_id: &str) -> Result<(), AppError> {
+        call_ai_client("focusComposer", element_id).await
+    }
+
+    async fn toggle_speech(&self, composer_id: &str) -> Result<(), AppError> {
+        call_ai_client("toggleSpeech", composer_id).await
+    }
+
+    async fn toggle_read_aloud(&self, message_id: &str) -> Result<(), AppError> {
+        call_ai_client("toggleReadAloud", message_id).await
+    }
+}
+
 #[async_trait(?Send)]
 impl AiConversationPort for BrowserAiAdapter {
     async fn list(
@@ -84,8 +139,49 @@ impl AiConversationPort for BrowserAiAdapter {
                 id: conversation.id.clone(),
                 title: conversation.title.clone(),
                 message_count: conversation.messages.len(),
+                updated_at_ms: 0,
+                status_message: "Ready".into(),
+                running: false,
             })
             .collect())
+    }
+
+    async fn search(
+        &self,
+        _workspace: &WorkspaceRecord,
+        query: &str,
+    ) -> Result<Vec<AiConversationMatch>, AppError> {
+        let query = query.trim().to_lowercase();
+        if query.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut results = Vec::new();
+        for conversation in self.lock().conversations.values() {
+            for message in &conversation.messages {
+                let content = message.content.to_lowercase();
+                let count = content.match_indices(&query).count();
+                if count == 0 {
+                    continue;
+                }
+                let start = content.find(&query).unwrap_or_default().saturating_sub(48);
+                let end = (start + 180).min(message.content.len());
+                let snippet = message
+                    .content
+                    .get(start..end)
+                    .unwrap_or(&message.content)
+                    .to_owned();
+                results.push(AiConversationMatch {
+                    session_id: conversation.id.clone(),
+                    title: conversation.title.clone(),
+                    updated_at_ms: 0,
+                    role: message.role,
+                    snippet,
+                    match_count: count,
+                });
+                break;
+            }
+        }
+        Ok(results)
     }
 
     async fn create(&self, _workspace: &WorkspaceRecord) -> Result<AiConversation, AppError> {
@@ -99,7 +195,23 @@ impl AiConversationPort for BrowserAiAdapter {
             id: self.id("browser-chat"),
             title: "New chat".into(),
             messages: Vec::new(),
+            activity: Vec::new(),
+            item_order: Vec::new(),
             selected_model_id: Some(self.lock().settings.model.clone()),
+            thinking_level: AiThinkingLevel::Off,
+            usage: None,
+            running: false,
+            status_message: "Ready".into(),
+            pending_messages: 0,
+            steering_queue: Vec::new(),
+            follow_up_queue: Vec::new(),
+            commands: Vec::new(),
+            supports_queued_prompts: false,
+            extension_request: None,
+            extension_title: None,
+            extension_statuses: Vec::new(),
+            extension_widgets: Vec::new(),
+            requested_composer_text: None,
         };
         self.lock()
             .conversations
@@ -119,6 +231,14 @@ impl AiConversationPort for BrowserAiAdapter {
             .ok_or_else(|| ai_error(AppErrorCode::NotFound, "The AI conversation was not found."))
     }
 
+    async fn watch(
+        &self,
+        _workspace: &WorkspaceRecord,
+        _conversation_id: &str,
+    ) -> Result<Box<dyn AiEventStream>, AppError> {
+        Ok(Box::new(EmptyAiEventStream))
+    }
+
     async fn send(
         &self,
         _workspace: &WorkspaceRecord,
@@ -130,6 +250,12 @@ impl AiConversationPort for BrowserAiAdapter {
             return Err(ai_error(
                 AppErrorCode::TooLarge,
                 "The prompt exceeds the 64 KiB browser limit.",
+            ));
+        }
+        if !prompt.images.is_empty() {
+            return Err(AppError::unsupported(
+                "Image prompts are unavailable with the browser AI provider.",
+                ErrorSource::Ai,
             ));
         }
         let display_text = prompt.text.clone();
@@ -160,6 +286,8 @@ impl AiConversationPort for BrowserAiAdapter {
             id: user_id.clone(),
             role: AiRole::User,
             content: content.clone(),
+            entry_id: Some(user_id.clone()),
+            ..AiMessage::default()
         });
         while request_messages
             .iter()
@@ -188,14 +316,18 @@ impl AiConversationPort for BrowserAiAdapter {
             ));
         }
         let user = AiMessage {
-            id: user_id,
+            id: user_id.clone(),
             role: AiRole::User,
             content: display_text,
+            entry_id: Some(user_id),
+            ..AiMessage::default()
         };
         let assistant = AiMessage {
             id: self.id("assistant"),
             role: AiRole::Assistant,
             content: String::new(),
+            status: syntaxis_module_ai::AiMessageStatus::Streaming,
+            ..AiMessage::default()
         };
         let request = chat_stream_request(
             conversation_id,
@@ -216,6 +348,88 @@ impl AiConversationPort for BrowserAiAdapter {
         }))
     }
 
+    async fn deliver(
+        &self,
+        _workspace: &WorkspaceRecord,
+        _conversation_id: &str,
+        _prompt: AiPrompt,
+    ) -> Result<(), AppError> {
+        Err(AppError::unsupported(
+            "Steering and queued follow-ups require the connected Pi runtime.",
+            ErrorSource::Ai,
+        ))
+    }
+
+    async fn respond_to_extension(
+        &self,
+        _workspace: &WorkspaceRecord,
+        _conversation_id: &str,
+        _request_id: &str,
+        _value: Option<String>,
+        _confirmed: Option<bool>,
+        _cancelled: bool,
+    ) -> Result<(), AppError> {
+        Err(AppError::unsupported(
+            "Extension prompts require the connected Pi runtime.",
+            ErrorSource::Ai,
+        ))
+    }
+
+    async fn fork_at(
+        &self,
+        _workspace: &WorkspaceRecord,
+        conversation_id: &str,
+        entry_id: &str,
+    ) -> Result<AiConversation, AppError> {
+        let mut state = self.lock();
+        let source = state
+            .conversations
+            .get(conversation_id)
+            .cloned()
+            .ok_or_else(|| {
+                ai_error(AppErrorCode::NotFound, "The AI conversation was not found.")
+            })?;
+        let Some(index) = source
+            .messages
+            .iter()
+            .position(|message| message.entry_id.as_deref() == Some(entry_id))
+        else {
+            return Err(ai_error(
+                AppErrorCode::NotFound,
+                "The message branch point was not found.",
+            ));
+        };
+        let id = self.id("browser-chat");
+        let mut forked = source;
+        forked.id.clone_from(&id);
+        forked.title = format!("{} (branch)", forked.title);
+        forked.messages.truncate(index);
+        let retained = forked
+            .messages
+            .iter()
+            .map(|message| message.id.as_str())
+            .collect::<std::collections::HashSet<_>>();
+        forked
+            .item_order
+            .retain(|item| retained.contains(item.as_str()));
+        forked.activity.clear();
+        forked.running = false;
+        state.conversations.insert(id, forked.clone());
+        Ok(forked)
+    }
+
+    async fn compact(
+        &self,
+        _workspace: &WorkspaceRecord,
+        _conversation_id: &str,
+        _custom_instructions: Option<String>,
+    ) -> Result<Box<dyn AiEventStream>, AppError> {
+        Err(AppError::unsupported(
+            "Context compaction requires the connected Pi runtime.",
+            ErrorSource::Ai,
+        ))
+    }
+
     async fn cancel(
         &self,
         _workspace: &WorkspaceRecord,
@@ -233,6 +447,164 @@ impl AiConversationPort for BrowserAiAdapter {
         abort_ai_request(conversation_id)?;
         Ok(())
     }
+
+    async fn clone_conversation(
+        &self,
+        _workspace: &WorkspaceRecord,
+        conversation_id: &str,
+    ) -> Result<AiConversation, AppError> {
+        let mut clone = self
+            .lock()
+            .conversations
+            .get(conversation_id)
+            .cloned()
+            .ok_or_else(|| {
+                ai_error(AppErrorCode::NotFound, "The AI conversation was not found.")
+            })?;
+        clone.id = self.id("browser-chat");
+        clone.title = format!("{} branch", clone.title);
+        self.lock()
+            .conversations
+            .insert(clone.id.clone(), clone.clone());
+        Ok(clone)
+    }
+
+    async fn export_conversation(
+        &self,
+        _workspace: &WorkspaceRecord,
+        conversation_id: &str,
+    ) -> Result<(), AppError> {
+        let conversation = self
+            .lock()
+            .conversations
+            .get(conversation_id)
+            .cloned()
+            .ok_or_else(|| {
+                ai_error(AppErrorCode::NotFound, "The AI conversation was not found.")
+            })?;
+        let mut body = String::new();
+        for message in conversation.messages {
+            let role = match message.role {
+                AiRole::User => "You",
+                AiRole::Assistant => "Assistant",
+                AiRole::System => "System",
+            };
+            body.push_str("<article><h2>");
+            body.push_str(role);
+            body.push_str("</h2><pre>");
+            body.push_str(&escape_html(&message.content));
+            body.push_str("</pre></article>");
+        }
+        let title = escape_html(&conversation.title);
+        let html = format!(
+            "<!doctype html><meta charset=\"utf-8\"><title>{title}</title><style>body{{font:16px/1.5 system-ui;max-width:52rem;margin:3rem auto;padding:0 1rem}}article{{margin:0 0 2rem}}pre{{white-space:pre-wrap;font:inherit}}</style><h1>{title}</h1>{body}"
+        );
+        download_export(
+            format!("{}.html", safe_filename(&conversation.title)),
+            BASE64.encode(html.as_bytes()),
+        );
+        Ok(())
+    }
+
+    async fn rename(
+        &self,
+        _workspace: &WorkspaceRecord,
+        conversation_id: &str,
+        title: &str,
+    ) -> Result<(), AppError> {
+        let title = title.trim();
+        if title.is_empty() {
+            return Err(ai_error(
+                AppErrorCode::InvalidInput,
+                "Enter a conversation name.",
+            ));
+        }
+        let mut state = self.lock();
+        let conversation = state
+            .conversations
+            .get_mut(conversation_id)
+            .ok_or_else(|| {
+                ai_error(AppErrorCode::NotFound, "The AI conversation was not found.")
+            })?;
+        conversation.title = title.to_owned();
+        Ok(())
+    }
+
+    async fn delete(
+        &self,
+        _workspace: &WorkspaceRecord,
+        conversation_id: &str,
+    ) -> Result<(), AppError> {
+        if self.lock().conversations.remove(conversation_id).is_none() {
+            return Err(ai_error(
+                AppErrorCode::NotFound,
+                "The AI conversation was not found.",
+            ));
+        }
+        Ok(())
+    }
+}
+
+struct EmptyAiEventStream;
+
+#[async_trait(?Send)]
+impl AiEventStream for EmptyAiEventStream {
+    async fn receive(&mut self) -> Result<Option<AiEvent>, AppError> {
+        Ok(None)
+    }
+}
+
+fn escape_html(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
+fn safe_filename(value: &str) -> String {
+    let filename = value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
+                character
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>();
+    let filename = filename.trim_matches('-');
+    if filename.is_empty() {
+        "conversation".into()
+    } else {
+        filename.into()
+    }
+}
+
+fn download_export(filename: String, data_base64: String) {
+    dioxus::prelude::spawn(async move {
+        let script = document::eval(
+            r#"
+            const filename = await dioxus.recv();
+            const encoded = await dioxus.recv();
+            const binary = atob(encoded);
+            const bytes = new Uint8Array(binary.length);
+            for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+            const url = URL.createObjectURL(new Blob([bytes], { type: "text/html" }));
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = filename;
+            link.style.display = "none";
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            "#,
+        );
+        let _ = script.send(filename);
+        let _ = script.send(data_base64);
+    });
 }
 
 struct BrowserAiEventStream {
@@ -313,6 +685,8 @@ impl AiEventStream for BrowserAiEventStream {
                     }
                     conversation.messages.push(self.user.clone());
                     conversation.messages.push(self.assistant.clone());
+                    conversation.item_order.push(self.user.id.clone());
+                    conversation.item_order.push(self.assistant.id.clone());
                 }
                 Ok(Some(AiEvent::AssistantCompleted(self.assistant.clone())))
             }
@@ -357,6 +731,13 @@ impl AiModelPort for BrowserAiAdapter {
         Ok(vec![AiModel {
             id: model.clone(),
             label: model,
+            provider: "Browser provider".into(),
+            reasoning: false,
+            thinking_levels: vec![AiThinkingLevel::Off],
+            supports_images: false,
+            context_window: 0,
+            max_tokens: 0,
+            cost: syntaxis_module_ai::AiModelCost::default(),
         }])
     }
 
@@ -374,6 +755,29 @@ impl AiModelPort for BrowserAiAdapter {
         if let Some(conversation) = state.conversations.get_mut(conversation_id) {
             conversation.selected_model_id = Some(model_id.trim().to_owned());
         }
+        Ok(())
+    }
+
+    async fn select_thinking_level(
+        &self,
+        _workspace: &WorkspaceRecord,
+        conversation_id: &str,
+        level: AiThinkingLevel,
+    ) -> Result<(), AppError> {
+        if level != AiThinkingLevel::Off {
+            return Err(AppError::unsupported(
+                "Reasoning effort is unavailable with the browser AI provider.",
+                ErrorSource::Ai,
+            ));
+        }
+        let mut state = self.lock();
+        let conversation = state
+            .conversations
+            .get_mut(conversation_id)
+            .ok_or_else(|| {
+                ai_error(AppErrorCode::NotFound, "The AI conversation was not found.")
+            })?;
+        conversation.thinking_level = level;
         Ok(())
     }
 }
@@ -674,6 +1078,154 @@ fn abort_ai_request(conversation_id: &str) -> Result<(), AppError> {
             "Could not cancel the browser AI request.",
         )
     })
+}
+
+fn ai_client_listener() -> dioxus::document::Eval {
+    document::eval(
+        r#"
+        const id = await dioxus.recv();
+        const forward = event => {
+          const detail = event.detail ?? {};
+          if (!detail.id || detail.id === id) dioxus.send(detail);
+        };
+        window.addEventListener("syntaxis-ai-paste", forward);
+        window.addEventListener("syntaxis-ai-speech", forward);
+        window.addEventListener("syntaxis-ai-read-aloud", forward);
+        dioxus.send({
+          kind: "availability",
+          available: "speechSynthesis" in window && "SpeechSynthesisUtterance" in window,
+        });
+        await dioxus.recv();
+        window.removeEventListener("syntaxis-ai-paste", forward);
+        window.removeEventListener("syntaxis-ai-speech", forward);
+        window.removeEventListener("syntaxis-ai-read-aloud", forward);
+        "#,
+    )
+}
+
+async fn load_client_draft(key: &str) -> Result<Option<String>, AppError> {
+    let mut eval = document::eval(
+        r#"
+        const key = await dioxus.recv();
+        try { await dioxus.send(localStorage.getItem(key)); }
+        catch { await dioxus.send(null); }
+        "#,
+    );
+    eval.send(key).map_err(|error| {
+        ai_error(
+            AppErrorCode::Internal,
+            format!("Could not read the AI draft: {error}"),
+        )
+    })?;
+    eval.recv::<Option<String>>().await.map_err(|error| {
+        ai_error(
+            AppErrorCode::Internal,
+            format!("Could not read the AI draft: {error}"),
+        )
+    })
+}
+
+async fn save_client_draft(key: &str, value: Option<&str>) -> Result<(), AppError> {
+    let mut eval = document::eval(
+        r#"
+        const key = await dioxus.recv();
+        const value = await dioxus.recv();
+        try {
+          if (value === null) localStorage.removeItem(key);
+          else localStorage.setItem(key, value);
+          await dioxus.send(null);
+        } catch (error) {
+          await dioxus.send(error?.message ?? String(error));
+        }
+        "#,
+    );
+    eval.send(key)
+        .and_then(|()| eval.send(value.map(str::to_owned)))
+        .map_err(|error| {
+            ai_error(
+                AppErrorCode::Internal,
+                format!("Could not save the AI draft: {error}"),
+            )
+        })?;
+    match eval.recv::<Option<String>>().await {
+        Ok(None) => Ok(()),
+        Ok(Some(message)) => Err(ai_error(AppErrorCode::Internal, message)),
+        Err(error) => Err(ai_error(
+            AppErrorCode::Internal,
+            format!("Could not save the AI draft: {error}"),
+        )),
+    }
+}
+
+async fn copy_client_text(value: &str) -> Result<(), AppError> {
+    let mut eval = document::eval(
+        r#"
+        const value = await dioxus.recv();
+        try {
+          if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(value);
+          else {
+            const input = document.createElement("textarea");
+            input.value = value;
+            input.style.position = "fixed";
+            input.style.opacity = "0";
+            document.body.appendChild(input);
+            input.select();
+            if (!document.execCommand("copy")) throw new Error("The browser rejected the copy command.");
+            input.remove();
+          }
+          await dioxus.send(null);
+        } catch (error) {
+          await dioxus.send(error?.message ?? String(error));
+        }
+        "#,
+    );
+    eval.send(value).map_err(|error| {
+        ai_error(
+            AppErrorCode::Internal,
+            format!("Could not copy the AI message: {error}"),
+        )
+    })?;
+    match eval.recv::<Option<String>>().await {
+        Ok(None) => Ok(()),
+        Ok(Some(message)) => Err(ai_error(AppErrorCode::Internal, message)),
+        Err(error) => Err(ai_error(
+            AppErrorCode::Internal,
+            format!("Could not copy the AI message: {error}"),
+        )),
+    }
+}
+
+async fn call_ai_client(method: &str, id: &str) -> Result<(), AppError> {
+    let mut eval = document::eval(
+        r#"
+        const method = await dioxus.recv();
+        const id = await dioxus.recv();
+        try {
+          const action = globalThis.SyntaxisAiChat?.[method];
+          if (typeof action !== "function") throw new Error("AI client controls are unavailable.");
+          action(id);
+          await dioxus.send(null);
+        } catch (error) {
+          await dioxus.send(error?.message ?? String(error));
+        }
+        "#,
+    );
+    eval.send(method)
+        .and_then(|()| eval.send(id))
+        .map_err(|error| {
+            ai_error(
+                AppErrorCode::Internal,
+                format!("Could not use the AI client control: {error}"),
+            )
+        })?;
+    match eval.recv::<Option<String>>().await {
+        Ok(None) => Ok(()),
+        Ok(Some(message)) => Err(ai_error(AppErrorCode::Internal, message)),
+        Err(error) => Err(ai_error(
+            AppErrorCode::Internal,
+            format!("Could not use the AI client control: {error}"),
+        )),
+    }
 }
 
 fn ai_error(code: AppErrorCode, message: impl Into<String>) -> AppError {

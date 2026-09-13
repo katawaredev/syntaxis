@@ -5965,6 +5965,7 @@ dependencies = [
  "dioxus-sdk-time",
  "futures-util",
  "syntaxis-app-contracts",
+ "syntaxis-editor",
  "syntaxis-git",
  "syntaxis-module-ai",
  "syntaxis-module-files",
@@ -5975,6 +5976,7 @@ dependencies = [
  "syntaxis-ui",
  "syntaxis-workspace",
  "url",
+ "web-time",
 ]
 
 [[package]]
@@ -6032,8 +6034,10 @@ name = "syntaxis-module-ai"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "base64 0.23.1",
  "dioxus",
  "dioxus-sdk-time",
+ "regex",
  "serde",
  "syntaxis-app-contracts",
  "syntaxis-git",

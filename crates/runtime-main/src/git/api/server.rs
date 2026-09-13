@@ -69,6 +69,7 @@ pub(super) async fn remove_worktree(
 pub(super) async fn clone_repository(
     url: String,
     destination_parent: String,
+    mode: CloneMode,
 ) -> Result<syntaxis_workspace::WorkspaceRecord, ServerFnError> {
     let destination_parent =
         crate::workspace::api::server::resolve_browser_path(&destination_parent)?;
@@ -77,7 +78,7 @@ pub(super) async fn clone_repository(
             url,
             destination_parent: destination_parent.to_string_lossy().into_owned(),
             directory_name: None,
-            mode: CloneMode::Full,
+            mode,
         })
         .await
         .map_err(server_error)?;

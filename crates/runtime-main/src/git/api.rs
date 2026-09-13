@@ -15,8 +15,9 @@ use syntaxis_workspace::WorkspaceRecord;
 pub async fn clone_repository(
     url: String,
     destination_parent: String,
+    mode: syntaxis_git::CloneMode,
 ) -> Result<WorkspaceRecord, ServerFnError> {
-    server::clone_repository(url, destination_parent).await
+    server::clone_repository(url, destination_parent, mode).await
 }
 
 #[get("/api/git/clone-stream")]

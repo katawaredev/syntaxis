@@ -5,14 +5,18 @@ mod ports;
 mod view;
 
 pub use models::{
-    AiAuthEvent, AiAuthFlow, AiAuthPrompt, AiAuthPromptOption, AiConversation,
-    AiConversationSummary, AiEvent, AiExtension, AiExtensionAction, AiExtensionPage,
-    AiFeatureSummary, AiManagedFeature, AiMessage, AiModel, AiPrompt, AiPromptDelivery,
-    AiPromptTemplate, AiProviderAccount, AiProviderAuthKind, AiProviderAuthMethod,
-    AiProviderSettings, AiResourceScope, AiRole, AiSkill,
+    AiActivity, AiAdvancedSettings, AiAuthEvent, AiAuthFlow, AiAuthPrompt, AiAuthPromptOption,
+    AiClientEvent, AiCommand, AiConversation, AiConversationMatch, AiConversationSummary, AiEvent,
+    AiExtension, AiExtensionAction, AiExtensionPage, AiExtensionRequest, AiExtensionWidget,
+    AiFeatureSummary, AiGeneralSetting, AiGeneralSettingKind, AiImageAttachment, AiManagedFeature,
+    AiMessage, AiMessageStatus, AiModel, AiModelCost, AiModelPreferences, AiPrompt,
+    AiPromptDelivery, AiPromptTemplate, AiProviderAccount, AiProviderAuthKind,
+    AiProviderAuthMethod, AiProviderSettings, AiResourceScope, AiRole, AiSkill, AiSkillCatalogView,
+    AiSkillSearchPage, AiSkillSearchResult, AiThinkingLevel, AiUsage,
 };
 pub use ports::{
-    AiConversationPort, AiEventStream, AiExtensionsPort, AiManagedFeaturePort, AiModelPort,
-    AiPorts, AiProviderAuthPort, AiResourcesPort, AiSettingsPort, AiWorktreePort,
+    AiClientEventStream, AiClientPort, AiConversationPort, AiEventStream, AiExtensionsPort,
+    AiGeneralSettingsPort, AiManagedFeaturePort, AiModelPort, AiPorts, AiProviderAuthPort,
+    AiResourcesPort, AiSettingsPort, AiWorktreePort,
 };
 pub use view::{AiSettingsView, AiView};
