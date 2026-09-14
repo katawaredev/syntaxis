@@ -10,7 +10,6 @@ use syntaxis_app_contracts::{AiSettingsSection, NavigationIntent};
 use syntaxis_git::{WorktreeCreateRequest, WorktreeInfo};
 use syntaxis_module_files::{
     FilesPorts, FilesUiState, SearchOptions, SearchRequest, SearchScope, render_markdown,
-    render_markdown_preserving_newlines,
 };
 use syntaxis_ui::prelude::{
     AppIcon, Button, ButtonKind, DialogActions, DialogForm, Field, Icon, IconButton, Modal,
@@ -18,12 +17,15 @@ use syntaxis_ui::prelude::{
 };
 use syntaxis_workspace::{EntryKind, RelativePath, WorkspaceRecord};
 
+use crate::conversation::{activity_id, consume_ai_events};
+use crate::message::ConversationMessage;
+use crate::provider_accounts::ProviderAccountsPanel;
 use crate::{
-    AiActivity, AiAdvancedSettings, AiAuthFlow, AiAuthPrompt, AiClientEvent, AiCommand,
-    AiConversation, AiConversationMatch, AiConversationSummary, AiEvent, AiExtension,
+    AiActivity, AiAdvancedSettings, AiClientEvent, AiCommand,
+    AiConversation, AiConversationMatch, AiConversationSummary, AiExtension,
     AiExtensionAction, AiExtensionRequest, AiExtensionWidget, AiGeneralSetting,
     AiGeneralSettingKind, AiImageAttachment, AiManagedFeature, AiMessage, AiMessageStatus, AiModel,
-    AiModelPreferences, AiPorts, AiPrompt, AiPromptTemplate, AiProviderAuthKind,
+    AiModelPreferences, AiPorts, AiPrompt, AiPromptTemplate,
     AiProviderSettings, AiResourceScope, AiRole, AiSkill, AiSkillCatalogView, AiSkillSearchResult,
 };
 
@@ -46,7 +48,7 @@ pub fn AiView(
     workspace: WorkspaceRecord,
     base_workspace: Option<WorkspaceRecord>,
     current_head: Option<String>,
-    requested_conversation_id: Option<String>,
+    requested_conversation_id: ReadOnlySignal<Option<String>>,
     on_navigate: EventHandler<NavigationIntent>,
     on_view_conversation: EventHandler<Option<String>>,
     on_stop_viewing: EventHandler<()>,
@@ -57,10 +59,12 @@ pub fn AiView(
     let file_ports = use_context::<FilesPorts>();
     let conversation_port = ports.conversation().cloned();
     let mut conversation = use_signal(AiConversation::default);
+    let active_conversation_id = use_memo(move || conversation.read().id.clone());
     let mut conversation_loading = use_signal(|| true);
     let mut conversation_load_error = use_signal(|| None::<String>);
     let mut prompt = use_signal(String::new);
     let mut pending = use_signal(|| false);
+    let mut conversation_task = use_signal(|| None::<Task>);
     let mut error = use_signal(|| None::<String>);
     let mut notice = use_signal(|| None::<String>);
     let mut isolated_open = use_signal(|| false);
@@ -73,7 +77,6 @@ pub fn AiView(
     let mut mobile_sidebar_open = use_signal(|| false);
     let mut search_open = use_signal(|| false);
     let mut conversation_query = use_signal(String::new);
-    let mut usage_open = use_signal(|| false);
     let mut attachments = use_signal(Vec::<AiImageAttachment>::new);
     let mut rename_target = use_signal(|| None::<AiConversationSummary>);
     let mut rename_value = use_signal(String::new);
@@ -195,7 +198,7 @@ pub fn AiView(
     let models = use_resource(move || {
         let workspace = model_workspace.clone();
         let port = model_port.clone();
-        let conversation_id = conversation().id;
+        let conversation_id = active_conversation_id();
         async move {
             if conversation_id.is_empty() {
                 return Ok(Vec::new());
@@ -207,12 +210,16 @@ pub fn AiView(
         }
     });
     let load_workspace = workspace.clone();
-    let requested = requested_conversation_id.clone();
-    let viewed_request = requested_conversation_id.clone();
+    let requested = requested_conversation_id;
     let viewed_workspace = workspace.id.clone();
 
     use_effect(move || {
-        let conversation_id = conversation().id;
+        let viewed_request = requested_conversation_id();
+        let conversation_id = active_conversation_id();
+        let request_key = format!("{}:{}", viewed_workspace.0, viewed_request.as_deref().unwrap_or_default());
+        if conversation_loading() || loaded_request.peek().as_deref() != Some(request_key.as_str()) {
+            return;
+        }
         let active = (!conversation_id.is_empty()).then_some(conversation_id);
         on_view_conversation.call(active.clone());
         if active.as_deref() != viewed_request.as_deref()
@@ -313,14 +320,15 @@ pub fn AiView(
             if key.is_empty() || draft_loading() {
                 return;
             }
-            *draft_revision.write() += 1;
-            let revision = draft_revision();
+            // The revision cancels superseded saves; it must not subscribe this effect to itself.
+            let revision = draft_revision.peek().wrapping_add(1);
+            draft_revision.set(revision);
             let Some(client) = client.clone() else {
                 return;
             };
             spawn(async move {
                 dioxus_sdk_time::sleep(std::time::Duration::from_millis(150)).await;
-                if draft_revision() != revision {
+                if *draft_revision.peek() != revision || loaded_draft_key.peek().as_str() != key {
                     return;
                 }
                 let stored = (!value.is_empty()).then_some(value.as_str());
@@ -330,21 +338,33 @@ pub fn AiView(
     });
 
     use_effect(move || {
+        let requested = requested();
         let request_key = format!(
             "{}:{}",
             load_workspace.id.0,
             requested.clone().unwrap_or_default(),
         );
-        if loaded_request().as_ref() == Some(&request_key) {
+        if loaded_request.peek().as_ref() == Some(&request_key) {
             return;
         }
-        loaded_request.set(Some(request_key));
+        loaded_request.set(Some(request_key.clone()));
+        // Reflecting a locally opened/created chat into the URL is not another open request.
+        if requested.as_deref() == Some(conversation.peek().id.as_str())
+            && !*conversation_loading.peek()
+        {
+            return;
+        }
+        if let Some(task) = conversation_task.write().take() {
+            task.cancel();
+        }
         conversation_loading.set(true);
+        pending.set(false);
+        session_action_busy.set(false);
         conversation_load_error.set(None);
         let workspace = load_workspace.clone();
         let conversation_port = conversation_port.clone();
         let requested = requested.clone();
-        spawn(async move {
+        let task = spawn(async move {
             let Some(port) = conversation_port else {
                 let message = "AI conversations are unavailable in this runtime.".to_owned();
                 error.set(Some(message.clone()));
@@ -356,18 +376,23 @@ pub fn AiView(
                 Some(id) => port.open(&workspace, &id).await,
                 None => port.create(&workspace).await,
             };
+            if loaded_request.peek().as_ref() != Some(&request_key) {
+                return;
+            }
             match result {
                 Ok(value) => {
                     let running = value.running;
+                    let conversation_id = value.id.clone();
                     conversation.set(value);
                     conversation_loading.set(false);
                     *list_refresh.write() += 1;
                     if running {
                         pending.set(true);
-                        match port.watch(&workspace, &conversation().id).await {
+                        match port.watch(&workspace, &conversation_id).await {
                             Ok(events) => {
                                 consume_ai_events(
                                     events,
+                                    &conversation_id,
                                     conversation,
                                     pending,
                                     error,
@@ -376,8 +401,10 @@ pub fn AiView(
                                 .await;
                             }
                             Err(problem) => {
-                                error.set(Some(problem.message));
-                                pending.set(false);
+                                if conversation.peek().id == conversation_id {
+                                    error.set(Some(problem.message));
+                                    pending.set(false);
+                                }
                             }
                         }
                     }
@@ -389,6 +416,7 @@ pub fn AiView(
                 }
             }
         });
+        conversation_task.set(Some(task));
     });
 
     let submit_workspace = workspace.clone();
@@ -486,7 +514,7 @@ pub fn AiView(
             return;
         }
         pending.set(true);
-        spawn(async move {
+        let task = spawn(async move {
             let conversation_id = if let Some(edit) = edit {
                 match port
                     .fork_at(&workspace, &conversation_id, &edit.entry_id)
@@ -524,12 +552,17 @@ pub fn AiView(
                 .await
             {
                 Ok(events) => {
-                    consume_ai_events(events, conversation, pending, error, list_refresh).await;
+                    consume_ai_events(events, &conversation_id, conversation, pending, error, list_refresh).await;
                 }
-                Err(problem) => error.set(Some(problem.message)),
+                Err(problem) => {
+                    if conversation.peek().id == conversation_id {
+                        error.set(Some(problem.message));
+                        pending.set(false);
+                    }
+                },
             }
-            pending.set(false);
         });
+        conversation_task.set(Some(task));
     });
 
     let available_models = models().and_then(Result::ok).unwrap_or_default();
@@ -601,6 +634,18 @@ pub fn AiView(
         mention_index.set(0);
     });
 
+    // Search, history rows, and browser Back/Forward all use the same loading path.
+    let open_workspace_id = workspace.id.clone();
+    let open_conversation = EventHandler::new(move |conversation_id: String| {
+        mobile_sidebar_open.set(false);
+        conversation_query.set(String::new());
+        search_open.set(false);
+        on_navigate.call(NavigationIntent::Ai {
+            workspace: open_workspace_id.clone(),
+            conversation_id: Some(conversation_id),
+        });
+    });
+
     rsx! {
         document::Stylesheet { href: AI_CHAT_CSS }
         document::Script { src: AI_CHAT_SCRIPT }
@@ -634,7 +679,7 @@ pub fn AiView(
                                             let workspace = workspace.clone();
                                             conversation_loading.set(true);
                                             conversation_load_error.set(None);
-                                            spawn(async move {
+                                            let task = spawn(async move {
                                                 match port.create(&workspace).await {
                                                     Ok(created) => { conversation.set(created); mobile_sidebar_open.set(false); *list_refresh.write() += 1; }
                                                     Err(problem) => {
@@ -644,6 +689,7 @@ pub fn AiView(
                                                 }
                                                 conversation_loading.set(false);
                                             });
+                                            conversation_task.set(Some(task));
                                         }
                                     },
                                 }
@@ -689,40 +735,12 @@ pub fn AiView(
                                 Some(Ok(items)) => rsx! {
                                     ul { class: "space-y-1",
                                         for item in items {
-                                            ConversationSearchRow { item, query: conversation_query().trim().to_owned(), disabled: conversation_loading(), on_open: {
-                                                let port = ports.conversation().cloned();
-                                                let workspace = workspace.clone();
-                                                move |item_id: String| {
-                                                    let Some(port) = port.clone() else { return; };
-                                                    let workspace = workspace.clone();
-                                                    conversation_loading.set(true);
-                                                    conversation_load_error.set(None);
-                                                    spawn(async move {
-                                                        match port.open(&workspace, &item_id).await {
-                                                            Ok(opened) => {
-                                                                let running = opened.running;
-                                                                conversation.set(opened);
-                                                                mobile_sidebar_open.set(false);
-                                                                conversation_query.set(String::new());
-                                                                search_open.set(false);
-                                                                conversation_loading.set(false);
-                                                                if running {
-                                                                    pending.set(true);
-                                                                    match port.watch(&workspace, &item_id).await {
-                                                                        Ok(events) => consume_ai_events(events, conversation, pending, error, list_refresh).await,
-                                                                        Err(problem) => { error.set(Some(problem.message)); pending.set(false); }
-                                                                    }
-                                                                }
-                                                            }
-                                                            Err(problem) => {
-                                                                error.set(Some(problem.message.clone()));
-                                                                conversation_load_error.set(Some(problem.message));
-                                                                conversation_loading.set(false);
-                                                            },
-                                                        }
-                                                    });
-                                                }
-                                            } }
+                                            ConversationSearchRow {
+                                                item,
+                                                query: conversation_query().trim().to_owned(),
+                                                disabled: pending() || session_action_busy() || conversation_loading(),
+                                                on_open: open_conversation,
+                                            }
                                         }
                                     }
                                 },
@@ -739,8 +757,6 @@ pub fn AiView(
                                         if conversation_query().trim().is_empty() || item.title.to_lowercase().contains(&conversation_query().trim().to_lowercase()) {
                                             {
                                                 let selected = conversation().id == item.id;
-                                                let open_port = ports.conversation().cloned();
-                                                let open_workspace = workspace.clone();
                                                 let clone_port = ports.conversation().cloned();
                                                 let clone_workspace = workspace.clone();
                                                 let export_port = ports.conversation().cloned();
@@ -752,45 +768,19 @@ pub fn AiView(
                                                         item,
                                                         selected,
                                                         disabled: pending() || session_action_busy() || conversation_loading(),
-                                                        on_open: move |item_id: String| {
-                                                            let Some(port) = open_port.clone() else { return; };
-                                                            let workspace = open_workspace.clone();
-                                                            conversation_loading.set(true);
-                                                            conversation_load_error.set(None);
-                                                            spawn(async move {
-                                                                match port.open(&workspace, &item_id).await {
-                                                                    Ok(opened) => {
-                                                                        let running = opened.running;
-                                                                        conversation.set(opened);
-                                                                        mobile_sidebar_open.set(false);
-                                                                        conversation_loading.set(false);
-                                                                        if running {
-                                                                            pending.set(true);
-                                                                            match port.watch(&workspace, &item_id).await {
-                                                                                Ok(events) => consume_ai_events(events, conversation, pending, error, list_refresh).await,
-                                                                                Err(problem) => { error.set(Some(problem.message)); pending.set(false); }
-                                                                            }
-                                                                        }
-                                                                    }
-                                                                    Err(problem) => {
-                                                                        error.set(Some(problem.message.clone()));
-                                                                        conversation_load_error.set(Some(problem.message));
-                                                                        conversation_loading.set(false);
-                                                                    },
-                                                                }
-                                                            });
-                                                        },
+                                                        on_open: open_conversation,
                                                         on_clone: move |item_id: String| {
                                                             let Some(port) = clone_port.clone() else { return; };
                                                             let workspace = clone_workspace.clone();
                                                             session_action_busy.set(true);
-                                                            spawn(async move {
+                                                            let task = spawn(async move {
                                                                 match port.clone_conversation(&workspace, &item_id).await {
                                                                     Ok(cloned) => { conversation.set(cloned); mobile_sidebar_open.set(false); *list_refresh.write() += 1; }
                                                                     Err(problem) => error.set(Some(problem.message)),
                                                                 }
                                                                 session_action_busy.set(false);
                                                             });
+                                                            conversation_task.set(Some(task));
                                                         },
                                                         on_export: move |item_id: String| {
                                                             let Some(port) = export_port.clone() else { return; };
@@ -878,61 +868,14 @@ pub fn AiView(
                             error,
                         }
                     }
-                    IconButton {
-                        label: "Compact context",
-                        icon: AppIcon::Collapse,
-                        disabled: pending() || conversation().messages.is_empty(),
-                        onclick: move |_| {
+                    crate::usage::UsageMenu {
+                        stats: conversation().usage,
+                        statuses: conversation().extension_statuses,
+                        compact_supported: ports.conversation().is_some_and(|port| port.supports_compaction()),
+                        compact_disabled: pending() || conversation().messages.is_empty(),
+                        on_compact: move |()| {
                             compact_instructions.set(String::new());
                             compact_open.set(true);
-                        },
-                    }
-                    div { class: "relative",
-                        IconButton { label: "Session usage", icon: AppIcon::Usage, pressed: usage_open(), onclick: move |_| usage_open.toggle() }
-                        if usage_open() {
-                            div { class: "absolute top-[calc(100%+6px)] right-0 z-80 w-72 rounded-xl border border-border bg-popover p-3 shadow-2xl",
-                                div { class: "mb-3 flex items-center gap-2",
-                                    span { class: "grid size-7 place-items-center rounded-lg bg-primary/10 text-primary", Icon { icon: AppIcon::Usage, size: 14 } }
-                                    strong { class: "text-xs", "Session usage" }
-                                }
-                                if let Some(usage) = conversation().usage {
-                                    dl { class: "grid grid-cols-2 gap-1.5 text-[10px]",
-                                        div { class: "rounded-lg bg-background/60 px-2.5 py-2", dt { class: "text-[9px] text-muted-foreground", "Session tokens" } dd { class: "mt-0.5 font-semibold", "{compact_number(usage.total_tokens)}" } }
-                                        div { class: "rounded-lg bg-background/60 px-2.5 py-2", dt { class: "text-[9px] text-muted-foreground", "Estimated cost" } dd { class: "mt-0.5 font-semibold", "{format_cost(usage.cost_microusd)}" } }
-                                        div { class: "rounded-lg bg-background/60 px-2.5 py-2", dt { class: "text-[9px] text-muted-foreground", "Messages" } dd { class: "mt-0.5 font-semibold", "{usage.total_messages}" } }
-                                        div { class: "rounded-lg bg-background/60 px-2.5 py-2", dt { class: "text-[9px] text-muted-foreground", "Tool calls" } dd { class: "mt-0.5 font-semibold", "{usage.tool_calls}" } }
-                                    }
-                                    if let Some(percent) = usage_context_percent(&usage) {
-                                        div { class: "mt-2 rounded-lg border border-border bg-background/60 p-2.5",
-                                            div { class: "flex justify-between text-[10px]", span { class: "text-muted-foreground", "Context window" } strong { "{percent}%" } }
-                                            div { class: "mt-2 h-1.5 overflow-hidden rounded-full bg-muted", div { class: "h-full rounded-full bg-primary", style: "width: {percent}%" } }
-                                        }
-                                    }
-                                } else {
-                                    p { class: "rounded-lg bg-background/60 px-3 py-5 text-center text-[10px] text-muted-foreground", "Usage appears after the first response." }
-                                }
-                                if !conversation().extension_statuses.is_empty() {
-                                    section { class: "mt-3 border-t border-border pt-2.5", aria_label: "Session services",
-                                        p { class: "mb-1.5 text-[9px] font-semibold tracking-wider text-muted-foreground uppercase", "Session services" }
-                                        div { class: "space-y-1", role: "status",
-                                            for (label, value) in conversation().extension_statuses {
-                                                div { class: "flex items-start gap-2 rounded-md bg-background/60 px-2 py-1.5 text-[9px] text-muted-foreground", title: "{label}",
-                                                    span { class: format!("mt-1 size-1.5 shrink-0 rounded-full {}", service_status_dot(&value)), aria_hidden: true }
-                                                    span { class: "min-w-0 break-words", "{value}" }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    IconButton {
-                        label: "AI settings",
-                        icon: AppIcon::Settings,
-                        onclick: {
-                            let workspace_id = workspace.id.clone();
-                            move |_| on_navigate.call(NavigationIntent::AiSettings { workspace: workspace_id.clone(), section: AiSettingsSection::General })
                         },
                     }
                 }
@@ -1248,18 +1191,21 @@ pub fn AiView(
                                 let conversation_id = conversation().id;
                                 let instructions = compact_instructions().trim().to_owned();
                                 pending.set(true);
-                                spawn(async move {
+                                let task = spawn(async move {
                                     match port.compact(&workspace, &conversation_id, (!instructions.is_empty()).then_some(instructions)).await {
                                         Ok(events) => {
                                             compact_open.set(false);
-                                            consume_ai_events(events, conversation, pending, error, list_refresh).await;
+                                            consume_ai_events(events, &conversation_id, conversation, pending, error, list_refresh).await;
                                         }
                                         Err(problem) => {
-                                            error.set(Some(problem.message));
-                                            pending.set(false);
+                                            if conversation.peek().id == conversation_id {
+                                                error.set(Some(problem.message));
+                                                pending.set(false);
+                                            }
                                         }
                                     }
                                 });
+                                conversation_task.set(Some(task));
                             }
                         } }
                     }
@@ -1940,78 +1886,6 @@ fn ordered_conversation_items(conversation: &AiConversation) -> Vec<OrderedConve
 }
 
 #[component]
-fn ConversationMessage(
-    message: AiMessage,
-    can_edit: bool,
-    read_aloud_available: bool,
-    speaking: bool,
-    on_image: EventHandler<AiImageAttachment>,
-    on_edit: EventHandler<AiMessage>,
-    on_copy: EventHandler<String>,
-    on_read: EventHandler<String>,
-) -> Element {
-    match message.role {
-        AiRole::User => {
-            let rendered = render_markdown_preserving_newlines(&message.content);
-            let copy_content = message.content.clone();
-            rsx! {
-                article { class: "group ml-auto mb-3 max-w-[88%] rounded-xl rounded-br-sm border border-border bg-secondary px-3.5 py-2.5 text-[13px] leading-relaxed text-secondary-foreground shadow-sm", dir: "auto",
-                    if !message.images.is_empty() {
-                        div { class: "mb-2 grid max-w-lg grid-cols-2 gap-1.5",
-                            for image in message.images.clone() {
-                                button { class: "cursor-zoom-in rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring", r#type: "button", aria_label: "Open {image.name}", onclick: { let image = image.clone(); move |_| on_image.call(image.clone()) },
-                                    img { class: "max-h-52 min-h-20 w-full rounded-lg bg-black/10 object-cover", src: image.data_url(), alt: image.name, width: "320", height: "208" }
-                                }
-                            }
-                        }
-                    }
-                    if !message.content.is_empty() { div { class: "ai-markdown ai-user-markdown", dangerous_inner_html: rendered } }
-                    if !copy_content.is_empty() || message.entry_id.is_some() {
-                        div { class: "flex min-h-8 justify-end gap-0.5 pt-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 max-[520px]:opacity-100",
-                            if !copy_content.is_empty() {
-                                IconButton { label: "Copy message", icon: AppIcon::Copy, onclick: move |_| on_copy.call(copy_content.clone()) }
-                            }
-                            if message.entry_id.is_some() {
-                                IconButton { label: "Edit this prompt and branch from here", icon: AppIcon::Branch, disabled: !can_edit, onclick: move |_| on_edit.call(message.clone()) }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        AiRole::Assistant => {
-            let rendered = render_markdown(&message.content);
-            rsx! {
-                article { class: "group/message mb-3 max-w-full py-1 pr-2 text-[13px] leading-relaxed text-foreground", dir: "auto",
-                    if !message.thinking.trim().is_empty() {
-                        details { class: "mb-2 rounded-lg border border-border bg-background/60 text-[11px] text-muted-foreground",
-                            summary { class: "cursor-pointer px-3 py-2 select-none", "Reasoning" }
-                            div { class: "max-h-60 overflow-auto border-t border-border px-3 py-2 font-mono text-[10px] leading-relaxed whitespace-pre-wrap", "{message.thinking}" }
-                        }
-                    }
-                    if !message.content.is_empty() { div { class: "ai-markdown", "data-agent-response": message.id.clone(), dangerous_inner_html: rendered } }
-                    if matches!(message.status, AiMessageStatus::Failed | AiMessageStatus::Stopped) {
-                        small { class: "mt-1 block text-[10px] text-destructive", if message.status == AiMessageStatus::Stopped { "Stopped" } else { "Response failed" } }
-                    }
-                    if message.truncated { small { class: "mt-2 block rounded-md border border-warning/30 bg-warning/8 px-2.5 py-2 text-[10px] leading-relaxed text-warning", role: "status", "This response reached the model's output limit and may be incomplete." } }
-                    if !message.content.is_empty() && message.status != AiMessageStatus::Streaming {
-                        div { class: "flex min-h-9 items-center pt-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 max-[520px]:opacity-100",
-                            if read_aloud_available {
-                                IconButton { label: if speaking { "Stop reading response" } else { "Read response aloud" }, icon: if speaking { AppIcon::Stop } else { AppIcon::Volume2 }, pressed: speaking, onclick: { let id = message.id.clone(); move |_| on_read.call(id.clone()) } }
-                            }
-                            IconButton { label: "Copy response", icon: AppIcon::Copy, onclick: { let content = message.content.clone(); move |_| on_copy.call(content.clone()) } }
-                        }
-                    }
-                }
-            }
-        }
-        AiRole::System => rsx! {
-            p { class: "mb-3 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground whitespace-pre-wrap", "{message.content}" }
-        },
-    }
-}
-
-#[component]
 fn ConversationActivity(item: AiActivity) -> Element {
     match item {
         AiActivity::Tool {
@@ -2085,14 +1959,6 @@ fn ConversationActivity(item: AiActivity) -> Element {
         AiActivity::Notice { text, status, .. } => rsx! {
             p { class: if status == AiMessageStatus::Failed { "mb-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-[11px] text-destructive" } else { "mb-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground" }, "{text}" }
         },
-    }
-}
-
-fn activity_id(item: &AiActivity) -> &str {
-    match item {
-        AiActivity::Tool { id, .. }
-        | AiActivity::Custom { id, .. }
-        | AiActivity::Notice { id, .. } => id,
     }
 }
 
@@ -3748,506 +3614,6 @@ fn format_published_at(value: &str) -> &str {
     value.split('T').next().unwrap_or(value)
 }
 
-#[component]
-fn ProviderAccountsPanel(workspace: WorkspaceRecord) -> Element {
-    let ports = use_context::<AiPorts>();
-    let Some(port) = ports.provider_auth().cloned() else {
-        return rsx! {};
-    };
-    let mut revision = use_signal(|| 0_u64);
-    let mut pending = use_signal(|| None::<String>);
-    let mut flow = use_signal(|| None::<AiAuthFlow>);
-    let mut error = use_signal(|| None::<String>);
-    let list_port = port.clone();
-    let list_workspace = workspace.clone();
-    let providers = use_resource(move || {
-        let port = list_port.clone();
-        let workspace = list_workspace.clone();
-        let _ = revision();
-        async move { port.list(&workspace).await }
-    });
-    let start_port = port.clone();
-    let start_workspace = workspace.clone();
-    let start = EventHandler::new(move |(provider_id, kind): (String, AiProviderAuthKind)| {
-        pending.set(Some(provider_id.clone()));
-        error.set(None);
-        let port = start_port.clone();
-        let workspace = start_workspace.clone();
-        spawn(async move {
-            match port.start(&workspace, &provider_id, kind).await {
-                Ok(started) => {
-                    let flow_id = started.id.clone();
-                    flow.set(Some(started));
-                    pending.set(None);
-                    loop {
-                        dioxus_sdk_time::sleep(std::time::Duration::from_millis(350)).await;
-                        if flow().as_ref().map(|flow| flow.id.as_str()) != Some(flow_id.as_str()) {
-                            break;
-                        }
-                        match port.status(&workspace, &flow_id).await {
-                            Ok(snapshot) => {
-                                let finished = snapshot.complete || snapshot.error.is_some();
-                                flow.set(Some(snapshot));
-                                if finished {
-                                    *revision.write() += 1;
-                                    break;
-                                }
-                            }
-                            Err(problem) => {
-                                error.set(Some(problem.message));
-                                break;
-                            }
-                        }
-                    }
-                }
-                Err(problem) => {
-                    pending.set(None);
-                    error.set(Some(problem.message));
-                }
-            }
-        });
-    });
-    rsx! {
-        div { class: "mt-5 max-w-3xl space-y-4",
-            p { class: "text-xs leading-5 text-muted-foreground", "Connect subscriptions or API keys through the runtime's Pi authentication flow." }
-            if let Some(message) = error() {
-                p { class: "rounded-lg bg-destructive/10 p-3 text-xs text-destructive", "{message}" }
-            }
-            match providers() {
-                None => rsx! { p { class: "text-xs text-muted-foreground", "Loading providers…" } },
-                Some(Err(problem)) => rsx! { p { class: "text-xs text-destructive", "{problem.message}" } },
-                Some(Ok(items)) => rsx! {
-                    div { class: "divide-y divide-border overflow-hidden rounded-xl border border-border bg-background",
-                        for provider in items {
-                            div { key: "{provider.id}", class: "flex items-center gap-4 px-4 py-3 max-sm:flex-col max-sm:items-stretch",
-                                div { class: "min-w-0 flex-1",
-                                    strong { class: "block truncate text-xs font-semibold", "{provider.name}" }
-                                    small { class: if provider.configured { "text-[10px] text-success" } else { "text-[10px] text-muted-foreground" }, "{provider.status}" }
-                                }
-                                div { class: "flex flex-wrap gap-1.5",
-                                    for method in provider.methods.clone() {
-                                        Button {
-                                            label: method.label,
-                                            kind: ButtonKind::Secondary,
-                                            disabled: pending().is_some(),
-                                            onclick: {
-                                                let provider_id = provider.id.clone();
-                                                move |_| start.call((provider_id.clone(), method.kind))
-                                            },
-                                        }
-                                    }
-                                    if provider.can_logout {
-                                        Button { label: "Log out", kind: ButtonKind::Ghost, disabled: pending().is_some(), onclick: {
-                                            let provider_id = provider.id.clone();
-                                            let port = port.clone();
-                                            let workspace = workspace.clone();
-                                            move |_| {
-                                                pending.set(Some(provider_id.clone()));
-                                                let provider_id = provider_id.clone();
-                                                let port = port.clone();
-                                                let workspace = workspace.clone();
-                                                spawn(async move {
-                                                    match port.logout(&workspace, &provider_id).await {
-                                                        Ok(()) => *revision.write() += 1,
-                                                        Err(problem) => error.set(Some(problem.message)),
-                                                    }
-                                                    pending.set(None);
-                                                });
-                                            }
-                                        } }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                },
-            }
-        }
-        if let Some(active_flow) = flow() {
-            ProviderLoginDialog { workspace: workspace.clone(), flow: active_flow, on_close: move |flow_id: String| {
-                flow.set(None);
-                let port = port.clone();
-                let workspace = workspace.clone();
-                spawn(async move { let _ = port.cancel(&workspace, &flow_id).await; });
-            } }
-        }
-    }
-}
-
-#[component]
-fn ProviderLoginDialog(
-    workspace: WorkspaceRecord,
-    flow: AiAuthFlow,
-    on_close: EventHandler<String>,
-) -> Element {
-    let close_id = flow.id.clone();
-    rsx! {
-        Modal {
-            title: format!("Connect {}", flow.provider_id),
-            description: "Follow the provider authentication steps. Credentials are handled by Pi on the application host.",
-            on_close: move |()| on_close.call(close_id.clone()),
-            DialogForm {
-                if let Some(message) = flow.error.clone() {
-                    p { class: "rounded-lg bg-destructive/10 p-3 text-xs text-destructive", "{message}" }
-                } else if flow.complete {
-                    p { class: "rounded-lg bg-success/10 p-3 text-xs text-success", "Provider connected successfully." }
-                } else {
-                    for event in flow.events.clone() {
-                        div { class: "rounded-lg border border-border bg-secondary/25 p-3 text-xs",
-                            if !event.message.is_empty() { p { "{event.message}" } }
-                            if !event.url.is_empty() { a { class: "mt-2 block break-all text-primary underline", href: event.url, target: "_blank", rel: "noreferrer", "Open authentication page" } }
-                            if !event.user_code.is_empty() { code { class: "mt-2 block select-all text-base font-semibold tracking-widest", "{event.user_code}" } }
-                        }
-                    }
-                    if let Some(prompt) = flow.prompt.clone() {
-                        ProviderAuthPrompt { workspace: workspace.clone(), flow_id: flow.id.clone(), prompt }
-                    } else {
-                        p { class: "text-xs text-muted-foreground", "Waiting for Pi…" }
-                    }
-                }
-                DialogActions {
-                    Button { label: if flow.complete || flow.error.is_some() { "Close" } else { "Cancel" }, kind: if flow.complete { ButtonKind::Primary } else { ButtonKind::Ghost }, onclick: move |_| on_close.call(flow.id.clone()) }
-                }
-            }
-        }
-    }
-}
-
-#[component]
-fn ProviderAuthPrompt(
-    workspace: WorkspaceRecord,
-    flow_id: String,
-    prompt: AiAuthPrompt,
-) -> Element {
-    let ports = use_context::<AiPorts>();
-    let Some(port) = ports.provider_auth().cloned() else {
-        return rsx! {};
-    };
-    let mut value = use_signal(String::new);
-    let mut submitting = use_signal(|| false);
-    let mut error = use_signal(|| None::<String>);
-    let prompt_id = prompt.id;
-    let submit = EventHandler::new(move |answer: String| {
-        submitting.set(true);
-        error.set(None);
-        let port = port.clone();
-        let workspace = workspace.clone();
-        let flow_id = flow_id.clone();
-        spawn(async move {
-            if let Err(problem) = port.respond(&workspace, &flow_id, prompt_id, &answer).await {
-                error.set(Some(problem.message));
-                submitting.set(false);
-            }
-        });
-    });
-    rsx! {
-        div { class: "space-y-3 rounded-lg border border-border p-3",
-            p { class: "text-xs font-medium", "{prompt.message}" }
-            if prompt.kind == "select" {
-                for option in prompt.options.clone() {
-                    button { r#type: "button", class: "block w-full rounded-lg border border-input px-3 py-2 text-left text-xs hover:bg-accent", disabled: submitting(), onclick: move |_| submit.call(option.id.clone()),
-                        strong { class: "block", "{option.label}" }
-                        if !option.description.is_empty() { small { class: "text-muted-foreground", "{option.description}" } }
-                    }
-                }
-            } else {
-                input { class: "h-9 w-full rounded-lg border border-input bg-background px-3 text-xs", r#type: if prompt.kind == "secret" { "password" } else { "text" }, value: value(), placeholder: prompt.placeholder, disabled: submitting(), oninput: move |event| value.set(event.value()) }
-                Button { label: if submitting() { "Submitting…" } else { "Continue" }, kind: ButtonKind::Primary, disabled: submitting() || value().trim().is_empty(), onclick: move |_| submit.call(value()) }
-            }
-            if let Some(message) = error() { p { class: "text-xs text-destructive", "{message}" } }
-        }
-    }
-}
-
-async fn consume_ai_events(
-    mut events: Box<dyn crate::AiEventStream>,
-    mut conversation: Signal<AiConversation>,
-    mut pending: Signal<bool>,
-    mut error: Signal<Option<String>>,
-    mut list_refresh: Signal<u64>,
-) {
-    loop {
-        match events.receive().await {
-            Ok(Some(event)) => {
-                let delta = matches!(
-                    &event,
-                    AiEvent::AssistantDelta { .. } | AiEvent::AssistantThinkingDelta { .. }
-                );
-                apply_event(conversation, &event);
-                if delta {
-                    dioxus_sdk_time::sleep(std::time::Duration::from_millis(16)).await;
-                }
-            }
-            Ok(None) => {
-                conversation.with_mut(|conversation| {
-                    conversation.running = false;
-                    conversation.pending_messages = 0;
-                    conversation.steering_queue.clear();
-                    conversation.follow_up_queue.clear();
-                });
-                *list_refresh.write() += 1;
-                break;
-            }
-            Err(problem) => {
-                conversation.with_mut(|conversation| {
-                    conversation.running = false;
-                    conversation.status_message.clone_from(&problem.message);
-                });
-                error.set(Some(problem.message));
-                break;
-            }
-        }
-    }
-    pending.set(false);
-}
-
-fn apply_event(mut conversation: Signal<AiConversation>, event: &AiEvent) {
-    apply_event_to_conversation(&mut conversation.write(), event);
-}
-
-#[expect(
-    clippy::too_many_lines,
-    reason = "the exhaustive event projection is clearer as one auditable state transition"
-)]
-fn apply_event_to_conversation(conversation: &mut AiConversation, event: &AiEvent) {
-    match event {
-        AiEvent::UserMessage(message) => {
-            if conversation
-                .messages
-                .iter()
-                .any(|item| item.id == message.id)
-            {
-                return;
-            }
-            if message.entry_id.is_some()
-                && let Some(index) = conversation.messages.iter().rposition(|item| {
-                    item.role == AiRole::User
-                        && item.entry_id.is_none()
-                        && item.content == message.content
-                        && item.images == message.images
-                })
-            {
-                let placeholder_id = conversation.messages[index].id.clone();
-                conversation.messages[index] = message.clone();
-                if let Some(order_index) = conversation
-                    .item_order
-                    .iter()
-                    .position(|id| id == &placeholder_id)
-                {
-                    conversation.item_order[order_index].clone_from(&message.id);
-                }
-            } else {
-                conversation.messages.push(message.clone());
-                conversation.item_order.push(message.id.clone());
-            }
-        }
-        AiEvent::AssistantDelta { message_id, text } => {
-            if let Some(message) = conversation
-                .messages
-                .iter_mut()
-                .find(|item| item.id == *message_id)
-            {
-                message.content.push_str(text);
-            } else {
-                conversation.messages.push(crate::AiMessage {
-                    id: message_id.clone(),
-                    role: AiRole::Assistant,
-                    content: text.clone(),
-                    status: AiMessageStatus::Streaming,
-                    ..AiMessage::default()
-                });
-                conversation.item_order.push(message_id.clone());
-            }
-        }
-        AiEvent::AssistantThinkingDelta { message_id, text } => {
-            if let Some(message) = conversation
-                .messages
-                .iter_mut()
-                .find(|item| item.id == *message_id)
-            {
-                message.thinking.push_str(text);
-            } else {
-                conversation.messages.push(AiMessage {
-                    id: message_id.clone(),
-                    role: AiRole::Assistant,
-                    thinking: text.clone(),
-                    status: AiMessageStatus::Streaming,
-                    ..AiMessage::default()
-                });
-                conversation.item_order.push(message_id.clone());
-            }
-        }
-        AiEvent::AssistantCompleted(message) => {
-            if let Some(existing) = conversation
-                .messages
-                .iter_mut()
-                .find(|item| item.id == message.id)
-            {
-                *existing = message.clone();
-            } else {
-                conversation.messages.push(message.clone());
-                conversation.item_order.push(message.id.clone());
-            }
-        }
-        AiEvent::UsageUpdated {
-            input_tokens,
-            output_tokens,
-        } => {
-            let usage = conversation.usage.get_or_insert_default();
-            usage.total_tokens = input_tokens.saturating_add(*output_tokens);
-        }
-        AiEvent::ToolStarted { id, name } => upsert_tool(
-            conversation,
-            id,
-            name,
-            String::new(),
-            AiMessageStatus::Running,
-        ),
-        AiEvent::ToolUpdated { id, output } => upsert_tool(
-            conversation,
-            id,
-            "Tool",
-            output.clone(),
-            AiMessageStatus::Running,
-        ),
-        AiEvent::ToolCompleted { id, output } => upsert_tool(
-            conversation,
-            id,
-            "Tool",
-            output.clone(),
-            AiMessageStatus::Complete,
-        ),
-        AiEvent::ActivityUpdated(activity) => {
-            if let Some(existing) = conversation
-                .activity
-                .iter_mut()
-                .find(|existing| activity_id(existing) == activity_id(activity))
-            {
-                *existing = activity.clone();
-            } else {
-                conversation.activity.push(activity.clone());
-                conversation
-                    .item_order
-                    .push(activity_id(activity).to_owned());
-            }
-        }
-        AiEvent::StatusChanged {
-            running,
-            message,
-            pending_messages,
-        } => {
-            conversation.running = *running;
-            conversation.status_message.clone_from(message);
-            conversation.pending_messages = *pending_messages;
-        }
-        AiEvent::QueueChanged {
-            steering,
-            follow_up,
-        } => {
-            conversation.steering_queue.clone_from(steering);
-            conversation.follow_up_queue.clone_from(follow_up);
-            conversation.pending_messages = steering.len().saturating_add(follow_up.len());
-        }
-        AiEvent::ExtensionRequested(request) => {
-            conversation.extension_request = Some(request.clone());
-        }
-        AiEvent::ExtensionSurfaces {
-            title,
-            statuses,
-            widgets,
-        } => {
-            conversation.extension_title.clone_from(title);
-            conversation.extension_statuses.clone_from(statuses);
-            conversation.extension_widgets.clone_from(widgets);
-        }
-        AiEvent::ComposerText(text) => {
-            conversation.requested_composer_text = Some(text.clone());
-        }
-        AiEvent::Failed { message } => {
-            let id = format!("failure-{}", conversation.item_order.len());
-            conversation.activity.push(AiActivity::Notice {
-                id: id.clone(),
-                text: message.clone(),
-                status: AiMessageStatus::Failed,
-            });
-            conversation.item_order.push(id);
-        }
-    }
-}
-
-fn upsert_tool(
-    conversation: &mut AiConversation,
-    id: &str,
-    fallback_name: &str,
-    output: String,
-    status: AiMessageStatus,
-) {
-    if let Some(AiActivity::Tool {
-        name,
-        output: current_output,
-        status: current_status,
-        ..
-    }) = conversation
-        .activity
-        .iter_mut()
-        .find(|activity| activity_id(activity) == id)
-    {
-        if name == "Tool" && fallback_name != "Tool" {
-            *name = fallback_name.into();
-        }
-        *current_output = output;
-        *current_status = status;
-        return;
-    }
-    conversation.activity.push(AiActivity::Tool {
-        id: id.into(),
-        name: fallback_name.into(),
-        summary: String::new(),
-        output,
-        args: None,
-        details: None,
-        args_truncated: false,
-        details_truncated: false,
-        status,
-    });
-    conversation.item_order.push(id.into());
-}
-
-fn compact_number(value: u64) -> String {
-    match value {
-        1_000_000.. => format!("{}.{}M", value / 1_000_000, (value % 1_000_000) / 100_000),
-        1_000.. => format!("{}.{}k", value / 1_000, (value % 1_000) / 100),
-        _ => value.to_string(),
-    }
-}
-
-fn usage_context_percent(usage: &crate::AiUsage) -> Option<u8> {
-    usage.context_percent.or_else(|| {
-        let tokens = usage.context_tokens?;
-        let window = usage.context_window?.max(1);
-        Some(u8::try_from((tokens.saturating_mul(100) / window).min(100)).unwrap_or(100))
-    })
-}
-
-fn service_status_dot(status: &str) -> &'static str {
-    let status = status.to_ascii_lowercase();
-    if status.contains("error") || status.contains("failed") {
-        "bg-destructive"
-    } else if status.contains("inactive") || status.contains("disabled") {
-        "bg-muted-foreground/50"
-    } else {
-        "bg-success"
-    }
-}
-
-fn format_cost(microusd: u64) -> String {
-    format!(
-        "${}.{:04}",
-        microusd / 1_000_000,
-        (microusd % 1_000_000) / 100
-    )
-}
-
 async fn load_ai_images(
     files: Vec<dioxus::html::FileData>,
     mut attachments: Signal<Vec<AiImageAttachment>>,
@@ -4356,7 +3722,8 @@ fn apply_ai_client_event(
 
 #[cfg(test)]
 mod event_tests {
-    use super::{apply_event_to_conversation, filtered_extensions, highlighted_parts};
+    use super::{filtered_extensions, highlighted_parts};
+    use crate::conversation::apply_event_to_conversation;
     use crate::{
         AiActivity, AiConversation, AiEvent, AiExtension, AiMessage, AiMessageStatus, AiRole,
     };

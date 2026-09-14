@@ -9,10 +9,10 @@ contain benchmark-only behavior in the application.
 - **Runtime:** Syntaxis is a Dioxus 0.7 fullstack application. The browser client
   is Rust compiled to WebAssembly; the server owns authentication, filesystem,
   workspaces, Git, terminals, previews, language servers, and Pi integration.
-- **Document path:** `apps/main/index.html` supplies the viewport. Its `maximum-scale=1`
+- **Document path:** `apps/server/index.html` supplies the viewport. Its `maximum-scale=1`
   setting is an intentional mobile Safari workaround that prevents the focused
   code editor from auto-zooming; do not remove it to improve Lighthouse scores.
-  Dioxus renders `apps/main/src/app.rs`, which installs global links, the Tailwind
+  Dioxus renders `apps/server/src/app.rs`, which installs global links, the Tailwind
   stylesheet, and compatibility scripts, then mounts `syntaxis-app-shell`.
 - **Startup/UI path:** `crates/app-shell/src/route.rs` owns Home, the shared route
   enum, and workspace route composition. `crates/app-shell/src/shell.rs` owns the
@@ -22,8 +22,8 @@ contain benchmark-only behavior in the application.
   `scripts/build-code-editor.mjs`. The generated bridge is a route-local Dioxus
   ES module imported when the editor mounts; repeated mounts reuse the browser's
   module cache. Language-server code is loaded separately by the browser bridge.
-- **Terminal boundary:** xterm sources under `crates/runtime-main/bridge-src/terminal/` are bundled by
-  `scripts/build-terminal.mjs` into `runtime-main` and loaded idempotently by the
+- **Terminal boundary:** xterm sources under `crates/runtime-remote/bridge-src/terminal/` are bundled by
+  `scripts/build-terminal.mjs` into `runtime-remote` and loaded idempotently by the
   renderer adapter only when an interactive terminal mounts.
 - **Server responsibilities:** the fullstack server and host crates perform
   filesystem and process work. The Lighthouse server helper starts the optimized
@@ -47,17 +47,17 @@ bun run autoresearch:verify
 ```
 
 The browser-only app has a separate shared-shell smoke harness. Start an optimized
-guest static server on port 4174, then run:
+browser static server on port 4174, then run:
 
 ```sh
-bun run autoresearch:guest-smoke
+bun run autoresearch:browser-smoke
 ```
 
-Set `GUEST_URL` when using another origin. The smoke imports a real ZIP into OPFS,
+Set `BROWSER_URL` when using another origin. The smoke imports a real ZIP into OPFS,
 opens all shared module routes, renders a static HTML document and local stylesheet,
 executes and cancels a browser command, initializes Git, and exercises progressive,
 cancellable, size-bounded provider streaming. It also checks AI settings routing,
-captures unexpected browser failures, and fails if local guest flows attempt a
+captures unexpected browser failures, and fails if local browser flows attempt a
 Syntaxis `/api/` request.
 
 `benchmark` runs the existing release Lighthouse setup, collects raw audit

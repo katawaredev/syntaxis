@@ -113,17 +113,17 @@ install-js:
 build-terminal: install-js
     bun run build:terminal
 
-# Build the guest-only just-bash bundle when its sources or pinned packages changed.
-build-guest-terminal: install-js
-    bun run build:guest-terminal
+# Build the browser-local just-bash bundle when its sources or pinned packages changed.
+build-browser-terminal: install-js
+    bun run build:browser-terminal
 
-# Build the guest-only ZIP archive bundle when its sources or pinned packages changed.
-build-guest-archive: install-js
-    bun run build:guest-archive
+# Build the browser-local ZIP archive bundle when its sources or pinned packages changed.
+build-browser-archive: install-js
+    bun run build:browser-archive
 
-# Build the guest-only browser Git bundle.
-build-guest-git: install-js
-    bun run build:guest-git
+# Build the browser-local Git bundle.
+build-browser-git: install-js
+    bun run build:browser-git
 
 # Build the CodeMirror editor bundle when its sources or pinned packages changed.
 build-editor: install-js
@@ -134,7 +134,7 @@ build-pi-settings: install-js
     bun run generate:pi-settings
 
 # Build all npm-backed application assets. Each generator has its own cache key.
-build-assets: build-editor build-terminal build-guest-terminal build-guest-archive build-guest-git build-pi-settings
+build-assets: build-editor build-terminal build-browser-terminal build-browser-archive build-browser-git build-pi-settings
 
 # -----------------------------------------------------------------------------
 # Environment inspection
@@ -236,7 +236,7 @@ update mode="compatible":
 
 # Generate an Argon2id PHC hash for SYNTAXIS_PASSWORD_HASH.
 auth-password:
-    cargo run --quiet --package syntaxis --no-default-features --features server -- hash-password
+    cargo run --quiet --package syntaxis-server --no-default-features --features server -- hash-password
 
 # Start the development server.
 serve platform=default_platform host=default_host port=default_port: build-assets
@@ -246,7 +246,7 @@ serve platform=default_platform host=default_host port=default_port: build-asset
     if [[ "$host" == "127.0.0.1" || "$host" == "localhost" || "$host" == "::1" ]]; then
         export SYNTAXIS_AUTH_DISABLED=true
     fi
-    dx serve --package syntaxis \
+    dx serve --package syntaxis-server \
         --platform "{{ platform }}" \
         --addr "$host" \
         --port "{{ port }}" \
@@ -260,23 +260,23 @@ web host=default_host port=default_port: build-assets
     if [[ "$host" == "127.0.0.1" || "$host" == "localhost" || "$host" == "::1" ]]; then
         export SYNTAXIS_AUTH_DISABLED=true
     fi
-    dx serve --package syntaxis \
+    dx serve --package syntaxis-server \
         --platform web \
         --addr "$host" \
         --port "{{ port }}" \
         --force-sequential true
 
-# Start the guest web development server.
-guest: build-assets
-    dx serve --package syntaxis-guest --platform web
+# Start the browser-only development server.
+browser: build-assets
+    dx serve --package syntaxis-browser --platform web
 
 # Start the desktop development server.
 desktop: build-assets
-    dx serve --package syntaxis --platform desktop
+    dx serve --package syntaxis-server --platform desktop
 
 # Start the mobile development server.
 mobile: build-assets
-    dx serve --package syntaxis --platform mobile
+    dx serve --package syntaxis-server --platform mobile
 
 serve-local port=default_port: build-assets
     #!/usr/bin/env bash
@@ -291,7 +291,7 @@ serve-local port=default_port: build-assets
         sudo ufw allow "{{ port }}/tcp"
     fi
 
-    dx serve --package syntaxis \
+    dx serve --package syntaxis-server \
         --platform web \
         --addr 0.0.0.0 \
         --port "{{ port }}" \
@@ -307,7 +307,7 @@ build platform=default_platform profile="debug": build-assets
     #!/usr/bin/env bash
     set -euo pipefail
 
-    args=(build --package syntaxis --platform "{{ platform }}")
+    args=(build --package syntaxis-server --platform "{{ platform }}")
 
     if [[ "{{ profile }}" == "release" ]]; then
         args+=(--release)
@@ -321,18 +321,18 @@ build platform=default_platform profile="debug": build-assets
 
 # Build an optimized release.
 release platform=default_platform: build-assets
-    dx build --package syntaxis --platform "{{ platform }}" --release
+    dx build --package syntaxis-server --platform "{{ platform }}" --release
 
 # Build both web applications in release mode and report raw/gzip/Brotli WASM sizes.
 bundle-report: build-assets
-    dx build --package syntaxis --platform web --release --locked --debug-symbols false
-    dx build --package syntaxis-guest --platform web --release --locked --debug-symbols false
+    dx build --package syntaxis-server --platform web --release --locked --debug-symbols false
+    dx build --package syntaxis-browser --platform web --release --locked --debug-symbols false
     bun scripts/report-bundle-sizes.mjs release
 
 # Build both web clients and fail when their release WASM exceeds the checked-in budgets.
 bundle-check: build-assets
-    dx build --package syntaxis --platform web --release --locked --debug-symbols false
-    dx build --package syntaxis-guest --platform web --release --locked --debug-symbols false
+    dx build --package syntaxis-server --platform web --release --locked --debug-symbols false
+    dx build --package syntaxis-browser --platform web --release --locked --debug-symbols false
     bun scripts/report-bundle-sizes.mjs release --check
 
 # Build the production web app and run repeatable local Lighthouse audits.
@@ -358,7 +358,7 @@ lighthouse-open:
 [private]
 docker-version:
     @cargo metadata --no-deps --format-version 1 \
-        | bun -e 'const metadata = JSON.parse(await Bun.stdin.text()); console.log(metadata.packages.find((pkg) => pkg.name === "syntaxis").version);'
+        | bun -e 'const metadata = JSON.parse(await Bun.stdin.text()); console.log(metadata.packages.find((pkg) => pkg.name === "syntaxis-server").version);'
 
 # Build a Docker target and tag production with the Cargo package version.
 docker-build target="production":
@@ -495,11 +495,11 @@ dx-check platform=default_platform: build-assets
 
     case "{{ platform }}" in
         web)
-            dx check --package syntaxis "--{{ platform }}"
-            dx build --package syntaxis-guest --platform "{{ platform }}" --debug-symbols false
+            dx check --package syntaxis-server "--{{ platform }}"
+            dx build --package syntaxis-browser --platform "{{ platform }}" --debug-symbols false
             ;;
         server | desktop)
-            dx check --package syntaxis "--{{ platform }}"
+            dx check --package syntaxis-server "--{{ platform }}"
             ;;
         *)
             echo "Dioxus check supports web, server, or desktop; got '{{ platform }}'." >&2
@@ -606,7 +606,7 @@ test-cargo platform=default_platform: build-assets
 
 # Run authored JavaScript and browser-harness unit tests.
 test-web: build-assets
-    bun test autoresearch/*.test.js crates/runtime-main/bridge-src/terminal/source-links.test.js
+    bun test autoresearch/*.test.js crates/runtime-remote/bridge-src/terminal/source-links.test.js
 
 # Run doctests, which cargo-nextest does not replace.
 test-doc platform=default_platform: build-assets

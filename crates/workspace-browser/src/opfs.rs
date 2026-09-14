@@ -18,7 +18,7 @@ thread_local! {
         RefCell::new(None)
     };
 }
-const ACTIVE_ROOT_PROPERTY: &str = "__SYNTAXIS_GUEST_WORKSPACE_ROOT__";
+const ACTIVE_ROOT_PROPERTY: &str = "__SYNTAXIS_BROWSER_WORKSPACE_ROOT__";
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(extends = web_sys::Window, js_name = Window)]
@@ -201,7 +201,7 @@ impl WorkspaceFiles for OpfsWorkspaceFiles {
         if path.is_root() {
             return Ok(FileEntry {
                 path: RelativePath::root(),
-                name: "Syntaxis Guest".into(),
+                name: "Syntaxis Browser".into(),
                 kind: EntryKind::Directory,
                 size: 0,
                 version: None,
@@ -685,7 +685,7 @@ fn ensure_size(length: u64, maximum: u64) -> WorkspaceResult<()> {
     if length > maximum {
         return Err(WorkspaceError::new(
             ErrorCode::TooLarge,
-            format!("The file is larger than the {maximum}-byte guest limit."),
+            format!("The file is larger than the {maximum}-byte browser limit."),
         ));
     }
     Ok(())

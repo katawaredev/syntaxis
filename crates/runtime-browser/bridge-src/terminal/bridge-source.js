@@ -92,4 +92,4 @@ function cancel() {
   activeController?.abort();
 }
 
-globalThis.SyntaxisGuestBash = { version: 1, execute, cancel };
+globalThis.SyntaxisBrowserBash = { version: 1, execute, cancel };

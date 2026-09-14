@@ -63,7 +63,7 @@ fn browser_workspace(slug: &str) -> WorkspaceRecord {
         } else {
             slug.replace('-', " ")
         },
-        root: "opfs://syntaxis-guest".into(),
+        root: "opfs://syntaxis-browser".into(),
         icon: WorkspaceIcon::Symbol {
             name: WorkspaceIconSymbol::Folder,
         },

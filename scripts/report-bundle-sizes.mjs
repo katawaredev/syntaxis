@@ -19,14 +19,14 @@ const budgets = checkBudget
   : undefined;
 const artifacts = [
   {
-    app: "main",
-    publicDir: resolve(root, `target/dx/syntaxis/${profile}/web/public`),
-    stem: "syntaxis",
+    app: "server",
+    publicDir: resolve(root, `target/dx/syntaxis-server/${profile}/web/public`),
+    stem: "syntaxis-server",
   },
   {
-    app: "guest",
-    publicDir: resolve(root, `target/dx/syntaxis-guest/${profile}/web/public`),
-    stem: "syntaxis-guest",
+    app: "browser",
+    publicDir: resolve(root, `target/dx/syntaxis-browser/${profile}/web/public`),
+    stem: "syntaxis-browser",
   },
 ];
 

@@ -1,7 +1,7 @@
 [workspace]
 members = [
-  "apps/main",
-  "apps/guest",
+  "apps/server",
+  "apps/browser",
   "crates/app-contracts",
   "crates/app-shell",
   "crates/agent",
@@ -19,7 +19,7 @@ members = [
   "crates/notifications",
   "crates/notifications-host",
   "crates/runtime-browser",
-  "crates/runtime-main",
+  "crates/runtime-remote",
   "crates/terminal",
   "crates/terminal-browser",
   "crates/terminal-host",

@@ -6,6 +6,7 @@ use crate::{AppIcon, ControlSize, Icon};
 pub fn IconButton(
     label: String,
     icon: AppIcon,
+    #[props(default)] icon_class: String,
     #[props(default)] size: ControlSize,
     #[props(default = false)] pressed: bool,
     #[props(default = false)] danger: bool,
@@ -14,13 +15,16 @@ pub fn IconButton(
 ) -> Element {
     rsx! {
         button {
+            r#type: "button",
             class: if danger { "touch-target inline-flex items-center justify-center bg-transparent text-destructive outline-none transition-colors hover:bg-destructive/12 hover:text-destructive focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-35 {size.icon_button_class()}" } else if pressed { "touch-target inline-flex items-center justify-center bg-accent text-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-35 {size.icon_button_class()}" } else { "touch-target inline-flex items-center justify-center bg-transparent text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-35 {size.icon_button_class()}" },
             "aria-label": label.clone(),
             title: label,
             "aria-pressed": pressed,
             disabled,
             onclick: move |event| onclick.call(event),
-            Icon { icon, size: size.icon_size() }
+            span { class: "inline-flex {icon_class}",
+                Icon { icon, size: size.icon_size() }
+            }
         }
     }
 }

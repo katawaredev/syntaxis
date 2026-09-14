@@ -36,6 +36,11 @@ pub trait AiClientPort: Send + Sync {
 
 #[async_trait(?Send)]
 pub trait AiConversationPort: Send + Sync {
+    /// Whether this service can summarize older context in a conversation.
+    fn supports_compaction(&self) -> bool {
+        false
+    }
+
     async fn list(
         &self,
         workspace: &WorkspaceRecord,

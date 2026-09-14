@@ -36,4 +36,4 @@ function importZip(bytes) {
   return checkedEntries(entries);
 }
 
-globalThis.SyntaxisGuestArchive = { version: 1, exportZip, importZip };
+globalThis.SyntaxisBrowserArchive = { version: 1, exportZip, importZip };

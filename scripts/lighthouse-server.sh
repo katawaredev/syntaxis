@@ -2,7 +2,7 @@
 set -euo pipefail
 
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-server="$root/target/dx/syntaxis/release/web/server"
+server="$root/target/dx/syntaxis-server/release/web/server"
 host="${LHCI_HOST:-127.0.0.1}"
 port="${LHCI_PORT:-4173}"
 log="$root/.lighthouseci/server.log"

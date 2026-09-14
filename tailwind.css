@@ -1,6 +1,6 @@
 @import "tailwindcss";
-@source "./apps/main/src/**/*.rs";
-@source "./apps/guest/src/**/*.rs";
+@source "./apps/server/src/**/*.rs";
+@source "./apps/browser/src/**/*.rs";
 @source "./crates/app-shell/src/**/*.rs";
 @source "./crates/module-ai/src/**/*.rs";
 @source "./crates/module-files/src/**/*.rs";

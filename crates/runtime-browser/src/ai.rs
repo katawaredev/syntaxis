@@ -77,6 +77,12 @@ struct BrowserAiClientEventStream {
     events: dioxus::document::Eval,
 }
 
+impl Drop for BrowserAiClientEventStream {
+    fn drop(&mut self) {
+        let _ = self.events.send(true);
+    }
+}
+
 #[async_trait(?Send)]
 impl AiClientEventStream for BrowserAiClientEventStream {
     async fn receive(&mut self) -> Result<Option<AiClientEvent>, AppError> {
@@ -1086,7 +1092,10 @@ fn ai_client_listener() -> dioxus::document::Eval {
         const id = await dioxus.recv();
         const forward = event => {
           const detail = event.detail ?? {};
-          if (!detail.id || detail.id === id) dioxus.send(detail);
+          // Speech/paste events identify the composer; read-aloud events identify a message.
+          if (event.type === "syntaxis-ai-read-aloud" || !detail.id || detail.id === id) {
+            dioxus.send(detail);
+          }
         };
         window.addEventListener("syntaxis-ai-paste", forward);
         window.addEventListener("syntaxis-ai-speech", forward);

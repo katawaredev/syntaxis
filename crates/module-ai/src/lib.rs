@@ -1,7 +1,11 @@
 //! Canonical runtime-neutral AI views and capability ports.
 
+mod conversation;
+mod message;
 mod models;
 mod ports;
+mod provider_accounts;
+mod usage;
 mod view;
 
 pub use models::{

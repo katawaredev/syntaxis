@@ -16,7 +16,7 @@ impl AiQuery {
 impl From<&str> for AiQuery {
     fn from(query: &str) -> Self {
         let session_id = url::form_urlencoded::parse(query.as_bytes()).find_map(|(key, value)| {
-            matches!(key.as_ref(), "sessionId" | "session_id")
+            (key == "sessionId")
                 .then(|| value.trim().to_owned())
                 .filter(|value| !value.is_empty())
         });
@@ -39,12 +39,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn session_queries_accept_legacy_snake_case() {
+    fn session_queries_round_trip_the_canonical_key() {
         assert_eq!(
-            AiQuery::from("session_id=conversation-1")
-                .session_id
-                .as_deref(),
-            Some("conversation-1")
+            AiQuery::from(AiQuery::with_session("conversation 1".into()).to_string().as_str()),
+            AiQuery::with_session("conversation 1".into())
         );
+    }
+
+    #[test]
+    fn empty_and_unknown_session_parameters_are_ignored() {
+        assert_eq!(AiQuery::from("sessionId=%20"), AiQuery::default());
+        assert_eq!(AiQuery::from("session_id=old"), AiQuery::default());
     }
 }

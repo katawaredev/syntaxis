@@ -289,8 +289,8 @@ impl GitRepositoryPort for BrowserGitAdapter {
             "commit",
             json!({
                 "message": request.message,
-                "name": "Syntaxis Guest",
-                "email": "guest@syntaxis.local",
+                "name": "Syntaxis Browser",
+                "email": "browser@syntaxis.local",
             }),
         )
         .await?;
@@ -477,7 +477,7 @@ where
     let mut eval = document::eval(
         r#"
         const request = await dioxus.recv();
-        const bridge = globalThis.SyntaxisGuestGit;
+        const bridge = globalThis.SyntaxisBrowserGit;
         if (!bridge || bridge.version !== 1) {
           await dioxus.send({
             ok: false,

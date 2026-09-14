@@ -51,10 +51,10 @@ jobs:
           EXPECTED_VERSION: ${{ inputs.version }}
         run: |
           actual="$(
-            python3 -c 'import tomllib; print(tomllib.load(open("apps/main/Cargo.toml", "rb"))["package"]["version"])'
+            python3 -c 'import tomllib; print(tomllib.load(open("apps/server/Cargo.toml", "rb"))["package"]["version"])'
           )"
           if [[ "$actual" != "$EXPECTED_VERSION" ]]; then
-            echo "apps/main/Cargo.toml version $actual does not match requested version $EXPECTED_VERSION" >&2
+            echo "apps/server/Cargo.toml version $actual does not match requested version $EXPECTED_VERSION" >&2
             exit 1
           fi
 

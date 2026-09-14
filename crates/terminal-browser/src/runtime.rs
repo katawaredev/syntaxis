@@ -12,20 +12,19 @@ const MAX_WORKSPACE_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_FILE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_OUTPUT_BYTES: usize = 2 * 1024 * 1024;
 const BRIDGE_VERSION: f64 = 1.0;
-const GUEST_HISTORY_PATH: &str = ".syntaxis-guest-history.json";
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(
         catch,
         js_namespace = ["window",
-        "SyntaxisGuestBash"],
+        "SyntaxisBrowserBash"],
         js_name = execute
     )]
     fn execute_bridge(command: &str, snapshot: JsValue) -> Result<Promise, JsValue>;
     #[wasm_bindgen(
         catch,
         js_namespace = ["window",
-        "SyntaxisGuestBash"],
+        "SyntaxisBrowserBash"],
         js_name = cancel
     )]
     fn cancel_bridge() -> Result<(), JsValue>;
@@ -160,7 +159,7 @@ fn bounded_output(mut output: String) -> String {
     output.push_str("\n[output truncated by Syntaxis]\n");
     output
 }
-/// Waits for the guest-only just-bash bundle to install its global bridge.
+/// Waits for the browser-local just-bash bundle to install its global bridge.
 ///
 /// The document script is loaded independently of the WASM application, so a
 /// first render can otherwise race the browser's script fetch.
@@ -173,9 +172,9 @@ pub async fn wait_for_bridge() -> Result<(), String> {
     }
     Err("The browser shell could not be loaded. Reload the page and try again.".into())
 }
-/// Reports whether the expected version of the guest command bridge is ready.
+/// Reports whether the expected version of the browser command bridge is ready.
 pub fn bridge_ready() -> bool {
-    let Ok(bridge) = Reflect::get(&js_sys::global(), &JsValue::from_str("SyntaxisGuestBash"))
+    let Ok(bridge) = Reflect::get(&js_sys::global(), &JsValue::from_str("SyntaxisBrowserBash"))
     else {
         return false;
     };
@@ -340,12 +339,6 @@ where
                     }
                 }
                 EntryKind::File => {
-                    if entry.path.as_str() == GUEST_HISTORY_PATH {
-                        snapshot
-                            .protected_paths
-                            .push(entry.path.as_str().to_owned());
-                        continue;
-                    }
                     total_bytes = total_bytes.saturating_add(entry.size);
                     if total_bytes > MAX_WORKSPACE_BYTES {
                         return Err(syntaxis_workspace::WorkspaceError::new(

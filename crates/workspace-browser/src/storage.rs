@@ -7,7 +7,7 @@ use wasm_bindgen_futures::JsFuture;
 use web_sys::{
     FileSystemDirectoryHandle, IdbDatabase, IdbOpenDbRequest, IdbRequest, IdbTransactionMode,
 };
-const DATABASE: &str = "syntaxis-guest";
+const DATABASE: &str = "syntaxis-browser";
 const STORE: &str = "workspace-handles";
 const LOCAL_ROOT_KEY: &str = "local-root";
 pub(crate) async fn load_directory() -> WorkspaceResult<Option<FileSystemDirectoryHandle>> {

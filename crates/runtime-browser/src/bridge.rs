@@ -1,9 +1,9 @@
 use dioxus::prelude::{Asset, asset, document};
 use serde::Deserialize;
 
-const ARCHIVE_SCRIPT: Asset = asset!("/assets/guest-archive.bundle.js");
-const GIT_SCRIPT: Asset = asset!("/assets/guest-git.bundle.js");
-const TERMINAL_SCRIPT: Asset = asset!("/assets/guest-terminal.bundle.js");
+const ARCHIVE_SCRIPT: Asset = asset!("/assets/browser-archive.bundle.js");
+const GIT_SCRIPT: Asset = asset!("/assets/browser-git.bundle.js");
+const TERMINAL_SCRIPT: Asset = asset!("/assets/browser-terminal.bundle.js");
 const BRIDGE_VERSION: u32 = 1;
 
 #[derive(Clone, Copy)]
@@ -16,9 +16,9 @@ pub(super) enum BrowserBridge {
 impl BrowserBridge {
     fn global_name(self) -> &'static str {
         match self {
-            Self::Archive => "SyntaxisGuestArchive",
-            Self::Git => "SyntaxisGuestGit",
-            Self::Terminal => "SyntaxisGuestBash",
+            Self::Archive => "SyntaxisBrowserArchive",
+            Self::Git => "SyntaxisBrowserGit",
+            Self::Terminal => "SyntaxisBrowserBash",
         }
     }
 

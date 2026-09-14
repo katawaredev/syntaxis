@@ -8,8 +8,9 @@ server owns filesystem, terminal, Git, language-server, preview, authentication,
 
 ## Repository layout
 
-The main application code lives in `apps/main/src/`, and the browser-only guest lives in
-`apps/guest/`. Workspace crates separate shared types from host implementations:
+The server-backed composition lives in `apps/server/src/`, and the browser-only composition in
+`apps/browser/`. Both mount the same `app-shell` and feature modules.
+Workspace crates separate shared types from host implementations:
 
 - `code-editor` and `editor` — editor integration and state;
 - `terminal` and `terminal-host` — terminal contracts and processes;
@@ -21,7 +22,7 @@ The main application code lives in `apps/main/src/`, and the browser-only guest 
 - `ui` — shared components.
 
 Authored browser bridge sources live with their owners under
-`crates/code-editor/bridge-src/`, `crates/runtime-main/bridge-src/`, and
+`crates/code-editor/bridge-src/`, `crates/runtime-remote/bridge-src/`, and
 `crates/runtime-browser/bridge-src/`. Their generated bundles are crate-local assets.
 
 ## Setup
@@ -65,7 +66,7 @@ just build-assets
 ```
 
 This builds the CodeMirror and terminal bundles and regenerates Pi settings metadata. The settings
-generator reads the pinned Pi package and writes `crates/runtime-main/src/ai/generated_settings.rs`. It validates every
+generator reads the pinned Pi package and writes `crates/runtime-remote/src/ai/generated_settings.rs`. It validates every
 curated setting and setter on each run and hashes only the extracted metadata, so unrelated Pi
 documentation changes do not churn the generated Rust file. Runtime capability checks are per setter,
 not tied to Pi's version number.

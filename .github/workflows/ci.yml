@@ -98,9 +98,9 @@ jobs:
       - name: Smoke-test browser runtime contracts
         run: |
           browser="$(command -v google-chrome || command -v chromium)"
-          GUEST_DIST=target/dx/syntaxis-guest/debug/web/public \
+          BROWSER_DIST=target/dx/syntaxis-browser/debug/web/public \
             AUTORESEARCH_BROWSER_PATH="$browser" \
-            bun autoresearch/guest-smoke.mjs
+            bun autoresearch/browser-smoke.mjs
 
       - name: Verify tracked generated files are current
         run: git diff --exit-code

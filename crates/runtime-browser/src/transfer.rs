@@ -105,7 +105,7 @@ impl WorkspaceTransferPort for BrowserWorkspaceTransfer {
         let mut eval = document::eval(
             r#"
             const bytes = await dioxus.recv();
-            const bridge = globalThis.SyntaxisGuestArchive;
+            const bridge = globalThis.SyntaxisBrowserArchive;
             if (!bridge || bridge.version !== 1) {
               await dioxus.send({
                 ok: false,
@@ -171,7 +171,7 @@ impl WorkspaceTransferPort for BrowserWorkspaceTransfer {
         let mut eval = document::eval(
             r#"
             const entries = await dioxus.recv();
-            const bridge = globalThis.SyntaxisGuestArchive;
+            const bridge = globalThis.SyntaxisBrowserArchive;
             if (!bridge || bridge.version !== 1) {
               await dioxus.send({
                 ok: false,
@@ -440,7 +440,7 @@ async fn ensure_parent(
 }
 
 fn reserved_path(path: &str) -> bool {
-    path == ".syntaxis-guest-history.json" || path == ".git" || path.starts_with(".git/")
+    path == ".git" || path.starts_with(".git/")
 }
 
 fn browser_workspace(slug: String, name: String) -> WorkspaceRecord {
@@ -448,7 +448,7 @@ fn browser_workspace(slug: String, name: String) -> WorkspaceRecord {
         id: WorkspaceId::new("browser-opfs"),
         slug,
         name,
-        root: "opfs://syntaxis-guest".into(),
+        root: "opfs://syntaxis-browser".into(),
         icon: WorkspaceIcon::Symbol {
             name: WorkspaceIconSymbol::Folder,
         },

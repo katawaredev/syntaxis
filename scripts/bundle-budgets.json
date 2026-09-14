@@ -1,21 +1,21 @@
 {
   "baselineCommit": "89c04e5",
   "baseline": {
-    "main": {
+    "server": {
       "rawBytes": 7309211,
       "brotliBytes": 1742228
     },
-    "guest": {
+    "browser": {
       "rawBytes": 3228545,
       "brotliBytes": 841377
     }
   },
   "limits": {
-    "main": {
+    "server": {
       "rawBytes": 6900000,
       "brotliBytes": 1640000
     },
-    "guest": {
+    "browser": {
       "rawBytes": 5500000,
       "brotliBytes": 1370000
     }

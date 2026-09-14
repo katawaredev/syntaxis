@@ -3,6 +3,10 @@
 This document records the characterized baseline and the completed implementation of the
 shared-module architecture. It is evidence for the migration, not a second product specification.
 
+The measurements and validation results below describe the original migration, not the later
+review fixes. Product paths now use `server` and `browser`, with remote adapters in
+`runtime-remote`. Follow-up changes must be validated independently.
+
 ## Source baseline
 
 - Migration baseline: `89c04e5` (`fix: git`)
@@ -11,22 +15,26 @@ shared-module architecture. It is evidence for the migration, not a second produ
 - Canonical screenshots: the tracked `screenshots/` references for Home, Files, Terminal, Git,
   Preview, and AI at desktop widths
 
-The move to `apps/main` preserves the `syntaxis` package name, Cargo features, Dioxus output
-directory, server binary name, and public routes.
+The server-backed composition is `apps/server`, package `syntaxis-server`; its Dioxus output
+is `target/dx/syntaxis-server/`. The browser-only composition is `apps/browser`, package
+`syntaxis-browser`. Public routes are shared. No compatibility aliases or browser-storage
+migration are provided for the earlier product names.
 
 ## Final package structure
 
 The root manifest is a virtual workspace. Both executables are composition roots:
 
-- `apps/main` installs document assets, authentication startup, the main runtime services, and
+- `apps/server` installs document assets, authentication startup, remote runtime services, and
   `syntaxis_app_shell::SyntaxisApp`.
-- `apps/guest` installs static document assets, the browser runtime services, and the same
+- `apps/browser` installs static document assets, the browser runtime services, and the same
   `SyntaxisApp`.
 - `crates/app-shell` owns Home, the workspace shell, notifications, the only `Routable` enum, and
   selection of all five shared module entry components.
 - `crates/module-{files,terminal,git,preview,ai}` own feature UI, controllers, models, and ports.
-- `crates/runtime-main` owns server functions, host selection, transports, main adapters, and the
-  versioned interactive-terminal bridge lifecycle.
+- `crates/runtime-remote` owns remote adapters, Dioxus server-function stubs and their
+  feature-gated server handlers, host selection, and the interactive-terminal bridge lifecycle.
+  It is not a native runtime: the client half runs in WASM, while the server half delegates
+  native operations to domain host crates.
 - `crates/runtime-browser` owns OPFS/browser bridge DTOs, browser adapters, and idempotent loading
   and version checks for its generated bridges.
 
@@ -52,9 +60,9 @@ The settings redirect targets the canonical section route in both runtimes.
 ## Runtime capabilities
 
 Optional behavior is represented by an absent typed port or by a typed capability value. Shared UI
-does not branch on a main/guest identity.
+does not branch on product identity.
 
-| Area | Main runtime | Browser guest runtime |
+| Area | Remote/host runtime | Browser-local runtime |
 | --- | --- | --- |
 | Workspace sources | Registered roots, folders, clone, project bootstrap, management | Private OPFS workspace, local-folder picker, bounded ZIP import/export |
 | Files/editor | Host-backed files, search, sessions, file watching, LSP, transfers | OPFS/local-folder files, bounded search and transfers; no host LSP/watch service |
@@ -77,9 +85,9 @@ Run these from the repository root. In the managed container, `mise` supplies th
 
 | Surface | Command |
 | --- | --- |
-| Main web client and server debug build | `dx build --package syntaxis --platform web` |
-| Guest web debug build | `dx build --package syntaxis-guest --platform web --debug-symbols false` |
-| Main server check | `just check server` |
+| Server product web client and server debug build | `dx build --package syntaxis-server --platform web` |
+| Browser web debug build | `dx build --package syntaxis-browser --platform web --debug-symbols false` |
+| Native server check | `just check server` |
 | Shared/domain/adapter tests | `just test "" web` |
 | Browser/JavaScript tests | `just test-web` |
 | Architecture boundaries | `just architecture` |
@@ -98,9 +106,9 @@ made no deliberate visual redesign. The existing main autoresearch workload pass
 optimized app for Home/Recent Projects, New Project, Files/editor readiness, and Git diff. Its
 320x700 mobile and 1440x900 desktop audits found no horizontal overflow, console error, page error,
 or failed request. A focused optimized Chromium smoke also created a server terminal and verified
-that the versioned runtime-main renderer bridge loaded and mounted xterm without browser failures.
+that the versioned remote renderer bridge loaded and mounted xterm without browser failures.
 
-`autoresearch/guest-smoke.mjs` is the runtime-specific guest integration check. It opens the OPFS
+`autoresearch/browser-smoke.mjs` is the browser-local integration check. It opens the OPFS
 workspace through a real bounded ZIP import and opens every shared module route. It opens a file in
 the shared editor, renders an imported HTML document and stylesheet through the sandboxed static
 Preview adapter, executes and cancels commands through the Terminal adapter, and initializes a

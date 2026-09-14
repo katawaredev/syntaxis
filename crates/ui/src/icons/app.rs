@@ -9,13 +9,14 @@ use dioxus_icons::lucide::{
     Hash, Info, ListChevronsDownUp, ListChevronsUpDown, ListOrdered, LogOut, Menu, Mic,
     PanelLeftOpen, Paperclip, Play, Plus, RefreshCw, Regex, Repeat1, Replace, ReplaceAll,
     RotateCcw, Save, ScanSearch, Search, Send, Settings, Share2, ShieldAlert, Sparkles, Square,
-    SquarePen, SquareTerminal, Star, TextCursorInput, TextWrap, Trash2, Volume2, WandSparkles,
+    Split, SquarePen, SquareTerminal, Star, TextCursorInput, TextWrap, Trash2, Volume2, WandSparkles,
     WholeWord, X,
 };
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum AppIcon {
     Bell,
     Branch,
+    Split,
     BrainCog,
     Check,
     ChevronDown,
@@ -101,6 +102,11 @@ pub fn Icon(icon: AppIcon, #[props(default = 16)] size: u32) -> Element {
         AppIcon::Branch => {
             rsx! {
                 GitFork { size }
+            }
+        }
+        AppIcon::Split => {
+            rsx! {
+                Split { size }
             }
         }
         AppIcon::BrainCog => {

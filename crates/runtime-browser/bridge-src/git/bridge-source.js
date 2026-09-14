@@ -5,7 +5,6 @@ globalThis.Buffer ??= Buffer;
 
 const DIR = "/";
 const GITDIR = "/.git";
-const LEGACY_HISTORY = ".syntaxis-guest-history.json";
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const cache = {};
@@ -28,7 +27,7 @@ function parts(path) {
 }
 
 async function workspaceRoot() {
-  return globalThis.__SYNTAXIS_GUEST_WORKSPACE_ROOT__ ?? navigator.storage.getDirectory();
+  return globalThis.__SYNTAXIS_BROWSER_WORKSPACE_ROOT__ ?? navigator.storage.getDirectory();
 }
 
 async function directoryAt(path, create = false) {
@@ -271,7 +270,7 @@ async function repository(request = {}) {
     };
   await primeIndexStats();
   const [matrix, branch, branches, remotes, authorName, authorEmail] = await Promise.all([
-    git.statusMatrix({ fs, dir: DIR, cache, filter: (path) => path !== LEGACY_HISTORY }),
+    git.statusMatrix({ fs, dir: DIR, cache }),
     git.currentBranch({ fs, dir: DIR, cache, fullname: false }),
     git.listBranches({ fs, dir: DIR, cache }),
     git.listRemotes({ fs, dir: DIR, cache }),
@@ -398,7 +397,7 @@ async function commit({ message, name, email }) {
     dir: DIR,
     cache,
     message,
-    author: { name: name || "Syntaxis Guest", email: email || "guest@syntaxis.local" },
+    author: { name: name || "Syntaxis Browser", email: email || "browser@syntaxis.local" },
   });
   indexStats.clear();
   return { oid, repository: await repository() };
@@ -477,7 +476,7 @@ async function deleteBranch(ref) {
   return repository();
 }
 
-globalThis.SyntaxisGuestGit = {
+globalThis.SyntaxisBrowserGit = {
   version: 1,
   repository,
   init,

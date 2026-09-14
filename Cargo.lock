@@ -5904,24 +5904,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "syntaxis"
-version = "0.11.2"
-dependencies = [
- "argon2",
- "base64 0.23.1",
- "cc",
- "dioxus",
- "rand_core 0.6.4",
- "rpassword",
- "serde",
- "subtle",
- "syntaxis-app-shell",
- "syntaxis-runtime-main",
- "tokio",
- "url",
-]
-
-[[package]]
 name = "syntaxis-agent"
 version = "0.1.0"
 dependencies = [
@@ -5980,6 +5962,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "syntaxis-browser"
+version = "0.1.0"
+dependencies = [
+ "dioxus",
+ "syntaxis-app-shell",
+ "syntaxis-runtime-browser",
+]
+
+[[package]]
 name = "syntaxis-editor"
 version = "0.1.0"
 dependencies = [
@@ -6009,15 +6000,6 @@ dependencies = [
  "tokio-util",
  "uuid",
  "zeroize",
-]
-
-[[package]]
-name = "syntaxis-guest"
-version = "0.1.0"
-dependencies = [
- "dioxus",
- "syntaxis-app-shell",
- "syntaxis-runtime-browser",
 ]
 
 [[package]]
@@ -6168,7 +6150,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "syntaxis-runtime-main"
+name = "syntaxis-runtime-remote"
 version = "0.1.0"
 dependencies = [
  "async-trait",
@@ -6213,6 +6195,24 @@ dependencies = [
  "toml 1.1.4+spec-1.1.0",
  "url",
  "web-sys",
+]
+
+[[package]]
+name = "syntaxis-server"
+version = "0.11.2"
+dependencies = [
+ "argon2",
+ "base64 0.23.1",
+ "cc",
+ "dioxus",
+ "rand_core 0.6.4",
+ "rpassword",
+ "serde",
+ "subtle",
+ "syntaxis-app-shell",
+ "syntaxis-runtime-remote",
+ "tokio",
+ "url",
 ]
 
 [[package]]

@@ -1242,6 +1242,7 @@ fn Ai(slug: String, query: AiQuery) -> Element {
     let viewed_workspace_id = workspace_id.clone();
     match active_workspace() {
         Some(workspace) => rsx! { syntaxis_module_ai::AiView {
+            key: "{workspace.id.0}",
             workspace,
             base_workspace: active.base(),
             current_head: active.current_head(),
@@ -1283,7 +1284,7 @@ fn AiSettings(slug: String, section: AiSettingsSection) -> Element {
     let on_navigate = EventHandler::new(move |intent| navigate(intent, &route_slug, &navigator));
     match active_workspace() {
         Some(workspace) => {
-            rsx! { syntaxis_module_ai::AiSettingsView { workspace, section, on_navigate } }
+            rsx! { syntaxis_module_ai::AiSettingsView { key: "{workspace.id.0}", workspace, section, on_navigate } }
         }
         None => rsx! { "Loading AI settings…" },
     }
