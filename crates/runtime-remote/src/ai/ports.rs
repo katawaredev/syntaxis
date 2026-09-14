@@ -40,6 +40,7 @@ const MAX_CONVERSATION_EVENTS: usize = 10_000;
 const MAX_ASSISTANT_BYTES: usize = 1024 * 1024;
 const MAX_ACCUMULATED_EVENT_BYTES: usize = 4 * 1024 * 1024;
 static NEXT_LOCAL_MESSAGE_ID: AtomicU64 = AtomicU64::new(1);
+static NEXT_ACTION_NONCE: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone, Copy, Debug, Default)]
 struct DioxusAi;
@@ -89,12 +90,12 @@ impl AiClientPort for DioxusAi {
         Ok(Box::new(ClientAiEventStream { events }))
     }
 
-    async fn load_draft(&self, key: &str) -> Result<Option<String>, AppError> {
-        load_client_draft(key).await
+    async fn load_state(&self, key: &str) -> Result<Option<String>, AppError> {
+        load_client_state(key).await
     }
 
-    async fn save_draft(&self, key: &str, value: Option<&str>) -> Result<(), AppError> {
-        save_client_draft(key, value).await
+    async fn save_state(&self, key: &str, value: Option<&str>) -> Result<(), AppError> {
+        save_client_state(key, value).await
     }
 
     async fn copy_text(&self, value: &str) -> Result<(), AppError> {
@@ -400,7 +401,7 @@ impl AiConversationPort for DioxusAi {
             })
             .await
             .map_err(socket_error)?;
-        wait_for_sessions(&socket).await
+        wait_for_action(&socket).await
     }
 
     async fn respond_to_extension(
@@ -432,7 +433,7 @@ impl AiConversationPort for DioxusAi {
             })
             .await
             .map_err(socket_error)?;
-        wait_for_sessions(&socket).await
+        wait_for_action(&socket).await
     }
 
     async fn fork_at(
@@ -613,7 +614,7 @@ impl AiConversationPort for DioxusAi {
             })
             .await
             .map_err(socket_error)?;
-        wait_for_sessions(&socket).await
+        wait_for_action(&socket).await
     }
 
     async fn delete(
@@ -628,7 +629,7 @@ impl AiConversationPort for DioxusAi {
             })
             .await
             .map_err(socket_error)?;
-        wait_for_sessions(&socket).await
+        wait_for_action(&socket).await
     }
 }
 
@@ -683,7 +684,7 @@ fn ai_client_listener() -> dioxus::document::Eval {
     )
 }
 
-async fn load_client_draft(key: &str) -> Result<Option<String>, AppError> {
+async fn load_client_state(key: &str) -> Result<Option<String>, AppError> {
     let mut eval = document::eval(
         r"
         const key = await dioxus.recv();
@@ -692,13 +693,13 @@ async fn load_client_draft(key: &str) -> Result<Option<String>, AppError> {
         ",
     );
     eval.send(key)
-        .map_err(|error| agent_error(format!("Could not read the AI draft: {error}")))?;
+        .map_err(|error| agent_error(format!("Could not read AI client state: {error}")))?;
     eval.recv::<Option<String>>()
         .await
-        .map_err(|error| agent_error(format!("Could not read the AI draft: {error}")))
+        .map_err(|error| agent_error(format!("Could not read AI client state: {error}")))
 }
 
-async fn save_client_draft(key: &str, value: Option<&str>) -> Result<(), AppError> {
+async fn save_client_state(key: &str, value: Option<&str>) -> Result<(), AppError> {
     let mut eval = document::eval(
         r"
         const key = await dioxus.recv();
@@ -714,11 +715,11 @@ async fn save_client_draft(key: &str, value: Option<&str>) -> Result<(), AppErro
     );
     eval.send(key)
         .and_then(|()| eval.send(value.map(str::to_owned)))
-        .map_err(|error| agent_error(format!("Could not save the AI draft: {error}")))?;
+        .map_err(|error| agent_error(format!("Could not save AI client state: {error}")))?;
     match eval.recv::<Option<String>>().await {
         Ok(None) => Ok(()),
         Ok(Some(message)) => Err(agent_error(message)),
-        Err(error) => Err(agent_error(format!("Could not save the AI draft: {error}"))),
+        Err(error) => Err(agent_error(format!("Could not save AI client state: {error}"))),
     }
 }
 
@@ -1755,15 +1756,28 @@ async fn wait_for_selection(
     }
 }
 
-async fn wait_for_sessions(
+async fn wait_for_action(
     socket: &dioxus::fullstack::Websocket<ClientMessage, ServerMessage, api::AgentEncoding>,
 ) -> Result<(), AppError> {
+    // The server processes incoming commands in order. Its Pong confirms the
+    // preceding action was processed; initial or broadcast Sessions messages do not.
+    let nonce = NEXT_ACTION_NONCE.fetch_add(1, Ordering::Relaxed);
+    socket
+        .send(ClientMessage::Ping { nonce })
+        .await
+        .map_err(socket_error)?;
     loop {
-        match socket.recv().await.map_err(socket_error)? {
-            ServerMessage::Sessions { .. } => return Ok(()),
-            ServerMessage::Error { error } => return Err(agent_error(error.message)),
-            _ => {}
+        if action_completed(socket.recv().await.map_err(socket_error)?, nonce)? {
+            return Ok(());
         }
+    }
+}
+
+fn action_completed(message: ServerMessage, nonce: u64) -> Result<bool, AppError> {
+    match message {
+        ServerMessage::Pong { nonce: received } => Ok(received == nonce),
+        ServerMessage::Error { error } => Err(agent_error(error.message)),
+        _ => Ok(false),
     }
 }
 
@@ -2172,7 +2186,29 @@ fn skill_to_api(skill: AiSkill) -> api::PiSkill {
 
 #[cfg(test)]
 mod tests {
-    use super::ai_ports;
+    use syntaxis_agent::{AgentError, AgentErrorCode, ServerMessage};
+
+    use super::{action_completed, ai_ports};
+
+    #[test]
+    fn session_lists_do_not_acknowledge_mutations() {
+        assert!(
+            !action_completed(ServerMessage::Sessions { sessions: Vec::new() }, 42).unwrap()
+        );
+        assert!(!action_completed(ServerMessage::Pong { nonce: 41 }, 42).unwrap());
+        assert!(action_completed(ServerMessage::Pong { nonce: 42 }, 42).unwrap());
+    }
+
+    #[test]
+    fn failed_actions_are_not_reported_as_successful() {
+        let message = ServerMessage::Error {
+            error: AgentError::new(AgentErrorCode::InvalidRequest, "Delete failed"),
+        };
+        assert_eq!(
+            action_completed(message, 42).unwrap_err().message,
+            "Delete failed",
+        );
+    }
 
     #[test]
     fn main_runtime_registers_every_ai_surface() {

@@ -9,6 +9,8 @@ import { extname, join, resolve, sep } from "node:path";
 import { strToU8, zipSync } from "fflate";
 import puppeteer from "puppeteer-core";
 
+import { checkAiNavigation } from "./ai-navigation-smoke.mjs";
+
 let staticServer;
 let baseUrl = process.env.BROWSER_URL ?? "http://127.0.0.1:4174";
 if (process.env.BROWSER_DIST) {
@@ -438,7 +440,7 @@ try {
     throw new Error("A browser AI request did not enable provider streaming.");
   }
 
-  stage = "AI draft persistence and history navigation";
+  stage = "AI draft persistence";
   const previousSession = new URL(page.url()).searchParams.get("sessionId");
   if (!previousSession) throw new Error("The active conversation was not reflected in the URL.");
   await setTextAreaValue(page, "#syntaxis-ai-composer", "Keep this unsent draft");
@@ -457,24 +459,8 @@ try {
     { timeout: 30_000 },
     previousSession,
   );
-  await clickButton(page, "New chat");
-  await page.waitForFunction(
-    (sessionId) => {
-      const active = new URL(location.href).searchParams.get("sessionId");
-      return active && active !== sessionId;
-    },
-    { timeout: 30_000 },
-    previousSession,
-  );
-  await page.goBack();
-  await page.waitForFunction(
-    (sessionId) =>
-      new URL(location.href).searchParams.get("sessionId") === sessionId &&
-      document.querySelector('[role="log"]')?.textContent.includes("hello!") &&
-      document.querySelector("#syntaxis-ai-composer")?.value === "Keep this unsent draft",
-    { timeout: 30_000 },
-    previousSession,
-  );
+  stage = "AI navigation, deletion, and action-menu dismissal";
+  await checkAiNavigation(page, clickButton, clickLink);
 
   if (serverRequests.length > 0) {
     throw new Error(`Browser local flows attempted server APIs:\n${serverRequests.join("\n")}`);

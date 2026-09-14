@@ -5,6 +5,7 @@ mod message;
 mod models;
 mod ports;
 mod provider_accounts;
+mod session;
 mod usage;
 mod view;
 
@@ -23,4 +24,5 @@ pub use ports::{
     AiGeneralSettingsPort, AiManagedFeaturePort, AiModelPort, AiPorts, AiProviderAuthPort,
     AiResourcesPort, AiSettingsPort, AiWorktreePort,
 };
+pub use session::{AiUiState, use_ai_ui_state};
 pub use view::{AiSettingsView, AiView};

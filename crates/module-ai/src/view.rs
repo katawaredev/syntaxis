@@ -13,14 +13,15 @@ use syntaxis_module_files::{
     FilesPorts, FilesUiState, SearchOptions, SearchRequest, SearchScope, render_markdown,
 };
 use syntaxis_ui::prelude::{
-    AppIcon, Button, ButtonKind, DialogActions, DialogForm, Field, Icon, IconButton, Modal,
-    TextArea, TextAreaResize, TextInput, TextInputType, Toast, Tone,
+    AppIcon, Button, ButtonKind, ChatAction, ChatActionsMenu, DialogActions, DialogForm, Field,
+    Icon, IconButton, Modal, TextArea, TextAreaResize, TextInput, TextInputType, Toast, Tone,
 };
 use syntaxis_workspace::{EntryKind, RelativePath, WorkspaceRecord};
 
 use crate::conversation::{activity_id, consume_ai_events};
 use crate::message::ConversationMessage;
 use crate::provider_accounts::ProviderAccountsPanel;
+use crate::session::{restore_conversation, selection_after_delete, selection_key};
 use crate::{
     AiActivity, AiAdvancedSettings, AiClientEvent, AiCommand, AiConversation, AiConversationMatch,
     AiConversationSummary, AiExtension, AiExtensionAction, AiExtensionRequest, AiExtensionWidget,
@@ -49,12 +50,14 @@ pub fn AiView(
     base_workspace: Option<WorkspaceRecord>,
     current_head: Option<String>,
     requested_conversation_id: ReadSignal<Option<String>>,
+    #[props(default)] start_new_conversation: bool,
     on_navigate: EventHandler<NavigationIntent>,
     on_view_conversation: EventHandler<Option<String>>,
     on_stop_viewing: EventHandler<()>,
     on_activate_worktree: EventHandler<WorktreeInfo>,
 ) -> Element {
     let ports = use_context::<AiPorts>();
+    let ai_ui = use_context::<crate::AiUiState>();
     let files = use_context::<FilesUiState>();
     let file_ports = use_context::<FilesPorts>();
     let conversation_port = ports.conversation().cloned();
@@ -212,6 +215,7 @@ pub fn AiView(
     let load_workspace = workspace.clone();
     let requested = requested_conversation_id;
     let viewed_workspace = workspace.id.clone();
+    let selection_client = ports.client().cloned();
 
     use_effect(move || {
         let viewed_request = requested_conversation_id();
@@ -221,11 +225,26 @@ pub fn AiView(
             viewed_workspace.0,
             viewed_request.as_deref().unwrap_or_default()
         );
-        if conversation_loading() || loaded_request.peek().as_deref() != Some(request_key.as_str())
+        if conversation_loading()
+            || conversation_load_error.peek().is_some()
+            || loaded_request.peek().as_deref() != Some(request_key.as_str())
         {
             return;
         }
         let active = (!conversation_id.is_empty()).then_some(conversation_id);
+        if let Some(id) = active.as_ref()
+            && ai_ui.selected(&viewed_workspace).as_ref() != Some(id)
+        {
+            // Remember synchronously before leaving this route can cancel its async tasks.
+            ai_ui.remember(viewed_workspace.clone(), id.clone());
+            if let Some(client) = selection_client.clone() {
+                let key = selection_key(&viewed_workspace);
+                let id = id.clone();
+                spawn(async move {
+                    let _ = client.save_state(&key, Some(&id)).await;
+                });
+            }
+        }
         on_view_conversation.call(active.clone());
         if active.as_deref() != viewed_request.as_deref()
             && let Some(conversation_id) = active
@@ -304,7 +323,7 @@ pub fn AiView(
                 return;
             };
             spawn(async move {
-                if let Ok(Some(stored)) = client.load_draft(&key).await
+                if let Ok(Some(stored)) = client.load_state(&key).await
                     && loaded_draft_key() == key
                     && prompt.peek().is_empty()
                 {
@@ -337,11 +356,12 @@ pub fn AiView(
                     return;
                 }
                 let stored = (!value.is_empty()).then_some(value.as_str());
-                let _ = client.save_draft(&key, stored).await;
+                let _ = client.save_state(&key, stored).await;
             });
         }
     });
 
+    let restore_client = ports.client().cloned();
     use_effect(move || {
         let requested = requested();
         let request_key = format!(
@@ -352,6 +372,7 @@ pub fn AiView(
         if loaded_request.peek().as_ref() == Some(&request_key) {
             return;
         }
+        let create_new = loaded_request.peek().is_none() && start_new_conversation;
         loaded_request.set(Some(request_key.clone()));
         // Reflecting a locally opened/created chat into the URL is not another open request.
         if requested.as_deref() == Some(conversation.peek().id.as_str())
@@ -368,6 +389,8 @@ pub fn AiView(
         conversation_load_error.set(None);
         let workspace = load_workspace.clone();
         let conversation_port = conversation_port.clone();
+        let client = restore_client.clone();
+        let remembered = ai_ui.selected(&workspace.id);
         let requested = requested.clone();
         let task = spawn(async move {
             let Some(port) = conversation_port else {
@@ -377,9 +400,17 @@ pub fn AiView(
                 conversation_loading.set(false);
                 return;
             };
-            let result = match requested {
-                Some(id) => port.open(&workspace, &id).await,
-                None => port.create(&workspace).await,
+            let result = if create_new {
+                port.create(&workspace).await
+            } else {
+                restore_conversation(
+                    port.as_ref(),
+                    client.as_deref(),
+                    &workspace,
+                    requested.as_deref(),
+                    remembered,
+                )
+                .await
             };
             if loaded_request.peek().as_ref() != Some(&request_key) {
                 return;
@@ -649,15 +680,17 @@ pub fn AiView(
 
     // Search, history rows, and browser Back/Forward all use the same loading path.
     let open_workspace_id = workspace.id.clone();
-    let open_conversation = EventHandler::new(move |conversation_id: String| {
+    let select_conversation = EventHandler::new(move |conversation_id: Option<String>| {
         mobile_sidebar_open.set(false);
         conversation_query.set(String::new());
         search_open.set(false);
         on_navigate.call(NavigationIntent::Ai {
             workspace: open_workspace_id.clone(),
-            conversation_id: Some(conversation_id),
+            conversation_id,
         });
     });
+    let open_conversation =
+        EventHandler::new(move |id: String| select_conversation.call(Some(id)));
 
     rsx! {
         document::Stylesheet { href: AI_CHAT_CSS }
@@ -683,7 +716,7 @@ pub fn AiView(
                                 Button {
                                     label: "New chat",
                                     kind: ButtonKind::Primary,
-                                    disabled: pending() || conversation_loading(),
+                                    disabled: pending() || session_action_busy() || conversation_loading(),
                                     onclick: {
                                         let port = ports.conversation().cloned();
                                         let workspace = workspace.clone();
@@ -749,6 +782,7 @@ pub fn AiView(
                                     ul { class: "space-y-1",
                                         for item in items {
                                             ConversationSearchRow {
+                                                key: "{item.session_id}",
                                                 item,
                                                 query: conversation_query().trim().to_owned(),
                                                 disabled: pending() || session_action_busy() || conversation_loading(),
@@ -778,6 +812,7 @@ pub fn AiView(
                                                 let delete_item = item.clone();
                                                 rsx! {
                                                     ConversationRow {
+                                                        key: "{item.id}",
                                                         item,
                                                         selected,
                                                         disabled: pending() || session_action_busy() || conversation_loading(),
@@ -1336,11 +1371,16 @@ pub fn AiView(
                                 spawn(async move {
                                     match port.delete(&workspace, &target_id).await {
                                         Ok(()) => {
-                                            if conversation().id == target_id {
-                                                match port.create(&workspace).await {
-                                                    Ok(created) => conversation.set(created),
-                                                    Err(problem) => error.set(Some(problem.message)),
-                                                }
+                                            ai_ui.forget(&workspace.id, &target_id);
+                                            if conversation.peek().id == target_id {
+                                                let next = conversations.peek().as_ref()
+                                                    .and_then(|result| result.as_ref().ok())
+                                                    .and_then(|items| selection_after_delete(items, &target_id, &target_id));
+                                                conversation_loading.set(true);
+                                                conversation.set(AiConversation::default());
+                                                // Reuse restoration (including reconnecting a running chat).
+                                                // No neighbor means re-list, not unconditionally create.
+                                                select_conversation.call(next);
                                             }
                                             delete_target.set(None);
                                             *list_refresh.write() += 1;
@@ -2075,7 +2115,7 @@ fn ConversationRow(
     let clone_id = item.id.clone();
     let export_id = item.id.clone();
     rsx! {
-        li { class: if selected { "group relative flex items-stretch rounded-lg border border-primary/25 bg-primary/10" } else { "group relative flex items-stretch rounded-lg border border-transparent hover:bg-accent" },
+        li { "data-conversation-id": item.id.clone(), class: if selected { "group relative flex items-stretch rounded-lg border border-primary/25 bg-primary/10" } else { "group relative flex items-stretch rounded-lg border border-transparent hover:bg-accent" },
             button {
                 class: "min-w-0 flex-1 px-2.5 py-2.5 text-left",
                 r#type: "button",
@@ -2091,38 +2131,17 @@ fn ConversationRow(
                     if item.updated_at_ms > 0 { time { class: "shrink-0", "{conversation_age(item.updated_at_ms)}" } }
                 }
             }
-            details { class: "relative flex shrink-0 items-center pr-1",
-                summary { class: "grid size-7 cursor-pointer list-none place-items-center rounded-md text-muted-foreground hover:bg-background/70 hover:text-foreground", title: "Chat actions", aria_label: "Chat actions for {item.title}",
-                    Icon { icon: AppIcon::MoreVertical, size: 15 }
-                }
-                div { class: "absolute top-[calc(50%+16px)] right-0 z-60 w-48 rounded-lg border border-border bg-popover p-1 text-[11px] shadow-xl",
-                    SessionAction { label: "Clone branch", icon: AppIcon::Copy, disabled: disabled || item.running, onclick: move |()| on_clone.call(clone_id.clone()) }
-                    SessionAction { label: "Export HTML", icon: AppIcon::Share, disabled: disabled || item.running, onclick: move |()| on_export.call(export_id.clone()) }
-                    hr { class: "my-1 border-border" }
-                    SessionAction { label: "Rename chat", icon: AppIcon::NewChat, disabled, onclick: move |()| on_rename.call(()) }
-                    SessionAction { label: "Delete chat", icon: AppIcon::Delete, disabled, destructive: true, onclick: move |()| on_delete.call(()) }
-                }
+            ChatActionsMenu {
+                title: item.title,
+                disabled,
+                running: item.running,
+                on_action: move |action| match action {
+                    ChatAction::Clone => on_clone.call(clone_id.clone()),
+                    ChatAction::Export => on_export.call(export_id.clone()),
+                    ChatAction::Rename => on_rename.call(()),
+                    ChatAction::Delete => on_delete.call(()),
+                },
             }
-        }
-    }
-}
-
-#[component]
-fn SessionAction(
-    label: String,
-    icon: AppIcon,
-    disabled: bool,
-    #[props(default)] destructive: bool,
-    onclick: EventHandler<()>,
-) -> Element {
-    rsx! {
-        button {
-            class: if destructive { "flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-destructive hover:bg-accent disabled:opacity-40" } else { "flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-foreground hover:bg-accent disabled:opacity-40" },
-            r#type: "button",
-            disabled,
-            onclick: move |_| onclick.call(()),
-            Icon { icon, size: 13 }
-            "{label}"
         }
     }
 }

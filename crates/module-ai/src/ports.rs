@@ -26,8 +26,10 @@ pub trait AiClientEventStream {
 #[async_trait(?Send)]
 pub trait AiClientPort: Send + Sync {
     async fn listen(&self, composer_id: &str) -> Result<Box<dyn AiClientEventStream>, AppError>;
-    async fn load_draft(&self, key: &str) -> Result<Option<String>, AppError>;
-    async fn save_draft(&self, key: &str, value: Option<&str>) -> Result<(), AppError>;
+    /// Load client-local UI state, such as a draft or the selected conversation.
+    async fn load_state(&self, key: &str) -> Result<Option<String>, AppError>;
+    /// Persist client-local UI state, or remove the key when `value` is `None`.
+    async fn save_state(&self, key: &str, value: Option<&str>) -> Result<(), AppError>;
     async fn copy_text(&self, value: &str) -> Result<(), AppError>;
     async fn focus(&self, element_id: &str) -> Result<(), AppError>;
     async fn toggle_speech(&self, composer_id: &str) -> Result<(), AppError>;

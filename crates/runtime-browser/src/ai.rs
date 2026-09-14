@@ -106,12 +106,12 @@ impl AiClientPort for BrowserAiAdapter {
         Ok(Box::new(BrowserAiClientEventStream { events }))
     }
 
-    async fn load_draft(&self, key: &str) -> Result<Option<String>, AppError> {
-        load_client_draft(key).await
+    async fn load_state(&self, key: &str) -> Result<Option<String>, AppError> {
+        load_client_state(key).await
     }
 
-    async fn save_draft(&self, key: &str, value: Option<&str>) -> Result<(), AppError> {
-        save_client_draft(key, value).await
+    async fn save_state(&self, key: &str, value: Option<&str>) -> Result<(), AppError> {
+        save_client_state(key, value).await
     }
 
     async fn copy_text(&self, value: &str) -> Result<(), AppError> {
@@ -1112,7 +1112,7 @@ fn ai_client_listener() -> dioxus::document::Eval {
     )
 }
 
-async fn load_client_draft(key: &str) -> Result<Option<String>, AppError> {
+async fn load_client_state(key: &str) -> Result<Option<String>, AppError> {
     let mut eval = document::eval(
         r#"
         const key = await dioxus.recv();
@@ -1123,18 +1123,18 @@ async fn load_client_draft(key: &str) -> Result<Option<String>, AppError> {
     eval.send(key).map_err(|error| {
         ai_error(
             AppErrorCode::Internal,
-            format!("Could not read the AI draft: {error}"),
+            format!("Could not read AI client state: {error}"),
         )
     })?;
     eval.recv::<Option<String>>().await.map_err(|error| {
         ai_error(
             AppErrorCode::Internal,
-            format!("Could not read the AI draft: {error}"),
+            format!("Could not read AI client state: {error}"),
         )
     })
 }
 
-async fn save_client_draft(key: &str, value: Option<&str>) -> Result<(), AppError> {
+async fn save_client_state(key: &str, value: Option<&str>) -> Result<(), AppError> {
     let mut eval = document::eval(
         r#"
         const key = await dioxus.recv();
@@ -1153,7 +1153,7 @@ async fn save_client_draft(key: &str, value: Option<&str>) -> Result<(), AppErro
         .map_err(|error| {
             ai_error(
                 AppErrorCode::Internal,
-                format!("Could not save the AI draft: {error}"),
+                format!("Could not save AI client state: {error}"),
             )
         })?;
     match eval.recv::<Option<String>>().await {
@@ -1161,7 +1161,7 @@ async fn save_client_draft(key: &str, value: Option<&str>) -> Result<(), AppErro
         Ok(Some(message)) => Err(ai_error(AppErrorCode::Internal, message)),
         Err(error) => Err(ai_error(
             AppErrorCode::Internal,
-            format!("Could not save the AI draft: {error}"),
+            format!("Could not save AI client state: {error}"),
         )),
     }
 }

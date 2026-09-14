@@ -2,6 +2,7 @@ mod accessibility;
 mod ai;
 mod badge;
 mod button;
+mod chat_actions;
 mod checkbox;
 mod combo_button;
 mod dialog;
@@ -42,6 +43,7 @@ pub use accessibility::SkipLink;
 pub use ai::{AiChatHeader, AiComposerFrame, AiComposerToolbar, AiSendButton, AiSidebarTabs};
 pub use badge::{StatusBadge, Tone};
 pub use button::{Button, ButtonKind};
+pub use chat_actions::{ChatAction, ChatActionsMenu};
 pub use checkbox::Checkbox;
 pub use combo_button::ComboButton;
 pub use dialog::Modal;
@@ -90,7 +92,8 @@ pub use workspace_chrome::{WorkspaceHeader, WorkspaceModuleNav};
 pub mod prelude {
     pub use crate::{
         AiChatHeader, AiComposerFrame, AiComposerToolbar, AiSendButton, AiSidebarTabs, AppIcon,
-        BrandIcon, BrandMark, Button, ButtonKind, Checkbox, ComboButton, ControlSize, DangerNote,
+        BrandIcon, BrandMark, Button, ButtonKind, ChatAction, ChatActionsMenu, Checkbox,
+        ComboButton, ControlSize, DangerNote,
         DialogActions, DialogForm, Drawer, EditorAction, EditorActionsMenu, EditorMenuItem,
         EmptyState, ExplorerAction, ExplorerToolbar, Field, FileIcon, FileTree, GitChangeBadge,
         Icon, IconButton, InteractivePopover, MenuButtonTrigger, MenuContent, MenuTrigger, Modal,

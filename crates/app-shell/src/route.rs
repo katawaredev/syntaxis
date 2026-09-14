@@ -41,6 +41,8 @@ pub fn SyntaxisApp() -> Element {
     let services = use_context::<AppServices>();
     let notifications = use_notification_center(services.notifications().cloned());
     use_context_provider(|| notifications);
+    let ai_ui = syntaxis_module_ai::use_ai_ui_state();
+    use_context_provider(|| ai_ui);
     rsx! { Router::<Route> {} }
 }
 
@@ -1243,6 +1245,7 @@ fn Ai(slug: String, query: AiQuery) -> Element {
     match active_workspace() {
         Some(workspace) => rsx! { syntaxis_module_ai::AiView {
             key: "{workspace.id.0}",
+            start_new_conversation: active.should_create_agent_session(&workspace.id),
             workspace,
             base_workspace: active.base(),
             current_head: active.current_head(),
