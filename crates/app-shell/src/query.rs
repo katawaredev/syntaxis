@@ -41,7 +41,11 @@ mod tests {
     #[test]
     fn session_queries_round_trip_the_canonical_key() {
         assert_eq!(
-            AiQuery::from(AiQuery::with_session("conversation 1".into()).to_string().as_str()),
+            AiQuery::from(
+                AiQuery::with_session("conversation 1".into())
+                    .to_string()
+                    .as_str()
+            ),
             AiQuery::with_session("conversation 1".into())
         );
     }

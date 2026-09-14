@@ -8,9 +8,9 @@ use dioxus_icons::lucide::{
     FilePlus, FileUp, FolderGit2, FolderOpen, FolderPlus, GitBranch, GitCommitHorizontal, GitFork,
     Hash, Info, ListChevronsDownUp, ListChevronsUpDown, ListOrdered, LogOut, Menu, Mic,
     PanelLeftOpen, Paperclip, Play, Plus, RefreshCw, Regex, Repeat1, Replace, ReplaceAll,
-    RotateCcw, Save, ScanSearch, Search, Send, Settings, Share2, ShieldAlert, Sparkles, Square,
-    Split, SquarePen, SquareTerminal, Star, TextCursorInput, TextWrap, Trash2, Volume2, WandSparkles,
-    WholeWord, X,
+    RotateCcw, Save, ScanSearch, Search, Send, Settings, Share2, ShieldAlert, Sparkles, Split,
+    Square, SquarePen, SquareTerminal, Star, TextCursorInput, TextWrap, Trash2, Volume2,
+    WandSparkles, WholeWord, X,
 };
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum AppIcon {

@@ -4,6 +4,7 @@
 )]
 
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+use dioxus::core::Task;
 use dioxus::html::HasFileData;
 use dioxus::prelude::*;
 use syntaxis_app_contracts::{AiSettingsSection, NavigationIntent};
@@ -21,11 +22,10 @@ use crate::conversation::{activity_id, consume_ai_events};
 use crate::message::ConversationMessage;
 use crate::provider_accounts::ProviderAccountsPanel;
 use crate::{
-    AiActivity, AiAdvancedSettings, AiClientEvent, AiCommand,
-    AiConversation, AiConversationMatch, AiConversationSummary, AiExtension,
-    AiExtensionAction, AiExtensionRequest, AiExtensionWidget, AiGeneralSetting,
-    AiGeneralSettingKind, AiImageAttachment, AiManagedFeature, AiMessage, AiMessageStatus, AiModel,
-    AiModelPreferences, AiPorts, AiPrompt, AiPromptTemplate,
+    AiActivity, AiAdvancedSettings, AiClientEvent, AiCommand, AiConversation, AiConversationMatch,
+    AiConversationSummary, AiExtension, AiExtensionAction, AiExtensionRequest, AiExtensionWidget,
+    AiGeneralSetting, AiGeneralSettingKind, AiImageAttachment, AiManagedFeature, AiMessage,
+    AiMessageStatus, AiModel, AiModelPreferences, AiPorts, AiPrompt, AiPromptTemplate,
     AiProviderSettings, AiResourceScope, AiRole, AiSkill, AiSkillCatalogView, AiSkillSearchResult,
 };
 
@@ -48,7 +48,7 @@ pub fn AiView(
     workspace: WorkspaceRecord,
     base_workspace: Option<WorkspaceRecord>,
     current_head: Option<String>,
-    requested_conversation_id: ReadOnlySignal<Option<String>>,
+    requested_conversation_id: ReadSignal<Option<String>>,
     on_navigate: EventHandler<NavigationIntent>,
     on_view_conversation: EventHandler<Option<String>>,
     on_stop_viewing: EventHandler<()>,
@@ -216,8 +216,13 @@ pub fn AiView(
     use_effect(move || {
         let viewed_request = requested_conversation_id();
         let conversation_id = active_conversation_id();
-        let request_key = format!("{}:{}", viewed_workspace.0, viewed_request.as_deref().unwrap_or_default());
-        if conversation_loading() || loaded_request.peek().as_deref() != Some(request_key.as_str()) {
+        let request_key = format!(
+            "{}:{}",
+            viewed_workspace.0,
+            viewed_request.as_deref().unwrap_or_default()
+        );
+        if conversation_loading() || loaded_request.peek().as_deref() != Some(request_key.as_str())
+        {
             return;
         }
         let active = (!conversation_id.is_empty()).then_some(conversation_id);
@@ -552,14 +557,22 @@ pub fn AiView(
                 .await
             {
                 Ok(events) => {
-                    consume_ai_events(events, &conversation_id, conversation, pending, error, list_refresh).await;
+                    consume_ai_events(
+                        events,
+                        &conversation_id,
+                        conversation,
+                        pending,
+                        error,
+                        list_refresh,
+                    )
+                    .await;
                 }
                 Err(problem) => {
                     if conversation.peek().id == conversation_id {
                         error.set(Some(problem.message));
                         pending.set(false);
                     }
-                },
+                }
             }
         });
         conversation_task.set(Some(task));

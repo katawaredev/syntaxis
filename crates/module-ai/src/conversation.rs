@@ -57,13 +57,21 @@ fn finish_inflight(conversation: &mut AiConversation, status: AiMessageStatus) {
     conversation.steering_queue.clear();
     conversation.follow_up_queue.clear();
     for message in &mut conversation.messages {
-        if matches!(message.status, AiMessageStatus::Streaming | AiMessageStatus::Running) {
+        if matches!(
+            message.status,
+            AiMessageStatus::Streaming | AiMessageStatus::Running
+        ) {
             message.status = status;
         }
     }
     for activity in &mut conversation.activity {
-        if let AiActivity::Tool { status: current, .. } = activity
-            && matches!(*current, AiMessageStatus::Streaming | AiMessageStatus::Running)
+        if let AiActivity::Tool {
+            status: current, ..
+        } = activity
+            && matches!(
+                *current,
+                AiMessageStatus::Streaming | AiMessageStatus::Running
+            )
         {
             *current = status;
         }
@@ -77,7 +85,11 @@ fn finish_inflight(conversation: &mut AiConversation, status: AiMessageStatus) {
 pub(crate) fn apply_event_to_conversation(conversation: &mut AiConversation, event: &AiEvent) {
     match event {
         AiEvent::UserMessage(message) => {
-            if conversation.messages.iter().any(|item| item.id == message.id) {
+            if conversation
+                .messages
+                .iter()
+                .any(|item| item.id == message.id)
+            {
                 return;
             }
             if message.entry_id.is_some()
@@ -90,7 +102,11 @@ pub(crate) fn apply_event_to_conversation(conversation: &mut AiConversation, eve
             {
                 let placeholder_id = conversation.messages[index].id.clone();
                 conversation.messages[index] = message.clone();
-                if let Some(order_index) = conversation.item_order.iter().position(|id| id == &placeholder_id) {
+                if let Some(order_index) = conversation
+                    .item_order
+                    .iter()
+                    .position(|id| id == &placeholder_id)
+                {
                     conversation.item_order[order_index].clone_from(&message.id);
                 }
             } else {
@@ -99,7 +115,11 @@ pub(crate) fn apply_event_to_conversation(conversation: &mut AiConversation, eve
             }
         }
         AiEvent::AssistantDelta { message_id, text } => {
-            if let Some(message) = conversation.messages.iter_mut().find(|item| item.id == *message_id) {
+            if let Some(message) = conversation
+                .messages
+                .iter_mut()
+                .find(|item| item.id == *message_id)
+            {
                 message.content.push_str(text);
             } else {
                 conversation.messages.push(AiMessage {
@@ -113,7 +133,11 @@ pub(crate) fn apply_event_to_conversation(conversation: &mut AiConversation, eve
             }
         }
         AiEvent::AssistantThinkingDelta { message_id, text } => {
-            if let Some(message) = conversation.messages.iter_mut().find(|item| item.id == *message_id) {
+            if let Some(message) = conversation
+                .messages
+                .iter_mut()
+                .find(|item| item.id == *message_id)
+            {
                 message.thinking.push_str(text);
             } else {
                 conversation.messages.push(AiMessage {
@@ -127,40 +151,72 @@ pub(crate) fn apply_event_to_conversation(conversation: &mut AiConversation, eve
             }
         }
         AiEvent::AssistantCompleted(message) => {
-            if let Some(existing) = conversation.messages.iter_mut().find(|item| item.id == message.id) {
+            if let Some(existing) = conversation
+                .messages
+                .iter_mut()
+                .find(|item| item.id == message.id)
+            {
                 *existing = message.clone();
             } else {
                 conversation.messages.push(message.clone());
                 conversation.item_order.push(message.id.clone());
             }
         }
-        AiEvent::UsageUpdated { input_tokens, output_tokens } => {
+        AiEvent::UsageUpdated {
+            input_tokens,
+            output_tokens,
+        } => {
             let usage = conversation.usage.get_or_insert_default();
             usage.total_tokens = input_tokens.saturating_add(*output_tokens);
         }
         AiEvent::ToolStarted { id, name } => upsert_tool(
-            conversation, id, name, String::new(), AiMessageStatus::Running,
+            conversation,
+            id,
+            name,
+            String::new(),
+            AiMessageStatus::Running,
         ),
         AiEvent::ToolUpdated { id, output } => upsert_tool(
-            conversation, id, "Tool", output.clone(), AiMessageStatus::Running,
+            conversation,
+            id,
+            "Tool",
+            output.clone(),
+            AiMessageStatus::Running,
         ),
         AiEvent::ToolCompleted { id, output } => upsert_tool(
-            conversation, id, "Tool", output.clone(), AiMessageStatus::Complete,
+            conversation,
+            id,
+            "Tool",
+            output.clone(),
+            AiMessageStatus::Complete,
         ),
         AiEvent::ActivityUpdated(activity) => {
-            if let Some(existing) = conversation.activity.iter_mut().find(|existing| activity_id(existing) == activity_id(activity)) {
+            if let Some(existing) = conversation
+                .activity
+                .iter_mut()
+                .find(|existing| activity_id(existing) == activity_id(activity))
+            {
                 *existing = activity.clone();
             } else {
                 conversation.activity.push(activity.clone());
-                conversation.item_order.push(activity_id(activity).to_owned());
+                conversation
+                    .item_order
+                    .push(activity_id(activity).to_owned());
             }
         }
-        AiEvent::StatusChanged { running, message, pending_messages } => {
+        AiEvent::StatusChanged {
+            running,
+            message,
+            pending_messages,
+        } => {
             conversation.running = *running;
             conversation.status_message.clone_from(message);
             conversation.pending_messages = *pending_messages;
         }
-        AiEvent::QueueChanged { steering, follow_up } => {
+        AiEvent::QueueChanged {
+            steering,
+            follow_up,
+        } => {
             conversation.steering_queue.clone_from(steering);
             conversation.follow_up_queue.clone_from(follow_up);
             conversation.pending_messages = steering.len().saturating_add(follow_up.len());
@@ -168,7 +224,11 @@ pub(crate) fn apply_event_to_conversation(conversation: &mut AiConversation, eve
         AiEvent::ExtensionRequested(request) => {
             conversation.extension_request = Some(request.clone());
         }
-        AiEvent::ExtensionSurfaces { title, statuses, widgets } => {
+        AiEvent::ExtensionSurfaces {
+            title,
+            statuses,
+            widgets,
+        } => {
             conversation.extension_title.clone_from(title);
             conversation.extension_statuses.clone_from(statuses);
             conversation.extension_widgets.clone_from(widgets);
@@ -203,8 +263,15 @@ fn upsert_tool(
     output: String,
     status: AiMessageStatus,
 ) {
-    if let Some(AiActivity::Tool { name, output: current_output, status: current_status, .. }) =
-        conversation.activity.iter_mut().find(|activity| activity_id(activity) == id)
+    if let Some(AiActivity::Tool {
+        name,
+        output: current_output,
+        status: current_status,
+        ..
+    }) = conversation
+        .activity
+        .iter_mut()
+        .find(|activity| activity_id(activity) == id)
     {
         if name == "Tool" && fallback_name != "Tool" {
             *name = fallback_name.into();
@@ -239,16 +306,35 @@ mod tests {
             steering_queue: vec!["queued".into()],
             ..AiConversation::default()
         };
-        for (id, status) in [("done", AiMessageStatus::Complete), ("partial", AiMessageStatus::Streaming)] {
-            conversation.messages.push(AiMessage { id: id.into(), status, ..AiMessage::default() });
+        for (id, status) in [
+            ("done", AiMessageStatus::Complete),
+            ("partial", AiMessageStatus::Streaming),
+        ] {
+            conversation.messages.push(AiMessage {
+                id: id.into(),
+                status,
+                ..AiMessage::default()
+            });
         }
-        upsert_tool(&mut conversation, "tool", "bash", String::new(), AiMessageStatus::Running);
+        upsert_tool(
+            &mut conversation,
+            "tool",
+            "bash",
+            String::new(),
+            AiMessageStatus::Running,
+        );
         finish_inflight(&mut conversation, AiMessageStatus::Failed);
         assert!(!conversation.running);
         assert_eq!(conversation.pending_messages, 0);
         assert!(conversation.steering_queue.is_empty());
         assert_eq!(conversation.messages[0].status, AiMessageStatus::Complete);
         assert_eq!(conversation.messages[1].status, AiMessageStatus::Failed);
-        assert!(matches!(conversation.activity[0], AiActivity::Tool { status: AiMessageStatus::Failed, .. }));
+        assert!(matches!(
+            conversation.activity[0],
+            AiActivity::Tool {
+                status: AiMessageStatus::Failed,
+                ..
+            }
+        ));
     }
 }

@@ -1,6 +1,9 @@
 //! Provider login, polling, and interactive authentication prompts.
 
-#![allow(clippy::clone_on_ref_ptr, reason = "PortHandle is Rc in WASM and Arc on native targets")]
+#![allow(
+    clippy::clone_on_ref_ptr,
+    reason = "PortHandle is Rc in WASM and Arc on native targets"
+)]
 
 use dioxus::prelude::*;
 use syntaxis_ui::prelude::{Button, ButtonKind, DialogActions, DialogForm, Modal};
@@ -41,12 +44,16 @@ pub(crate) fn ProviderAccountsPanel(workspace: WorkspaceRecord) -> Element {
                     pending.set(None);
                     loop {
                         dioxus_sdk_time::sleep(std::time::Duration::from_millis(350)).await;
-                        if flow.peek().as_ref().map(|flow| flow.id.as_str()) != Some(flow_id.as_str()) {
+                        if flow.peek().as_ref().map(|flow| flow.id.as_str())
+                            != Some(flow_id.as_str())
+                        {
                             break;
                         }
                         let result = port.status(&workspace, &flow_id).await;
                         // A response to an old poll must not reopen a cancelled dialog.
-                        if flow.peek().as_ref().map(|flow| flow.id.as_str()) != Some(flow_id.as_str()) {
+                        if flow.peek().as_ref().map(|flow| flow.id.as_str())
+                            != Some(flow_id.as_str())
+                        {
                             break;
                         }
                         match result {
@@ -184,9 +191,15 @@ fn ProviderLoginDialog(
 }
 
 #[component]
-fn ProviderAuthPrompt(workspace: WorkspaceRecord, flow_id: String, prompt: AiAuthPrompt) -> Element {
+fn ProviderAuthPrompt(
+    workspace: WorkspaceRecord,
+    flow_id: String,
+    prompt: AiAuthPrompt,
+) -> Element {
     let ports = use_context::<AiPorts>();
-    let Some(port) = ports.provider_auth().cloned() else { return rsx! {}; };
+    let Some(port) = ports.provider_auth().cloned() else {
+        return rsx! {};
+    };
     let mut value = use_signal(String::new);
     let mut submitting = use_signal(|| false);
     let mut error = use_signal(|| None::<String>);

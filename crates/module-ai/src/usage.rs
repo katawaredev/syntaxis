@@ -32,7 +32,7 @@ pub(crate) fn UsageMenu(
                         class: "absolute inset-0 size-6 -rotate-90",
                         view_box: "0 0 24 24",
                         fill: "none",
-                        aria_hidden: "true",
+                        "aria-hidden": "true",
                         circle {
                             class: "stroke-muted",
                             cx: "12", cy: "12", r: "9",
@@ -115,7 +115,11 @@ fn ContextUsage(stats: AiUsage) -> Element {
     let percent = context_percent(&stats);
     let label = match (stats.context_tokens, stats.context_window) {
         (Some(tokens), Some(window)) => {
-            format!("{} of {} tokens", compact_number(tokens), compact_number(window))
+            format!(
+                "{} of {} tokens",
+                compact_number(tokens),
+                compact_number(window)
+            )
         }
         _ => "Waiting for context data".to_owned(),
     };
@@ -144,11 +148,18 @@ fn UsageStat(label: String, value: String) -> Element {
 }
 
 fn context_percent(stats: &AiUsage) -> u8 {
-    stats.context_percent.or_else(|| {
-        let tokens = stats.context_tokens?;
-        let window = stats.context_window?.max(1);
-        Some(u8::try_from((u128::from(tokens) * 100 / u128::from(window)).min(100)).unwrap_or(100))
-    }).unwrap_or_default().min(100)
+    stats
+        .context_percent
+        .or_else(|| {
+            let tokens = stats.context_tokens?;
+            let window = stats.context_window?.max(1);
+            Some(
+                u8::try_from((u128::from(tokens) * 100 / u128::from(window)).min(100))
+                    .unwrap_or(100),
+            )
+        })
+        .unwrap_or_default()
+        .min(100)
 }
 
 fn usage_ring_class(percent: u8) -> &'static str {
@@ -187,7 +198,11 @@ fn compact_number(value: u64) -> String {
 }
 
 fn format_cost(microusd: u64) -> String {
-    format!("${}.{:04}", microusd / 1_000_000, (microusd % 1_000_000) / 100)
+    format!(
+        "${}.{:04}",
+        microusd / 1_000_000,
+        (microusd % 1_000_000) / 100
+    )
 }
 
 #[cfg(test)]

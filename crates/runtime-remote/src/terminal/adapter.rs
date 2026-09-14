@@ -59,7 +59,9 @@ impl<T: RemoteTerminalCommandsTransport> TerminalCommandsPort for RemoteTerminal
 }
 
 #[async_trait(?Send)]
-impl<T: RemoteTerminalCommandsTransport> TerminalCommandMutationsPort for RemoteTerminalCommands<T> {
+impl<T: RemoteTerminalCommandsTransport> TerminalCommandMutationsPort
+    for RemoteTerminalCommands<T>
+{
     async fn add(
         &self,
         workspace: &WorkspaceRecord,

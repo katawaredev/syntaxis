@@ -70,7 +70,8 @@ pub(crate) fn serve() -> ! {
         async move {
             let auth_layer =
                 axum::middleware::from_fn_with_state(state.clone(), require_authentication);
-            let preview_layer = axum::middleware::from_fn(syntaxis_runtime_remote::preview_dispatch);
+            let preview_layer =
+                axum::middleware::from_fn(syntaxis_runtime_remote::preview_dispatch);
             let login_page_state = state.clone();
             let login_state = state.clone();
             let logout_state = state.clone();

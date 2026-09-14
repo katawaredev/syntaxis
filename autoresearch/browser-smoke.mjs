@@ -334,25 +334,34 @@ try {
 
   stage = "AI message actions and usage";
   await page.hover("[data-agent-response]");
-  await page.waitForFunction(() => {
-    const button = document.querySelector('button[aria-label="Copy response"]');
-    return button && Number(getComputedStyle(button.parentElement).opacity) === 1;
-  }, { timeout: 30_000 });
+  await page.waitForFunction(
+    () => {
+      const button = document.querySelector('button[aria-label="Copy response"]');
+      return button && Number(getComputedStyle(button.parentElement).opacity) === 1;
+    },
+    { timeout: 30_000 },
+  );
   await page.evaluate(() => {
     const id = document.querySelector("[data-agent-response]").dataset.agentResponse;
-    window.dispatchEvent(new CustomEvent("syntaxis-ai-read-aloud", {
-      detail: { kind: "availability", available: true },
-    }));
-    window.dispatchEvent(new CustomEvent("syntaxis-ai-read-aloud", {
-      detail: { kind: "start", id },
-    }));
+    window.dispatchEvent(
+      new CustomEvent("syntaxis-ai-read-aloud", {
+        detail: { kind: "availability", available: true },
+      }),
+    );
+    window.dispatchEvent(
+      new CustomEvent("syntaxis-ai-read-aloud", {
+        detail: { kind: "start", id },
+      }),
+    );
   });
   await page.waitForSelector('button[aria-label="Stop reading response"]', { timeout: 30_000 });
   await page.evaluate(() => {
     const id = document.querySelector("[data-agent-response]").dataset.agentResponse;
-    window.dispatchEvent(new CustomEvent("syntaxis-ai-read-aloud", {
-      detail: { kind: "end", id },
-    }));
+    window.dispatchEvent(
+      new CustomEvent("syntaxis-ai-read-aloud", {
+        detail: { kind: "end", id },
+      }),
+    );
   });
   await page.waitForSelector('button[aria-label="Read response aloud"]', { timeout: 30_000 });
   await page.evaluate(() => {
@@ -369,7 +378,9 @@ try {
     if (header?.querySelector('[aria-label="AI settings"], [aria-label="Compact context"]')) {
       throw new Error("The chat header must not duplicate settings or compaction controls.");
     }
-    for (const button of document.querySelectorAll('button[aria-label="Copy response"], form button[aria-label]')) {
+    for (const button of document.querySelectorAll(
+      'button[aria-label="Copy response"], form button[aria-label]',
+    )) {
       if (button.type !== "button" && button.getAttribute("aria-label") !== "Send message") {
         throw new Error("An icon action must not submit the composer.");
       }
@@ -435,23 +446,32 @@ try {
     () => !document.querySelector('button[aria-label="Send message"]')?.disabled,
     { timeout: 30_000 },
   );
-  await page.waitForFunction((sessionId) => Object.keys(localStorage).some((key) =>
-    key.startsWith("syntaxis:ai-draft:")
-      && key.endsWith(`:${sessionId}`)
-      && localStorage.getItem(key) === "Keep this unsent draft"),
+  await page.waitForFunction(
+    (sessionId) =>
+      Object.keys(localStorage).some(
+        (key) =>
+          key.startsWith("syntaxis:ai-draft:") &&
+          key.endsWith(`:${sessionId}`) &&
+          localStorage.getItem(key) === "Keep this unsent draft",
+      ),
     { timeout: 30_000 },
     previousSession,
   );
   await clickButton(page, "New chat");
-  await page.waitForFunction((sessionId) => {
-    const active = new URL(location.href).searchParams.get("sessionId");
-    return active && active !== sessionId;
-  }, { timeout: 30_000 }, previousSession);
+  await page.waitForFunction(
+    (sessionId) => {
+      const active = new URL(location.href).searchParams.get("sessionId");
+      return active && active !== sessionId;
+    },
+    { timeout: 30_000 },
+    previousSession,
+  );
   await page.goBack();
-  await page.waitForFunction((sessionId) =>
-    new URL(location.href).searchParams.get("sessionId") === sessionId
-      && document.querySelector('[role="log"]')?.textContent.includes("hello!")
-      && document.querySelector("#syntaxis-ai-composer")?.value === "Keep this unsent draft",
+  await page.waitForFunction(
+    (sessionId) =>
+      new URL(location.href).searchParams.get("sessionId") === sessionId &&
+      document.querySelector('[role="log"]')?.textContent.includes("hello!") &&
+      document.querySelector("#syntaxis-ai-composer")?.value === "Keep this unsent draft",
     { timeout: 30_000 },
     previousSession,
   );
