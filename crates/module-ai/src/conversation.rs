@@ -4,6 +4,40 @@ use dioxus::prelude::*;
 
 use crate::{AiActivity, AiConversation, AiEvent, AiMessage, AiMessageStatus, AiRole};
 
+pub(crate) async fn watch_ai_conversation(
+    port: &dyn crate::AiConversationPort,
+    workspace: &syntaxis_workspace::WorkspaceRecord,
+    conversation: Signal<AiConversation>,
+    mut pending: Signal<bool>,
+    mut error: Signal<Option<String>>,
+    list_refresh: Signal<u64>,
+) {
+    let current = conversation.peek().clone();
+    if current.id.is_empty() || !current.running {
+        return;
+    }
+    pending.set(true);
+    match port.watch(workspace, &current.id).await {
+        Ok(events) => {
+            consume_ai_events(
+                events,
+                &current.id,
+                conversation,
+                pending,
+                error,
+                list_refresh,
+            )
+            .await;
+        }
+        Err(problem) => {
+            if conversation.peek().id == current.id {
+                error.set(Some(problem.message));
+                pending.set(false);
+            }
+        }
+    }
+}
+
 pub(crate) async fn consume_ai_events(
     mut events: Box<dyn crate::AiEventStream>,
     conversation_id: &str,
@@ -84,6 +118,9 @@ fn finish_inflight(conversation: &mut AiConversation, status: AiMessageStatus) {
 )]
 pub(crate) fn apply_event_to_conversation(conversation: &mut AiConversation, event: &AiEvent) {
     match event {
+        AiEvent::ConversationUpdated(snapshot) => {
+            conversation.clone_from(snapshot.as_ref());
+        }
         AiEvent::UserMessage(message) => {
             if conversation
                 .messages
@@ -297,6 +334,26 @@ fn upsert_tool(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reconnect_snapshot_replaces_stale_running_state_and_model() {
+        let mut conversation = AiConversation {
+            id: "chat".into(),
+            running: true,
+            ..AiConversation::default()
+        };
+        let refreshed = AiConversation {
+            id: "chat".into(),
+            selected_model_id: Some("provider/model".into()),
+            status_message: "Ready".into(),
+            ..AiConversation::default()
+        };
+        apply_event_to_conversation(
+            &mut conversation,
+            &AiEvent::ConversationUpdated(Box::new(refreshed.clone())),
+        );
+        assert_eq!(conversation, refreshed);
+    }
 
     #[test]
     fn disconnected_stream_finishes_partial_messages_without_changing_completed_ones() {

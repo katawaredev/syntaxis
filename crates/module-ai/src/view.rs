@@ -18,7 +18,7 @@ use syntaxis_ui::prelude::{
 };
 use syntaxis_workspace::{EntryKind, RelativePath, WorkspaceRecord};
 
-use crate::conversation::{activity_id, consume_ai_events};
+use crate::conversation::{activity_id, consume_ai_events, watch_ai_conversation};
 use crate::message::ConversationMessage;
 use crate::provider_accounts::ProviderAccountsPanel;
 use crate::session::{restore_conversation, selection_after_delete, selection_key};
@@ -198,7 +198,7 @@ pub fn AiView(
     });
     let model_workspace = workspace.clone();
     let model_port = ports.models().cloned();
-    let models = use_resource(move || {
+    let mut models = use_resource(move || {
         let workspace = model_workspace.clone();
         let port = model_port.clone();
         let conversation_id = active_conversation_id();
@@ -246,12 +246,21 @@ pub fn AiView(
             }
         }
         on_view_conversation.call(active.clone());
-        if active.as_deref() != viewed_request.as_deref()
-            && let Some(conversation_id) = active
-        {
+        if active.is_none() {
+            if let Some(id) = ai_ui.selected(&viewed_workspace) {
+                ai_ui.forget(&viewed_workspace, &id);
+            }
+            if let Some(client) = selection_client.clone() {
+                let key = selection_key(&viewed_workspace);
+                spawn(async move {
+                    let _ = client.save_state(&key, None).await;
+                });
+            }
+        }
+        if active.as_deref() != viewed_request.as_deref() {
             on_navigate.call(NavigationIntent::Ai {
                 workspace: viewed_workspace.clone(),
-                conversation_id: Some(conversation_id),
+                conversation_id: active,
             });
         }
     });
@@ -387,6 +396,8 @@ pub fn AiView(
         pending.set(false);
         session_action_busy.set(false);
         conversation_load_error.set(None);
+        error.set(None);
+        notice.set(None);
         let workspace = load_workspace.clone();
         let conversation_port = conversation_port.clone();
         let client = restore_client.clone();
@@ -401,7 +412,7 @@ pub fn AiView(
                 return;
             };
             let result = if create_new {
-                port.create(&workspace).await
+                port.create(&workspace).await.map(Some)
             } else {
                 restore_conversation(
                     port.as_ref(),
@@ -417,33 +428,19 @@ pub fn AiView(
             }
             match result {
                 Ok(value) => {
-                    let running = value.running;
-                    let conversation_id = value.id.clone();
+                    let value = value.unwrap_or_default();
                     conversation.set(value);
                     conversation_loading.set(false);
                     *list_refresh.write() += 1;
-                    if running {
-                        pending.set(true);
-                        match port.watch(&workspace, &conversation_id).await {
-                            Ok(events) => {
-                                consume_ai_events(
-                                    events,
-                                    &conversation_id,
-                                    conversation,
-                                    pending,
-                                    error,
-                                    list_refresh,
-                                )
-                                .await;
-                            }
-                            Err(problem) => {
-                                if conversation.peek().id == conversation_id {
-                                    error.set(Some(problem.message));
-                                    pending.set(false);
-                                }
-                            }
-                        }
-                    }
+                    watch_ai_conversation(
+                        port.as_ref(),
+                        &workspace,
+                        conversation,
+                        pending,
+                        error,
+                        list_refresh,
+                    )
+                    .await;
                 }
                 Err(problem) => {
                     error.set(Some(problem.message.clone()));
@@ -619,6 +616,7 @@ pub fn AiView(
                 .any(|model| &model.id == selected && model.supports_images)
         });
     let can_submit = !conversation_loading()
+        && !active_conversation_id().is_empty()
         && (!prompt().trim().is_empty() || !attachments().is_empty())
         && (attachments().is_empty() || accepts_images);
     let agent_name = conversation()
@@ -689,8 +687,7 @@ pub fn AiView(
             conversation_id,
         });
     });
-    let open_conversation =
-        EventHandler::new(move |id: String| select_conversation.call(Some(id)));
+    let open_conversation = EventHandler::new(move |id: String| select_conversation.call(Some(id)));
 
     rsx! {
         document::Stylesheet { href: AI_CHAT_CSS }
@@ -723,14 +720,25 @@ pub fn AiView(
                                         move |_| {
                                             let Some(port) = port.clone() else { return; };
                                             let workspace = workspace.clone();
+                                            if let Some(task) = conversation_task.write().take() {
+                                                task.cancel();
+                                            }
                                             conversation_loading.set(true);
                                             conversation_load_error.set(None);
+                                            error.set(None);
+                                            notice.set(None);
                                             let task = spawn(async move {
                                                 match port.create(&workspace).await {
-                                                    Ok(created) => { conversation.set(created); mobile_sidebar_open.set(false); *list_refresh.write() += 1; }
+                                                    Ok(created) => {
+                                                        conversation.set(created);
+                                                        mobile_sidebar_open.set(false);
+                                                        conversation_loading.set(false);
+                                                        *list_refresh.write() += 1;
+                                                        watch_ai_conversation(port.as_ref(), &workspace, conversation, pending, error, list_refresh).await;
+                                                    }
                                                     Err(problem) => {
-                                                        error.set(Some(problem.message.clone()));
-                                                        conversation_load_error.set(Some(problem.message));
+                                                        error.set(Some(problem.message));
+                                                        *list_refresh.write() += 1;
                                                     },
                                                 }
                                                 conversation_loading.set(false);
@@ -881,8 +889,10 @@ pub fn AiView(
                 header { class: "flex min-h-12 items-center gap-2 border-b border-border bg-background px-2.5",
                     div { class: "max-md:hidden", IconButton { label: if sidebar_open() { "Hide AI sidebar" } else { "Show AI sidebar" }, icon: AppIcon::Explorer, pressed: sidebar_open(), onclick: move |_| sidebar_open.toggle() } }
                     div { class: "hidden max-md:block", IconButton { label: if mobile_sidebar_open() { "Hide AI sidebar" } else { "Show AI sidebar" }, icon: AppIcon::Explorer, pressed: mobile_sidebar_open(), onclick: move |_| mobile_sidebar_open.toggle() } }
-                    span { class: ai_header_status_dot(pending(), &conversation().status_message), aria_hidden: true }
-                    strong { class: "min-w-0 flex-1 truncate text-xs", if let Some(title) = conversation().extension_title { "{title}" } else if conversation().title.is_empty() { "New chat" } else { "{conversation().title}" } }
+                    if !active_conversation_id().is_empty() {
+                        span { class: ai_header_status_dot(pending(), &conversation().status_message), aria_hidden: true }
+                    }
+                    strong { class: "min-w-0 flex-1 truncate text-xs", if active_conversation_id().is_empty() { "Chat" } else if let Some(title) = conversation().extension_title { "{title}" } else if conversation().title.is_empty() { "New chat" } else { "{conversation().title}" } }
                     if ports.worktrees().is_some() {
                         details { class: "group relative min-w-0",
                             summary { class: "flex h-8 max-w-44 cursor-pointer list-none items-center gap-1.5 rounded-lg px-2 text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground",
@@ -909,22 +919,34 @@ pub fn AiView(
                     }
                     if !available_models.is_empty() {
                         AiModelPicker {
+                            key: "{active_conversation_id}",
                             workspace: workspace.clone(),
                             models: available_models,
                             conversation,
-                            disabled: pending(),
+                            disabled: pending() || conversation_loading(),
                             error,
                         }
+                    } else if !active_conversation_id().is_empty() && ports.models().is_some() {
+                        match models() {
+                            None => rsx! { span { class: "text-[10px] text-muted-foreground", role: "status", "Loading models…" } },
+                            Some(Err(problem)) => rsx! {
+                                button { class: "text-[10px] text-destructive", r#type: "button", title: problem.message,
+                                    onclick: move |_| models.restart(), "Retry loading models" }
+                            },
+                            Some(Ok(_)) => rsx! { span { class: "text-[10px] text-muted-foreground", "No models available" } },
+                        }
                     }
+                    if !active_conversation_id().is_empty() {
                     crate::usage::UsageMenu {
                         stats: conversation().usage,
                         statuses: conversation().extension_statuses,
                         compact_supported: ports.conversation().is_some_and(|port| port.supports_compaction()),
-                        compact_disabled: pending() || conversation().messages.is_empty(),
+                        compact_disabled: pending() || conversation_loading() || conversation().messages.is_empty(),
                         on_compact: move |()| {
                             compact_instructions.set(String::new());
                             compact_open.set(true);
                         },
+                    }
                     }
                 }
                 if !pending()
@@ -948,6 +970,11 @@ pub fn AiView(
                                 h2 { class: "text-lg font-semibold tracking-tight text-foreground", "Conversation unavailable" }
                                 p { class: "mt-1.5 max-w-sm text-xs leading-relaxed text-muted-foreground", "{problem}" }
                                 p { class: "mt-1 text-[10px] text-muted-foreground", "Choose another chat or start a new one." }
+                            }
+                        } else if active_conversation_id().is_empty() {
+                            div { class: "mx-auto flex min-h-full w-full max-w-2xl flex-col items-center justify-center px-3 py-8 text-center",
+                                h2 { class: "text-lg font-semibold tracking-tight text-foreground", "No chats yet" }
+                                p { class: "mt-1.5 max-w-sm text-xs leading-relaxed text-muted-foreground", "Press New chat to start a conversation, or open Settings to configure your assistant." }
                             }
                         } else if conversation().messages.is_empty() && conversation().activity.is_empty() {
                             div { class: "mx-auto flex min-h-full w-full max-w-2xl flex-col items-center justify-center px-3 py-8 text-center",
@@ -1034,6 +1061,7 @@ pub fn AiView(
                         }
                     }
                 }
+                if !active_conversation_id().is_empty() {
                 form { class: "bg-card px-2.5 pt-1 pb-[max(0.65rem,env(safe-area-inset-bottom))]", onsubmit: move |event| { event.prevent_default(); submit.call(if pending() { crate::AiPromptDelivery::Steer } else { crate::AiPromptDelivery::Prompt }); },
                     div { class: "relative mx-auto max-w-3xl rounded-2xl border border-input bg-card shadow-[0_8px_30px_#0002] focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/20",
                         ExtensionWidgets { widgets: conversation().extension_widgets, placement: "aboveEditor" }
@@ -1203,6 +1231,7 @@ pub fn AiView(
                         }
                         ExtensionWidgets { widgets: conversation().extension_widgets, placement: "belowEditor" }
                     }
+                }
                 }
                 if drag_active() {
                     div { class: "pointer-events-none absolute inset-3 z-90 grid place-items-center rounded-2xl border-2 border-dashed border-primary bg-primary/10 text-sm font-medium text-primary backdrop-blur-sm",
@@ -1378,8 +1407,12 @@ pub fn AiView(
                                                     .and_then(|items| selection_after_delete(items, &target_id, &target_id));
                                                 conversation_loading.set(true);
                                                 conversation.set(AiConversation::default());
+                                                prompt.set(String::new());
+                                                attachments.set(Vec::new());
+                                                editing_message.set(None);
+                                                loaded_draft_key.set(String::new());
                                                 // Reuse restoration (including reconnecting a running chat).
-                                                // No neighbor means re-list, not unconditionally create.
+                                                // An empty history stays empty until New chat is pressed.
                                                 select_conversation.call(next);
                                             }
                                             delete_target.set(None);
@@ -1629,7 +1662,12 @@ fn AiModelPicker(
             }
             if open() {
                 button { class: "fixed inset-0 z-70 cursor-default", r#type: "button", aria_label: "Close model picker", onclick: move |_| open.set(false) }
-                div { class: "absolute top-[calc(100%+6px)] right-0 z-80 w-[min(430px,calc(100vw-1rem))] overflow-hidden rounded-xl border border-border bg-popover shadow-2xl",
+                div { class: "ai-model-picker absolute top-[calc(100%+6px)] right-0 z-80 w-[min(430px,calc(100vw-1rem))] overflow-hidden rounded-xl border border-border bg-popover shadow-2xl",
+                    onkeydown: move |event| if event.key() == Key::Escape { open.set(false); },
+                    div { class: "ai-model-picker-mobile-header",
+                        strong { "Choose model" }
+                        button { r#type: "button", aria_label: "Done choosing model", onclick: move |_| open.set(false), "Done" }
+                    }
                     if let Some(model) = selected.clone() {
                         div { class: "flex items-start gap-3 border-b border-border px-3 py-3",
                             div { class: "min-w-0 flex-1",
@@ -1708,12 +1746,12 @@ fn AiModelPicker(
                         }
                     }
                     div { class: "border-b border-border p-3",
-                        div { class: "flex h-9 items-center gap-2 rounded-lg border border-input bg-background px-3 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/35",
+                        div { class: "ai-model-picker-search flex h-9 items-center gap-2 rounded-lg border border-input bg-background px-3 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/35",
                             Icon { icon: AppIcon::Search, size: 14 }
                             input { class: "min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground", r#type: "search", name: "model-search", autocomplete: "off", value: query(), placeholder: "Search models…", aria_label: "Search models", oninput: move |event| query.set(event.value()), onkeydown: move |event| if event.key() == Key::Escape { open.set(false); } }
                         }
                     }
-                    div { class: "max-h-[min(360px,55vh)] overflow-y-auto p-1.5",
+                    div { class: "ai-model-picker-list max-h-[min(360px,55vh)] overflow-y-auto p-1.5",
                         if favourites.is_empty() && groups.is_empty() { p { class: "px-3 py-8 text-center text-xs text-muted-foreground", "No matching models" } }
                         if !favourites.is_empty() {
                             p { class: "sticky top-0 z-1 flex h-8 items-center gap-2 bg-popover/95 px-2.5 text-[9px] font-semibold tracking-wide text-muted-foreground uppercase", Icon { icon: AppIcon::Favourite, size: 11 } "Favourites" }

@@ -161,9 +161,17 @@ pub(super) fn handle_pi_response(
     if response.get("success").and_then(Value::as_bool) == Some(false) {
         let message =
             string_field(response, "error").unwrap_or_else(|| "Pi rejected a request".into());
-        let _ = events.send(ServerMessage::Error {
-            error: AgentError::new(AgentErrorCode::InvalidRequest, message),
-        });
+        let error = AgentError::new(AgentErrorCode::InvalidRequest, message);
+        let mut guard = lock(state);
+        if response
+            .get("id")
+            .and_then(Value::as_str)
+            .is_some_and(|id| guard.initial_responses.contains(&id))
+        {
+            guard.initial_error = Some(error.clone());
+        }
+        drop(guard);
+        let _ = events.send(ServerMessage::Error { error });
         return;
     }
     let command = response
@@ -289,6 +297,17 @@ pub(super) fn handle_pi_response(
             });
         }
         _ => {}
+    }
+    let mut guard = lock(state);
+    if let Some(id) = response.get("id").and_then(Value::as_str)
+        && guard.initial_responses.contains(&id)
+    {
+        guard.initial_responses.retain(|pending| *pending != id);
+        if guard.initial_responses.is_empty() {
+            let snapshot = guard.snapshot.clone();
+            drop(guard);
+            let _ = events.send(ServerMessage::Snapshot { snapshot });
+        }
     }
 }
 pub(super) fn handle_messages_response(

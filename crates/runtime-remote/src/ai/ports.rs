@@ -243,7 +243,9 @@ impl AiConversationPort for DioxusAi {
         Ok(Box::new(RemoteAiEventStream {
             socket,
             conversation_id: conversation_id.to_owned(),
-            pending: None,
+            pending: Some(AiEvent::ConversationUpdated(Box::new(
+                conversation_from_snapshot(conversation_id.to_owned(), snapshot),
+            ))),
             assistant,
             received: 0,
             accumulated_event_bytes: 0,
@@ -719,7 +721,9 @@ async fn save_client_state(key: &str, value: Option<&str>) -> Result<(), AppErro
     match eval.recv::<Option<String>>().await {
         Ok(None) => Ok(()),
         Ok(Some(message)) => Err(agent_error(message)),
-        Err(error) => Err(agent_error(format!("Could not save AI client state: {error}"))),
+        Err(error) => Err(agent_error(format!(
+            "Could not save AI client state: {error}"
+        ))),
     }
 }
 
@@ -2193,7 +2197,13 @@ mod tests {
     #[test]
     fn session_lists_do_not_acknowledge_mutations() {
         assert!(
-            !action_completed(ServerMessage::Sessions { sessions: Vec::new() }, 42).unwrap()
+            !action_completed(
+                ServerMessage::Sessions {
+                    sessions: Vec::new()
+                },
+                42
+            )
+            .unwrap()
         );
         assert!(!action_completed(ServerMessage::Pong { nonce: 41 }, 42).unwrap());
         assert!(action_completed(ServerMessage::Pong { nonce: 42 }, 42).unwrap());

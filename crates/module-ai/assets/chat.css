@@ -135,6 +135,69 @@
   background: color-mix(in oklab, var(--primary) 25%, transparent);
 }
 
+.ai-model-picker-mobile-header {
+  display: none;
+}
+
+@media (max-width: 590px) {
+  .ai-model-picker {
+    position: fixed;
+    inset: auto max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom))
+      max(8px, env(safe-area-inset-left));
+    width: auto;
+    max-height: calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .ai-model-picker-mobile-header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--popover);
+    font-size: 14px;
+  }
+
+  .ai-model-picker button {
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 12px;
+  }
+
+  .ai-model-picker-search {
+    height: auto;
+    min-height: 44px;
+  }
+
+  .ai-model-picker input {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .ai-model-picker input[type="search"] {
+    width: 100%;
+  }
+
+  .ai-model-picker-list {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .ai-model-picker-list button:first-child {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .ai-model-picker-list button:first-child > strong {
+    text-align: left;
+  }
+}
+
 @media (max-width: 520px) {
   .ai-markdown {
     font-size: 12px;

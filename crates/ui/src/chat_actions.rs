@@ -33,7 +33,12 @@ pub fn ChatActionsMenu(
             "Export HTML",
             disabled || running,
         ),
-        (ChatAction::Rename, AppIcon::NewChat, "Rename chat", disabled),
+        (
+            ChatAction::Rename,
+            AppIcon::NewChat,
+            "Rename chat",
+            disabled,
+        ),
         (ChatAction::Delete, AppIcon::Delete, "Delete chat", disabled),
     ];
     rsx! {
@@ -51,7 +56,6 @@ pub fn ChatActionsMenu(
                 for (index, (action, icon, label, disabled)) in actions.into_iter().enumerate() {
                     if index == 2 { hr {} }
                     DropdownMenuItem::<ChatAction> {
-                        key: "{index}",
                         index,
                         value: action,
                         disabled,

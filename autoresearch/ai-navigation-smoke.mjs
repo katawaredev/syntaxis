@@ -25,6 +25,7 @@ export async function checkAiNavigation(page, clickButton, clickLink) {
     );
     await waitForCount(page, initial.length + index + 1);
     await waitForSelected(page, new URL(page.url()).searchParams.get("sessionId"));
+    await checkModelPicker(page, clickButton);
   }
   const count = initial.length + 2;
   await selectChat(page, original);
@@ -87,17 +88,26 @@ export async function checkAiNavigation(page, clickButton, clickLink) {
   }
   const last = remaining[0];
   await deleteChat(page, last, clickButton);
+  await page.waitForFunction(() => !new URL(location.href).searchParams.has("sessionId"), timeout);
+  await waitForCount(page, 0);
   await page.waitForFunction(
-    (deleted) => {
-      const active = new URL(location.href).searchParams.get("sessionId");
-      return active && active !== deleted;
-    },
+    () => document.querySelector('[role="log"]')?.textContent.includes("Press New chat"),
     timeout,
-    last,
   );
+  assert.equal(await page.$("#syntaxis-ai-composer"), null);
+  await clickButton(page, "Settings");
+  await page.waitForSelector('[aria-label="AI settings"]', timeout);
+  await clickButton(page, "Chat");
+  await waitForCount(page, 0);
+  await page.waitForFunction(
+    () => document.querySelector('[role="log"]')?.textContent.includes("Press New chat"),
+    timeout,
+  );
+  await clickButton(page, "New chat");
   await waitForCount(page, 1);
   const replacement = (await chatIds(page))[0];
   await waitForSelected(page, replacement);
+  await checkModelPicker(page, clickButton);
   await clickLink(page, "Files");
   await page.waitForFunction(() => location.pathname.endsWith("/files"), timeout);
   await clickLink(page, "AI");
@@ -106,9 +116,17 @@ export async function checkAiNavigation(page, clickButton, clickLink) {
 }
 
 async function chatIds(page) {
-  return page.$$eval(rows, (elements) =>
-    elements.map((element) => element.dataset.conversationId),
-  );
+  return page.$$eval(rows, (elements) => elements.map((element) => element.dataset.conversationId));
+}
+
+async function checkModelPicker(page, clickButton) {
+  await page.waitForFunction(() => {
+    const picker = document.querySelector('button[aria-label="Choose AI model"]');
+    return picker && !picker.disabled;
+  }, timeout);
+  await clickButton(page, "Choose AI model");
+  await page.waitForSelector('button[aria-label="Choose AI model"][aria-expanded="true"]', timeout);
+  await clickButton(page, "Close model picker");
 }
 
 async function waitForCount(page, count) {
@@ -182,10 +200,7 @@ async function selectAction(page, label) {
 
 async function waitForMenusClosed(page) {
   await page.waitForFunction(
-    () =>
-      !document.querySelector(
-        'button[aria-label^="Chat actions for "][aria-expanded="true"]',
-      ),
+    () => !document.querySelector('button[aria-label^="Chat actions for "][aria-expanded="true"]'),
     timeout,
   );
 }

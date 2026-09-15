@@ -46,7 +46,7 @@ pub(crate) async fn restore_conversation(
     workspace: &WorkspaceRecord,
     requested: Option<&str>,
     remembered: Option<String>,
-) -> Result<AiConversation, AppError> {
+) -> Result<Option<AiConversation>, AppError> {
     // A failed listing must not be mistaken for an empty workspace.
     let items = port.list(workspace).await?;
     let remembered = match (remembered, client) {
@@ -59,8 +59,8 @@ pub(crate) async fn restore_conversation(
         (None, None) => None,
     };
     match choose_conversation(&items, requested, remembered.as_deref()) {
-        Some(id) => port.open(workspace, &id).await,
-        None => port.create(workspace).await,
+        Some(id) => port.open(workspace, &id).await.map(Some),
+        None => Ok(None),
     }
 }
 
@@ -71,7 +71,10 @@ fn choose_conversation(
 ) -> Option<String> {
     requested
         .and_then(|id| items.iter().find(|item| item.id == id))
-        .or_else(|| remembered.and_then(|id| items.iter().find(|item| item.id == id)))
+        .or_else(|| {
+            let id = remembered?;
+            items.iter().find(|item| item.id == id)
+        })
         .or_else(|| items.first())
         .map(|item| item.id.clone())
 }
@@ -87,7 +90,10 @@ pub(crate) fn selection_after_delete(
     let index = items.iter().position(|item| item.id == deleted)?;
     items
         .get(index + 1)
-        .or_else(|| index.checked_sub(1).and_then(|index| items.get(index)))
+        .or_else(|| {
+            let index = index.checked_sub(1)?;
+            items.get(index)
+        })
         .map(|item| item.id.clone())
 }
 
@@ -138,7 +144,7 @@ mod tests {
     }
 
     #[test]
-    fn only_an_empty_list_needs_a_new_chat() {
+    fn an_empty_list_leaves_no_selection() {
         assert_eq!(
             choose_conversation(&chats(), None, None),
             Some("first".into()),

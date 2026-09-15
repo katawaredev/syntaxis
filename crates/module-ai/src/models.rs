@@ -485,6 +485,7 @@ pub struct AiExtensionPage {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AiEvent {
+    ConversationUpdated(Box<AiConversation>),
     UserMessage(AiMessage),
     AssistantDelta {
         message_id: String,
