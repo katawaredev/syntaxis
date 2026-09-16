@@ -2,6 +2,10 @@
 
 #[cfg(target_arch = "wasm32")]
 mod ai;
+#[cfg(any(target_arch = "wasm32", test))]
+mod ai_resource_format;
+#[cfg(target_arch = "wasm32")]
+mod ai_tools;
 #[cfg(target_arch = "wasm32")]
 mod bridge;
 #[cfg(target_arch = "wasm32")]
@@ -65,7 +69,7 @@ pub fn services() -> AppServices {
         ));
         let git = Rc::new(BrowserGitAdapter::new(workspace_events.clone()));
         let preview = Rc::new(BrowserPreviewAdapter::new(OpfsWorkspaceFiles));
-        let ai = Rc::new(BrowserAiAdapter::default());
+        let ai = Rc::new(BrowserAiAdapter::new(workspace_events.clone()));
         return services
             .with_workspace_catalog(Rc::new(BrowserWorkspaceCatalog))
             .with_runtime_status(Rc::new(BrowserWorkspaceCatalog))
@@ -94,6 +98,8 @@ pub fn services() -> AppServices {
                     .with_conversation(ai.clone())
                     .with_models(ai.clone())
                     .with_settings(ai.clone())
+                    .with_provider_auth(ai.clone())
+                    .with_resources(ai.clone())
                     .with_client(ai),
             );
     }

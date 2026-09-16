@@ -103,7 +103,8 @@ page.on("request", async (request) => {
   }
   const corsHeaders = {
     "access-control-allow-origin": "*",
-    "access-control-allow-headers": "authorization,content-type",
+    "access-control-allow-headers":
+      request.headers()["access-control-request-headers"] ?? "authorization,content-type",
     "access-control-allow-methods": "POST,OPTIONS",
   };
   if (request.method() === "OPTIONS") {
@@ -114,7 +115,14 @@ page.on("request", async (request) => {
     authorization: request.headers().authorization,
     body: JSON.parse(request.postData() ?? "{}"),
   });
-  const prompt = providerRequests.at(-1)?.body.messages?.at(-1)?.content;
+  const content = providerRequests.at(-1)?.body.messages?.at(-1)?.content;
+  const prompt =
+    typeof content === "string"
+      ? content
+      : content
+          ?.filter((part) => part.type === "text")
+          .map((part) => part.text)
+          .join("");
   if (prompt === "Cancel me") {
     await new Promise((resolve) => setTimeout(resolve, 2_000));
   }
@@ -296,8 +304,20 @@ try {
   stage = "AI provider settings";
   await page.waitForSelector("#ai-endpoint", { timeout: 30_000 });
   await setInputValue(page, "#ai-endpoint", "https://provider.invalid/v1/chat/completions");
-  await setInputValue(page, "#ai-model", "smoke-model");
-  await setInputValue(page, "#ai-credential", "smoke-key");
+  await clickButton(page, "Save endpoint");
+  await page.click('[data-provider-id="custom"] button');
+  await page.waitForSelector('[role="dialog"] input[type="password"]', { timeout: 30_000 });
+  await setInputValue(page, '[role="dialog"] input[type="password"]', "smoke-key");
+  await clickButton(page, "Continue");
+  await page.waitForFunction(
+    () => document.querySelector('[role="dialog"]')?.textContent.includes("Credentials saved"),
+    { timeout: 30_000 },
+  );
+  await clickButton(page, "Close");
+  await clickButton(page, "General");
+  await page.waitForSelector('#ai-model option[value="custom/"]', { timeout: 30_000 });
+  await page.select("#ai-model", "custom/");
+  await setInputValue(page, "#ai-custom-model", "smoke-model");
   await clickButton(page, "Save settings");
   await page.waitForFunction(() => document.body.innerText.includes("AI provider settings saved"), {
     timeout: 30_000,
@@ -305,6 +325,8 @@ try {
   stage = "AI conversation startup";
   await clickButton(page, "Chat");
   await page.waitForSelector("[aria-label='AI assistant']", { timeout: 30_000 });
+  await clickButton(page, "New chat");
+  await page.waitForSelector("#syntaxis-ai-composer", { timeout: 30_000 });
   await setTextAreaValue(page, "#syntaxis-ai-composer", "Stream a reply");
   await page.waitForFunction(
     () => !document.querySelector('button[aria-label="Send message"]')?.disabled,
@@ -432,8 +454,7 @@ try {
   await page.click('button[aria-label="Send message"]');
   await waitForProviderRequests(providerRequests, 3);
   await page.waitForFunction(
-    () =>
-      document.body.innerText.includes("The provider response exceeds the 1 MiB browser limit."),
+    () => document.body.innerText.includes("The browser AI response limit was reached."),
     { timeout: 30_000 },
   );
   if (providerRequests.some((request) => request.body.stream !== true)) {

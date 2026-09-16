@@ -139,6 +139,12 @@
   display: none;
 }
 
+/* Retain all rows and native scrolling while deferring off-screen layout/paint. */
+.ai-model-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 48px;
+}
+
 @media (max-width: 590px) {
   .ai-model-picker {
     position: fixed;

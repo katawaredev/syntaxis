@@ -2,6 +2,7 @@
   "name": "syntaxis",
   "private": true,
   "scripts": {
+    "build:browser-ai": "node scripts/build-browser-ai.mjs",
     "build:editor": "node scripts/build-code-editor.mjs",
     "build:browser-archive": "node scripts/build-browser-archive.mjs",
     "build:browser-git": "node scripts/build-browser-git.mjs",
@@ -35,6 +36,8 @@
     "@codemirror/search": "^6.5.11",
     "@codemirror/state": "^6.7.1",
     "@codemirror/view": "6.43.8",
+    "@earendil-works/pi-agent-core": "0.84.3",
+    "@earendil-works/pi-ai": "0.84.3",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "buffer": "6.0.3",

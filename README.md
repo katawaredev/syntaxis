@@ -9,6 +9,12 @@ open the same projects from mobile, tablet, or desktop.
 Your code stays in ordinary folders on your machine. Syntaxis does not provide compute, copy your
 repositories into a hosted workspace, or replace your existing command-line tools.
 
+There is also a standalone browser app with local workspace storage and sandboxed
+tools. It shares the UI, not the server's processes or credentials. Contributors
+and AI agents should read the [Runtime guide](docs/runtimes.md): use
+`just serve-server` for the server-backed app and `just serve-browser` for the
+standalone app. The feature descriptions below primarily describe the server app.
+
 ## Is this for you?
 
 Syntaxis is for developers who:
@@ -114,6 +120,10 @@ Previews are private by default and can optionally receive a separate revocable 
 Syntaxis includes an interface for the [Pi coding agent](https://pi.dev/). It uses Pi's
 native RPC mode and Pi's existing provider configuration, sessions, prompts, skills, and extensions.
 None of the editor, terminal, Git, project, or preview features require it.
+
+The standalone browser app uses Pi's browser libraries with API-key providers and
+tools for its local workspace. See [Browser AI](docs/browser-ai.md) for setup and
+the differences from the server runtime.
 
 ## How it runs
 

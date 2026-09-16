@@ -3,8 +3,10 @@
 # Common usage:
 #   just
 #   just install
-#   just serve
-#   just serve desktop
+#   just serve-server
+#   just serve-browser
+#   just serve-lan
+#   just serve-desktop
 #   just check
 #   just ci
 #   just update
@@ -14,7 +16,7 @@
 #   just dx doctor
 #
 # Override defaults:
-#   just serve web 127.0.0.1 3000
+#   just serve-server 127.0.0.1 3000
 #   just build web release
 #   just test "my_test_name"
 
@@ -134,7 +136,10 @@ build-pi-settings: install-js
     bun run generate:pi-settings
 
 # Build all npm-backed application assets. Each generator has its own cache key.
-build-assets: build-editor build-terminal build-browser-terminal build-browser-archive build-browser-git build-pi-settings
+build-assets: build-editor build-terminal build-browser-terminal build-browser-archive build-browser-git build-browser-ai build-pi-settings
+
+build-browser-ai: install-js
+    bun run build:browser-ai
 
 # -----------------------------------------------------------------------------
 # Environment inspection
@@ -238,64 +243,66 @@ update mode="compatible":
 auth-password:
     cargo run --quiet --package syntaxis-server --no-default-features --features server -- hash-password
 
-# Start the development server.
-serve platform=default_platform host=default_host port=default_port: build-assets
+# Start the server-backed app for a specific Dioxus platform (not a runtime selector).
+serve-server-platform platform=default_platform host=default_host port=default_port: build-assets
     #!/usr/bin/env bash
     set -euo pipefail
     host="{{ host }}"
     if [[ "$host" == "127.0.0.1" || "$host" == "localhost" || "$host" == "::1" ]]; then
         export SYNTAXIS_AUTH_DISABLED=true
+    else
+        export SYNTAXIS_AUTH_DISABLED=false
     fi
     dx serve --package syntaxis-server \
         --platform "{{ platform }}" \
         --addr "$host" \
-        --port "{{ port }}" \
-        --force-sequential true
+        --port "{{ port }}"
 
-# Start the web development server.
-web host=default_host port=default_port: build-assets
-    #!/usr/bin/env bash
-    set -euo pipefail
-    host="{{ host }}"
-    if [[ "$host" == "127.0.0.1" || "$host" == "localhost" || "$host" == "::1" ]]; then
-        export SYNTAXIS_AUTH_DISABLED=true
-    fi
-    dx serve --package syntaxis-server \
-        --platform web \
-        --addr "$host" \
-        --port "{{ port }}" \
-        --force-sequential true
+# Start the server-backed web app; loopback debug access needs no password.
+serve-server host=default_host port=default_port: (serve-server-platform "web" host port)
 
 # Start the browser-only development server.
-browser: build-assets
-    dx serve --package syntaxis-browser --platform web
+serve-browser host=default_host port=default_port: build-assets
+    dx serve --package syntaxis-browser --platform web --addr "{{ host }}" --port "{{ port }}"
 
 # Start the desktop development server.
-desktop: build-assets
+serve-desktop: build-assets
     dx serve --package syntaxis-server --platform desktop
 
 # Start the mobile development server.
-mobile: build-assets
+serve-mobile: build-assets
     dx serve --package syntaxis-server --platform mobile
 
-serve-local port=default_port: build-assets
+# Server-backed LAN development; use the configured password or warn and bypass debug login.
+serve-lan port=default_port host="0.0.0.0": build-assets
     #!/usr/bin/env bash
     set -euo pipefail
 
-    if command -v ufw >/dev/null 2>&1; then
-        cleanup() {
-            sudo ufw delete allow "{{ port }}/tcp" >/dev/null 2>&1 || true
-        }
-        trap cleanup EXIT
+    if [[ -n "${SYNTAXIS_PASSWORD_HASH:-}" ]]; then
+        export SYNTAXIS_AUTH_DISABLED=false
+        echo "LAN debug server on {{ host }}:{{ port }}; configured password required." >&2
+    else
+        export SYNTAXIS_AUTH_DISABLED=true
+        echo "WARNING: No SYNTAXIS_PASSWORD_HASH set; password-free debug server on {{ host }}:{{ port }}." >&2
+        echo "Anyone who can reach it has workspace and shell access. Use only a trusted LAN; no public forwarding." >&2
+    fi
 
-        sudo ufw allow "{{ port }}/tcp"
+    if command -v ufw >/dev/null 2>&1; then
+        # Preserve a matching rule that was already present before this invocation.
+        existing_rules=$(sudo ufw show added)
+        if [[ "$existing_rules" != *"ufw allow {{ port }}/tcp"* ]]; then
+            cleanup() {
+                sudo ufw delete allow "{{ port }}/tcp" >/dev/null 2>&1 || true
+            }
+            sudo ufw allow "{{ port }}/tcp"
+            trap cleanup EXIT
+        fi
     fi
 
     dx serve --package syntaxis-server \
         --platform web \
-        --addr 0.0.0.0 \
-        --port "{{ port }}" \
-        --force-sequential true
+        --addr "{{ host }}" \
+        --port "{{ port }}"
 
 # Build the project.
 #
@@ -606,7 +613,7 @@ test-cargo platform=default_platform: build-assets
 
 # Run authored JavaScript and browser-harness unit tests.
 test-web: build-assets
-    bun test autoresearch/*.test.js crates/runtime-remote/bridge-src/terminal/source-links.test.js
+    bun test autoresearch/*.test.js crates/runtime-remote/bridge-src/terminal/source-links.test.js crates/runtime-browser/bridge-src/ai/bridge-source.test.js
 
 # Run doctests, which cargo-nextest does not replace.
 test-doc platform=default_platform: build-assets

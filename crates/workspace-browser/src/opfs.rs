@@ -695,6 +695,10 @@ fn ensure_size(length: u64, maximum: u64) -> WorkspaceResult<()> {
     reason = "Promise rejection handlers receive an owned JavaScript handle"
 )]
 pub(crate) fn browser_error(context: &str, value: JsValue) -> WorkspaceError {
+    let name = Reflect::get(&value, &JsValue::from_str("name"))
+        .ok()
+        .and_then(|name| name.as_string())
+        .unwrap_or_default();
     let detail = value
         .as_string()
         .or_else(|| {
@@ -702,7 +706,10 @@ pub(crate) fn browser_error(context: &str, value: JsValue) -> WorkspaceError {
             message.as_string()
         })
         .unwrap_or_else(|| "Unknown browser error".into());
-    WorkspaceError::new(ErrorCode::Unavailable, format!("{context}: {detail}"))
+    WorkspaceError::new(
+        crate::error_codes::browser_error_code(&name),
+        format!("{context}: {detail}"),
+    )
 }
 fn not_available(message: &str) -> WorkspaceError {
     WorkspaceError::new(ErrorCode::Unavailable, message)

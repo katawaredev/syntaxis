@@ -2,6 +2,8 @@
 //!
 //! The initial backend uses the Origin Private File System through `web-sys`.
 //! It deliberately contains no handwritten JavaScript bridge.
+#[cfg(any(target_arch = "wasm32", test))]
+mod error_codes;
 #[cfg(target_arch = "wasm32")]
 mod opfs;
 #[cfg(target_arch = "wasm32")]

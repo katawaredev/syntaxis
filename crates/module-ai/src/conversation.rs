@@ -116,7 +116,8 @@ fn finish_inflight(conversation: &mut AiConversation, status: AiMessageStatus) {
     clippy::too_many_lines,
     reason = "the exhaustive event projection is clearer as one auditable state transition"
 )]
-pub(crate) fn apply_event_to_conversation(conversation: &mut AiConversation, event: &AiEvent) {
+/// Project one runtime event into the shared conversation state.
+pub fn apply_event_to_conversation(conversation: &mut AiConversation, event: &AiEvent) {
     match event {
         AiEvent::ConversationUpdated(snapshot) => {
             conversation.clone_from(snapshot.as_ref());
@@ -227,6 +228,13 @@ pub(crate) fn apply_event_to_conversation(conversation: &mut AiConversation, eve
             output.clone(),
             AiMessageStatus::Complete,
         ),
+        AiEvent::ToolFailed { id, output } => upsert_tool(
+            conversation,
+            id,
+            "Tool",
+            output.clone(),
+            AiMessageStatus::Failed,
+        ),
         AiEvent::ActivityUpdated(activity) => {
             if let Some(existing) = conversation
                 .activity
@@ -334,6 +342,28 @@ fn upsert_tool(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn failed_tool_retains_its_name_and_failure_status() {
+        let mut conversation = AiConversation::default();
+        apply_event_to_conversation(
+            &mut conversation,
+            &AiEvent::ToolStarted {
+                id: "read-1".into(),
+                name: "read".into(),
+            },
+        );
+        apply_event_to_conversation(
+            &mut conversation,
+            &AiEvent::ToolFailed {
+                id: "read-1".into(),
+                output: "File missing".into(),
+            },
+        );
+        assert!(
+            matches!(&conversation.activity[0], AiActivity::Tool { name, status: AiMessageStatus::Failed, output, .. } if name == "read" && output == "File missing")
+        );
+    }
 
     #[test]
     fn reconnect_snapshot_replaces_stale_running_state_and_model() {

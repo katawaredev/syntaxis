@@ -126,6 +126,14 @@ pub trait AiConversationPort: Send + Sync {
 
 #[async_trait(?Send)]
 pub trait AiModelPort: Send + Sync {
+    /// Refresh availability without requiring callers to discard their displayed list.
+    async fn refresh_models(
+        &self,
+        workspace: &WorkspaceRecord,
+        conversation_id: &str,
+    ) -> Result<Vec<AiModel>, AppError> {
+        self.list_models(workspace, conversation_id).await
+    }
     async fn list_models(
         &self,
         workspace: &WorkspaceRecord,
@@ -236,6 +244,12 @@ pub trait AiProviderAuthPort: Send + Sync {
 
 #[async_trait(?Send)]
 pub trait AiResourcesPort: Send + Sync {
+    fn supports_global_resources(&self) -> bool {
+        true
+    }
+    fn supports_skill_discovery(&self) -> bool {
+        true
+    }
     async fn load_instructions(&self, workspace: &WorkspaceRecord) -> Result<String, AppError>;
     async fn save_instructions(
         &self,

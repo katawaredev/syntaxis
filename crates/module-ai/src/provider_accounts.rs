@@ -81,7 +81,7 @@ pub(crate) fn ProviderAccountsPanel(workspace: WorkspaceRecord) -> Element {
     });
     rsx! {
         div { class: "mt-5 max-w-3xl space-y-4",
-            p { class: "text-xs leading-5 text-muted-foreground", "Connect subscriptions or API keys through the runtime's Pi authentication flow." }
+            p { class: "text-xs leading-5 text-muted-foreground", if ports.settings().is_some() { "Add a separate API key for each provider you want to use." } else { "Connect subscriptions or API keys through the runtime's Pi authentication flow." } }
             if let Some(message) = error() {
                 p { class: "rounded-lg bg-destructive/10 p-3 text-xs text-destructive", "{message}" }
             }
@@ -91,7 +91,7 @@ pub(crate) fn ProviderAccountsPanel(workspace: WorkspaceRecord) -> Element {
                 Some(Ok(items)) => rsx! {
                     div { class: "divide-y divide-border overflow-hidden rounded-xl border border-border bg-background",
                         for provider in items {
-                            div { key: "{provider.id}", class: "flex items-center gap-4 px-4 py-3 max-sm:flex-col max-sm:items-stretch",
+                            div { key: "{provider.id}", "data-provider-id": provider.id.clone(), class: "flex items-center gap-4 px-4 py-3 max-sm:flex-col max-sm:items-stretch",
                                 div { class: "min-w-0 flex-1",
                                     strong { class: "block truncate text-xs font-semibold", "{provider.name}" }
                                     small { class: if provider.configured { "text-[10px] text-success" } else { "text-[10px] text-muted-foreground" }, "{provider.status}" }
@@ -153,16 +153,17 @@ fn ProviderLoginDialog(
     on_close: EventHandler<String>,
 ) -> Element {
     let close_id = flow.id.clone();
+    let browser_credentials = use_context::<AiPorts>().settings().is_some();
     rsx! {
         Modal {
             title: format!("Connect {}", flow.provider_id),
-            description: "Follow the provider authentication steps. Credentials are handled by Pi on the application host.",
+            description: if browser_credentials { "Your API key stays in memory for this tab and is sent only to the selected provider." } else { "Follow the provider authentication steps. Credentials are handled by Pi on the application host." },
             on_close: move |()| on_close.call(close_id.clone()),
             DialogForm {
                 if let Some(message) = flow.error.clone() {
                     p { class: "rounded-lg bg-destructive/10 p-3 text-xs text-destructive", "{message}" }
                 } else if flow.complete {
-                    p { class: "rounded-lg bg-success/10 p-3 text-xs text-success", "Provider connected successfully." }
+                    p { class: "rounded-lg bg-success/10 p-3 text-xs text-success", if browser_credentials { "API key saved in this tab. Open a model selector to update availability. Saving alone does not verify the key." } else { "Provider connected successfully." } }
                 } else {
                     for event in flow.events.clone() {
                         div { class: "rounded-lg border border-border bg-secondary/25 p-3 text-xs",

@@ -508,6 +508,10 @@ pub enum AiEvent {
         id: String,
         output: String,
     },
+    ToolFailed {
+        id: String,
+        output: String,
+    },
     ActivityUpdated(AiActivity),
     UsageUpdated {
         input_tokens: u64,

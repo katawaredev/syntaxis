@@ -4,6 +4,7 @@ use serde::Deserialize;
 const ARCHIVE_SCRIPT: Asset = asset!("/assets/browser-archive.bundle.js");
 const GIT_SCRIPT: Asset = asset!("/assets/browser-git.bundle.js");
 const TERMINAL_SCRIPT: Asset = asset!("/assets/browser-terminal.bundle.js");
+const AI_SCRIPT: Asset = asset!("/assets/browser-ai.bundle.js");
 const BRIDGE_VERSION: u32 = 1;
 
 #[derive(Clone, Copy)]
@@ -11,6 +12,7 @@ pub(super) enum BrowserBridge {
     Archive,
     Git,
     Terminal,
+    Ai,
 }
 
 impl BrowserBridge {
@@ -19,6 +21,7 @@ impl BrowserBridge {
             Self::Archive => "SyntaxisBrowserArchive",
             Self::Git => "SyntaxisBrowserGit",
             Self::Terminal => "SyntaxisBrowserBash",
+            Self::Ai => "SyntaxisBrowserAi",
         }
     }
 
@@ -27,6 +30,7 @@ impl BrowserBridge {
             Self::Archive => ARCHIVE_SCRIPT,
             Self::Git => GIT_SCRIPT,
             Self::Terminal => TERMINAL_SCRIPT,
+            Self::Ai => AI_SCRIPT,
         }
     }
 }

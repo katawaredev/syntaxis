@@ -29,6 +29,8 @@
 # Generated browser just-bash bundle (build with: bun run build:browser-terminal)
 /crates/runtime-browser/assets/browser-terminal.bundle.js
 /crates/runtime-browser/assets/browser-terminal.bundle.stamp
+/crates/runtime-browser/assets/browser-ai.bundle.js
+/crates/runtime-browser/assets/browser-ai.bundle.stamp
 
 # Generated browser ZIP archive bundle (build with: bun run build:browser-archive)
 /crates/runtime-browser/assets/browser-archive.bundle.js

@@ -28,6 +28,7 @@ use crate::{
     AiGeneralSetting, AiGeneralSettingKind, AiImageAttachment, AiManagedFeature, AiMessage,
     AiMessageStatus, AiModel, AiModelPreferences, AiPorts, AiPrompt, AiPromptTemplate,
     AiProviderSettings, AiResourceScope, AiRole, AiSkill, AiSkillCatalogView, AiSkillSearchResult,
+    AiThinkingLevel,
 };
 
 const AI_CHAT_CSS: Asset = asset!("/assets/chat.css");
@@ -198,7 +199,7 @@ pub fn AiView(
     });
     let model_workspace = workspace.clone();
     let model_port = ports.models().cloned();
-    let mut models = use_resource(move || {
+    let models = use_resource(move || {
         let workspace = model_workspace.clone();
         let port = model_port.clone();
         let conversation_id = active_conversation_id();
@@ -917,7 +918,7 @@ pub fn AiView(
                             }
                         }
                     }
-                    if !available_models.is_empty() {
+                    if !active_conversation_id().is_empty() && ports.models().is_some() {
                         AiModelPicker {
                             key: "{active_conversation_id}",
                             workspace: workspace.clone(),
@@ -925,15 +926,6 @@ pub fn AiView(
                             conversation,
                             disabled: pending() || conversation_loading(),
                             error,
-                        }
-                    } else if !active_conversation_id().is_empty() && ports.models().is_some() {
-                        match models() {
-                            None => rsx! { span { class: "text-[10px] text-muted-foreground", role: "status", "Loading models…" } },
-                            Some(Err(problem)) => rsx! {
-                                button { class: "text-[10px] text-destructive", r#type: "button", title: problem.message,
-                                    onclick: move |_| models.restart(), "Retry loading models" }
-                            },
-                            Some(Ok(_)) => rsx! { span { class: "text-[10px] text-muted-foreground", "No models available" } },
                         }
                     }
                     if !active_conversation_id().is_empty() {
@@ -1554,6 +1546,41 @@ fn AiModelPicker(
 ) -> Element {
     let ports = use_context::<AiPorts>();
     let mut open = use_signal(|| false);
+    let mut refreshed_models = use_signal(|| None::<Vec<AiModel>>);
+    let mut refreshing = use_signal(|| false);
+    let mut refresh_attempted = use_signal(|| false);
+    let mut refresh_error = use_signal(|| None::<String>);
+    let refresh_workspace = workspace.clone();
+    let refresh_port = ports.models().cloned();
+    let has_local_catalog = ports.settings().is_some();
+    let refresh = EventHandler::new(move |(): ()| {
+        if refreshing() {
+            return;
+        }
+        let Some(port) = refresh_port.clone() else {
+            return;
+        };
+        let workspace = refresh_workspace.clone();
+        let conversation_id = conversation().id;
+        refreshing.set(true);
+        refresh_attempted.set(true);
+        refresh_error.set(None);
+        spawn(async move {
+            // Let the picker paint before starting snapshot/network work.
+            dioxus_sdk_time::sleep(std::time::Duration::from_millis(32)).await;
+            if has_local_catalog
+                && let Ok(models) = port.list_models(&workspace, &conversation_id).await
+            {
+                refreshed_models.set(Some(models));
+            }
+            match port.refresh_models(&workspace, &conversation_id).await {
+                Ok(models) => refreshed_models.set(Some(models)),
+                Err(problem) => refresh_error.set(Some(problem.message)),
+            }
+            refreshing.set(false);
+        });
+    });
+    let models = refreshed_models().unwrap_or(models);
     let mut query = use_signal(String::new);
     let mut preferences = use_signal(AiModelPreferences::default);
     let mut synced_signature = use_signal(String::new);
@@ -1608,9 +1635,14 @@ fn AiModelPicker(
         .as_ref()
         .and_then(|selected| models.iter().find(|model| &model.id == selected))
         .cloned();
-    let selected_name = selected
-        .as_ref()
-        .map_or_else(|| "Default model".to_owned(), |model| model.label.clone());
+    let selected_name = selected.as_ref().map_or_else(
+        || {
+            conversation()
+                .selected_model_id
+                .unwrap_or_else(|| "Choose model".to_owned())
+        },
+        |model| model.label.clone(),
+    );
     let selected_detail = selected.as_ref().map_or_else(
         || "Agent".to_owned(),
         |model| {
@@ -1626,8 +1658,10 @@ fn AiModelPicker(
         },
     );
     let selected_id = selected.as_ref().map(|model| model.id.clone());
-    let filtered = filter_ai_models(models, &query());
     let favourite_ids = preferences().favourites;
+    let mut filtered = filter_ai_models(models, &query());
+    // Keep favourites first without limiting the available catalog.
+    filtered.sort_by_key(|model| !favourite_ids.contains(&model.id));
     let favourites = favourite_ids
         .iter()
         .filter_map(|id| filtered.iter().find(|model| model.id == *id).cloned())
@@ -1651,7 +1685,10 @@ fn AiModelPicker(
                 aria_expanded: open(),
                 onclick: move |_| {
                     open.toggle();
-                    if open() { query.set(String::new()); }
+                    if open() {
+                        query.set(String::new());
+                        if !refresh_attempted() { refresh.call(()); }
+                    }
                 },
                 span { class: "grid size-5 shrink-0 place-items-center rounded-md bg-primary/10 text-primary", Icon { icon: AppIcon::BrainCog, size: 12 } }
                 span { class: "min-w-0 flex-1 max-[520px]:hidden",
@@ -1660,13 +1697,27 @@ fn AiModelPicker(
                 }
                 span { class: "max-[520px]:hidden", Icon { icon: AppIcon::ChevronDown, size: 13 } }
             }
-            if open() {
+            // Keep the catalog mounted between openings; hidden content is not focusable.
+            div { hidden: !open(),
                 button { class: "fixed inset-0 z-70 cursor-default", r#type: "button", aria_label: "Close model picker", onclick: move |_| open.set(false) }
                 div { class: "ai-model-picker absolute top-[calc(100%+6px)] right-0 z-80 w-[min(430px,calc(100vw-1rem))] overflow-hidden rounded-xl border border-border bg-popover shadow-2xl",
                     onkeydown: move |event| if event.key() == Key::Escape { open.set(false); },
                     div { class: "ai-model-picker-mobile-header",
                         strong { "Choose model" }
                         button { r#type: "button", aria_label: "Done choosing model", onclick: move |_| open.set(false), "Done" }
+                    }
+                    p { class: "px-3 py-2 text-[10px] text-muted-foreground", role: "status",
+                        if refreshing() { "Updating availability… You can keep choosing a model." }
+                        else { "Last-known model catalog. Provider access is checked when used." }
+                    }
+                    if let Some(problem) = refresh_error() {
+                        div { class: "px-3 pb-2 text-[10px] text-destructive", role: "status",
+                            "Could not refresh: {problem} "
+                            button { r#type: "button", class: "underline", onclick: move |_| refresh.call(()), "Retry" }
+                        }
+                    }
+                    if groups.is_empty() && favourites.is_empty() && selected.is_none() {
+                        p { class: "px-3 py-2 text-xs text-muted-foreground", "No matching models. Check your provider accounts in Settings." }
                     }
                     if let Some(model) = selected.clone() {
                         div { class: "flex items-start gap-3 border-b border-border px-3 py-3",
@@ -1786,7 +1837,7 @@ fn AiModelRow(
     let select_model = model.clone();
     let favourite_model = model.clone();
     rsx! {
-        div { class: "flex min-h-12 w-full items-center rounded-lg text-xs text-muted-foreground hover:bg-accent hover:text-foreground",
+        div { class: "ai-model-row flex min-h-12 w-full items-center rounded-lg text-xs text-muted-foreground hover:bg-accent hover:text-foreground",
             button { class: "grid min-h-12 min-w-0 flex-1 grid-cols-[minmax(0,1fr)_7rem] items-center gap-2 px-2.5 py-1.5 text-left", r#type: "button", onclick: {
                 let port = ports.models().cloned();
                 let workspace = workspace.clone();
@@ -1795,11 +1846,15 @@ fn AiModelRow(
                     let workspace = workspace.clone();
                     let model = select_model.clone();
                     let conversation_id = conversation().id;
-                    let remembered = preferences().efforts.get(&model.id).copied();
+                    let remembered = preferences().efforts.get(&model.id).copied()
+                        .filter(|level| model.thinking_levels.contains(level));
                     spawn(async move {
                         match port.select_model(&workspace, &conversation_id, &model.id).await {
                             Ok(()) => {
                                 conversation.write().selected_model_id = Some(model.id.clone());
+                                if !model.thinking_levels.contains(&conversation().thinking_level) {
+                                    conversation.write().thinking_level = model.thinking_levels.first().copied().unwrap_or(AiThinkingLevel::Off);
+                                }
                                 if let Some(level) = remembered {
                                     match port.select_thinking_level(&workspace, &conversation_id, level).await {
                                         Ok(()) => conversation.write().thinking_level = level,
@@ -1885,6 +1940,9 @@ fn format_ai_model_capabilities(model: &AiModel) -> String {
 }
 
 fn format_ai_model_price(model: &AiModel) -> String {
+    if model.cost.has_paid_tier && model.cost.input == 0 && model.cost.output == 0 {
+        return "Variable pricing".to_owned();
+    }
     if model.cost.is_free() {
         return "Free".to_owned();
     }
@@ -1897,6 +1955,9 @@ fn format_ai_model_price(model: &AiModel) -> String {
 }
 
 fn format_ai_model_price_long(model: &AiModel) -> String {
+    if model.cost.has_paid_tier && model.cost.input == 0 && model.cost.output == 0 {
+        return "Pricing depends on the provider or routed model".to_owned();
+    }
     if model.cost.is_free() {
         return "Free".to_owned();
     }
@@ -1995,9 +2056,12 @@ fn ConversationActivity(item: AiActivity) -> Element {
                 AiMessageStatus::Running | AiMessageStatus::Streaming => "text-primary",
                 AiMessageStatus::Complete | AiMessageStatus::Stopped => "text-success",
             };
-            let rendered = matches!(status, AiMessageStatus::Complete | AiMessageStatus::Stopped)
-                .then(|| render_markdown(&output));
-            let line_changes = tool_line_changes(&output);
+            let rendered = (!matches!(name.as_str(), "bash" | "read" | "list" | "write" | "edit")
+                && matches!(status, AiMessageStatus::Complete | AiMessageStatus::Stopped))
+            .then(|| render_markdown(&output));
+            let line_changes = matches!(name.as_str(), "write" | "edit" | "apply_patch")
+                .then(|| tool_line_changes(&output))
+                .flatten();
             rsx! {
                 details { class: "mb-2 rounded-lg border border-border bg-background/65 text-[11px]",
                     summary { class: "flex min-h-9 cursor-pointer list-none items-center gap-2 px-3 py-2 select-none",
@@ -2302,6 +2366,50 @@ pub fn AiSettingsView(
     let ports = use_context::<AiPorts>();
     let settings_port = ports.settings().cloned();
     let mut settings = use_signal(AiProviderSettings::default);
+    let model_workspace = workspace.clone();
+    let browser_models = ports.settings().and(ports.models()).cloned();
+    let mut default_model_list = use_signal(Vec::<AiModel>::new);
+    let mut default_refreshing = use_signal(|| false);
+    let mut default_refresh_error = use_signal(|| None::<String>);
+    let refresh_workspace = workspace.clone();
+    let refresh_port = browser_models.clone();
+    let refresh_defaults = EventHandler::new(move |(): ()| {
+        if default_refreshing() {
+            return;
+        }
+        let Some(port) = refresh_port.clone() else {
+            return;
+        };
+        let workspace = refresh_workspace.clone();
+        default_refreshing.set(true);
+        default_refresh_error.set(None);
+        spawn(async move {
+            // Update provider filtering immediately, without waiting for discovery.
+            if let Ok(models) = port.list_models(&workspace, "").await {
+                default_model_list.set(models);
+            }
+            match port.refresh_models(&workspace, "").await {
+                Ok(models) => default_model_list.set(models),
+                Err(problem) => default_refresh_error.set(Some(problem.message)),
+            }
+            default_refreshing.set(false);
+        });
+    });
+    let default_models = use_resource(move || {
+        let port = browser_models.clone();
+        let workspace = model_workspace.clone();
+        async move {
+            match port {
+                Some(port) => port.list_models(&workspace, "").await,
+                None => Ok(Vec::new()),
+            }
+        }
+    });
+    use_effect(move || {
+        if let Some(Ok(models)) = default_models() {
+            default_model_list.set(models);
+        }
+    });
     let mut loaded = use_signal(|| false);
     let mut saving = use_signal(|| false);
     let mut notice = use_signal(|| None::<(String, Tone)>);
@@ -2383,7 +2491,7 @@ pub fn AiSettingsView(
                                 workspace: workspace_id.clone(),
                                 section: candidate,
                             }),
-                            "{candidate.label()}"
+                            if candidate == AiSettingsSection::GlobalInstructions && ports.resources().is_some_and(|port| !port.supports_global_resources()) { "Workspace instructions" } else { "{candidate.label()}" }
                         }
                             }
                         }
@@ -2391,11 +2499,23 @@ pub fn AiSettingsView(
                 }
             }
             main { class: "min-w-0 flex-1 overflow-y-auto p-5",
-                h1 { class: "text-lg font-semibold", "{section.label()}" }
+                h1 { class: "text-lg font-semibold", if section == AiSettingsSection::GlobalInstructions && ports.resources().is_some_and(|port| !port.supports_global_resources()) { "Workspace instructions" } else { "{section.label()}" } }
                 if section == AiSettingsSection::General && ports.general_settings().is_some() {
                     GeneralSettingsPanel { workspace: workspace.clone() }
                 } else if section == AiSettingsSection::ProviderAccounts && ports.provider_auth().is_some() {
+                    if settings().volatile_credential {
+                        p { class: "mt-1 text-xs text-muted-foreground", "Keys stay in memory for this tab. Providers must allow browser requests; OAuth login is available in the server app." }
+                    }
                     ProviderAccountsPanel { workspace: workspace.clone() }
+                    if ports.settings().is_some() {
+                        div { class: "mt-5 grid max-w-xl gap-4 rounded-xl border border-border bg-background p-4",
+                            Field { control_id: "ai-endpoint", label: "Custom OpenAI-compatible endpoint",
+                                TextInput { value: settings().endpoint, oninput: move |event: FormEvent| settings.write().endpoint = event.value() }
+                            }
+                            p { class: "text-xs text-muted-foreground", "Used only for custom models. Enter the API base URL, such as https://example.com/v1. Add its key under Custom OpenAI-compatible above." }
+                            Button { label: if saving() { "Saving…" } else { "Save endpoint" }, kind: ButtonKind::Primary, disabled: saving(), onclick: move |_| save() }
+                        }
+                    }
                 } else if section == AiSettingsSection::GlobalInstructions && ports.resources().is_some() {
                     InstructionsPanel { workspace: workspace.clone() }
                 } else if section == AiSettingsSection::PromptTemplates && ports.resources().is_some() {
@@ -2407,15 +2527,33 @@ pub fn AiSettingsView(
                 } else if section == AiSettingsSection::General && ports.settings().is_some() {
                     p { class: "mt-1 text-xs text-muted-foreground", if settings().volatile_credential { "Browser AI settings are kept only for this tab." } else { "AI defaults are managed by the connected runtime." } }
                     div { class: "mt-5 grid max-w-xl gap-4 rounded-xl border border-border bg-background p-4",
-                        Field { control_id: "ai-endpoint", label: "Endpoint",
-                            TextInput { value: settings().endpoint, oninput: move |event: FormEvent| settings.write().endpoint = event.value() }
-                        }
                         Field { control_id: "ai-model", label: "Default model",
-                            TextInput { value: settings().model, oninput: move |event: FormEvent| settings.write().model = event.value() }
+                            select { id: "ai-model", class: "h-10 w-full min-w-0 rounded-lg border border-input bg-background px-3 text-sm", value: settings().model,
+                                onfocus: move |_| refresh_defaults.call(()),
+                                onmousedown: move |_| refresh_defaults.call(()),
+                                oninput: move |event: FormEvent| settings.write().model = event.value(),
+                                if !default_model_list().iter().any(|model| model.id == settings().model) && !settings().model.starts_with("custom/") {
+                                    option { value: settings().model, disabled: true, "Choose a model" }
+                                }
+                                for model in default_model_list().into_iter().filter(|model| !model.id.starts_with("custom/")) {
+                                    option { value: model.id.clone(), "{model.provider} · {model.label}" }
+                                }
+                                option { value: if settings().model.starts_with("custom/") { settings().model } else { "custom/".into() }, "Custom OpenAI-compatible model" }
+                            }
                         }
-                        Field { control_id: "ai-credential", label: "API key",
-                            TextInput { input_type: TextInputType::Password, value: settings().credential, autocomplete: "off", placeholder: if settings().credential_is_set { "Credential configured" } else { "sk-…" }, oninput: move |event: FormEvent| settings.write().credential = event.value() }
+                        if settings().model.starts_with("custom/") {
+                            Field { control_id: "ai-custom-model", label: "Custom model ID",
+                                TextInput { value: settings().model.trim_start_matches("custom/").to_owned(), oninput: move |event: FormEvent| settings.write().model = format!("custom/{}", event.value()) }
+                            }
                         }
+                        p { class: "text-xs text-muted-foreground", "Models are shown for providers with saved keys. Availability updates in the background when you open the selector. Catalog entries do not guarantee account access." }
+                        if default_refreshing() { p { class: "text-xs text-muted-foreground", role: "status", "Updating availability…" } }
+                        if let Some(problem) = default_refresh_error() {
+                            p { class: "text-xs text-destructive", "{problem}" }
+                            Button { label: "Retry", kind: ButtonKind::Secondary, onclick: move |_| refresh_defaults.call(()) }
+                        }
+                        if let Some(Err(problem)) = default_models() { p { class: "text-xs text-destructive", "{problem.message}" } }
+                        p { class: "text-xs text-muted-foreground", "Applies to new chats. Choose a different model within any chat. Manage API keys and custom endpoints in Provider accounts." }
                         Button { label: if saving() { "Saving…" } else { "Save settings" }, kind: ButtonKind::Primary, disabled: saving(), onclick: move |_| save() }
                     }
                 } else if let Some(Some(result)) = managed_summary() {
@@ -2793,6 +2931,7 @@ fn InstructionsPanel(workspace: WorkspaceRecord) -> Element {
         return rsx! {};
     };
     let mut content = use_signal(String::new);
+    let global = port.supports_global_resources();
     let mut saved = use_signal(|| None::<String>);
     let mut saving = use_signal(|| false);
     let mut notice = use_signal(|| None::<(String, Tone)>);
@@ -2813,20 +2952,26 @@ fn InstructionsPanel(workspace: WorkspaceRecord) -> Element {
         }
     });
     let content_bytes = content().len();
-    let too_large = content_bytes > MAX_INSTRUCTIONS_BYTES;
+    let instructions_limit = if global {
+        MAX_INSTRUCTIONS_BYTES
+    } else {
+        128 * 1024
+    };
+    let limit_kib = instructions_limit / 1024;
+    let too_large = content_bytes > instructions_limit;
     let changed = saved().is_some_and(|value| value != content());
     rsx! {
         div { class: "mt-5 max-w-3xl",
-            p { class: "mb-3 text-xs leading-5 text-muted-foreground", "Instance-wide Pi policy loaded automatically for every workspace." }
+            p { class: "mb-3 text-xs leading-5 text-muted-foreground", if global { "Instance-wide Pi policy loaded automatically for every workspace." } else { "Workspace AGENTS.md, loaded before every message. Changes are stored in this workspace, not shared globally." } }
             match loaded() {
-                None => rsx! { p { class: "text-xs text-muted-foreground", "Loading global instructions…" } },
+                None => rsx! { p { class: "text-xs text-muted-foreground", "Loading instructions…" } },
                 Some(Err(problem)) => rsx! { p { class: "text-xs text-destructive", "{problem.message}" } },
                 Some(Ok(_)) => rsx! {
                     section { class: "overflow-hidden rounded-xl border border-input bg-background shadow-xs focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/20",
                         div { class: "flex min-h-12 items-center justify-between gap-3 border-b border-border px-3.5 py-2",
                             div {
                                 label { class: "block text-xs font-semibold text-foreground/85", r#for: "pi-global-instructions", "AGENTS.md" }
-                                p { class: "mt-0.5 text-[10px] text-muted-foreground", "Shared by every workspace" }
+                                p { class: "mt-0.5 text-[10px] text-muted-foreground", if global { "Shared by every workspace" } else { "This workspace only · AGENTS.md" } }
                             }
                             span { class: "rounded-md bg-warning/10 px-2 py-1 text-[9px] text-warning", title: "Instructions guide the agent; use deployment controls or blocking extensions for hard enforcement.", "Guidance, not enforcement" }
                         }
@@ -2836,7 +2981,7 @@ fn InstructionsPanel(workspace: WorkspaceRecord) -> Element {
                             rows: 18,
                             value: content(),
                             disabled: saving(),
-                            placeholder: "Add instance-wide operating constraints and preferences for Pi…",
+                            placeholder: if global { "Add instance-wide operating constraints and preferences for Pi…" } else { "Add instructions for this workspace…" },
                             aria_invalid: too_large,
                             aria_describedby: "pi-global-instructions-status",
                             oninput: move |event| content.set(event.value()),
@@ -2844,7 +2989,7 @@ fn InstructionsPanel(workspace: WorkspaceRecord) -> Element {
                         div { class: "flex min-h-13 flex-wrap items-center justify-between gap-3 border-t border-border px-3.5 py-2",
                             div {
                                 small { id: "pi-global-instructions-status", class: if too_large { "block text-[10px] text-destructive" } else { "block text-[10px] text-muted-foreground" },
-                                    if too_large { "Instructions exceed the 512 KiB limit" } else { "{content_bytes} bytes · 512 KiB maximum" }
+                                    if too_large { "Instructions exceed the {limit_kib} KiB limit" } else { "{content_bytes} bytes · {limit_kib} KiB maximum" }
                                 }
                                 small { class: "mt-0.5 block text-[9px] text-muted-foreground/75", "Saving an empty file clears the instructions." }
                             }
@@ -2860,7 +3005,7 @@ fn InstructionsPanel(workspace: WorkspaceRecord) -> Element {
                                     match port.save_instructions(&workspace, &value).await {
                                         Ok(()) => {
                                             saved.set(Some(value));
-                                            notice.set(Some(("Global instructions saved".into(), Tone::Success)));
+                                            notice.set(Some(("Instructions saved".into(), Tone::Success)));
                                         }
                                         Err(problem) => notice.set(Some((problem.message, Tone::Destructive))),
                                     }
@@ -2980,9 +3125,9 @@ fn PromptTemplateEditor(
     let mut error = use_signal(|| None::<String>);
     let editing = original_name.is_some();
     rsx! {
-        Modal { title: if original_name.is_some() { "Edit prompt template" } else { "New prompt template" }, description: "Prompt templates are stored in Pi's project or global resource directory.", on_close: move |()| if !saving() { on_close.call(()) },
+        Modal { title: if original_name.is_some() { "Edit prompt template" } else { "New prompt template" }, description: if port.supports_global_resources() { "Prompt templates are stored in Pi's project or global resource directory." } else { "Stored in .pi/prompts in this workspace. Use $ARGUMENTS for all arguments or $1, $2 for individual whitespace-separated arguments." }, on_close: move |()| if !saving() { on_close.call(()) },
             DialogForm {
-                Field { control_id: "prompt-template-name", label: "Name", error: error(), TextInput { value: name(), autofocus: true, disabled: saving(), oninput: move |event: FormEvent| { name.set(event.value()); error.set(None); } } }
+                Field { control_id: "prompt-template-name", label: "Name", error: error(), TextInput { value: name(), autofocus: true, disabled: saving() || (editing && !port.supports_global_resources()), oninput: move |event: FormEvent| { name.set(event.value()); error.set(None); } } }
                 Field { control_id: "prompt-template-description", label: "Description", TextInput { value: description(), disabled: saving(), oninput: move |event: FormEvent| description.set(event.value()) } }
                 Field { control_id: "prompt-template-arguments", label: "Argument hint", TextInput { value: argument_hint(), disabled: saving(), oninput: move |event: FormEvent| argument_hint.set(event.value()) } }
                 ResourceScopeSelect { scope, disabled: saving() || editing }
@@ -3116,9 +3261,16 @@ fn SkillsPanel(workspace: WorkspaceRecord) -> Element {
     rsx! {
         div { class: "mt-5 max-w-4xl space-y-6",
             div { class: "mb-3 flex items-center justify-between gap-3",
-                p { class: "text-xs text-muted-foreground", "Project and global Pi skills." }
-                Button { label: "New skill", kind: ButtonKind::Primary, onclick: move |_| editor.set(Some((None, empty_skill()))) }
+                p { class: "min-w-0 text-xs text-muted-foreground", if port.supports_global_resources() { "Project and global Pi skills." } else { "Workspace skills. Use /skill:name in chat." } }
+                div { class: "shrink-0 whitespace-nowrap", Button { label: "New skill", kind: ButtonKind::Primary, onclick: move |_| editor.set(Some((None, empty_skill()))) } }
             }
+            if !port.supports_skill_discovery() {
+                p { class: "text-xs text-muted-foreground",
+                    a { href: "https://skills.sh", target: "_blank", rel: "noopener noreferrer", class: "text-primary underline", "Browse skills.sh ↗" }
+                    " · Copy a skill’s Markdown into New skill."
+                }
+            }
+            if port.supports_skill_discovery() {
             section { "aria-labelledby": "skill-discovery-title",
                 h2 { id: "skill-discovery-title", class: "mb-2 text-xs font-semibold", "Discover skills" }
                 p { class: "mb-3 text-[10px] leading-relaxed text-muted-foreground", "Searches the public skills.sh catalog. Review installed skills before use: they may include executable scripts and instructions with the server user's permissions." }
@@ -3185,6 +3337,7 @@ fn SkillsPanel(workspace: WorkspaceRecord) -> Element {
                 } else if !searching && search_error.is_none() && (catalog_enabled || !submitted_query().is_empty()) {
                     p { class: "mt-4 rounded-xl border border-dashed border-border p-6 text-center text-xs text-muted-foreground", if submitted_query().is_empty() { "No skills are available in this catalog view." } else { "No skills matched this search." } }
                 }
+            }
             }
             section { "aria-labelledby": "installed-skills-title",
                 h2 { id: "installed-skills-title", class: "mb-2 text-xs font-semibold", "Installed skills" }
@@ -3406,11 +3559,15 @@ fn SkillEditor(
 
 #[component]
 fn ResourceScopeSelect(mut scope: Signal<AiResourceScope>, disabled: bool) -> Element {
+    let ports = use_context::<AiPorts>();
+    let global = ports
+        .resources()
+        .is_some_and(|port| port.supports_global_resources());
     rsx! {
         Field { control_id: "resource-scope", label: "Scope",
             select { id: "resource-scope", class: "h-9 w-full rounded-lg border border-input bg-background px-3 text-xs", disabled, value: match scope() { AiResourceScope::Global => "global", AiResourceScope::Project => "project" }, onchange: move |event| scope.set(if event.value() == "global" { AiResourceScope::Global } else { AiResourceScope::Project }),
                 option { value: "project", "Project (.pi)" }
-                option { value: "global", "Global (~/.pi/agent)" }
+                if global { option { value: "global", "Global (~/.pi/agent)" } }
             }
         }
     }
@@ -3451,6 +3608,7 @@ fn ExtensionsPanel(workspace: WorkspaceRecord) -> Element {
     let mut total = use_signal(|| 0_usize);
     let mut next_offset = use_signal(|| 0_usize);
     let mut has_more = use_signal(|| false);
+    let mut request_pending = use_signal(|| false);
     let mut confirm = use_signal(|| None::<(AiExtension, AiExtensionAction)>);
     let mut pending = use_signal(|| None::<String>);
     let mut notice = use_signal(|| None::<(String, Tone)>);
@@ -3461,7 +3619,8 @@ fn ExtensionsPanel(workspace: WorkspaceRecord) -> Element {
         let workspace = search_workspace.clone();
         let query = query();
         let offset = offset();
-        let _ = revision();
+        let request_revision = revision();
+        request_pending.set(true);
         async move {
             if !query.is_empty() {
                 dioxus_sdk_time::sleep(std::time::Duration::from_millis(250)).await;
@@ -3469,21 +3628,29 @@ fn ExtensionsPanel(workspace: WorkspaceRecord) -> Element {
             (
                 query.clone(),
                 offset,
+                request_revision,
                 port.search(&workspace, &query, offset).await,
             )
         }
     });
     use_effect(move || {
-        let Some((resource_query, resource_offset, Ok(page))) = results() else {
+        let Some((resource_query, resource_offset, resource_revision, result)) = results() else {
             return;
         };
-        if resource_query != query() || resource_offset != offset() {
+        if resource_query != query()
+            || resource_offset != offset()
+            || resource_revision != revision()
+        {
             return;
         }
+        request_pending.set(false);
+        let Ok(page) = result else {
+            return;
+        };
         let mut merged = if resource_offset == 0 {
             Vec::new()
         } else {
-            loaded()
+            loaded.peek().clone()
         };
         for package in page.items {
             if let Some(existing) = merged.iter_mut().find(|item| item.name == package.name) {
@@ -3496,15 +3663,16 @@ fn ExtensionsPanel(workspace: WorkspaceRecord) -> Element {
         loaded.set(merged);
         total.set(page.total);
         next_offset.set(page.next_offset);
-        has_more.set(page.has_more);
+        has_more.set(page.has_more && page.next_offset > resource_offset);
     });
     let visible = filtered_extensions(&loaded(), &package_type(), &installation(), &sort());
     let result = results();
-    let loading = result.is_none();
+    let loading = request_pending() || result.is_none();
     let load_error = result
         .as_ref()
-        .and_then(|(_, _, result)| result.as_ref().err())
+        .and_then(|(_, _, _, result)| result.as_ref().err())
         .map(|problem| problem.message.clone());
+    let retry_available = load_error.is_some();
     rsx! {
         div { class: "mt-5 max-w-4xl",
             div { class: "grid grid-cols-[minmax(14rem,1fr)_minmax(9rem,0.35fr)_minmax(9rem,0.35fr)_minmax(10rem,0.4fr)_auto] gap-2 max-xl:grid-cols-2 max-sm:grid-cols-1",
@@ -3557,7 +3725,14 @@ fn ExtensionsPanel(workspace: WorkspaceRecord) -> Element {
                 }
                 if has_more() {
                     div { class: "mt-4 flex justify-center",
-                        Button { label: "Load more", kind: ButtonKind::Ghost, disabled: loading, onclick: move |_| offset.set(next_offset()) }
+                        button { r#type: "button", class: "inline-flex min-h-9 items-center gap-2 rounded-lg px-3 py-2 text-xs hover:bg-accent focus-visible:ring-2 disabled:cursor-wait disabled:opacity-60", disabled: loading, aria_busy: loading, onclick: move |_| {
+                            request_pending.set(true);
+                            if retry_available { *revision.write() += 1; }
+                            else { offset.set(next_offset()); }
+                        },
+                            if loading { span { class: "size-3.5 animate-spin rounded-full border-2 border-current border-r-transparent motion-reduce:animate-none", aria_hidden: "true" } }
+                            span { role: "status", if loading { "Loading…" } else if retry_available { "Retry" } else { "Load more" } }
+                        }
                     }
                 } else {
                     p { class: "py-4 text-center text-[9px] text-muted-foreground", "End of catalog results" }

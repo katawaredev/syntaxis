@@ -8,6 +8,7 @@ mod provider_accounts;
 mod session;
 mod usage;
 mod view;
+pub use conversation::apply_event_to_conversation;
 
 pub use models::{
     AiActivity, AiAdvancedSettings, AiAuthEvent, AiAuthFlow, AiAuthPrompt, AiAuthPromptOption,
