@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if ! command -v rg >/dev/null 2>&1; then
+    printf 'Architecture check cannot run: ripgrep (rg) is required but was not found on PATH\n' >&2
+    exit 1
+fi
+
 failures=0
 
 reject_matches() {
