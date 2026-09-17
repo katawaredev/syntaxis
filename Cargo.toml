@@ -34,6 +34,11 @@ resolver = "2"
 codegen-units = 1
 lto = true
 
+# Dioxus uses this profile for both apps' WASM clients.
+[profile.wasm-release]
+inherits = "release"
+opt-level = "z"
+
 [workspace.lints.rust]
 unsafe_code = "deny"
 

@@ -137,6 +137,25 @@ mise run qa:server
 
 Documentation-only changes do not require the Rust workflow.
 
+### WASM bundle budgets
+
+`just bundle-check` builds both release web clients and checks their raw and Brotli-compressed
+WASM sizes. `just bundle-report` prints the same measurements without enforcing limits.
+These measurements exclude JavaScript, styles, and other assets.
+
+The workspace's `wasm-release` profile uses `opt-level = "z"` with release LTO and a single
+codegen unit. Dioxus selects this profile for both apps' WASM clients; the native server keeps
+the normal release profile. This favors download size over execution speed, so assess interactive
+performance when changing it. Compare measured artifacts before increasing
+`scripts/bundle-budgets.json`; both raw and compressed sizes must fit their limits.
+
+On Rust 1.98.0 / Dioxus CLI 0.7.10, switching from Dioxus's default `s` to `z` reduced the
+browser client from 6,286,257 to 5,276,710 raw bytes and from 1,535,295 to 1,383,673 Brotli
+bytes. Its raw budget remains 5,500,000 bytes; the Brotli budget is 1,450,000 bytes, allowing
+about 5% headroom over that measurement. The server client measures 6,222,429 raw bytes and
+1,593,058 Brotli bytes, within its existing limits. The migration report records older,
+historical budgets.
+
 ## Lighthouse
 
 ```bash

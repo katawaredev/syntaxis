@@ -47,13 +47,14 @@ for (const artifact of artifacts) {
     const limits = budgets.limits[artifact.app];
     if (!limits) throw new Error(`Missing bundle budget for ${artifact.app}`);
     result.limits = limits;
-    result.withinBudget = ["rawBytes", "brotliBytes"].every((metric) => {
+    result.withinBudget = true;
+    for (const metric of ["rawBytes", "brotliBytes"]) {
       const withinLimit = result[metric] <= limits[metric];
       if (!withinLimit) {
         failures.push(`${artifact.app} ${metric}: ${result[metric]} exceeds ${limits[metric]}`);
+        result.withinBudget = false;
       }
-      return withinLimit;
-    });
+    }
   }
   report.artifacts.push(result);
 }
