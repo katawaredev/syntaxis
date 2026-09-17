@@ -62,6 +62,15 @@ Bind a specific LAN address when possible, do not forward this port publicly, an
 use authenticated deployment for untrusted networks. Release builds continue to
 ignore `SYNTAXIS_AUTH_DISABLED`. See [Security](security.md).
 
+## Browser deployment
+
+The standalone browser app can be deployed as static files on Vercel with
+`apps/browser` as the project root and access to source files outside that root
+enabled. Its build script provisions Rust/WASM and Dioxus CLI, builds the browser
+JavaScript bundles, and stages `apps/browser/dist`. See the
+[browser deployment instructions](../apps/browser/README.md#deploy-on-vercel).
+This deployment does not run the server app.
+
 ## Browser Git
 
 The browser Git toolbar keeps Connection in the synchronization button's menu;

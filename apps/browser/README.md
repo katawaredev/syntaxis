@@ -15,7 +15,7 @@ browser-only ZIP, Git, and command runtimes.
 From the repository root:
 
 ```sh
-just browser
+just serve-browser
 ```
 
 ## Build static files
@@ -33,9 +33,18 @@ The static deployment output is generated under
 Create a Vercel project with `apps/browser` as its Root Directory and enable
 access to source files outside that directory. The included `vercel.json` runs
 `build-vercel.sh`, which builds from the Cargo workspace and copies only the
-static public artifact into `apps/browser/dist` for deployment. The Vercel build
-image must provide the pinned Rust toolchain and Dioxus CLI; alternatively run
-the same script in CI and deploy the resulting static directory.
+static public artifact into `apps/browser/dist` for deployment. Select **Other**
+as the framework preset, keep **Build Command** as `sh build-vercel.sh` and
+**Output Directory** as `dist`, and leave **Install Command** empty (the build
+script installs the locked JavaScript dependencies).
+
+The script provisions Rust using `rust-toolchain.toml`, installs the WASM target,
+and downloads the pinned Dioxus CLI 0.7.10 Linux binary with SHA-256 verification
+when a matching CLI is unavailable. It also installs Bun 1.3.14 if missing and
+builds all browser bridges, including AI. Node.js must be available in the build
+image for the JavaScript build scripts. Tool downloads live under `target/vercel-tools`;
+the first build also downloads Rust and Cargo dependencies. No server runtime or
+provider API keys are needed for this static build.
 
 ## Current scope
 
