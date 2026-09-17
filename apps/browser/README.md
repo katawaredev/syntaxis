@@ -10,6 +10,10 @@ user-selected local folder in browsers that support the File System Access API.
 It uses no server functions; small generated JavaScript bridges provide the
 browser-only ZIP, Git, and command runtimes.
 
+See [browser maintenance](../../docs/browser-maintenance.md) for security
+invariants and the recurring release checklist, and [Browser AI](../../docs/browser-ai.md)
+for the AI runtime's providers, tools, and limits.
+
 ## Run locally
 
 From the repository root:
@@ -48,6 +52,21 @@ image for the JavaScript build scripts. Tool downloads live under `target/vercel
 the first build also downloads Rust and Cargo dependencies. No server runtime or
 provider API keys are needed for this static build.
 
+### Vercel Web Analytics
+
+Enable **Web Analytics** in the Vercel project dashboard and redeploy. Keep
+**Automatically expose System Environment Variables** enabled so the build
+receives `VERCEL=1`. Only then does `build-vercel.sh` inject Vercel's same-origin
+analytics script into the staged `dist/index.html` (and refresh compressed copies).
+No analytics package or shared UI code is required, and the existing CSP permits
+the script without allowing inline JavaScript.
+
+Local development, ordinary static builds, and the server app contain no analytics
+integration. Self-hosters should use the ordinary static build output above;
+`dist` produced on Vercel is a deployment-specific artifact containing analytics.
+Running this script elsewhere without `VERCEL=1` also produces no analytics.
+See the [Vercel Web Analytics setup guide](https://vercel.com/docs/analytics/quickstart).
+
 ## Current scope
 
 - Browse a lazy, expandable file tree backed by the shared editor tree model.
@@ -79,10 +98,11 @@ working-directory state reset between commands, interactive processes are
 unavailable, and network access is disabled.
 
 The browser product stores and mutates ordinary `.git` metadata through isomorphic-git.
-The browser runtime does not advertise a Git network capability, so remote
-management, fetch, pull, publish, and push controls are absent. SSH, credential
-helpers, GPG signing, rebase, worktrees, hooks, and partial-hunk staging still
-require the native/server Git runtime. AI keys
+It supports HTTPS clone, remote management, fetch, pull, publish, and push.
+Connections require host CORS support or an explicitly configured trusted CORS
+proxy, with browser connection settings and credentials separate from the server.
+SSH, credential helpers, GPG signing, rebase, worktrees, hooks, partial-hunk
+staging, and force pushes are unsupported in the browser. AI keys
 remain in memory, are configured at `/workspaces/<slug>/ai/settings/provider-accounts`, and go
 directly to the selected provider, so that provider must allow browser CORS. ZIP import/export is
 intentionally merge-only: existing workspace paths are never overwritten by an

@@ -70,6 +70,9 @@ enabled. Its build script provisions Rust/WASM and Dioxus CLI, builds the browse
 JavaScript bundles, and stages `apps/browser/dist`. See the
 [browser deployment instructions](../apps/browser/README.md#deploy-on-vercel).
 This deployment does not run the server app.
+The Vercel build injects Web Analytics only into the browser deployment artifact
+when `VERCEL=1`; enable Web Analytics in that Vercel project's dashboard.
+Ordinary browser builds and the server app have no analytics integration.
 
 ## Browser Git
 

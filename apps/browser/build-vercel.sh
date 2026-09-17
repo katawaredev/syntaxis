@@ -55,3 +55,27 @@ browser_output="$repository_root/apps/browser/dist"
 rm -rf "$browser_output"
 mkdir -p "$browser_output"
 cp -R "$repository_root/target/dx/syntaxis-browser/release/web/public/." "$browser_output/"
+
+# Keep analytics out of ordinary builds, including local runs of this script.
+if [ "${VERCEL:-}" = "1" ]; then
+  node --input-type=module - "$browser_output" <<'JS'
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { brotliCompressSync, gzipSync } from 'node:zlib';
+
+const index = join(process.argv[2], 'index.html');
+const html = readFileSync(index, 'utf8');
+if (!html.includes('</head>')) {
+  throw new Error('Cannot inject Vercel Analytics: index.html has no closing head tag');
+}
+// External, same-origin script works with the existing CSP without inline JS.
+const output = html.replace('</head>', '<script defer src="/_vercel/insights/script.js"></script></head>');
+writeFileSync(index, output);
+// Dioxus may emit compressed copies; keep them consistent with the staged HTML.
+for (const [extension, compress] of [['br', brotliCompressSync], ['gz', gzipSync]]) {
+  if (existsSync(`${index}.${extension}`)) {
+    writeFileSync(`${index}.${extension}`, compress(Buffer.from(output)));
+  }
+}
+JS
+fi
