@@ -310,7 +310,8 @@ try {
   await setInputValue(page, '[role="dialog"] input[type="password"]', "smoke-key");
   await clickButton(page, "Continue");
   await page.waitForFunction(
-    () => document.querySelector('[role="dialog"]')?.textContent.includes("Credentials saved"),
+    () =>
+      document.querySelector('[role="dialog"]')?.textContent.includes("API key saved in this tab."),
     { timeout: 30_000 },
   );
   await clickButton(page, "Close");
