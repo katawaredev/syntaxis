@@ -15,30 +15,17 @@ if ! command -v rustup >/dev/null 2>&1; then
   sh "$tools_dir/rustup-init.sh" -y --profile minimal --default-toolchain none --no-modify-path
 fi
 # rust-toolchain.toml selects the pinned version, components, and WASM target.
+rustup install
 rustup show active-toolchain
 rustup target add wasm32-unknown-unknown
 
 dx_version=0.7.10
 if ! command -v dx >/dev/null 2>&1 || ! dx --version | grep -Eq '^(dx|dioxus|dioxus-cli) 0\.7\.10([[:space:]]|$)'; then
-  case "$(uname -s)-$(uname -m)" in
-    Linux-x86_64)
-      dx_target=x86_64-unknown-linux-gnu
-      dx_sha256=4363e4ed2a3f1eb7f4d38d2d59aed59ce43271c44c16b425e92c89a64761fbe7
-      ;;
-    Linux-aarch64)
-      dx_target=aarch64-unknown-linux-gnu
-      dx_sha256=8f1a17d3218700ffbe15e6540d936a178b2556fc801121a31082e3ba4ab9ef55
-      ;;
-    *)
-      echo "Install Dioxus CLI $dx_version before running this script on this platform." >&2
-      exit 1
-      ;;
-  esac
-  curl --fail --silent --show-error --location \
-    "https://github.com/DioxusLabs/dioxus/releases/download/v$dx_version/dx-$dx_target.tar.gz" \
-    --output "$tools_dir/dx.tar.gz"
-  printf '%s  %s\n' "$dx_sha256" "$tools_dir/dx.tar.gz" | sha256sum --check
-  tar -xzf "$tools_dir/dx.tar.gz" -C "$tools_dir/bin"
+  # Release binaries can require a newer glibc than the Vercel build image.
+  # Compile on the host so dx links against its available system libraries.
+  # --force also replaces an incompatible binary left by an earlier build.
+  cargo install dioxus-cli --version "=$dx_version" --locked --force \
+    --root "$tools_dir"
 fi
 dx --version
 
