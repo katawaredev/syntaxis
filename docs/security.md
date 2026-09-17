@@ -49,6 +49,23 @@ proxy may add a login step, but every admitted identity still receives the same 
 
 A VPN can reduce public exposure but does not replace application authentication or host security.
 
+### LAN development
+
+`just serve-lan` requires a password when `SYNTAXIS_PASSWORD_HASH` is configured.
+An invalid hash causes startup to fail, not an authentication bypass. Without a
+hash, the recipe warns and disables login for a debug build. It defaults to
+`0.0.0.0` and temporarily opens the TCP port through UFW when installed, cleaning
+up its added rule on exit and preserving existing matching rules.
+When login is disabled, anyone who can reach that address and port can use the server's workspace
+and shell authority. All-interface binding is not a guarantee of LAN-only reachability.
+Use it only on a trusted development network; bind a specific LAN IP when possible
+and never forward it publicly. Use authenticated deployment on untrusted networks.
+The authentication bypass remains debug-only; release builds ignore it.
+
+The standalone browser app is a separate runtime: it has no server shell or server
+login. It still handles provider keys and private workspace data in the browser;
+its lack of a server backend does not make untrusted code or skill instructions safe.
+
 ## Container boundary
 
 The supplied image runs as a non-root user, but it is not a sandbox for hostile code. It includes

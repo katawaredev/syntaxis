@@ -1,18 +1,19 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const scriptPath = fileURLToPath(import.meta.url);
 const __dirname = dirname(scriptPath);
 const root = resolve(__dirname, "..");
-const assetsDir = resolve(root, "assets/terminal");
-const bridgeSource = resolve(assetsDir, "bridge-source.js");
-const sourceLinks = resolve(assetsDir, "source-links.js");
-const bundleDest = resolve(assetsDir, "terminal.bundle.js");
-const stampDest = resolve(assetsDir, "terminal.bundle.stamp");
+const sourceDir = resolve(root, "crates/runtime-remote/bridge-src/terminal");
+const outputDir = resolve(root, "crates/runtime-remote/assets");
+const bridgeSource = resolve(sourceDir, "bridge-source.js");
+const sourceLinks = resolve(sourceDir, "source-links.js");
+const bundleDest = resolve(outputDir, "terminal.bundle.js");
+const stampDest = resolve(outputDir, "terminal.bundle.stamp");
 
 function packageVersion(name) {
   const manifest = resolve(root, "node_modules", name, "package.json");
@@ -65,11 +66,12 @@ const cssInjection =
   `}})();\n`;
 
 const { default: esbuild } = await import("esbuild");
+mkdirSync(outputDir, { recursive: true });
 
 const result = await esbuild.build({
   stdin: {
     contents: cssInjection + bridgeCode,
-    resolveDir: assetsDir,
+    resolveDir: sourceDir,
     loader: "js",
   },
   bundle: true,

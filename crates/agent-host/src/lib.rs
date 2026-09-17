@@ -139,10 +139,9 @@ impl HostAgentWorkspace {
     ///
     /// Returns an unavailable error when Pi cannot be launched.
     pub async fn create_session(&self) -> Result<(String, AgentSnapshot), AgentError> {
-        let _guard = self.process_lock.lock().await;
+        let process_guard = self.process_lock.lock().await;
         let id = Uuid::new_v4().to_string();
         let process = HostAgentSession::start(&self.workspace, LaunchTarget::New(id.clone()))?;
-        let snapshot = process.snapshot();
         lock(&self.sessions).insert(
             id.clone(),
             ManagedSession {
@@ -162,6 +161,8 @@ impl HostAgentWorkspace {
         process.refresh();
         self.retire_excess_settled_sessions(&id).await;
         self.emit_sessions();
+        drop(process_guard);
+        let snapshot = process.initialized_snapshot().await?;
         Ok((id, snapshot))
     }
     /// Start or return a persisted Pi session.
@@ -176,18 +177,19 @@ impl HostAgentWorkspace {
                 session_id: id.to_owned(),
             },
         );
-        if let Some(process) = lock(&self.sessions)
+        let process = lock(&self.sessions)
             .get(id)
-            .and_then(|session| session.process.clone())
-        {
-            return Ok(process.snapshot());
+            .and_then(|session| session.process.clone());
+        if let Some(process) = process {
+            return process.initialized_snapshot().await;
         }
-        let _guard = self.process_lock.lock().await;
-        if let Some(process) = lock(&self.sessions)
+        let process_guard = self.process_lock.lock().await;
+        let process = lock(&self.sessions)
             .get(id)
-            .and_then(|session| session.process.clone())
-        {
-            return Ok(process.snapshot());
+            .and_then(|session| session.process.clone());
+        if let Some(process) = process {
+            drop(process_guard);
+            return process.initialized_snapshot().await;
         }
         let path = lock(&self.sessions)
             .get(id)
@@ -196,7 +198,6 @@ impl HostAgentWorkspace {
                 AgentError::new(AgentErrorCode::InvalidRequest, "Pi session not found")
             })?;
         let process = HostAgentSession::start(&self.workspace, LaunchTarget::Resume(path))?;
-        let snapshot = process.snapshot();
         if let Some(session) = lock(&self.sessions).get_mut(id) {
             session.process = Some(process.clone());
             session.summary.running = true;
@@ -208,7 +209,8 @@ impl HostAgentWorkspace {
         process.refresh();
         self.retire_excess_settled_sessions(id).await;
         self.emit_sessions();
-        Ok(snapshot)
+        drop(process_guard);
+        process.initialized_snapshot().await
     }
     /// Stop and permanently delete one Pi session owned by this workspace.
     ///
@@ -505,7 +507,10 @@ impl HostAgentWorkspace {
             .iter()
             .filter_map(|(id, session)| {
                 let process = session.process.as_ref()?;
-                (id != selected_id && process.snapshot().status == AgentStatus::Ready)
+                let state = lock(&process.state);
+                (id != selected_id
+                    && state.initial_responses.is_empty()
+                    && state.snapshot.status == AgentStatus::Ready)
                     .then(|| (id.clone(), session.summary.updated_at_ms, process.clone()))
             })
             .collect::<Vec<_>>();
@@ -556,7 +561,18 @@ pub struct HostAgentSession {
     event_input: mpsc::UnboundedSender<ServerMessage>,
     state: Arc<Mutex<RuntimeState>>,
 }
+const INITIAL_REQUESTS: [(&str, &str); 6] = [
+    ("syntaxis-state", "get_state"),
+    ("syntaxis-messages", "get_messages"),
+    ("syntaxis-fork-messages", "get_fork_messages"),
+    ("syntaxis-models", "get_available_models"),
+    ("syntaxis-commands", "get_commands"),
+    ("syntaxis-stats", "get_session_stats"),
+];
+
 struct RuntimeState {
+    initial_responses: Vec<&'static str>,
+    initial_error: Option<AgentError>,
     snapshot: AgentSnapshot,
     session_file: Option<PathBuf>,
     current_assistant: Option<String>,
@@ -611,6 +627,8 @@ impl HostAgentSession {
         let (events, _) = broadcast::channel(EVENT_CAPACITY);
         let (event_input, event_rx) = mpsc::unbounded_channel();
         let state = Arc::new(Mutex::new(RuntimeState {
+            initial_responses: INITIAL_REQUESTS.iter().map(|(id, _)| *id).collect(),
+            initial_error: None,
             snapshot: AgentSnapshot::default(),
             session_file: None,
             current_assistant: None,
@@ -642,6 +660,49 @@ impl HostAgentSession {
     }
     pub fn snapshot(&self) -> AgentSnapshot {
         lock(&self.state).snapshot.clone()
+    }
+    async fn initialized_snapshot(&self) -> Result<AgentSnapshot, AgentError> {
+        // Subscribe before checking state so initialization cannot finish between them.
+        let mut events = self.subscribe();
+        tokio::time::timeout(std::time::Duration::from_secs(30), async {
+            loop {
+                {
+                    let state = lock(&self.state);
+                    if let Some(error) = &state.initial_error {
+                        return Err(error.clone());
+                    }
+                    if state.initial_responses.is_empty() {
+                        return Ok(state.snapshot.clone());
+                    }
+                    if matches!(
+                        state.snapshot.status,
+                        AgentStatus::Failed | AgentStatus::Stopped
+                    ) {
+                        return Err(AgentError::new(
+                            AgentErrorCode::Unavailable,
+                            state.snapshot.status_message.clone(),
+                        ));
+                    }
+                }
+                match events.recv().await {
+                    Ok(ServerMessage::Error { error }) => return Err(error),
+                    Err(broadcast::error::RecvError::Closed) => {
+                        return Err(AgentError::new(
+                            AgentErrorCode::Unavailable,
+                            "Pi disconnected during startup",
+                        ));
+                    }
+                    Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => {}
+                }
+            }
+        })
+        .await
+        .map_err(|_| {
+            AgentError::new(
+                AgentErrorCode::Unavailable,
+                "Pi startup timed out. Try opening the chat again.",
+            )
+        })?
     }
     fn session_file(&self) -> Option<PathBuf> {
         lock(&self.state).session_file.clone()
@@ -877,14 +938,7 @@ impl HostAgentSession {
         }
     }
     fn refresh(&self) {
-        for (id, command) in [
-            ("syntaxis-state", "get_state"),
-            ("syntaxis-messages", "get_messages"),
-            ("syntaxis-fork-messages", "get_fork_messages"),
-            ("syntaxis-models", "get_available_models"),
-            ("syntaxis-commands", "get_commands"),
-            ("syntaxis-stats", "get_session_stats"),
-        ] {
+        for (id, command) in INITIAL_REQUESTS {
             let _ = self
                 .commands
                 .try_send(json!({ "id" : id, "type" : command }));

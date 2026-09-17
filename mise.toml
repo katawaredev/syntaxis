@@ -53,6 +53,14 @@ run = "just qa"
 description = "Auto-fix and validate the server build"
 run = "just qa server"
 
-[tasks.serve]
-description = "Start the default development server"
-run = "just serve"
+[tasks."serve:server"]
+description = "Start the server-backed web app on loopback"
+run = "just serve-server"
+
+[tasks."serve:browser"]
+description = "Start the standalone browser app"
+run = "just serve-browser"
+
+[tasks."serve:lan"]
+description = "Start the LAN debug app, using the configured password when present"
+run = "just serve-lan"

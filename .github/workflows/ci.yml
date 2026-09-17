@@ -77,6 +77,12 @@ jobs:
           cc --version
           clang --version
 
+      - name: Install architecture-check tools
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends ripgrep
+
+      - name: Enforce architecture boundaries
+        run: bash scripts/check-architecture.sh
+
       - name: Validate web and server
         if: github.event_name == 'pull_request'
         run: |
@@ -88,6 +94,16 @@ jobs:
         run: |
           just ci web
           just check server
+
+      - name: Enforce web bundle budgets
+        run: just bundle-check
+
+      - name: Smoke-test browser runtime contracts
+        run: |
+          browser="$(command -v google-chrome || command -v chromium)"
+          BROWSER_DIST=target/dx/syntaxis-browser/debug/web/public \
+            AUTORESEARCH_BROWSER_PATH="$browser" \
+            bun autoresearch/browser-smoke.mjs
 
       - name: Verify tracked generated files are current
         run: git diff --exit-code

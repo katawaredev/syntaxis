@@ -1,0 +1,57 @@
+[package]
+name = "syntaxis-server"
+version = "0.11.2"
+authors = ["Nikolay Stoynov <arvigeus@gmail.com>"]
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+base64 = { version = "0.23.1", optional = true }
+dioxus = { version = "0.7.10", features = ["router", "fullstack"] }
+serde = { version = "1.0.229", features = ["derive"], optional = true }
+syntaxis-app-shell = { path = "../../crates/app-shell" }
+syntaxis-runtime-remote = { path = "../../crates/runtime-remote" }
+url = { version = "2.5.8", optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+argon2 = { version = "0.5.3", optional = true }
+rand_core = { version = "0.6.4", features = ["getrandom"], optional = true }
+rpassword = { version = "7.5.4", optional = true }
+subtle = { version = "2.6.1", optional = true }
+tokio = { version = "1.53.1", features = [
+  "io-util",
+  "macros",
+  "net",
+  "process",
+  "rt",
+  "sync",
+  "time",
+], optional = true }
+
+[build-dependencies]
+cc = "1.4.3"
+
+[features]
+default = ["web"]
+web = ["dioxus/web"]
+desktop = [
+  "dioxus/desktop",
+  "syntaxis-runtime-remote/host",
+]
+mobile = ["dioxus/mobile"]
+server = [
+  "dioxus/server",
+  "syntaxis-runtime-remote/server",
+  "dep:argon2",
+  "dep:base64",
+  "dep:rand_core",
+  "dep:rpassword",
+  "dep:serde",
+  "dep:subtle",
+  "dep:tokio",
+  "dep:url",
+]
+
+[lints]
+workspace = true

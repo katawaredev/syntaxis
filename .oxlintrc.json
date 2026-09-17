@@ -13,6 +13,8 @@
   },
   "ignorePatterns": [
     "assets/terminal/terminal.bundle.js",
+    "crates/runtime-browser/assets/*.bundle.js",
+    "crates/runtime-remote/assets/*.bundle.js",
     "crates/code-editor/assets/editor.bundle.js",
     "crates/code-editor/assets/lsp.bundle.js"
   ]

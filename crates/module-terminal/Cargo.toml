@@ -1,0 +1,22 @@
+[package]
+name = "syntaxis-module-terminal"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+async-trait = "0.1.92"
+dioxus = { version = "0.7.10" }
+dioxus-sdk-time = "0.7.0"
+futures-util = "0.3.34"
+serde = { version = "1.0.229", features = ["derive"] }
+syntaxis-app-contracts = { path = "../app-contracts" }
+syntaxis-terminal = { path = "../terminal" }
+syntaxis-ui = { path = "../ui" }
+syntaxis-workspace = { path = "../workspace" }
+url = "2.5.8"
+web-time = "1.1.0"
+
+[lints]
+workspace = true

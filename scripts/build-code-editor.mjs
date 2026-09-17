@@ -6,9 +6,9 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const source = resolve(root, "assets/code-editor/bridge-source.js");
+const source = resolve(root, "crates/code-editor/bridge-src/bridge-source.js");
 const destination = resolve(root, "crates/code-editor/assets/editor.bundle.js");
-const lspSource = resolve(root, "assets/code-editor/lsp-source.js");
+const lspSource = resolve(root, "crates/code-editor/bridge-src/lsp-source.js");
 const lspDestination = resolve(root, "crates/code-editor/assets/lsp.bundle.js");
 const stamp = resolve(root, "crates/code-editor/assets/editor.bundle.stamp");
 const manifest = resolve(root, "package.json");

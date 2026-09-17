@@ -11,7 +11,7 @@ import { summary } from "./stats.mjs";
 const root = resolve(import.meta.dirname, "..");
 const research = join(root, "autoresearch");
 const reports = join(root, "lighthouse-reports");
-const publicDir = join(root, "target/dx/syntaxis/release/web/public");
+const publicDir = join(root, "target/dx/syntaxis-server/release/web/public");
 const outputDir = join(research, "results");
 const profilesDir = join(research, "profiles");
 const workload = JSON.parse(await readFile(join(research, "workload.json"), "utf8"));

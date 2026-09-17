@@ -3,8 +3,13 @@
 # Common usage:
 #   just
 #   just install
-#   just serve
-#   just serve desktop
+#   just serve-server
+#   just serve-browser
+#   just serve-lan
+#   just server
+#   just browser
+#   just lan
+#   just serve-desktop
 #   just check
 #   just ci
 #   just update
@@ -14,7 +19,7 @@
 #   just dx doctor
 #
 # Override defaults:
-#   just serve web 127.0.0.1 3000
+#   just serve-server 127.0.0.1 3000
 #   just build web release
 #   just test "my_test_name"
 
@@ -113,6 +118,18 @@ install-js:
 build-terminal: install-js
     bun run build:terminal
 
+# Build the browser-local just-bash bundle when its sources or pinned packages changed.
+build-browser-terminal: install-js
+    bun run build:browser-terminal
+
+# Build the browser-local ZIP archive bundle when its sources or pinned packages changed.
+build-browser-archive: install-js
+    bun run build:browser-archive
+
+# Build the browser-local Git bundle.
+build-browser-git: install-js
+    bun run build:browser-git
+
 # Build the CodeMirror editor bundle when its sources or pinned packages changed.
 build-editor: install-js
     bun run build:editor
@@ -122,7 +139,10 @@ build-pi-settings: install-js
     bun run generate:pi-settings
 
 # Build all npm-backed application assets. Each generator has its own cache key.
-build-assets: build-editor build-terminal build-pi-settings
+build-assets: build-editor build-terminal build-browser-terminal build-browser-archive build-browser-git build-browser-ai build-pi-settings
+
+build-browser-ai: install-js
+    bun run build:browser-ai
 
 # -----------------------------------------------------------------------------
 # Environment inspection
@@ -224,62 +244,77 @@ update mode="compatible":
 
 # Generate an Argon2id PHC hash for SYNTAXIS_PASSWORD_HASH.
 auth-password:
-    cargo run --quiet --no-default-features --features server -- hash-password
+    cargo run --quiet --package syntaxis-server --no-default-features --features server -- hash-password
 
-# Start the development server.
-serve platform=default_platform host=default_host port=default_port: build-assets
+# Start the server-backed app for a specific Dioxus platform (not a runtime selector).
+serve-server-platform platform=default_platform host=default_host port=default_port: build-assets
     #!/usr/bin/env bash
     set -euo pipefail
     host="{{ host }}"
     if [[ "$host" == "127.0.0.1" || "$host" == "localhost" || "$host" == "::1" ]]; then
         export SYNTAXIS_AUTH_DISABLED=true
+    else
+        export SYNTAXIS_AUTH_DISABLED=false
     fi
-    dx serve \
+    dx serve --package syntaxis-server \
         --platform "{{ platform }}" \
         --addr "$host" \
-        --port "{{ port }}" \
-        --force-sequential true
+        --port "{{ port }}"
 
-# Start the web development server.
-web host=default_host port=default_port: build-assets
-    #!/usr/bin/env bash
-    set -euo pipefail
-    host="{{ host }}"
-    if [[ "$host" == "127.0.0.1" || "$host" == "localhost" || "$host" == "::1" ]]; then
-        export SYNTAXIS_AUTH_DISABLED=true
-    fi
-    dx serve \
-        --platform web \
-        --addr "$host" \
-        --port "{{ port }}" \
-        --force-sequential true
+# Start the server-backed web app; loopback debug access needs no password.
+serve-server host=default_host port=default_port: (serve-server-platform "web" host port)
+
+# Short alias for the server-backed web app.
+server host=default_host port=default_port: (serve-server host port)
+
+# Start the browser-only development server.
+serve-browser host=default_host port=default_port: build-assets
+    dx serve --package syntaxis-browser --platform web --addr "{{ host }}" --port "{{ port }}"
+
+# Short alias for the browser-only development server.
+browser host=default_host port=default_port: (serve-browser host port)
 
 # Start the desktop development server.
-desktop: build-assets
-    dx serve --platform desktop
+serve-desktop: build-assets
+    dx serve --package syntaxis-server --platform desktop
 
 # Start the mobile development server.
-mobile: build-assets
-    dx serve --platform mobile
+serve-mobile: build-assets
+    dx serve --package syntaxis-server --platform mobile
 
-serve-local port=default_port: build-assets
+# Server-backed LAN development; use the configured password or warn and bypass debug login.
+serve-lan port=default_port host="0.0.0.0": build-assets
     #!/usr/bin/env bash
     set -euo pipefail
 
-    if command -v ufw >/dev/null 2>&1; then
-        cleanup() {
-            sudo ufw delete allow "{{ port }}/tcp" >/dev/null 2>&1 || true
-        }
-        trap cleanup EXIT
-
-        sudo ufw allow "{{ port }}/tcp"
+    if [[ -n "${SYNTAXIS_PASSWORD_HASH:-}" ]]; then
+        export SYNTAXIS_AUTH_DISABLED=false
+        echo "LAN debug server on {{ host }}:{{ port }}; configured password required." >&2
+    else
+        export SYNTAXIS_AUTH_DISABLED=true
+        echo "WARNING: No SYNTAXIS_PASSWORD_HASH set; password-free debug server on {{ host }}:{{ port }}." >&2
+        echo "Anyone who can reach it has workspace and shell access. Use only a trusted LAN; no public forwarding." >&2
     fi
 
-    dx serve \
+    if command -v ufw >/dev/null 2>&1; then
+        # Preserve a matching rule that was already present before this invocation.
+        existing_rules=$(sudo ufw show added)
+        if [[ "$existing_rules" != *"ufw allow {{ port }}/tcp"* ]]; then
+            cleanup() {
+                sudo ufw delete allow "{{ port }}/tcp" >/dev/null 2>&1 || true
+            }
+            sudo ufw allow "{{ port }}/tcp"
+            trap cleanup EXIT
+        fi
+    fi
+
+    dx serve --package syntaxis-server \
         --platform web \
-        --addr 0.0.0.0 \
-        --port "{{ port }}" \
-        --force-sequential true
+        --addr "{{ host }}" \
+        --port "{{ port }}"
+
+# Short alias for the LAN debug server.
+lan port=default_port host="0.0.0.0": (serve-lan port host)
 
 # Build the project.
 #
@@ -291,7 +326,7 @@ build platform=default_platform profile="debug": build-assets
     #!/usr/bin/env bash
     set -euo pipefail
 
-    args=(build --platform "{{ platform }}")
+    args=(build --package syntaxis-server --platform "{{ platform }}")
 
     if [[ "{{ profile }}" == "release" ]]; then
         args+=(--release)
@@ -305,7 +340,19 @@ build platform=default_platform profile="debug": build-assets
 
 # Build an optimized release.
 release platform=default_platform: build-assets
-    dx build --platform "{{ platform }}" --release
+    dx build --package syntaxis-server --platform "{{ platform }}" --release
+
+# Build both web applications in release mode and report raw/gzip/Brotli WASM sizes.
+bundle-report: build-assets
+    dx build --package syntaxis-server --platform web --release --locked --debug-symbols false
+    dx build --package syntaxis-browser --platform web --release --locked --debug-symbols false
+    bun scripts/report-bundle-sizes.mjs release
+
+# Build both web clients and fail when their release WASM exceeds the checked-in budgets.
+bundle-check: build-assets
+    dx build --package syntaxis-server --platform web --release --locked --debug-symbols false
+    dx build --package syntaxis-browser --platform web --release --locked --debug-symbols false
+    bun scripts/report-bundle-sizes.mjs release --check
 
 # Build the production web app and run repeatable local Lighthouse audits.
 lighthouse:
@@ -330,7 +377,7 @@ lighthouse-open:
 [private]
 docker-version:
     @cargo metadata --no-deps --format-version 1 \
-        | bun -e 'const metadata = JSON.parse(await Bun.stdin.text()); const manifest = `${metadata.workspace_root}/Cargo.toml`; console.log(metadata.packages.find((pkg) => pkg.manifest_path === manifest).version);'
+        | bun -e 'const metadata = JSON.parse(await Bun.stdin.text()); console.log(metadata.packages.find((pkg) => pkg.name === "syntaxis-server").version);'
 
 # Build a Docker target and tag production with the Cargo package version.
 docker-build target="production":
@@ -466,8 +513,12 @@ dx-check platform=default_platform: build-assets
     set -euo pipefail
 
     case "{{ platform }}" in
-        web | server | desktop)
-            dx check "--{{ platform }}"
+        web)
+            dx check --package syntaxis-server "--{{ platform }}"
+            dx build --package syntaxis-browser --platform "{{ platform }}" --debug-symbols false
+            ;;
+        server | desktop)
+            dx check --package syntaxis-server "--{{ platform }}"
             ;;
         *)
             echo "Dioxus check supports web, server, or desktop; got '{{ platform }}'." >&2
@@ -478,13 +529,11 @@ dx-check platform=default_platform: build-assets
 # Format Rust, RSX, JavaScript, CSS, and JSON source.
 format:
     cargo fmt --all
-    dx fmt
     bun run format:web
 
 # Check formatting without modifying files.
 format-check:
     cargo fmt --all -- --check
-    dx fmt --check
     bun run format:web:check
 
 # Preview and remove ignored build artifacts while preserving local configuration.
@@ -539,6 +588,10 @@ lint-web:
 # Run all language-specific lint gates.
 lint platform=default_platform: (clippy platform) lint-web
 
+# Enforce shared-module dependency direction and composition-root ownership.
+architecture:
+    bash scripts/check-architecture.sh
+
 # Run tests using cargo-nextest. The filter remains the first argument for convenience.
 test filter="" platform=default_platform: build-assets
     #!/usr/bin/env bash
@@ -569,6 +622,10 @@ test-cargo platform=default_platform: build-assets
         --workspace \
         --no-default-features \
         --features "{{ platform }}"
+
+# Run authored JavaScript and browser-harness unit tests.
+test-web: build-assets
+    bun test autoresearch/*.test.js crates/runtime-remote/bridge-src/terminal/source-links.test.js crates/runtime-browser/bridge-src/ai/bridge-source.test.js
 
 # Run doctests, which cargo-nextest does not replace.
 test-doc platform=default_platform: build-assets
@@ -637,15 +694,15 @@ expand *args:
 # -----------------------------------------------------------------------------
 
 # Fast, non-mutating local validation for one platform.
-check platform=default_platform: format-check (dx-check platform) (lint platform) (test "" platform)
+check platform=default_platform: architecture format-check (dx-check platform) (lint platform) (test "" platform) test-web
 
 # Full validation suitable for a manually requested CI run.
-ci platform=default_platform: format-check (dx-check platform) (lint platform) (test "" platform) (test-doc platform) deny machete
+ci platform=default_platform: architecture format-check (dx-check platform) (lint platform) (test "" platform) (test-doc platform) test-web deny machete
     @echo
     @echo "All quality gates passed."
 
 # Lazy-developer workflow: apply safe fixes, then validate one platform and its doctests.
-qa platform=default_platform: build-assets (fix platform) (test-doc platform)
+qa platform=default_platform: architecture build-assets (fix platform) (test-doc platform)
     @echo
     @echo "All code quality gates passed."
 
@@ -653,14 +710,12 @@ qa platform=default_platform: build-assets (fix platform) (test-doc platform)
 # CI owns Rust compilation, Clippy, and tests.
 pre-commit: build-assets
     cargo fmt --all -- --check
-    dx fmt --check
     bun run format:web:check
     bun run lint:web
 
 # Apply formatting and safe lint fixes, then perform the fast validation workflow.
 fix platform=default_platform: build-assets
     cargo fmt --all
-    dx fmt
     bun run format:web
     bun run lint:web:fix
     cargo clippy \
@@ -669,4 +724,5 @@ fix platform=default_platform: build-assets
         --no-default-features \
         --features "{{ platform }}" \
         --fix --allow-dirty --allow-staged
+    cargo fmt --all
     just check "{{ platform }}"

@@ -4,6 +4,7 @@ mod buffer;
 mod config;
 mod language;
 mod language_service;
+mod search;
 mod tree;
 
 pub use buffer::{BufferStatus, EditorBuffer, ExternalChange};
@@ -16,4 +17,5 @@ pub use language_service::{
     LanguageServerDefinition, ProjectLocalLanguageServer, language_server_by_id,
     language_servers_for_language, profile_language_id,
 };
+pub use search::{SearchOptions, find_matches, replace_all_search_matches, replace_search_match};
 pub use tree::{ExplorerNode, ExplorerTree};

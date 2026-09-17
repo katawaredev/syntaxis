@@ -1,6 +1,77 @@
 use super::*;
 use syntaxis_workspace::{WorkspaceAvailability, WorkspaceIcon, WorkspaceIconSymbol};
 
+fn starting_state() -> Arc<Mutex<RuntimeState>> {
+    Arc::new(Mutex::new(RuntimeState {
+        initial_responses: INITIAL_REQUESTS.iter().map(|(id, _)| *id).collect(),
+        initial_error: None,
+        snapshot: AgentSnapshot::default(),
+        session_file: None,
+        current_assistant: None,
+        accept_initial_history: true,
+        fork_messages: Vec::new(),
+        extension_requests: VecDeque::new(),
+    }))
+}
+
+#[test]
+fn startup_waits_for_models_even_when_state_is_already_ready() {
+    let state = starting_state();
+    let (events, mut receiver) = mpsc::unbounded_channel();
+    // Responses may arrive in any order; an empty catalog is also a valid result.
+    for (id, command) in INITIAL_REQUESTS {
+        if command == "get_available_models" {
+            continue;
+        }
+        let response = json!({
+            "type": "response", "id": id, "command": command, "success": true,
+            "data": {"messages": [], "commands": []}
+        });
+        handle_pi_response(&response, &state, &events);
+        handle_pi_response(&response, &state, &events);
+    }
+    assert_eq!(lock(&state).snapshot.status, AgentStatus::Ready);
+    assert_eq!(lock(&state).initial_responses, vec!["syntaxis-models"]);
+    while receiver.try_recv().is_ok() {}
+    handle_pi_response(
+        &json!({"type": "response", "id": "syntaxis-models", "command": "get_available_models", "success": true, "data": {"models": []}}),
+        &state,
+        &events,
+    );
+    assert!(lock(&state).initial_responses.is_empty());
+    assert!(matches!(
+        receiver.try_recv(),
+        Ok(ServerMessage::Models { .. })
+    ));
+    assert!(matches!(
+        receiver.try_recv(),
+        Ok(ServerMessage::Snapshot { .. })
+    ));
+}
+
+#[tokio::test]
+async fn startup_errors_are_retained_for_later_selection() {
+    let state = starting_state();
+    let (event_input, _event_rx) = mpsc::unbounded_channel();
+    handle_pi_response(
+        &json!({"type": "response", "id": "syntaxis-models", "command": "get_available_models", "success": false, "error": "Catalog unavailable"}),
+        &state,
+        &event_input,
+    );
+    let (commands, _commands) = mpsc::channel(1);
+    let (shutdown, _shutdown) = mpsc::channel(1);
+    let (events, _) = broadcast::channel(1);
+    let session = HostAgentSession {
+        commands,
+        shutdown,
+        events,
+        event_input,
+        state,
+    };
+    let error = session.initialized_snapshot().await.unwrap_err();
+    assert_eq!(error.message, "Catalog unavailable");
+}
+
 #[tokio::test]
 async fn shutdown_succeeds_when_pi_has_already_stopped() {
     let (commands, _command_rx) = mpsc::channel(COMMAND_CAPACITY);
@@ -14,6 +85,8 @@ async fn shutdown_succeeds_when_pi_has_already_stopped() {
         events,
         event_input,
         state: Arc::new(Mutex::new(RuntimeState {
+            initial_responses: Vec::new(),
+            initial_error: None,
             snapshot: AgentSnapshot::default(),
             session_file: None,
             current_assistant: None,
@@ -53,6 +126,8 @@ async fn setting_a_model_updates_the_snapshot_with_its_requested_effort() {
         events,
         event_input,
         state: Arc::new(Mutex::new(RuntimeState {
+            initial_responses: Vec::new(),
+            initial_error: None,
             snapshot,
             session_file: None,
             current_assistant: None,
@@ -216,6 +291,8 @@ fn frames_fragmented_utf8_and_discards_oversized_records() -> Result<(), serde_j
 #[test]
 fn only_agent_settled_marks_the_session_idle() {
     let state = Arc::new(Mutex::new(RuntimeState {
+        initial_responses: Vec::new(),
+        initial_error: None,
         snapshot: AgentSnapshot {
             status: AgentStatus::Working,
             status_message: "Working".into(),
@@ -249,6 +326,8 @@ fn only_agent_settled_marks_the_session_idle() {
 #[test]
 fn queue_updates_preserve_steering_and_follow_up_counts() {
     let state = Arc::new(Mutex::new(RuntimeState {
+        initial_responses: Vec::new(),
+        initial_error: None,
         snapshot: AgentSnapshot {
             status: AgentStatus::Working,
             ..AgentSnapshot::default()

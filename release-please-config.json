@@ -7,13 +7,13 @@
   "packages": {
     ".": {
       "component": "syntaxis",
-      "package-name": "syntaxis",
+      "package-name": "syntaxis-server",
       "changelog-path": "CHANGELOG.md",
       "version-file": "VERSION",
       "extra-files": [
         {
           "type": "toml",
-          "path": "Cargo.toml",
+          "path": "apps/server/Cargo.toml",
           "jsonpath": "$.package.version"
         }
       ]

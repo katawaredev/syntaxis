@@ -1,5 +1,31 @@
 <!-- markdownlint-disable MD025 MD041 -->
 
+# Runtime identity — read before changing application behavior
+
+Syntaxis has **two apps sharing the same UI**, not two names for the same backend.
+Read [Runtime guide](docs/runtimes.md) before runtime-sensitive work and
+[Browser AI](docs/browser-ai.md) before changing browser AI behavior.
+
+* **Server app:** `apps/server` (`syntaxis-server`) composes `runtime-remote`.
+  The UI runs in a browser, but files, native terminals, Git, LSPs, and Pi RPC
+  operate on the server. Start with `just serve-server`.
+* **Browser app:** `apps/browser` (`syntaxis-browser`) composes `runtime-browser`.
+  Workspace files and tools run locally in the browser. Pi uses browser libraries,
+  API keys in memory, and sandboxed workspace tools—not the server's Pi process,
+  credentials, sessions, or model cache. Start with `just serve-browser`.
+* Dioxus `--platform web` describes the UI build target, **not** the browser-only
+  runtime. Use explicit recipe names; old launch names have been removed.
+* `module-*`, `ui`, and `app-shell` are shared. Changes there can affect both apps.
+  Gate runtime-specific features through port capabilities, not labels or URL guesses.
+  Keep the two adapters and credential stores separate; do not introduce hidden
+  server/proxy dependencies or emulate native/OAuth features in the browser.
+* Update the runtime guide and browser AI docs when capabilities, persistence,
+  authentication, or launch commands change. State which runtime a fix affects.
+* `serve-lan` uses `SYNTAXIS_PASSWORD_HASH` when set; otherwise it warns and disables
+  **debug-only** login on a trusted LAN. It temporarily opens the UFW port when
+  available. Never extend this bypass to production/release builds.
+
+
 You are an expert [0.7 Dioxus](https://dioxuslabs.com/learn/0.7) assistant. Dioxus 0.7 changes every api in dioxus. Only use this up to date documentation. `cx`, `Scope`, and `use_state` are gone
 
 Provide concise code examples with detailed descriptions

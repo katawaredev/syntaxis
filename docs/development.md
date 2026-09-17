@@ -3,12 +3,16 @@
 This page is for contributors. Operators installing a release should use
 [Getting started](getting-started.md).
 
-Syntaxis is a Dioxus 0.7 fullstack Rust application. The browser client compiles to WebAssembly; the
-server owns filesystem, terminal, Git, language-server, preview, authentication, and Pi access.
+Syntaxis has two Dioxus 0.7 applications with a shared UI: a server-backed app and
+a standalone browser app. Both compile browser UI to WebAssembly, but only the
+server-backed app uses the server's filesystem, native processes, and Pi RPC.
+Read the [Runtime guide](runtimes.md) before changing runtime-sensitive behavior.
 
 ## Repository layout
 
-Application code lives in `src/`. Workspace crates separate shared types from host implementations:
+The server-backed composition lives in `apps/server/src/`, and the browser-only composition in
+`apps/browser/`. Both mount the same `app-shell` and feature modules.
+Workspace crates separate shared types from host implementations:
 
 - `code-editor` and `editor` — editor integration and state;
 - `terminal` and `terminal-host` — terminal contracts and processes;
@@ -19,7 +23,9 @@ Application code lives in `src/`. Workspace crates separate shared types from ho
 - `notifications` and `notifications-host` — notification support;
 - `ui` — shared components.
 
-Browser-side editor and terminal sources are under `assets/`.
+Authored browser bridge sources live with their owners under
+`crates/code-editor/bridge-src/`, `crates/runtime-remote/bridge-src/`, and
+`crates/runtime-browser/bridge-src/`. Their generated bundles are crate-local assets.
 
 ## Setup
 
@@ -41,7 +47,9 @@ container includes them. Local Mise overrides belong in ignored `mise.local.toml
 ## Common tasks
 
 ```bash
-mise run serve          # web development server
+mise run serve:server   # server-backed web app, loopback
+mise run serve:browser  # standalone browser app, loopback
+mise run serve:lan      # LAN debug app; password if configured, warning otherwise
 mise run check          # non-mutating web checks
 mise run check:server   # non-mutating server checks
 mise run qa             # fix and validate the web build
@@ -52,8 +60,25 @@ mise run ci             # complete audit
 Use `just --list` for lower-level tasks. Run tools through `mise run` or `mise exec`; do not assume
 shell activation persists between commands.
 
-Debug `just serve` and `just web` disable login only when bound to loopback. `just serve-local` binds
-to the network and keeps authentication enabled.
+Prefer `just serve-server [host] [port]` and `just serve-browser [host] [port]`.
+Old launch names such as `just web` and `just serve-local` have been removed,
+without aliases. Dioxus's `web` target does not select the standalone browser
+runtime. See the [command map](runtimes.md#launch-commands) for launch recipes.
+
+`serve-server` disables debug login on loopback and explicitly enables it on other
+addresses. `just serve-lan [port] [host]` binds `0.0.0.0` by default and requires
+the password when `SYNTAXIS_PASSWORD_HASH` is set (including via `.env`). Otherwise
+it warns and disables debug login. Without login, all reachable clients get
+workspace and shell access; use only a trusted LAN, preferably with a specific LAN
+bind address. If UFW is installed, the recipe temporarily allows the TCP port
+using sudo and cleans up its rule on exit, preserving existing matching rules.
+Release authentication is unchanged. For example:
+
+```bash
+just serve-server                 # http://127.0.0.1:8080, server workspace
+just serve-browser 127.0.0.1 8081   # separate standalone browser app
+just serve-lan 8080 192.168.1.10    # substitute your own trusted LAN IP
+```
 
 ## Generated assets
 
@@ -61,8 +86,9 @@ to the network and keeps authentication enabled.
 just build-assets
 ```
 
-This builds the CodeMirror and terminal bundles and regenerates Pi settings metadata. The settings
-generator reads the pinned Pi package and writes `src/ai/generated_settings.rs`. It validates every
+This builds the CodeMirror, terminal, and browser runtime bundles (including Pi AI)
+and regenerates server Pi settings metadata. The settings
+generator reads the pinned Pi package and writes `crates/runtime-remote/src/ai/generated_settings.rs`. It validates every
 curated setting and setter on each run and hashes only the extracted metadata, so unrelated Pi
 documentation changes do not churn the generated Rust file. Runtime capability checks are per setter,
 not tied to Pi's version number.
@@ -102,12 +128,33 @@ assets. `qa` applies safe fixes; use `check` when the tree must not change.
 
 For Rust, manifest, or build-configuration changes, run on a machine with adequate resources:
 
+AI agents must first obtain explicit approval as required by root `AGENTS.md`.
+
 ```bash
 mise run qa
 mise run qa:server
 ```
 
 Documentation-only changes do not require the Rust workflow.
+
+### WASM bundle budgets
+
+`just bundle-check` builds both release web clients and checks their raw and Brotli-compressed
+WASM sizes. `just bundle-report` prints the same measurements without enforcing limits.
+These measurements exclude JavaScript, styles, and other assets.
+
+The workspace's `wasm-release` profile uses `opt-level = "z"` with release LTO and a single
+codegen unit. Dioxus selects this profile for both apps' WASM clients; the native server keeps
+the normal release profile. This favors download size over execution speed, so assess interactive
+performance when changing it. Compare measured artifacts before increasing
+`scripts/bundle-budgets.json`; both raw and compressed sizes must fit their limits.
+
+On Rust 1.98.0 / Dioxus CLI 0.7.10, switching from Dioxus's default `s` to `z` reduced the
+browser client from 6,286,257 to 5,276,710 raw bytes and from 1,535,295 to 1,383,673 Brotli
+bytes. Its raw budget remains 5,500,000 bytes; the Brotli budget is 1,450,000 bytes, allowing
+about 5% headroom over that measurement. The server client measures 6,222,429 raw bytes and
+1,593,058 Brotli bytes, within its existing limits. The migration report records older,
+historical budgets.
 
 ## Lighthouse
 
