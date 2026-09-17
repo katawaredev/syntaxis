@@ -105,7 +105,7 @@ SYNTAXIS_PASSWORD_HASH='$argon2id$v=19$...' docker compose up --build
 Open `http://localhost:8080`. The development Compose file mounts the checkout and host projects and
 persists the runtime home and Cargo caches.
 
-Authenticate optional Pi support with:
+Authenticate Pi with:
 
 ```bash
 docker compose exec syntaxis pi

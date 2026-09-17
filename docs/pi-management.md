@@ -1,6 +1,6 @@
 # Pi integration
 
-Syntaxis provides an optional graphical workspace for the
+Syntaxis provides a graphical workspace for the
 [Pi coding agent](https://pi.dev/). It runs Pi directly through `pi --mode rpc`; it does not
 reimplement the agent, proxy model requests, or store provider keys in the browser.
 
@@ -150,5 +150,5 @@ and packages remain in Pi's directories under the runtime home.
 
 Removing a Syntaxis workspace stops its live Pi processes but does not delete saved chats. Back up
 the runtime home if they matter. See the
-[security model](security.md#optional-pi-integration) for the trust implications of agents and
+[security model](security.md#pi-integration) for the trust implications of agents and
 extensions.

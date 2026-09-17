@@ -192,7 +192,7 @@ The gateway is not a sandbox for hostile applications. Configure only trusted ta
 
 ## Persistent data and backups
 
-The persistent home contains installed tools plus optional Pi credentials, settings, packages, and
+The persistent home contains installed tools plus Pi credentials, settings, packages, and
 sessions. Pi can update itself there, so its data survives container replacement.
 
 Back up:

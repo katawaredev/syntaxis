@@ -101,7 +101,7 @@ Bootstrap can infer and install tools through Mise. Existing Mise configuration 
 authoritative, but trusting it still permits its tools and tasks to run. Review unknown repositories
 and commands; use a disposable or stronger sandbox for untrusted code.
 
-## Optional Pi integration
+## Pi integration
 
 Pi runs as the runtime user and can access the same workspace tools and credentials. Syntaxis can
 install Pi packages, extensions, and skills, which may contain executable code or instructions.

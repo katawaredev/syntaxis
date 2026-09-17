@@ -108,9 +108,9 @@ choose to delete them.
 For projects without a Mise configuration, **Bootstrap** can infer and install a toolchain and
 language servers. Review the proposal before installing anything.
 
-## Optional: authenticate Pi
+## Authenticate Pi
 
-Pi is included in the image but is not required for the rest of Syntaxis. To use the AI section:
+Pi is included in the image. To use the AI section:
 
 ```bash
 docker exec -it syntaxis pi

@@ -9,11 +9,17 @@ open the same projects from mobile, tablet, or desktop.
 Your code stays in ordinary folders on your machine. Syntaxis does not provide compute, copy your
 repositories into a hosted workspace, or replace your existing command-line tools.
 
-There is also a standalone browser app with local workspace storage and sandboxed
-tools. It shares the UI, not the server's processes or credentials. Contributors
-and AI agents should read the [Runtime guide](docs/runtimes.md): use
-`just serve-server` for the server-backed app and `just serve-browser` for the
-standalone app. The feature descriptions below primarily describe the server app.
+## Browser app
+
+The standalone [browser app](apps/browser) is available at
+[syntaxis.kataware.dev](https://syntaxis.kataware.dev), with no server setup needed.
+It shares the self-hosted app's interface and works with files in browser storage or a local
+directory you select. Its tools run in a browser sandbox; the self-hosted app runs native
+terminals, Git, language servers, and Pi on your own machine. Browser AI uses your own provider
+API keys, with keys and chats kept in memory only until the tab is reloaded or closed.
+
+The sections below primarily describe the self-hosted app. For runtime details and development
+commands, see the [Runtime guide](docs/runtimes.md).
 
 ## Is this for you?
 
@@ -119,7 +125,6 @@ Previews are private by default and can optionally receive a separate revocable 
 
 Syntaxis includes an interface for the [Pi coding agent](https://pi.dev/). It uses Pi's
 native RPC mode and Pi's existing provider configuration, sessions, prompts, skills, and extensions.
-None of the editor, terminal, Git, project, or preview features require it.
 
 The standalone browser app uses Pi's browser libraries with API-key providers and
 tools for its local workspace. See [Browser AI](docs/browser-ai.md) for setup and

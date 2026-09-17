@@ -118,7 +118,7 @@ while it remains active.
 Public previews require wildcard DNS and TLS. See
 [Application previews](deployment.md#application-previews).
 
-## Optional Pi integration
+## Pi integration
 
 The AI module is a client for an installed [Pi coding agent](https://pi.dev/). Each active chat uses a
 real `pi --mode rpc` process, and saved chats remain Pi sessions.
@@ -134,7 +134,7 @@ Favourite models and each model's last reasoning effort are stored globally on t
 so they follow the user between devices. Models removed from the current Pi catalog are pruned from
 those preferences automatically.
 
-Syntaxis does not provide model access. Pi authentication and use are optional. See
+Syntaxis does not provide model access. See
 [Pi integration](pi-management.md).
 
 ## Storage and cleanup
