@@ -151,6 +151,9 @@ pub trait GitMergePort: Send + Sync {
 
 #[async_trait(?Send)]
 pub trait GitNetworkPort: Send + Sync {
+    fn supports_pull_rebase(&self) -> bool {
+        true
+    }
     async fn check(&self, workspace: &WorkspaceRecord, url: &str) -> Result<bool, AppError>;
     async fn add(
         &self,
@@ -182,6 +185,22 @@ pub trait GitNetworkPort: Send + Sync {
         workspace: &WorkspaceRecord,
         force_with_lease: bool,
     ) -> Result<PushOutcome, AppError>;
+}
+
+/// Explicit session-only connection settings for runtimes without native Git credentials.
+#[derive(Clone, Default)]
+pub struct GitConnectionSettings {
+    pub origin: String,
+    pub proxy: String,
+    pub username: String,
+    pub token: String,
+    pub name: String,
+    pub email: String,
+}
+
+#[async_trait(?Send)]
+pub trait GitConnectionPort: Send + Sync {
+    async fn configure(&self, settings: GitConnectionSettings) -> Result<(), AppError>;
 }
 
 #[async_trait(?Send)]
@@ -233,6 +252,7 @@ pub trait GitWorktreePort: Send + Sync {
 
 #[derive(Clone, Default)]
 pub struct GitPorts {
+    connection: Option<PortHandle<dyn GitConnectionPort>>,
     repository: Option<PortHandle<dyn GitRepositoryPort>>,
     conflicts: Option<PortHandle<dyn GitConflictPort>>,
     history: Option<PortHandle<dyn GitHistoryPort>>,
@@ -262,6 +282,7 @@ macro_rules! port_accessors {
 }
 
 impl GitPorts {
+    port_accessors!(with_connection, connection, connection, GitConnectionPort);
     port_accessors!(with_repository, repository, repository, GitRepositoryPort);
     port_accessors!(with_conflicts, conflicts, conflicts, GitConflictPort);
     port_accessors!(with_history, history, history, GitHistoryPort);

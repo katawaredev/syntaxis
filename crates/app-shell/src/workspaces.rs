@@ -26,6 +26,12 @@ pub trait WorkspaceFolderPort: Send + Sync {
 
 #[async_trait(?Send)]
 pub trait WorkspaceClonePort: Send + Sync {
+    fn supports_blobless(&self) -> bool {
+        true
+    }
+    fn destination_description(&self) -> &'static str {
+        "Clone a repository into an exposed runtime folder."
+    }
     async fn start(&self, request: CloneRequest)
     -> Result<Box<dyn WorkspaceCloneStream>, AppError>;
 }

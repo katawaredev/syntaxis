@@ -148,6 +148,28 @@ pub fn set_private_workspace() {
     set_active_root(None);
 }
 
+/// Opens a completed Git clone in private storage without changing the saved local folder.
+pub async fn select_private_project(name: &str) -> WorkspaceResult<()> {
+    if name.is_empty() || name.contains(['/', '\\']) || name == "." || name == ".." {
+        return Err(not_available("Invalid browser project name."));
+    }
+    let window = web_sys::window().ok_or_else(|| not_available("A browser window is required."))?;
+    let value = JsFuture::from(window.navigator().storage().get_directory())
+        .await
+        .map_err(|error| browser_error("Browser storage is unavailable", error))?;
+    let root = value.unchecked_into::<FileSystemDirectoryHandle>();
+    let projects = JsFuture::from(root.get_directory_handle(".syntaxis-repositories"))
+        .await
+        .map_err(|error| browser_error("Git projects are unavailable", error))?
+        .unchecked_into::<FileSystemDirectoryHandle>();
+    let directory = JsFuture::from(projects.get_directory_handle(name))
+        .await
+        .map_err(|error| browser_error("Git project is unavailable", error))?
+        .unchecked_into::<FileSystemDirectoryHandle>();
+    set_active_root(Some(directory));
+    Ok(())
+}
+
 fn set_active_root(directory: Option<FileSystemDirectoryHandle>) {
     LOCAL_ROOT.with(|root| root.replace(directory.clone()));
     let value = directory.map_or(JsValue::UNDEFINED, JsValue::from);

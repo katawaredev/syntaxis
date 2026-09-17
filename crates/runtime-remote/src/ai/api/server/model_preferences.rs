@@ -55,12 +55,12 @@ static PREFERENCES: OnceLock<Result<Mutex<PreferenceStore>, String>> = OnceLock:
 
 pub(super) fn sync(
     workspace_id: WorkspaceId,
-    available_models: Vec<String>,
+    available_models: &[String],
 ) -> Result<ModelPreferences, ServerFnError> {
     if available_models.is_empty() || available_models.len() > MAX_AVAILABLE_MODELS {
         return Err(request_error("The available model list is invalid.", 400));
     }
-    for key in &available_models {
+    for key in available_models {
         validate_key(key)?;
     }
     let mut store = store()?;
@@ -176,8 +176,8 @@ mod tests {
         store.save().unwrap();
 
         let reopened = PreferenceStore::open(path).unwrap();
-        let first = reopened.file.workspaces.get("first").unwrap();
-        let second = reopened.file.workspaces.get("second").unwrap();
+        let first = &reopened.file.workspaces["first"];
+        let second = &reopened.file.workspaces["second"];
         assert_eq!(first.favourites, ["p\u{1f}sol"]);
         assert_eq!(
             first.efforts.get("p\u{1f}sol"),

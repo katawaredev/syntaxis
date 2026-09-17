@@ -61,3 +61,16 @@ any reachable device can access files and execute commands as the server user.
 Bind a specific LAN address when possible, do not forward this port publicly, and
 use authenticated deployment for untrusted networks. Release builds continue to
 ignore `SYNTAXIS_AUTH_DISABLED`. See [Security](security.md).
+
+## Browser Git
+
+The browser Git toolbar keeps Connection in the synchronization button's menu;
+Add remote remains the default when no remote exists. Connection configures the
+browser identity and network credentials separately from the server runtime.
+Staged and unstaged text changes show line counts against HEAD and the index,
+respectively; binary changes have no text line counts.
+
+Browser commits support amending HEAD, including message-only amendments, while
+preserving the original author. Native commit hooks and commit signing are not
+supported, so skip-validation and signing controls are unavailable. Amending
+published commits rewrites history; browser Git does not support force pushes.

@@ -183,6 +183,15 @@ fn Home() -> Element {
                     }
                 } else if local_folders.is_some() {
                     div { class: "mb-10 grid grid-cols-3 gap-3 max-md:grid-cols-1",
+                        if services.workspace_clone().is_some() {
+                            WorkspaceSourceAction {
+                                icon: AppIcon::FolderGit2,
+                                title: "Open Git URL",
+                                description: "Clone a Git repository",
+                                disabled: busy() || transfer_busy(),
+                                onclick: move |_| dialog.set(HomeDialog::Git),
+                            }
+                        }
                         WorkspaceSourceAction {
                             icon: AppIcon::Folder,
                             title: "Open folder",
@@ -469,6 +478,9 @@ fn WorkspaceCloneDialog(mut dialog: Signal<HomeDialog>) -> Element {
     let Some(port) = services.workspace_clone().cloned() else {
         return rsx! {};
     };
+    use_context_provider(|| services.git().cloned().unwrap_or_default());
+    let supports_blobless = port.supports_blobless();
+    let destination_description = port.destination_description();
     let mut url = use_signal(String::new);
     let mut destination = use_signal(|| "/".to_owned());
     let mut clone_mode = use_signal(CloneMode::default);
@@ -559,8 +571,9 @@ fn WorkspaceCloneDialog(mut dialog: Signal<HomeDialog>) -> Element {
         },
     );
     rsx! {
-        Modal { title: "Open Git URL", description: "Clone a repository into an exposed runtime folder.", on_close: move |()| if !busy() { dialog.set(HomeDialog::None) },
+        Modal { title: "Open Git URL", description: destination_description, on_close: move |()| if !busy() { dialog.set(HomeDialog::None) },
             DialogForm {
+                syntaxis_module_git::GitConnectionForm {}
                 Field { control_id: "git-url", label: "Repository URL", error: error().filter(|message| message == INVALID_GIT_URL),
                     TextInput {
                         input_type: syntaxis_ui::prelude::TextInputType::Url,
@@ -602,7 +615,7 @@ fn WorkspaceCloneDialog(mut dialog: Signal<HomeDialog>) -> Element {
                             });
                         },
                         option { value: "full", "Full" }
-                        option { value: "blobless", "Blobless" }
+                        if supports_blobless { option { value: "blobless", "Blobless" } }
                         option { value: "shallow", "Shallow" }
                     }
                 }

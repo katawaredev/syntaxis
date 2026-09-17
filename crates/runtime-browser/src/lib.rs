@@ -72,6 +72,7 @@ pub fn services() -> AppServices {
         let ai = Rc::new(BrowserAiAdapter::new(workspace_events.clone()));
         return services
             .with_workspace_catalog(Rc::new(BrowserWorkspaceCatalog))
+            .with_workspace_clone(Rc::new(BrowserWorkspaceCatalog))
             .with_runtime_status(Rc::new(BrowserWorkspaceCatalog))
             .with_files(
                 FilesPorts::new(files, search, session)
@@ -90,7 +91,9 @@ pub fn services() -> AppServices {
                     .with_repository(git.clone())
                     .with_history(git.clone())
                     .with_checkout(git.clone())
-                    .with_branches(git),
+                    .with_branches(git.clone())
+                    .with_connection(git.clone())
+                    .with_network(git),
             )
             .with_preview(PreviewPorts::default().with_preview(preview))
             .with_ai(

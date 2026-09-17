@@ -6,6 +6,9 @@
 #   just serve-server
 #   just serve-browser
 #   just serve-lan
+#   just server
+#   just browser
+#   just lan
 #   just serve-desktop
 #   just check
 #   just ci
@@ -261,9 +264,15 @@ serve-server-platform platform=default_platform host=default_host port=default_p
 # Start the server-backed web app; loopback debug access needs no password.
 serve-server host=default_host port=default_port: (serve-server-platform "web" host port)
 
+# Short alias for the server-backed web app.
+server host=default_host port=default_port: (serve-server host port)
+
 # Start the browser-only development server.
 serve-browser host=default_host port=default_port: build-assets
     dx serve --package syntaxis-browser --platform web --addr "{{ host }}" --port "{{ port }}"
+
+# Short alias for the browser-only development server.
+browser host=default_host port=default_port: (serve-browser host port)
 
 # Start the desktop development server.
 serve-desktop: build-assets
@@ -303,6 +312,9 @@ serve-lan port=default_port host="0.0.0.0": build-assets
         --platform web \
         --addr "{{ host }}" \
         --port "{{ port }}"
+
+# Short alias for the LAN debug server.
+lan port=default_port host="0.0.0.0": (serve-lan port host)
 
 # Build the project.
 #

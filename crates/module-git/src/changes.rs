@@ -542,6 +542,13 @@ pub(super) fn ChangeDetail(
                             "This is an empty file, so there are no textual changes to display."
                         }
                     },
+                Some(Ok(diff)) if has_source_diff(&diff) && diff.patch.is_empty() => rsx! {
+                    FullFileDiff {
+                        diff,
+                        path: selection.path,
+                        collapse_unchanged: !expanded,
+                    }
+                },
                 Some(Ok(diff)) if diff.patch.is_empty() => rsx! {
                     div { class: "grid min-h-48 place-items-center p-8 text-center text-xs text-muted-foreground",
                         "Git reported no textual changes for this file."
@@ -851,7 +858,11 @@ fn HunkCard(
 }
 
 #[component]
-fn FullFileDiff(diff: UnifiedDiff, path: String) -> Element {
+fn FullFileDiff(
+    diff: UnifiedDiff,
+    path: String,
+    #[props(default = false)] collapse_unchanged: bool,
+) -> Element {
     let (Some(original), Some(current)) = (diff.original, diff.current) else {
         return rsx! {
             RawPatch { patch: diff.patch }
@@ -864,18 +875,25 @@ fn FullFileDiff(diff: UnifiedDiff, path: String) -> Element {
                 current,
                 language: diff_language(&path),
                 filename: path,
-                collapse_unchanged: false,
+                collapse_unchanged,
                 layout: DiffLayout::FullFile,
             }
         }
     }
 }
 
+fn has_source_diff(diff: &UnifiedDiff) -> bool {
+    matches!(
+        (&diff.original, &diff.current),
+        (Some(original), Some(current)) if original != current
+    )
+}
+
 fn diff_language(path: &str) -> String {
     language_slug_for_path(path).to_owned()
 }
 
-fn hunk_sources(body: &str) -> (String, String) {
+pub(super) fn hunk_sources(body: &str) -> (String, String) {
     let mut original = Vec::new();
     let mut current = Vec::new();
     for line in body.lines().skip(1) {
@@ -922,7 +940,33 @@ fn PatchLine(line_number: usize, line: String) -> Element {
 
 #[cfg(test)]
 mod tests {
-    use super::hunk_sources;
+    use super::{has_source_diff, hunk_sources};
+    use syntaxis_git::{DiffKind, UnifiedDiff};
+    use syntaxis_workspace::RelativePath;
+
+    #[test]
+    fn source_only_diffs_include_edits_additions_and_deletions() {
+        let mut diff = UnifiedDiff {
+            path: RelativePath::try_from("app.js".to_owned()).unwrap(),
+            kind: DiffKind::Worktree,
+            patch: String::new(),
+            binary: false,
+            original: None,
+            current: None,
+        };
+        assert!(!has_source_diff(&diff));
+        for (before, after, changed) in [
+            ("old\n", "new\n", true),
+            ("", "added\n", true),
+            ("deleted\n", "", true),
+            ("same\n", "same\n", false),
+            ("", "", false),
+        ] {
+            diff.original = Some(before.to_owned());
+            diff.current = Some(after.to_owned());
+            assert_eq!(has_source_diff(&diff), changed);
+        }
+    }
 
     #[test]
     fn hunk_sources_drop_patch_metadata() {

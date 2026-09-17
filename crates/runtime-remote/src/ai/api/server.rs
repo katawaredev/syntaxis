@@ -30,7 +30,7 @@ pub(super) async fn sync_model_preferences(
     available_models: Vec<String>,
 ) -> Result<super::ModelPreferences, ServerFnError> {
     crate::workspace::api::server::workspace_by_id(&workspace_id).await?;
-    model_preferences::sync(workspace_id, available_models)
+    model_preferences::sync(workspace_id, &available_models)
 }
 
 pub(super) async fn set_favourite_model(

@@ -308,6 +308,7 @@ fn author_name(author: &Value) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn package_identity_ignores_source_prefix_and_version() {

@@ -73,6 +73,7 @@ pub(super) enum GitDialog {
     AbortRebase,
     SkipRebase,
     ForcePush,
+    Connection,
     DiscardAll,
     AddRemote,
     EditRemote,
@@ -212,6 +213,9 @@ pub fn GitView(
     let can_checkout = ports.checkout().is_some();
     let can_merge = ports.merge().is_some();
     let can_network = ports.network().is_some();
+    let can_rebase_pull = ports
+        .network()
+        .is_some_and(|port| port.supports_pull_rebase());
     let can_revert = ports.revert().is_some();
     let can_tag = ports.tags().is_some();
     let commit_capabilities = ports
@@ -819,7 +823,7 @@ pub fn GitView(
                                     class: "inline-flex h-7 items-center gap-1.5 rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50",
                                     title: "Commit staged changes",
                                     "aria-label": "Commit staged changes",
-                                    disabled: pending() || repository.staged_count() == 0,
+                                    disabled: pending() || (repository.staged_count() == 0 && !(commit_capabilities.amend && repository.branch.oid.is_some())),
                                     onclick: move |_| {
                                         operation_error.set(None);
                                         dialog.set(GitDialog::Commit);
@@ -828,6 +832,9 @@ pub fn GitView(
                                     span { "Commit" }
                                 }
                                 if can_network { GitSyncButton {
+                                    can_configure_connection: ports.connection().is_some(),
+                                    can_rebase: can_rebase_pull,
+                                    can_merge,
                                     current_branch: repository.branch.head.clone(),
                                     upstream: repository.branch.upstream.clone(),
                                     remotes: remote_list.clone(),
@@ -838,6 +845,10 @@ pub fn GitView(
                                     pending: pending(),
                                     refreshing: refreshing(),
                                     on_action: move |action| match action {
+                                        GitSyncAction::Connection => {
+                                            operation_error.set(None);
+                                            dialog.set(GitDialog::Connection);
+                                        }
                                         GitSyncAction::AddRemote => {
                                             operation_error.set(None);
                                             dialog.set(GitDialog::AddRemote);
@@ -977,6 +988,8 @@ pub fn GitView(
             CommitDialog {
                 workspace: workspace.clone(),
                 capabilities: commit_capabilities,
+                has_staged_changes: repository.staged_count() > 0,
+                has_head: repository.branch.oid.is_some(),
                 initial_message: retry_commit().map(|request| request.message).unwrap_or_default(),
                 pending: pending(),
                 error: operation_error(),
@@ -1112,6 +1125,11 @@ pub fn GitView(
                             .call(RepositoryAction::RemoveRemote(remote.name.clone()));
                     },
                 }
+            }
+        }
+        if dialog() == GitDialog::Connection {
+            Modal { title: "Git connection", on_close: move |()| dialog.set(GitDialog::None),
+                crate::GitConnectionForm {}
             }
         }
         if dialog() == GitDialog::ForcePush {

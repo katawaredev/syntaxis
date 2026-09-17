@@ -12,11 +12,13 @@ use syntaxis_app_contracts::{
 };
 use syntaxis_git::{
     BranchInfo, BranchRequest, BranchStatus, ChangeKind, CommitDetail, CommitInfo, CommitOutcome,
-    CommitRequest, CommitResult, DiffKind, FileChange, RemoteInfo, RepositorySnapshot,
-    RepositoryState, RepositoryStatus, UnifiedDiff,
+    CommitRequest, CommitResult, DiffKind, FileChange, PushOutcome, RebaseOutcome, RemoteInfo,
+    RemoteRequest, RemoteResult, RepositorySnapshot, RepositoryState, RepositoryStatus,
+    UnifiedDiff,
 };
 use syntaxis_module_git::{
-    GitBranchPort, GitCheckoutPort, GitCommitCapabilities, GitHistoryPort, GitRepositoryPort,
+    GitBranchPort, GitCheckoutPort, GitCommitCapabilities, GitConnectionPort,
+    GitConnectionSettings, GitHistoryPort, GitNetworkPort, GitRepositoryPort,
 };
 use syntaxis_workspace::{RelativePath, WorkspaceRecord};
 
@@ -74,6 +76,10 @@ struct BrowserChange {
     path: String,
     staged: Option<BrowserChangeKind>,
     unstaged: Option<BrowserChangeKind>,
+    staged_additions: u64,
+    staged_deletions: u64,
+    unstaged_additions: u64,
+    unstaged_deletions: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
@@ -85,6 +91,8 @@ struct BrowserCommit {
     author_name: String,
     author_email: String,
     timestamp: i64,
+    #[serde(default)]
+    parents: Vec<String>,
 }
 
 impl BrowserCommit {
@@ -92,7 +100,7 @@ impl BrowserCommit {
         CommitInfo {
             oid: self.oid.clone(),
             short_oid: self.short_oid.clone(),
-            parents: Vec::new(),
+            parents: self.parents.clone(),
             author_name: self.author_name.clone(),
             author_email: self.author_email.clone(),
             authored_unix_seconds: self.timestamp,
@@ -105,6 +113,7 @@ impl BrowserCommit {
 struct BrowserRemote {
     remote: String,
     url: String,
+    push_url: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq)]
@@ -141,10 +150,10 @@ impl BrowserRepository {
                     index: change.staged.map(Into::into),
                     worktree: change.unstaged.map(Into::into),
                     conflicted: false,
-                    staged_additions: 0,
-                    staged_deletions: 0,
-                    unstaged_additions: 0,
-                    unstaged_deletions: 0,
+                    staged_additions: change.staged_additions,
+                    staged_deletions: change.staged_deletions,
+                    unstaged_additions: change.unstaged_additions,
+                    unstaged_deletions: change.unstaged_deletions,
                 })
             })
             .collect::<Result<Vec<_>, AppError>>()?;
@@ -178,7 +187,10 @@ impl BrowserRepository {
                 .map(|remote| RemoteInfo {
                     name: remote.remote.clone(),
                     fetch_url: remote.url.clone(),
-                    push_url: remote.url.clone(),
+                    push_url: remote
+                        .push_url
+                        .clone()
+                        .unwrap_or_else(|| remote.url.clone()),
                 })
                 .collect()),
             tags: Ok(Vec::new()),
@@ -203,7 +215,10 @@ struct BrowserCommitResult {
 #[async_trait(?Send)]
 impl GitRepositoryPort for BrowserGitAdapter {
     fn commit_capabilities(&self) -> GitCommitCapabilities {
-        GitCommitCapabilities::default()
+        GitCommitCapabilities {
+            amend: true,
+            ..GitCommitCapabilities::default()
+        }
     }
 
     async fn snapshot(&self, _workspace: &WorkspaceRecord) -> Result<RepositorySnapshot, AppError> {
@@ -273,7 +288,7 @@ impl GitRepositoryPort for BrowserGitAdapter {
         workspace: &WorkspaceRecord,
         request: CommitRequest,
     ) -> Result<CommitOutcome, AppError> {
-        if request.amend || request.skip_hooks || request.signing_passphrase.is_some() {
+        if request.skip_hooks || request.signing_passphrase.is_some() {
             return Err(AppError::unsupported(
                 "Advanced commit options are unavailable in browser Git.",
                 ErrorSource::Git,
@@ -289,8 +304,7 @@ impl GitRepositoryPort for BrowserGitAdapter {
             "commit",
             json!({
                 "message": request.message,
-                "name": "Syntaxis Browser",
-                "email": "browser@syntaxis.local",
+                "amend": request.amend,
             }),
         )
         .await?;
@@ -312,16 +326,9 @@ impl GitHistoryPort for BrowserGitAdapter {
         offset: u32,
         limit: u32,
     ) -> Result<Vec<CommitInfo>, AppError> {
-        let repository = self.repository().await?;
-        let offset = usize::try_from(offset).unwrap_or(usize::MAX);
-        let limit = usize::try_from(limit).unwrap_or(usize::MAX);
-        Ok(repository
-            .commits
-            .iter()
-            .skip(offset)
-            .take(limit)
-            .map(BrowserCommit::info)
-            .collect())
+        let commits: Vec<BrowserCommit> =
+            git_request("history", json!({ "offset": offset, "limit": limit })).await?;
+        Ok(commits.iter().map(BrowserCommit::info).collect())
     }
 
     async fn commit_message(
@@ -329,13 +336,7 @@ impl GitHistoryPort for BrowserGitAdapter {
         _workspace: &WorkspaceRecord,
         revision: &str,
     ) -> Result<String, AppError> {
-        let repository = self.repository().await?;
-        repository
-            .commits
-            .iter()
-            .find(|commit| revision == "HEAD" || commit.oid == revision)
-            .map(|commit| commit.message.clone())
-            .ok_or_else(|| not_found("Commit not found in browser Git history."))
+        git_request("commitMessage", json!(revision)).await
     }
 
     async fn commit_detail(
@@ -343,19 +344,7 @@ impl GitHistoryPort for BrowserGitAdapter {
         _workspace: &WorkspaceRecord,
         revision: &str,
     ) -> Result<CommitDetail, AppError> {
-        let repository = self.repository().await?;
-        let commit = repository
-            .commits
-            .iter()
-            .find(|commit| commit.oid == revision)
-            .ok_or_else(|| not_found("Commit not found in browser Git history."))?;
-        Ok(CommitDetail {
-            commit: commit.info(),
-            patch: String::new(),
-            files_changed: 0,
-            additions: 0,
-            deletions: 0,
-        })
+        git_request("commitDetail", json!(revision)).await
     }
 }
 
@@ -413,9 +402,10 @@ impl GitBranchPort for BrowserGitAdapter {
         &self,
         workspace: &WorkspaceRecord,
         name: &str,
-        _force: bool,
+        force: bool,
     ) -> Result<(), AppError> {
-        git_request::<BrowserRepository>("deleteBranch", json!(name)).await?;
+        git_request::<BrowserRepository>("deleteBranch", json!({ "ref": name, "force": force }))
+            .await?;
         self.changed(workspace);
         Ok(())
     }
@@ -425,13 +415,120 @@ fn path_payload(paths: &[RelativePath]) -> Value {
     json!(paths.iter().map(|path| path.as_str()).collect::<Vec<_>>())
 }
 
-fn not_found(message: &str) -> AppError {
-    AppError::new(
-        AppErrorCode::NotFound,
-        message,
-        RetryAdvice::Never,
-        ErrorSource::Git,
-    )
+#[async_trait(?Send)]
+impl GitConnectionPort for BrowserGitAdapter {
+    async fn configure(&self, settings: GitConnectionSettings) -> Result<(), AppError> {
+        git_request::<bool>(
+            "configure",
+            json!({
+                "origin": settings.origin, "proxy": settings.proxy,
+                "username": settings.username, "token": settings.token,
+                "name": settings.name, "email": settings.email,
+            }),
+        )
+        .await?;
+        Ok(())
+    }
+}
+
+#[async_trait(?Send)]
+impl GitNetworkPort for BrowserGitAdapter {
+    fn supports_pull_rebase(&self) -> bool {
+        false
+    }
+
+    async fn check(&self, _workspace: &WorkspaceRecord, url: &str) -> Result<bool, AppError> {
+        git_request("check", json!(url)).await
+    }
+
+    async fn add(
+        &self,
+        workspace: &WorkspaceRecord,
+        request: RemoteRequest,
+    ) -> Result<(), AppError> {
+        git_request::<bool>("saveRemote", json!(request)).await?;
+        self.changed(workspace);
+        Ok(())
+    }
+
+    async fn update(
+        &self,
+        workspace: &WorkspaceRecord,
+        previous_name: &str,
+        request: RemoteRequest,
+    ) -> Result<(), AppError> {
+        git_request::<bool>(
+            "saveRemote",
+            json!({
+                "previous_name": previous_name, "name": request.name,
+                "fetch_url": request.fetch_url, "push_url": request.push_url,
+            }),
+        )
+        .await?;
+        self.changed(workspace);
+        Ok(())
+    }
+
+    async fn remove(&self, workspace: &WorkspaceRecord, name: &str) -> Result<(), AppError> {
+        git_request::<bool>("removeRemote", json!(name)).await?;
+        self.changed(workspace);
+        Ok(())
+    }
+
+    async fn fetch_remote(
+        &self,
+        workspace: &WorkspaceRecord,
+        name: &str,
+    ) -> Result<RemoteResult, AppError> {
+        let result = git_request("fetchRemote", json!(name)).await;
+        self.changed(workspace);
+        result
+    }
+
+    async fn fetch(&self, workspace: &WorkspaceRecord) -> Result<RemoteResult, AppError> {
+        let result = git_request("fetch", Value::Null).await;
+        self.changed(workspace);
+        result
+    }
+
+    async fn pull(&self, workspace: &WorkspaceRecord) -> Result<RemoteResult, AppError> {
+        let result = git_request("pull", Value::Null).await;
+        self.changed(workspace);
+        result
+    }
+
+    async fn pull_rebase(&self, _workspace: &WorkspaceRecord) -> Result<RebaseOutcome, AppError> {
+        Err(AppError::unsupported(
+            "Rebase is unavailable in browser Git. Pull supports fast-forward updates only.",
+            ErrorSource::Git,
+        ))
+    }
+
+    async fn publish(
+        &self,
+        workspace: &WorkspaceRecord,
+        remote: &str,
+    ) -> Result<RemoteResult, AppError> {
+        let result = git_request("push", json!({ "publish": remote })).await;
+        self.changed(workspace);
+        result
+    }
+
+    async fn push(
+        &self,
+        workspace: &WorkspaceRecord,
+        force_with_lease: bool,
+    ) -> Result<PushOutcome, AppError> {
+        if force_with_lease {
+            return Err(AppError::unsupported(
+                "Force-with-lease is unavailable in browser Git.",
+                ErrorSource::Git,
+            ));
+        }
+        let result = git_request("push", json!({})).await;
+        self.changed(workspace);
+        result.map(|result| PushOutcome::Pushed { result })
+    }
 }
 
 fn bridge_error(message: impl Into<String>) -> AppError {
@@ -467,7 +564,7 @@ struct GitBridgeResponse<T> {
     unavailable: bool,
 }
 
-async fn git_request<T>(method: &str, payload: Value) -> Result<T, AppError>
+pub(crate) async fn git_request<T>(method: &str, payload: Value) -> Result<T, AppError>
 where
     T: DeserializeOwned,
 {
@@ -494,7 +591,6 @@ where
             await dioxus.send({ ok: true, value });
           } catch (error) {
             const message = error?.message ?? String(error);
-            console.error(`Syntaxis browser Git operation failed: ${message}`);
             await dioxus.send({ ok: false, error: message });
           }
         }

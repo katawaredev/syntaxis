@@ -1,6 +1,7 @@
 use super::*;
 
 const MAX_ADVANCED_SETTINGS_BYTES: usize = 256 * 1024;
+const MAX_ADVANCED_SETTINGS_BYTES_U64: u64 = 256 * 1024;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -205,7 +206,7 @@ fn settings_path(root: &Path, scope: PiResourceScope) -> PathBuf {
 
 fn read_settings_content(path: &Path) -> Result<String, ServerFnError> {
     match fs::metadata(path) {
-        Ok(metadata) if metadata.len() > MAX_ADVANCED_SETTINGS_BYTES as u64 => {
+        Ok(metadata) if metadata.len() > MAX_ADVANCED_SETTINGS_BYTES_U64 => {
             return Err(client_error("Pi settings must be smaller than 256 KiB"));
         }
         Ok(_) => {}
@@ -313,6 +314,7 @@ fn validate_setting_value(kind: PiSettingKind, value: &Value) -> Result<(), Serv
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn content_revisions_are_stable_and_sensitive_to_changes() {

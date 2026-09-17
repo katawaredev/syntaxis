@@ -116,9 +116,7 @@ fn pi_sdk_module() -> Result<(PathBuf, PathBuf), ServerFnError> {
     let command = fs::canonicalize(command)
         .map_err(|error| server_error(format!("Could not resolve the Pi executable: {error}")))?;
     let package_root = pi_package_root(&command).ok_or_else(|| {
-        server_error(format!(
-            "Could not locate the npm package for this Pi installation"
-        ))
+        server_error("Could not locate the npm package for this Pi installation".to_owned())
     })?;
     let module = pi_public_entrypoint(package_root)?;
     let node = resolve_command(Path::new("node"))

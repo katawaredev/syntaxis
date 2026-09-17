@@ -6,6 +6,7 @@ use syntaxis_ui::prelude::{AppIcon, ComboButton, Icon};
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum GitSyncAction {
     AddRemote,
+    Connection,
     Publish(String),
     Pull,
     PullRebase,
@@ -26,6 +27,9 @@ pub(super) fn GitSyncButton(
     conflicts: usize,
     pending: bool,
     refreshing: bool,
+    can_configure_connection: bool,
+    can_rebase: bool,
+    can_merge: bool,
     on_action: EventHandler<GitSyncAction>,
 ) -> Element {
     let mut open = use_signal(|| false);
@@ -89,7 +93,8 @@ pub(super) fn GitSyncButton(
                 None,
             ),
             Some(
-                GitSyncAction::PullRebase
+                GitSyncAction::Connection
+                | GitSyncAction::PullRebase
                 | GitSyncAction::MergeUpstream(_)
                 | GitSyncAction::AbortMerge,
             )
@@ -133,7 +138,7 @@ pub(super) fn GitSyncButton(
                     "Local and upstream commits have diverged. Choose how to bring in the upstream commits."
                 }
                 hr {}
-                DropdownMenuItem::<GitSyncAction> {
+                if can_rebase { DropdownMenuItem::<GitSyncAction> {
                     value: GitSyncAction::PullRebase,
                     index: 0_usize,
                     on_select: move |action| {
@@ -144,8 +149,11 @@ pub(super) fn GitSyncButton(
                         Icon { icon: AppIcon::Fetch, size: 14 }
                         span { "Pull with rebase…" }
                     }
+                } }
+                if !can_rebase && !can_merge {
+                    p { class: "px-2 py-1 text-xs text-muted-foreground", "Branches have diverged. Resolve them with a Git client that supports merge or rebase." }
                 }
-                if let Some(upstream) = upstream.clone() {
+                if can_merge { if let Some(upstream) = upstream.clone() {
                     DropdownMenuItem::<GitSyncAction> {
                         value: GitSyncAction::MergeUpstream(upstream.clone()),
                         index: 1_usize,
@@ -159,7 +167,7 @@ pub(super) fn GitSyncButton(
                         }
                     }
                     hr {}
-                }
+                } }
             }
             if remotes.is_empty() {
                 DropdownMenuItem::<GitSyncAction> {
@@ -245,6 +253,18 @@ pub(super) fn GitSyncButton(
                             "Fetch"
                         }
                     }
+                }
+            }
+            if can_configure_connection {
+                hr {}
+                DropdownMenuItem::<GitSyncAction> {
+                    value: GitSyncAction::Connection,
+                    index: remotes.len() + 4,
+                    on_select: move |action| {
+                        open.set(false);
+                        on_action.call(action);
+                    },
+                    "Connection"
                 }
             }
             if conflicts > 0 {

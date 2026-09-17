@@ -5,6 +5,8 @@ pub(crate) fn CommitDialog(
     workspace: WorkspaceRecord,
     capabilities: GitCommitCapabilities,
     initial_message: String,
+    has_staged_changes: bool,
+    has_head: bool,
     pending: bool,
     error: Option<String>,
     on_close: EventHandler<()>,
@@ -17,7 +19,7 @@ pub(crate) fn CommitDialog(
     rsx! {
         Modal {
             title: if amend() { "Amend previous commit" } else { "Commit staged changes" },
-            description: "Git will use the configured identity and signing settings.",
+            description: if capabilities.signing_retry { "Git will use the configured identity and signing settings." } else { "Git will use the configured author identity." },
             on_close,
             DialogForm {
                 Field { control_id: "commit-message", label: "Commit message",
@@ -30,7 +32,7 @@ pub(crate) fn CommitDialog(
                         oninput: move |event: FormEvent| message.set(event.value()),
                     }
                 }
-                if capabilities.amend { label { class: "compact flex items-center gap-2.5 py-1.75",
+                if capabilities.amend && has_head { label { class: "compact flex items-center gap-2.5 py-1.75",
                     Checkbox {
                         checked: amend(),
                         aria_label: "Amend previous commit",
@@ -77,7 +79,7 @@ pub(crate) fn CommitDialog(
                     Button {
                         label: if pending { "Committing…" } else { "Commit" },
                         kind: ButtonKind::Primary,
-                        disabled: pending || message().trim().is_empty(),
+                        disabled: pending || message().trim().is_empty() || (!amend() && !has_staged_changes),
                         onclick: move |_| {
                             on_submit
                                 .call(CommitRequest {
