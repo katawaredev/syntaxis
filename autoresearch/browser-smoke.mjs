@@ -134,7 +134,10 @@ page.on("request", async (request) => {
           "",
           'data: {"choices":[{"delta":{"content":"lo!"}}]}',
           "",
+          'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}',
+          "",
           "data: [DONE]",
+          "",
           "",
         ].join("\n");
   await request
@@ -358,7 +361,13 @@ try {
   }
 
   stage = "AI message actions and usage";
-  await page.hover("[data-agent-response]");
+  await page.waitForSelector('button[aria-label="Copy response"]', { timeout: 30_000 });
+  if (await page.evaluate(() => matchMedia("(hover: hover)").matches)) {
+    await page.hover("[data-agent-response]");
+  } else {
+    // Headless browsers without hover support reveal actions through keyboard focus.
+    await page.focus('button[aria-label="Copy response"]');
+  }
   await page.waitForFunction(
     () => {
       const button = document.querySelector('button[aria-label="Copy response"]');
@@ -530,7 +539,8 @@ async function setTextAreaValue(page, selector, value) {
 async function clickButton(page, label) {
   const clicked = await page.evaluate((text) => {
     const button = [...document.querySelectorAll("button")].find(
-      (candidate) => candidate.textContent?.trim() === text,
+      (candidate) =>
+        (candidate.getAttribute("aria-label") ?? candidate.textContent?.trim()) === text,
     );
     button?.click();
     return Boolean(button);

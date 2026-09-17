@@ -159,21 +159,26 @@ async function waitForSelected(page, id) {
 }
 
 async function clickRowButton(page, id, selector) {
-  const clicked = await page.evaluate(
+  const handle = await page.evaluateHandle(
     (rowsSelector, expected, buttonSelector) => {
       const row = [...document.querySelectorAll(rowsSelector)].find(
         (element) => element.dataset.conversationId === expected,
       );
       const button = row?.querySelector(buttonSelector);
-      if (!button || button.disabled) return false;
-      button.click();
-      return true;
+      return button && !button.disabled ? button : null;
     },
     rows,
     id,
     selector,
   );
-  assert.ok(clicked, `Chat ${id} must have an enabled ${selector}.`);
+  try {
+    const button = handle.asElement();
+    assert.ok(button, `Chat ${id} must have an enabled ${selector}.`);
+    // Use a real pointer click so keyboard actions target the focused control.
+    await button.click();
+  } finally {
+    await handle.dispose();
+  }
 }
 
 async function selectChat(page, id) {
