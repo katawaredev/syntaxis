@@ -1,5 +1,12 @@
 # Browser AI
 
+This document describes `apps/browser`. The Android shell's Local mode runs the
+full host Pi RPC integration inside Termux; Remote uses its selected server's Pi.
+The Android app requires its paired Termux runtime even when opening a remote
+project. Its merged project list does not merge Pi credentials or sessions.
+Neither Android mode uses the browser sandbox or its in-memory credential store.
+See [Android setup](../apps/Android/README.md) for local persistence and limitations.
+
 The standalone browser runtime uses `@earendil-works/pi-ai` and
 `@earendil-works/pi-agent-core`, pinned to the same release as the server's Pi
 coding agent. The shared Dioxus UI provides model selection, reasoning controls,

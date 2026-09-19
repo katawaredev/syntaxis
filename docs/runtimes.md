@@ -1,7 +1,10 @@
 # Runtime guide
 
 This is the contributor and AI-agent reference for choosing the correct app.
-Both apps use the same Dioxus UI; seeing a browser window does not identify the runtime.
+Both runtimes use the same Dioxus UI; seeing a browser window does not identify the runtime.
+The Android shell in `apps/Android` loads the server-backed UI from either an
+on-device Termux backend or a remote HTTPS server. It does not compose the
+standalone browser runtime.
 
 | Concern | Server-backed app | Standalone browser app |
 | --- | --- | --- |
@@ -35,6 +38,51 @@ and the distinction between Markdown guidance and executable capabilities.
    Markdown skills do not enable arbitrary Pi extensions or subscription login.
 5. Follow the validation approval rule in root `AGENTS.md`. Do not interpret a task
    rename or documentation update as permission to launch services or run QA.
+
+## Android and Termux
+
+`apps/Android` is a native Android WebView connection coordinator, not a third
+workspace implementation. A paired Termux backend at `127.0.0.1:8787` is required
+before opening either local or remote projects. An optional HTTPS server is added
+through onboarding or Recent projects → Add Remote. The shared home page merges
+recents with explicit source labels and routes each entry to its owning backend.
+Creation and cloning default to Local, with a destination checkbox only when a
+remote is configured. There is no native top toolbar.
+
+Integration is supplied through the optional `AndroidShellPort` in the remote
+adapter. The standalone-browser composition never supplies this port. Android's
+origin-restricted, main-frame-only message listener exposes metadata and fixed
+navigation actions; it never exposes credentials or shell execution. The shared
+`/new-project` and `/clone-project` routes also work in ordinary server sessions.
+Remote servers need the matching shared UI integration for destination switching.
+
+The Android-targeted server reports a Local/Termux runtime identity explicitly
+from its compilation target. Desktop backends with Mise advertise
+`ManagedToolchains`; Android does not. Managed templates, runtime tool maintenance,
+and managed LSPs are unavailable there. Local users create empty projects and run
+Termux-installed tools in the terminal. Shared UI features remain capability gated.
+
+The launcher preserves release authentication and binds loopback. A random app
+pairing token is passed to the fixed launcher through Termux's explicit execution
+service. On Android only, `/auth/android-session` exchanges a valid bearer token
+for an HttpOnly session cookie. No local password entry or authentication bypass
+is needed. Existing password hashes are retained; fresh ones are generated.
+The APK stores its token privately; Termux stores the paired token under
+`~/.config/syntaxis`. Remote passwords are used for HTTPS login and not persisted;
+remote cookies remain separate from local cookies and Pi credentials.
+
+Projects stay under Termux `~/Projects`, state under `~/.local/state/syntaxis`, and
+Pi credentials stay in Termux's usual paths. There is no file synchronization or
+credential sharing with a remote server. The installer verifies checksums,
+installs a private Pi version, and activates versioned releases through a symlink.
+Updates and rollback require a stopped backend and preserve user data. Existing
+desktop/server and standalone-browser launch commands remain unchanged.
+
+See [Android setup, releases, and acceptance](../apps/Android/README.md). ARM64 is
+the primary backend target; ARMv7/Nexus 7 compatibility is best effort. Remote
+editing and Local login were confirmed before the integrated-home update. The new
+onboarding/pairing flow and broader Local workflows remain unverified on devices.
+The user deferred further tablet acceptance checks.
 
 ## Launch commands
 

@@ -51,6 +51,10 @@ pub fn SyntaxisApp() -> Element {
 pub enum Route {
     #[route("/")]
     Home {},
+    #[route("/new-project")]
+    NewProject {},
+    #[route("/clone-project")]
+    CloneProject {},
     #[layout(WorkspaceShell)]
     #[route("/workspaces/:slug/files?:..query")]
     Files { slug: String, query: FilesQuery },
@@ -103,12 +107,45 @@ enum HomeDialog {
 
 #[component]
 fn Home() -> Element {
+    rsx! { HomeContent {} }
+}
+
+#[component]
+fn NewProject() -> Element {
+    rsx! { HomeContent { create_project: true } }
+}
+
+#[component]
+fn CloneProject() -> Element {
+    rsx! { HomeContent { clone_project: true } }
+}
+
+#[component]
+fn HomeContent(
+    #[props(default)] create_project: bool,
+    #[props(default)] clone_project: bool,
+) -> Element {
     let services = use_context::<AppServices>();
     let terminal = services
         .terminal()
         .cloned()
         .expect("Terminal services are required");
     use_context_provider(|| terminal);
+    let android_port = services.android_shell().cloned();
+    let state_port = android_port.clone();
+    let android = use_resource(move || {
+        let port = state_port.clone();
+        async move {
+            match port {
+                Some(port) => port
+                    .state(!create_project && !clone_project)
+                    .await
+                    .ok()
+                    .flatten(),
+                None => None,
+            }
+        }
+    });
     let catalog = services.workspace_catalog().cloned();
     let runtime_status = services.runtime_status().cloned();
     let runtime = use_resource(move || {
@@ -120,6 +157,8 @@ fn Home() -> Element {
             }
         }
     });
+    let managed_toolchains = matches!(runtime(), Some(Ok(RuntimeState::Ready { capabilities, .. }))
+        if capabilities.supports(RuntimeCapability::ManagedToolchains));
     let runtime_presentation = runtime_presentation(runtime().as_ref());
     let auth_action = services.auth_action().cloned();
     let files = services.files().cloned();
@@ -135,7 +174,26 @@ fn Home() -> Element {
     let mut notice = use_signal(|| None::<(String, Tone)>);
     let mut busy = use_signal(|| false);
     let mut transfer_busy = use_signal(|| false);
-    let mut dialog = use_signal(HomeDialog::default);
+    let mut dialog = use_signal(move || {
+        if create_project {
+            HomeDialog::Project
+        } else if clone_project {
+            HomeDialog::Git
+        } else {
+            HomeDialog::None
+        }
+    });
+    use_effect(move || {
+        if (create_project || clone_project)
+            && dialog() == HomeDialog::None
+            && android().flatten().is_some()
+            && let Some(port) = android_port.clone()
+        {
+            spawn(async move {
+                let _ = port.open(false, "/").await;
+            });
+        }
+    });
     let navigator = use_navigator();
     let local_folders = files.as_ref().and_then(FilesPorts::local_folders).cloned();
     let transfer = files.as_ref().and_then(FilesPorts::transfer).cloned();
@@ -155,7 +213,7 @@ fn Home() -> Element {
                     }
                     div { class: "flex items-center gap-1",
                         if services.notifications().is_some() { NotificationMenu {} }
-                        if let Some(action) = auth_action { AuthActionButton { action } }
+                        if android().flatten().is_none() { if let Some(action) = auth_action { AuthActionButton { action } } }
                     }
                 }
                 if services.workspace_folders().is_some() {
@@ -280,12 +338,23 @@ fn Home() -> Element {
                         } }
                     }
                 }
-                if services.workspace_management().is_some() && files.is_some() {
+                if let Some(state) = android().flatten().filter(|state| !state.current_remote) {
+                    match workspaces() {
+                        Some(Ok(items)) => rsx! { crate::home_management::ManagedRecentProjects {
+                            workspaces: items, android: Some(state), managed_toolchains,
+                            on_changed: move |()| workspaces.restart(),
+                            on_notice: move |message| notice.set(Some(message)),
+                        } },
+                        Some(Err(_)) => rsx! { crate::home_management::ManagedRecentProjectsError { on_retry: move |()| workspaces.restart() } },
+                        None => rsx! { crate::home_management::ManagedRecentProjectsLoading {} },
+                    }
+                } else if services.workspace_management().is_some() && files.is_some() {
                     match workspaces() {
                         None => rsx! { crate::home_management::ManagedRecentProjectsLoading {} },
                         Some(Err(_)) => rsx! { crate::home_management::ManagedRecentProjectsError { on_retry: move |()| workspaces.restart() } },
                         Some(Ok(items)) => rsx! { crate::home_management::ManagedRecentProjects {
                             workspaces: items,
+                            managed_toolchains,
                             on_changed: move |()| workspaces.restart(),
                             on_notice: move |message| notice.set(Some(message)),
                         } },
@@ -332,6 +401,7 @@ fn Home() -> Element {
             HomeDialog::Git => rsx! { WorkspaceCloneDialog { dialog } },
             HomeDialog::Project => rsx! { WorkspaceProjectDialog {
                 dialog,
+                managed_toolchains,
                 on_changed: move |()| workspaces.restart(),
                 on_notice: move |message| notice.set(Some((message, Tone::Neutral))),
             } },
@@ -573,6 +643,7 @@ fn WorkspaceCloneDialog(mut dialog: Signal<HomeDialog>) -> Element {
     rsx! {
         Modal { title: "Open Git URL", description: destination_description, on_close: move |()| if !busy() { dialog.set(HomeDialog::None) },
             DialogForm {
+                crate::android::AndroidDestination { path: "/clone-project", disabled: busy() }
                 syntaxis_module_git::GitConnectionForm {}
                 Field { control_id: "git-url", label: "Repository URL", error: error().filter(|message| message == INVALID_GIT_URL),
                     TextInput {
@@ -746,6 +817,7 @@ fn parse_clone_destination(value: &str) -> Option<CloneDestination> {
 #[component]
 fn WorkspaceProjectDialog(
     mut dialog: Signal<HomeDialog>,
+    managed_toolchains: bool,
     on_changed: EventHandler<()>,
     on_notice: EventHandler<String>,
 ) -> Element {
@@ -839,20 +911,24 @@ fn WorkspaceProjectDialog(
                 }
             } else {
                 DialogForm {
+                    crate::android::AndroidDestination { path: "/new-project", disabled: busy() }
                     Field { control_id: "new-project-path", label: "Project name or path", error: error().or_else(|| path_error.clone()),
                         TextInput { value: path(), placeholder: "MyAwesomeIdea", autofocus: true, disabled: busy(), oninput: move |event: FormEvent| { path.set(event.value()); error.set(None); } }
+                    }
+                    if !managed_toolchains {
+                        p { class: "text-xs text-muted-foreground", "Create an empty project, then use the terminal to run tools installed in this runtime. Managed toolchain templates are unavailable." }
                     }
                     fieldset { disabled: busy(),
                         legend { class: "mb-2 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase", "Start from" }
                         TextInput { value: filter(), placeholder: "Filter frameworks and runtimes…", disabled: busy(), oninput: move |event: FormEvent| filter.set(event.value()) }
                         div { class: "mt-3 max-h-[min(25rem,44svh)] space-y-4 overflow-y-auto pr-1",
                             for category in CATEGORIES {
-                                if category_has_matches(category, &filter()) {
+                                if category_has_matches(category, &filter()) && (managed_toolchains || category == crate::project_templates::TemplateCategory::Basics) {
                                     section {
                                         h3 { class: "mb-1.5 text-[10px] font-semibold tracking-wide text-muted-foreground uppercase", "{category.label()}" }
                                         div { class: "grid grid-cols-4 gap-2 max-md:grid-cols-2",
                                             for template in TEMPLATES {
-                                                if template.category == category && template_matches(&template, &filter()) {
+                                                if template.category == category && template_matches(&template, &filter()) && (managed_toolchains || template.command.is_none()) {
                                                     button {
                                                         r#type: "button",
                                                         class: if selected() == template.template { "flex min-w-0 items-center gap-2.5 rounded-lg border border-primary bg-primary/8 p-3 text-left" } else { "flex min-w-0 items-center gap-2.5 rounded-lg border border-border bg-card p-3 text-left hover:bg-accent" },
@@ -1181,7 +1257,9 @@ fn route_workspace(route: &Route) -> (String, WorkspaceSection, String) {
             WorkspaceSection::Ai,
             format!("AI Settings · {}", section.label()),
         ),
-        Route::Home {} => ("syntaxis".into(), WorkspaceSection::Files, "Files".into()),
+        Route::Home {} | Route::NewProject {} | Route::CloneProject {} => {
+            ("syntaxis".into(), WorkspaceSection::Files, "Files".into())
+        }
     }
 }
 

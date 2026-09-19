@@ -75,8 +75,15 @@ pub(crate) fn serve() -> ! {
             let login_page_state = state.clone();
             let login_state = state.clone();
             let logout_state = state.clone();
+            let android_state = state.clone();
             let router = Router::new()
                 .route("/health", get(health))
+                .route(
+                    "/auth/android-session",
+                    post(move |headers: HeaderMap| {
+                        std::future::ready(android_session(&android_state, &headers))
+                    }),
+                )
                 .route("/api/lsp-socket", get(syntaxis_runtime_remote::lsp_socket))
                 .route(
                     "/login",
@@ -308,6 +315,21 @@ async fn require_authentication(
     response
 }
 
+// A paired Android shell exchanges its private bearer token for an HttpOnly
+// cookie. This is never an unauthenticated loopback bypass.
+fn android_session(state: &AuthState, headers: &HeaderMap) -> Response {
+    if cfg!(target_os = "android") && state.bearer_is_valid(headers) {
+        let token = state.create_session();
+        (
+            StatusCode::NO_CONTENT,
+            [(SET_COOKIE, state.session_cookie(&token))],
+        )
+            .into_response()
+    } else {
+        StatusCode::NOT_FOUND.into_response()
+    }
+}
+
 async fn health() -> impl IntoResponse {
     StatusCode::NO_CONTENT
 }
@@ -464,6 +486,15 @@ fn rand_bytes() -> [u8; 32] {
     let mut bytes = [0_u8; 32];
     OsRng.fill_bytes(&mut bytes);
     bytes
+}
+
+pub(crate) fn print_random_password_hash() -> Result<(), String> {
+    let password = URL_SAFE_NO_PAD.encode(rand_bytes());
+    let salt = SaltString::generate(&mut OsRng);
+    let hash = Argon2::default()
+        .hash_password(password.as_bytes(), &salt)
+        .map_err(|error| error.to_string())?;
+    writeln!(io::stdout().lock(), "{hash}").map_err(|error| error.to_string())
 }
 
 pub(crate) fn print_password_hash() -> Result<(), String> {

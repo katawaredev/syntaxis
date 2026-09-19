@@ -11,6 +11,7 @@ use syntaxis_module_terminal::TerminalPorts;
 
 #[derive(Clone)]
 pub struct AppServices {
+    android_shell: Option<PortHandle<dyn crate::AndroidShellPort>>,
     workspace_events: WorkspaceEventBus,
     files: Option<FilesPorts>,
     terminal: Option<TerminalPorts>,
@@ -31,6 +32,7 @@ pub struct AppServices {
 impl AppServices {
     pub fn new(workspace_events: WorkspaceEventBus) -> Self {
         Self {
+            android_shell: None,
             workspace_events,
             files: None,
             terminal: None,
@@ -47,6 +49,16 @@ impl AppServices {
             workspace_management: None,
             notifications: None,
         }
+    }
+
+    #[must_use]
+    pub fn with_android_shell(mut self, port: PortHandle<dyn crate::AndroidShellPort>) -> Self {
+        self.android_shell = Some(port);
+        self
+    }
+
+    pub fn android_shell(&self) -> Option<&PortHandle<dyn crate::AndroidShellPort>> {
+        self.android_shell.as_ref()
     }
 
     pub fn workspace_events(&self) -> &WorkspaceEventBus {
