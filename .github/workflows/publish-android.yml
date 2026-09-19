@@ -52,7 +52,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
       - run: sdkmanager 'platforms;android-36.1' 'build-tools;36.0.0'
       - name: Verify release version and signing configuration
         env:
@@ -122,7 +122,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
       - run: sdkmanager 'ndk;28.2.13676358'
       - uses: cargo-bins/cargo-binstall@main
         with:
