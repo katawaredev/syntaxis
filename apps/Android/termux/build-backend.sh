@@ -45,7 +45,10 @@ case "$abi:$machine" in
     arm64-v8a:*AArch64*|armeabi-v7a:*ARM*) ;;
     *) echo 'The server binary does not match the requested Android ABI.' >&2; exit 1 ;;
 esac
-if ! "$toolchain/llvm-readelf" -l "$bundle/server" | rg -q '/system/bin/linker'; then
+# Capture the full output: rg -q can close the pipe early and make readelf
+# fail with SIGPIPE under pipefail, falsely rejecting a valid Android binary.
+program_headers="$("$toolchain/llvm-readelf" -l "$bundle/server")"
+if [[ "$program_headers" != *'/system/bin/linker'* ]]; then
     echo 'The server is not linked for the Android runtime.' >&2
     exit 1
 fi
