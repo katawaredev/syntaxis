@@ -6,22 +6,39 @@ Projects stay on their owning backend; the app combines their recent-project
 lists without copying files or credentials between backends.
 
 Modern ARM64 Android devices are the primary target. Android 8+ and a current
-Android System WebView with secure web-message support are required. Nexus 7
-(2013), ARMv7, Android 11 remains best effort. Remote editing and Local login were
-confirmed on that tablet before the integrated-home update; the new onboarding,
-pairing, merged list, and destination switch still need device acceptance.
+Android System WebView with secure web-message support are required. Older ARMv7
+devices are supported on a best-effort basis. The integrated onboarding, pairing,
+merged list, and destination switch still need device acceptance.
 
 ## First run
 
-1. Install Termux from its official F-Droid or GitHub distribution.
-2. In Termux, run `pkg update` and `termux-setup-storage`.
-3. Download `install-syntaxis.sh`, the backend archive for your architecture, and
-   its `.sha256` file from the same GitHub release into Downloads. ARM64 uses
-   `syntaxis-termux-arm64-v8a.tar.gz`; Nexus 7 uses `syntaxis-termux-armeabi-v7a.tar.gz`.
-4. Run `bash ~/storage/downloads/install-syntaxis.sh --no-start` in Termux.
-5. Install `syntaxis.apk`, open Syntaxis, and tap **Start and pair**. Grant the Run
-   commands permission when asked. Return after Termux shows the running backend.
-6. On the welcome screen, enter a remote server URL and password, or **Skip**.
+1. Install `syntaxis.apk` from a Syntaxis GitHub release, or install the repository
+   through Komi Store. Install Termux from its official F-Droid or GitHub distribution.
+2. In Termux, run `pkg update && pkg install curl`.
+3. Open Syntaxis, tap **Copy setup command**, and run it in Termux. Alternatively:
+
+   ```sh
+   curl --fail --location --proto '=https' --proto-redir '=https' \
+     https://github.com/katawaredev/syntaxis/releases/latest/download/install-syntaxis.sh \
+     -o "$HOME/syntaxis-install.sh" &&
+   bash "$HOME/syntaxis-install.sh" --latest --no-start
+   ```
+
+4. Return to Syntaxis and tap **Start and pair**. Grant the Run commands permission
+   when asked, then return after Termux shows the running backend.
+5. On the welcome screen, enter a remote server URL and password, or **Skip**.
+
+The download command becomes available when the first release containing these
+Android assets finishes publishing. It selects the device ABI automatically and
+pins all downloads to one release. Downloads use Termux private storage; no shared
+storage permission or manual archive transfer is needed. An incomplete release
+fails without replacing the installed backend; retry after Publish Android finishes.
+
+For offline/manual installation, copy `install-syntaxis.sh`, the matching archive,
+and its `.sha256` sidecar into Termux, then pass the archive path to the installer.
+Use `syntaxis-termux-arm64-v8a.tar.gz` for ARM64 or
+`syntaxis-termux-armeabi-v7a.tar.gz` for ARMv7. Shared Downloads access is optional
+and requires `termux-setup-storage` only when using that transfer method.
 
 The installer checks the archive checksum and ABI, installs missing tools and a
 private version of Pi, and enables Termux's `allow-external-apps=true` setting.
@@ -67,12 +84,33 @@ No `addJavascriptInterface` bridge is used. TLS verification is never disabled.
 
 ## Updates and rollback
 
-Stop the backend with Ctrl+C in Termux before updating. Copy the new
-installer/archive/checksum and run:
+Komi Store can install the APK from GitHub and track APK updates. Its optional
+silent/automatic installation features depend on its own device setup. See
+[Komi's features and discovery requirements](https://komistore.app/features/).
+The published APK keeps one application ID, a stable filename, increasing version
+codes, and a consistent signing identity. No separate Komi submission is required
+for a public repository with a published APK release; relevant repository topics
+and description help discovery.
+
+Komi's APK updates do not install the separate Termux backend. After updating the
+APK, stop the backend with Ctrl+C in Termux and run:
 
 ```sh
-bash ~/storage/downloads/install-syntaxis.sh --no-start
+bash ~/.local/share/syntaxis/update.sh --latest --no-start
 ```
+
+The installer saves this updater after each successful installation. Existing
+installations without `update.sh` should run the first-run download command once.
+To install the exact release matching an APK instead of the latest stable one:
+
+```sh
+bash ~/.local/share/syntaxis/update.sh --release=v0.13.0 --no-start
+```
+
+Replace the example tag with the installed APK's release version. The downloader
+checks the release installer's checksum before running it, and the installer
+checks the archive's checksum and ABI. Package-manager prompts and Termux setup
+remain necessary; Komi's APK update flow does not run the backend installer.
 
 Then reopen Syntaxis and tap **Start and pair**. Subsequent manual starts can use
 `bash ~/.local/share/syntaxis/start.sh`; pairing survives ordinary restarts.
@@ -84,7 +122,7 @@ Projects, credentials, state, and global Pi are preserved. Old releases are reta
 To restore the previous backend:
 
 ```sh
-bash ~/storage/downloads/install-syntaxis.sh --rollback --no-start
+bash ~/.local/share/syntaxis/update.sh --rollback --no-start
 ```
 
 Rollback does not undo project or state changes. A backend from before app-token
@@ -121,8 +159,8 @@ bash apps/Android/package.sh
 ```
 
 The last command collects the debug APK, both archives/checksums, installer, and
-README into `target/android-distribution`. Never compile the workspace on a 2 GB
-tablet. Archives include matching server/frontend assets, ABI, Pi version, and
+README into `target/android-distribution`. Build on a development computer,
+not on the Android device. Archives include matching server/frontend assets, ABI, Pi version, and
 source revision. The [narrow Manganis patch](termux/vendor/README.md) permits an
 ARMv7 headless backend without claiming 32-bit Dioxus native-renderer support.
 The shared-home smoke test uses an isolated debug backend, temporary project
@@ -140,14 +178,37 @@ repository QA in an agent session.
 ## Publish to GitHub Releases
 
 [Publish Android](../../.github/workflows/publish-android.yml) is called by the
-existing Release Please workflow when a release is created. It builds and checks
-a signed release APK and both backend ABIs, verifies the source version and tag
+existing Release Please workflow when a release is created. Docker and Android
+publishing both depend on the same release job and receive the same version and
+commit. They start in the same pipeline and finish independently; merging the
+Release Please PR is the normal publishing action for both.
+
+The Android job builds and checks a signed release APK and both backend ABIs, verifies the source version and tag
 commit, and uploads `syntaxis.apk`, both archives and sidecar checksums,
 `install-syntaxis.sh`, `Android-README.md`, and `Android-SHA256SUMS` to that release.
 It does not create a new release or publish an unsigned/debug APK.
 
-A maintainer must create a long-lived signing key and configure these repository
-Actions secrets once:
+Android requires a signed APK even when distributing only through GitHub.
+Use your own app-signing key; Google Play, a Play upload key, and a store account
+are not part of this workflow. This key is separate from Git/GPG commit signing.
+See [Android app signing](https://developer.android.com/studio/publish/app-signing).
+
+Generate a key once on your development computer (`keytool` ships with the JDK):
+
+```sh
+umask 077
+mkdir -p "$HOME/.local/share/syntaxis-signing"
+keytool -genkeypair -v -storetype PKCS12 \
+  -keystore "$HOME/.local/share/syntaxis-signing/syntaxis-release.p12" \
+  -alias syntaxis -keyalg RSA -keysize 3072 -validity 10000
+```
+
+Choose a strong password at the prompt and supply certificate identity details.
+The PKCS12 key uses the keystore password; set both password secrets below to that
+same value. Keep this file outside the repository and retain an offline backup.
+Do not generate a new key for every release.
+
+A maintainer must configure these repository Actions secrets once:
 
 | Secret | Value |
 | --- | --- |
@@ -155,6 +216,20 @@ Actions secrets once:
 | `ANDROID_KEYSTORE_PASSWORD` | Keystore password |
 | `ANDROID_KEY_ALIAS` | Signing-key alias |
 | `ANDROID_KEY_PASSWORD` | Signing-key password |
+
+In GitHub, use **Settings → Secrets and variables → Actions → New repository
+secret**, or use an authenticated GitHub CLI (password commands prompt):
+
+```sh
+base64 -w 0 "$HOME/.local/share/syntaxis-signing/syntaxis-release.p12" |
+  gh secret set ANDROID_KEYSTORE_BASE64 --repo katawaredev/syntaxis
+gh secret set ANDROID_KEY_ALIAS --repo katawaredev/syntaxis --body syntaxis
+gh secret set ANDROID_KEYSTORE_PASSWORD --repo katawaredev/syntaxis
+gh secret set ANDROID_KEY_PASSWORD --repo katawaredev/syntaxis
+```
+
+The `base64 -w 0` syntax is for GNU/Linux. The keystore's Base64 value belongs in
+an Actions secret, never in a release asset or source file.
 
 Keep an offline backup of the keystore and passwords: updates require the same
 signing identity. Missing secrets fail publishing rather than generating a new
@@ -186,4 +261,4 @@ arbitrary native npm modules are not presumed to work on Android.
 Acceptance should cover first-run setup, skip/add/remove remote, mixed same-name
 projects, creation/cloning in each destination, expired cookies, restart/pairing,
 file edits, terminal/Git/Pi, background/rotation, and remote-offline behavior.
-The user deferred the broader tablet workflow checks; do not report them as passed.
+Broader on-device workflow checks remain outstanding.

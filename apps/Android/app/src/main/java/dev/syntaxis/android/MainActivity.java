@@ -3,6 +3,8 @@ package dev.syntaxis.android;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -151,7 +153,17 @@ public final class MainActivity extends Activity {
     }
 
     private void showSetup(String detail) {
-        LinearLayout panel = showMessage("Set up Termux to continue", detail + "\n\n1. Install Termux from F-Droid or its official GitHub releases.\n2. In Termux, run pkg update and termux-setup-storage.\n3. Copy the Syntaxis installer, matching backend archive, and checksum to Downloads.\n4. Run bash ~/storage/downloads/install-syntaxis.sh --no-start\n5. Return here and tap Start and pair.\n\nTermux is required even when working with remote projects.");
+        LinearLayout panel = showMessage("Set up Termux to continue", detail + "\n\n1. Install Termux from F-Droid or its official GitHub releases.\n2. In Termux, run pkg update && pkg install curl.\n3. Copy the setup command below and run it in Termux. It downloads and installs the matching backend.\n4. Return here and tap Start and pair.\n\nAlready installed? Stop the old backend with Ctrl+C before updating. Termux is required even when working with remote projects.");
+        panel.addView(button("Copy setup command", () -> {
+            String command = "curl --fail --location --proto '=https' --proto-redir '=https' "
+                    + "https://github.com/katawaredev/syntaxis/releases/latest/download/install-syntaxis.sh "
+                    + "-o \"$HOME/syntaxis-install.sh\" && bash \"$HOME/syntaxis-install.sh\" --latest --no-start";
+            ClipboardManager clipboard = getSystemService(ClipboardManager.class);
+            if (clipboard != null) {
+                clipboard.setPrimaryClip(ClipData.newPlainText("Syntaxis Termux setup", command));
+                toast("Setup command copied. Paste it into Termux.");
+            }
+        }));
         panel.addView(button("Start and pair", this::startTermux));
         panel.addView(button("Check again", this::checkLocal));
         panel.addView(button("Open Termux", this::openTermux));

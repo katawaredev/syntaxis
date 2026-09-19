@@ -4,6 +4,7 @@ import io
 import os
 from pathlib import Path
 import subprocess
+import shutil
 import tarfile
 import tempfile
 import unittest
@@ -46,6 +47,72 @@ class InstallerTests(unittest.TestCase):
         result = subprocess.run(['bash', str(INSTALLER), *map(str, args), '--no-start', '--no-app-launch'], env=self.env, capture_output=True, text=True)
         self.assertEqual(result.returncode == 0, success, result.stdout + result.stderr)
         return result
+
+    def mock_release(self, complete=True, tamper=False):
+        assets = self.root / 'release-assets'
+        assets.mkdir()
+        archive = self.bundle('release')
+        name = 'syntaxis-termux-armeabi-v7a.tar.gz'
+        shutil.copy(archive, assets / name)
+        shutil.copy(str(archive) + '.sha256', assets / (name + '.sha256'))
+        installer = assets / 'install-syntaxis.sh'
+        shutil.copy(INSTALLER, installer)
+        (assets / 'Android-SHA256SUMS').write_text(hashlib.sha256(installer.read_bytes()).hexdigest() + '  install-syntaxis.sh\n')
+        if tamper:
+            installer.write_text('exit 99\n')
+        if not complete:
+            (assets / name).unlink()
+        curl = self.bin / 'curl'
+        curl.write_text(r"""#!/usr/bin/env python3
+import os, pathlib, shutil, sys
+args = sys.argv[1:]
+url = args[-1]
+root = pathlib.Path(os.environ['TEST_RELEASE_ASSETS'])
+with (root / 'requests').open('a') as log:
+    log.write(url + '\n')
+if url == 'https://github.com/katawaredev/syntaxis/releases/latest':
+    print('https://github.com/katawaredev/syntaxis/releases/tag/v0.13.0', end='')
+else:
+    assert url.startswith('https://github.com/katawaredev/syntaxis/releases/download/v0.13.0/')
+    source = root / url.rsplit('/', 1)[1]
+    if not source.is_file():
+        sys.exit(22)
+    shutil.copy(source, args[args.index('--output') + 1])
+""")
+        curl.chmod(0o700)
+        self.env['TEST_RELEASE_ASSETS'] = str(assets)
+        return assets
+
+    def test_latest_download_pins_assets_and_saves_updater(self):
+        assets = self.mock_release()
+        self.run_install('--latest')
+        self.assertTrue((self.install / 'update.sh').is_file())
+        self.assertEqual((self.install / 'current/server').read_text(), 'release')
+        requests = (assets / 'requests').read_text().splitlines()
+        self.assertEqual(len(requests), 5)
+        self.assertTrue(all('/download/v0.13.0/' in url for url in requests[1:]))
+        # The saved updater can safely replace its own file on a later invocation.
+        updated = subprocess.run(['bash', str(self.install / 'update.sh'), '--latest', '--no-start', '--no-app-launch'], env=self.env, capture_output=True, text=True)
+        self.assertEqual(updated.returncode, 0, updated.stdout + updated.stderr)
+
+    def test_pinned_release_does_not_resolve_latest(self):
+        assets = self.mock_release()
+        self.run_install('--release=v0.13.0')
+        self.assertNotIn('/latest', (assets / 'requests').read_text())
+
+    def test_incomplete_download_preserves_existing_release(self):
+        self.run_install(self.bundle())
+        first = os.readlink(self.install / 'current')
+        self.mock_release(complete=False)
+        result = self.run_install('--latest', success=False)
+        self.assertIn('incomplete or unavailable', result.stderr)
+        self.assertEqual(first, os.readlink(self.install / 'current'))
+
+    def test_downloaded_installer_checksum_is_checked_before_execution(self):
+        self.mock_release(tamper=True)
+        result = self.run_install('--latest', success=False)
+        self.assertIn('Installer checksum mismatch', result.stderr)
+        self.assertFalse((self.install / 'current').exists())
 
     def test_update_rollback_and_preserved_data(self):
         project = self.root / 'Projects/work/file'

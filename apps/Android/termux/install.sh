@@ -1,5 +1,5 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# Run in Termux. The matching archive and its .sha256 file should be beside this script.
+# Run in Termux. Use --latest, --release=vX.Y.Z, or a local archive and checksum.
 set -euo pipefail
 umask 077
 
@@ -13,12 +13,15 @@ start=true
 app_launch=true
 rollback=false
 archive=""
+release=""
 for argument in "$@"; do
     case "$argument" in
         --no-start) start=false ;;
         --no-app-launch) app_launch=false ;;
         --rollback) rollback=true ;;
-        --help) echo 'Usage: bash install.sh [bundle.tar.gz] [--no-start] [--no-app-launch] [--rollback]'; exit 0 ;;
+        --latest) [[ -z "$release" ]] || fail 'Choose one release option.'; release=latest ;;
+        --release=*) [[ -z "$release" ]] || fail 'Choose one release option.'; release="${argument#*=}"; [[ "$release" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail 'Use a stable release tag such as --release=v0.13.0.' ;;
+        --help) echo 'Usage: bash install.sh [bundle.tar.gz | --latest | --release=vX.Y.Z] [--no-start] [--no-app-launch] [--rollback]'; exit 0 ;;
         --*) fail "Unknown option: $argument" ;;
         *) [[ -z "$archive" ]] || fail 'Provide only one backend archive.'; archive="$argument" ;;
     esac
@@ -29,6 +32,36 @@ case "$(dpkg --print-architecture)" in
     arm) abi=armeabi-v7a ;;
     *) fail 'Local mode supports ARM64 and ARMv7 Termux installations.' ;;
 esac
+# Resolve latest once so every asset comes from the same release. Download into
+# private temporary storage; incomplete releases never replace a working install.
+if [[ -n "$release" ]]; then
+    [[ -z "$archive" && "$rollback" == false ]] || fail 'Release downloads cannot be combined with an archive or rollback.'
+    command -v curl >/dev/null || fail 'Install curl in Termux first: pkg install curl'
+    releases_url=https://github.com/katawaredev/syntaxis/releases
+    curl_options=(--fail --silent --show-error --location --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 300 --retry 2)
+    if [[ "$release" == latest ]]; then
+        resolved="$(curl "${curl_options[@]}" --head --output /dev/null --write-out '%{url_effective}' "$releases_url/latest")"
+        [[ "$resolved" == "$releases_url/tag/"* ]] || fail 'Could not resolve the latest GitHub release.'
+        release="${resolved#"$releases_url/tag/"}"
+        [[ "$release" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail 'The latest release is not a stable version.'
+    fi
+    download_dir="$(mktemp -d)"
+    trap 'rm -rf -- "$download_dir"' EXIT
+    bundle_name="syntaxis-termux-$abi.tar.gz"
+    echo "Downloading Syntaxis $release for $abi…"
+    for asset in Android-SHA256SUMS install-syntaxis.sh "$bundle_name" "$bundle_name.sha256"; do
+        curl "${curl_options[@]}" --output "$download_dir/$asset" "$releases_url/download/$release/$asset" || fail 'Release downloads are incomplete or unavailable. Wait for Publish Android to finish, then retry. The existing installation was not changed.'
+    done
+    expected="$(awk '$2 == "install-syntaxis.sh" {print $1}' "$download_dir/Android-SHA256SUMS")"
+    actual="$(sha256sum "$download_dir/install-syntaxis.sh")"
+    [[ "$expected" =~ ^[a-fA-F0-9]{64}$ && "${expected,,}" == "${actual%% *}" ]] || fail 'Installer checksum mismatch. The existing installation was not changed.'
+    install_options=()
+    [[ "$start" == true ]] || install_options+=(--no-start)
+    [[ "$app_launch" == true ]] || install_options+=(--no-app-launch)
+    # Run that release's installer, not an older saved copy's installation logic.
+    bash "$download_dir/install-syntaxis.sh" "$download_dir/$bundle_name" "${install_options[@]}"
+    exit
+fi
 if [[ "$rollback" == false ]]; then
     archive="${archive:-$script_dir/syntaxis-termux-$abi.tar.gz}"
     [[ -f "$archive" && -f "$archive.sha256" ]] || fail "Place $archive and its .sha256 checksum beside install.sh, or pass the archive path."
@@ -66,7 +99,7 @@ pi_stage=""
 cleanup() {
     [[ -z "$stage" ]] || rm -rf -- "$stage"
     [[ -z "$pi_stage" ]] || rm -rf -- "$pi_stage"
-    rm -f -- "$install_root/.current-$$" "$install_root/.previous-$$" "$install_root/.start-$$"
+    rm -f -- "$install_root/.current-$$" "$install_root/.previous-$$" "$install_root/.start-$$" "$install_root/.update-$$"
 }
 trap cleanup EXIT
 previous="$(readlink "$install_root/current" || true)"
@@ -145,6 +178,10 @@ if [[ "$app_launch" == true ]]; then
     if command -v termux-reload-settings >/dev/null; then termux-reload-settings || true; fi
     echo 'App launching enabled. Grant Syntaxis the Run commands permission when Android asks.'
 fi
+# Save a stable updater so future updates need neither Downloads nor storage access.
+cp -- "${BASH_SOURCE[0]}" "$install_root/.update-$$"
+chmod 700 "$install_root/.update-$$"
+mv -f "$install_root/.update-$$" "$install_root/update.sh"
 cleanup
 trap - EXIT
 flock -u 9

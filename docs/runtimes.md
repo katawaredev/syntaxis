@@ -75,14 +75,17 @@ Projects stay under Termux `~/Projects`, state under `~/.local/state/syntaxis`, 
 Pi credentials stay in Termux's usual paths. There is no file synchronization or
 credential sharing with a remote server. The installer verifies checksums,
 installs a private Pi version, and activates versioned releases through a symlink.
-Updates and rollback require a stopped backend and preserve user data. Existing
+The saved updater can fetch the latest stable or an explicitly selected GitHub
+release, automatically select the ABI, and verify the installer and archive.
+Komi Store can update the APK; Termux backend updates remain a separate explicit
+step. Updates and rollback require a stopped backend and preserve user data. Existing
 desktop/server and standalone-browser launch commands remain unchanged.
 
 See [Android setup, releases, and acceptance](../apps/Android/README.md). ARM64 is
-the primary backend target; ARMv7/Nexus 7 compatibility is best effort. Remote
+the primary backend target; older ARMv7 devices are supported on a best-effort basis. Remote
 editing and Local login were confirmed before the integrated-home update. The new
 onboarding/pairing flow and broader Local workflows remain unverified on devices.
-The user deferred further tablet acceptance checks.
+Broader on-device acceptance checks remain outstanding.
 
 ## Launch commands
 
