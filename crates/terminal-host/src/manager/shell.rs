@@ -51,6 +51,14 @@ pub(super) fn controlled_shell_command(
             command.env(key, value);
         }
     }
+    // Termux tools need their prefix and temp directory. termux-exec's preload
+    // also translates Unix shebang paths for scripts launched by the shell.
+    #[cfg(target_os = "android")]
+    for key in ["PREFIX", "TMPDIR", "LD_PRELOAD"] {
+        if let Some(value) = env::var_os(key) {
+            command.env(key, value);
+        }
+    }
     command.env("TERM", "xterm-256color");
     command.env("COLORTERM", "truecolor");
     command.env("TERM_PROGRAM", "Syntaxis");

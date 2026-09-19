@@ -105,6 +105,12 @@ jobs:
             AUTORESEARCH_BROWSER_PATH="$browser" \
             bun autoresearch/browser-smoke.mjs
 
+      - name: Smoke-test Android shared home
+        run: |
+          dx build --package syntaxis-server --platform web --debug-symbols false
+          export AUTORESEARCH_BROWSER_PATH="$(command -v google-chrome || command -v chromium)"
+          bun apps/Android/test-home.mjs
+
       - name: Verify tracked generated files are current
         run: git diff --exit-code
 
@@ -133,3 +139,27 @@ jobs:
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  android:
+    name: Android shell and Termux scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: android-actions/setup-android@v4
+      - run: sdkmanager 'platforms;android-36.1' 'build-tools;36.0.0'
+      - name: Build and check Android
+        run: apps/Android/gradlew -p apps/Android :app:assembleDebug :app:testDebugUnitTest :app:lintDebug --console=plain
+      - name: Check installation, updates, and pairing
+        run: |
+          python3 apps/Android/termux/test-install.py
+          python3 apps/Android/termux/test-start.py

@@ -65,6 +65,8 @@ enum ManagementDialog {
 #[component]
 pub(crate) fn ManagedRecentProjects(
     workspaces: Vec<WorkspaceRecord>,
+    #[props(default)] android: Option<crate::AndroidState>,
+    managed_toolchains: bool,
     on_changed: EventHandler<()>,
     on_notice: EventHandler<(String, Tone)>,
 ) -> Element {
@@ -75,48 +77,79 @@ pub(crate) fn ManagedRecentProjects(
         .expect("managed projects require a workspace management port");
     let mut dialog = use_signal(|| ManagementDialog::None);
     let mut maintaining = use_signal(|| false);
+    let android_port = services.android_shell().cloned();
+    let local_label = android.is_some();
+    let mut projects: Vec<_> = workspaces
+        .into_iter()
+        .map(|workspace| (false, workspace))
+        .collect();
+    if let Some(state) = &android {
+        projects.extend(
+            state
+                .projects
+                .iter()
+                .cloned()
+                .map(|workspace| (true, workspace)),
+        );
+        projects.sort_by_key(|entry| std::cmp::Reverse(entry.1.last_opened_unix_ms));
+    }
     rsx! {
         section { "aria-labelledby": "recent-title",
             div { class: "mb-3 flex items-center justify-between gap-3",
                 h2 { id: "recent-title", class: "text-[17px] font-semibold text-muted-foreground", "Recent projects" }
-                details { class: "relative",
-                    summary { class: "touch-target grid size-8 cursor-pointer list-none place-items-center rounded-lg text-muted-foreground hover:bg-accent", title: "Manage runtime storage", "aria-label": "Manage runtime storage",
-                        Icon { icon: AppIcon::MoreVertical, size: 15 }
-                    }
-                    div { class: "absolute right-0 z-40 mt-1 w-52 rounded-lg border border-border bg-popover p-1 shadow-xl",
-                        RuntimeAction { label: if maintaining() { "Updating tools…" } else { "Update installed tools" }, disabled: maintaining(), onclick: {
-                            let management = management.clone();
-                            move |_| {
-                                maintaining.set(true);
-                                let management = management.clone();
-                                spawn(async move {
-                                    match management.update_installed_tools().await {
-                                        Ok(()) => on_notice.call(("Installed mise tools are up to date.".into(), Tone::Success)),
-                                        Err(error) => on_notice.call((error.message, Tone::Destructive)),
+                if managed_toolchains || android.is_some() {
+                    details { class: "relative",
+                        summary { class: "touch-target grid size-8 cursor-pointer list-none place-items-center rounded-lg text-muted-foreground hover:bg-accent", title: "Manage runtime storage", "aria-label": "Manage runtime storage",
+                            Icon { icon: AppIcon::MoreVertical, size: 15 }
+                        }
+                        div { class: "absolute right-0 z-40 mt-1 w-52 rounded-lg border border-border bg-popover p-1 shadow-xl",
+                            if let Some(state) = &android {
+                                RuntimeAction { label: if state.remote_configured { "Remote settings" } else { "Add Remote" }, disabled: false, onclick: {
+                                    let port = android_port.clone();
+                                    move |_| if let Some(port) = port.clone() {
+                                        spawn(async move { if let Err(error) = port.configure_remote().await { on_notice.call((error.message, Tone::Destructive)); } });
                                     }
-                                    maintaining.set(false);
-                                });
+                                } }
                             }
-                        } }
-                        RuntimeAction { label: if maintaining() { "Pruning tools…" } else { "Prune unused tools" }, disabled: maintaining(), onclick: {
-                            let management = management.clone();
-                            move |_| {
-                                maintaining.set(true);
+                            if managed_toolchains {
+                            RuntimeAction { label: if maintaining() { "Updating tools…" } else { "Update installed tools" }, disabled: maintaining(), onclick: {
                                 let management = management.clone();
-                                spawn(async move {
-                                    match management.prune_installed_tools().await {
-                                        Ok(()) => on_notice.call(("Unused mise tools were pruned.".into(), Tone::Success)),
-                                        Err(error) => on_notice.call((error.message, Tone::Destructive)),
-                                    }
-                                    maintaining.set(false);
-                                });
+                                move |_| {
+                                    maintaining.set(true);
+                                    let management = management.clone();
+                                    spawn(async move {
+                                        match management.update_installed_tools().await {
+                                            Ok(()) => on_notice.call(("Installed mise tools are up to date.".into(), Tone::Success)),
+                                            Err(error) => on_notice.call((error.message, Tone::Destructive)),
+                                        }
+                                        maintaining.set(false);
+                                    });
+                                }
+                            } }
+                            RuntimeAction { label: if maintaining() { "Pruning tools…" } else { "Prune unused tools" }, disabled: maintaining(), onclick: {
+                                let management = management.clone();
+                                move |_| {
+                                    maintaining.set(true);
+                                    let management = management.clone();
+                                    spawn(async move {
+                                        match management.prune_installed_tools().await {
+                                            Ok(()) => on_notice.call(("Unused mise tools were pruned.".into(), Tone::Success)),
+                                            Err(error) => on_notice.call((error.message, Tone::Destructive)),
+                                        }
+                                        maintaining.set(false);
+                                    });
+                                }
+                            } }
+                            RuntimeAction { label: "Free up space…", destructive: true, disabled: maintaining(), onclick: move |_| dialog.set(ManagementDialog::RuntimeCleanup) }
                             }
-                        } }
-                        RuntimeAction { label: "Free up space…", destructive: true, disabled: maintaining(), onclick: move |_| dialog.set(ManagementDialog::RuntimeCleanup) }
+                        }
                     }
                 }
             }
-            if workspaces.is_empty() {
+            if let Some(error) = android.as_ref().and_then(|state| state.error.as_ref()) {
+                p { class: "mb-3 text-sm text-muted-foreground", "{error}" }
+            }
+            if projects.is_empty() {
                 div { class: "flex min-h-70 flex-col items-center justify-center rounded-xl border border-border bg-card/90 px-5.5 py-9 text-center",
                     div { class: "mb-3 grid size-11.5 place-items-center rounded-xl bg-primary/10 text-[22px] text-primary", "◇" }
                     h3 { class: "text-[15px] font-semibold text-foreground", "No recent projects" }
@@ -124,13 +157,19 @@ pub(crate) fn ManagedRecentProjects(
                 }
             } else {
                 div { class: "rounded-xl border border-border bg-card shadow-sm",
-                    for workspace in workspaces {
+                    for (remote, workspace) in projects {
+                        if remote {
+                            crate::android::AndroidRemoteProject { key: "remote:{workspace.id.0}", workspace }
+                        } else {
                         ManagedWorkspaceRow {
-                            key: "{workspace.id.0}",
+                            key: "local:{workspace.id.0}",
                             workspace,
+                            local_label,
+                            managed_toolchains,
                             on_dialog: move |next| dialog.set(next),
                             on_changed,
                             on_notice,
+                        }
                         }
                     }
                 }
@@ -202,6 +241,8 @@ fn RuntimeAction(
 #[component]
 fn ManagedWorkspaceRow(
     workspace: WorkspaceRecord,
+    local_label: bool,
+    managed_toolchains: bool,
     on_dialog: EventHandler<ManagementDialog>,
     on_changed: EventHandler<()>,
     on_notice: EventHandler<(String, Tone)>,
@@ -224,6 +265,7 @@ fn ManagedWorkspaceRow(
                 div { class: "min-w-0",
                     div { class: "flex min-w-0 items-center gap-2",
                         strong { class: "min-w-0 truncate text-sm font-semibold max-md:max-w-[42%] max-md:shrink-0", "{workspace.name}" }
+                        if local_label { span { class: "text-[11px] text-muted-foreground", "Local" } }
                         if missing { StatusBadge { label: "Missing", tone: Tone::Destructive } }
                         else if workspace.availability == WorkspaceAvailability::Checking { StatusBadge { label: "Checking", tone: Tone::Neutral } }
                         small { class: "hidden min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground max-md:block", "{workspace.root}" }
@@ -239,8 +281,8 @@ fn ManagedWorkspaceRow(
                 }
                 div { class: "absolute right-0 z-40 mt-1 w-42 rounded-lg border border-border bg-popover p-1 shadow-xl",
                     if !missing {
-                        RuntimeAction { label: "Bootstrap", disabled: refreshing() || !available, onclick: { let workspace = workspace.clone(); move |_| on_dialog.call(ManagementDialog::Bootstrap(workspace.clone())) } }
-                        RuntimeAction { label: "Update tools", disabled: refreshing() || !available, onclick: { let workspace = workspace.clone(); move |_| on_dialog.call(ManagementDialog::UpdateTools(workspace.clone())) } }
+                        RuntimeAction { label: "Bootstrap", disabled: !managed_toolchains || refreshing() || !available, onclick: { let workspace = workspace.clone(); move |_| on_dialog.call(ManagementDialog::Bootstrap(workspace.clone())) } }
+                        RuntimeAction { label: "Update tools", disabled: !managed_toolchains || refreshing() || !available, onclick: { let workspace = workspace.clone(); move |_| on_dialog.call(ManagementDialog::UpdateTools(workspace.clone())) } }
                         RuntimeAction { label: "Notes", disabled: refreshing(), onclick: { let workspace = workspace.clone(); move |_| on_dialog.call(ManagementDialog::Notes(workspace.clone())) } }
                     }
                     RuntimeAction { label: if refreshing() { "Refreshing…" } else if missing { "Check again" } else { "Refresh" }, disabled: refreshing() || (!available && !missing), onclick: {
