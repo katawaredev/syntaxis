@@ -2,7 +2,7 @@
 
 # Runtime identity — read before changing application behavior
 
-Syntaxis has **two apps sharing the same UI**, not two names for the same backend.
+Syntaxis has **two runtimes sharing the same UI**, not two names for the same backend.
 Read [Runtime guide](docs/runtimes.md) before runtime-sensitive work and
 [Browser AI](docs/browser-ai.md) before changing browser AI behavior.
 
@@ -13,6 +13,9 @@ Read [Runtime guide](docs/runtimes.md) before runtime-sensitive work and
   Workspace files and tools run locally in the browser. Pi uses browser libraries,
   API keys in memory, and sandboxed workspace tools—not the server's Pi process,
   credentials, sessions, or model cache. Start with `just serve-browser`.
+* **Android shell:** `apps/Android` loads the server UI in a WebView. Local uses
+  the Android backend in Termux; Remote uses an HTTPS server. It never uses
+  `runtime-browser`. See `apps/Android/README.md` for build and setup instructions.
 * Dioxus `--platform web` describes the UI build target, **not** the browser-only
   runtime. Use explicit recipe names; old launch names have been removed.
 * `module-*`, `ui`, and `app-shell` are shared. Changes there can affect both apps.

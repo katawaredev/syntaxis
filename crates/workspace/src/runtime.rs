@@ -23,6 +23,7 @@ pub enum RuntimeCapability {
     Worktrees,
     Agent,
     LanguageServices,
+    ManagedToolchains,
     Preview,
     UnrestrictedWorkspaceRoots,
 }

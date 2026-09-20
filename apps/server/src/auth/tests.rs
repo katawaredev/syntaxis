@@ -40,3 +40,36 @@ fn login_page_replaces_the_error_placeholder() {
     assert!(!without_error.contains("{error}"));
     assert!(with_error.contains("Incorrect password."));
 }
+
+#[test]
+fn android_pairing_never_accepts_an_unpaired_client() {
+    let state = AuthState {
+        inner: Arc::new(AuthStateInner {
+            disabled: false,
+            password_hash: String::new(),
+            api_token: Some("0123456789abcdef0123456789abcdef".into()),
+            sessions: Mutex::new(HashMap::new()),
+            login_failures: Mutex::new(HashMap::new()),
+            secure_cookie: false,
+        }),
+    };
+    let unpaired = android_session(&state, &HeaderMap::new());
+    assert_eq!(unpaired.status(), StatusCode::NOT_FOUND);
+    assert!(!unpaired.headers().contains_key(SET_COOKIE));
+    let mut headers = HeaderMap::new();
+    headers.insert(AUTHORIZATION, HeaderValue::from_static("Bearer incorrect"));
+    let incorrect = android_session(&state, &headers);
+    assert_eq!(incorrect.status(), StatusCode::NOT_FOUND);
+    headers.insert(
+        AUTHORIZATION,
+        HeaderValue::from_static("Bearer 0123456789abcdef0123456789abcdef"),
+    );
+    let paired = android_session(&state, &headers);
+    if cfg!(target_os = "android") {
+        assert_eq!(paired.status(), StatusCode::NO_CONTENT);
+        assert!(paired.headers().contains_key(SET_COOKIE));
+    } else {
+        assert_eq!(paired.status(), StatusCode::NOT_FOUND);
+        assert!(!paired.headers().contains_key(SET_COOKIE));
+    }
+}

@@ -1,6 +1,8 @@
 //! Shared route models and, incrementally, the common application shell.
 
 mod active_workspace;
+mod android;
+pub use android::{AndroidShellPort, AndroidState};
 mod home_management;
 mod notifications;
 mod project_templates;

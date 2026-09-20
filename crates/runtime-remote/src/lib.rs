@@ -5,6 +5,7 @@
 //! the `server` feature connects those implementations to the transport.
 
 mod ai;
+mod android;
 mod browser;
 mod client_error;
 #[cfg(any(feature = "host", test))]
@@ -39,6 +40,9 @@ pub fn services() -> AppServices {
         .with_workspace_clone(workspace::workspace_clone())
         .with_workspace_projects(workspace::workspace_projects())
         .with_workspace_management(workspace::workspace_management())
+        .with_android_shell(syntaxis_app_contracts::PortHandle::new(
+            android::AndroidShell,
+        ))
         .with_notifications(notifications::notification_port())
         .with_terminal(terminal::terminal_ports());
     let git = git::git_ports(services.workspace_events().clone());

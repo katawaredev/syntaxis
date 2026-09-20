@@ -28,7 +28,13 @@ members = [
   "crates/workspace-browser",
   "crates/workspace-host",
 ]
+exclude = ["apps/Android/termux/vendor/manganis"]
 resolver = "2"
+
+# Manganis 0.7.10 unconditionally compiles 64-bit JNI callbacks on Android.
+# Our ARMv7 headless backend only needs assets; preserve callbacks on 64-bit.
+[patch.crates-io]
+manganis = { path = "apps/Android/termux/vendor/manganis" }
 
 [profile.release]
 codegen-units = 1

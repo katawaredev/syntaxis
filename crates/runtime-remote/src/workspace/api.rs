@@ -123,13 +123,23 @@ pub async fn runtime_state() -> Result<RuntimeState, ServerFnError> {
         RuntimeCapability::Agent,
         RuntimeCapability::Preview,
     ];
-    if syntaxis_lsp_host::mise_available() {
+    if !cfg!(target_os = "android") && syntaxis_lsp_host::mise_available() {
         available.push(RuntimeCapability::LanguageServices);
+        available.push(RuntimeCapability::ManagedToolchains);
     }
     Ok(RuntimeState::Ready {
         identity: RuntimeIdentity {
-            location: ExecutionLocation::Remote,
-            label: "Self-hosted runtime".into(),
+            location: if cfg!(target_os = "android") {
+                ExecutionLocation::Local
+            } else {
+                ExecutionLocation::Remote
+            },
+            label: if cfg!(target_os = "android") {
+                "Termux runtime"
+            } else {
+                "Self-hosted runtime"
+            }
+            .into(),
         },
         capabilities: RuntimeCapabilities { available },
     })

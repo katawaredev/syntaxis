@@ -14,5 +14,10 @@ fn main() {
             .unwrap_or_else(|message| panic!("Could not generate password hash: {message}"));
         return;
     }
+    if std::env::args().nth(1).as_deref() == Some("random-password-hash") {
+        auth::print_random_password_hash()
+            .unwrap_or_else(|message| panic!("Could not generate local authentication: {message}"));
+        return;
+    }
     auth::serve();
 }

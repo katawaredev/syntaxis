@@ -1,5 +1,11 @@
 # Syntaxis
 
+The [Android app](apps/Android/README.md) combines projects in a required local
+Termux runtime and an optional remote server. Setup, backend updates, and GitHub
+Release publishing are documented there. Modern ARM64 Android is the primary
+target; ARMv7 tablets are best effort. The integrated onboarding and project list
+still need device acceptance.
+
 **A mobile-first, self-hosted development workspace for projects on your server.**
 
 Syntaxis gives you a code editor, terminals, Git, and application previews in one browser interface
