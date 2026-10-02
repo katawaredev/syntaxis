@@ -1,5 +1,8 @@
 # Pi integration
 
+This page describes AI in the self-hosted server app. The standalone browser app
+has [separate AI setup and persistence](browser-ai.md).
+
 Syntaxis provides a graphical workspace for the
 [Pi coding agent](https://pi.dev/). It runs Pi directly through `pi --mode rpc`; it does not
 reimplement the agent, proxy model requests, or store provider keys in the browser.

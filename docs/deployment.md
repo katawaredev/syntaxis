@@ -1,6 +1,8 @@
 # Deployment
 
-This is the operator reference for a production Syntaxis instance. Start with
+This is the operator reference for a production server-backed Syntaxis instance.
+The standalone browser app is deployed as static files; see its
+[deployment guide](../apps/browser/README.md#deploy-on-vercel). Start with
 [Getting started](getting-started.md) for the installation walkthrough.
 
 ## Model

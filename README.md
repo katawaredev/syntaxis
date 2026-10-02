@@ -1,33 +1,14 @@
 # Syntaxis
 
-The [Android app](apps/Android/README.md) combines projects in a required local
-Termux runtime and an optional remote server. Setup, backend updates, and GitHub
-Release publishing are documented there. Modern ARM64 Android is the primary
-target; ARMv7 tablets are best effort. The integrated onboarding and project list
-still need device acceptance.
-
 **A mobile-first, self-hosted development workspace for projects on your server.**
 
-Syntaxis gives you a code editor, terminals, Git, and application previews in one browser interface
-that is designed to work on a phone. Install it on a VPS, home server, or development machine and
-open the same projects from mobile, tablet, or desktop.
+Syntaxis brings a code editor, terminals, Git, application previews, and a coding
+agent into a browser interface designed for a phone. Run it on a Linux server or
+development machine, then open your projects from a phone, tablet, or desktop.
 
-Your code stays in ordinary folders on your machine. Syntaxis does not provide compute, copy your
-repositories into a hosted workspace, or replace your existing command-line tools.
+Projects stay in ordinary folders on your machine and use its existing tools.
 
-## Browser app
-
-The standalone [browser app](apps/browser) is available at
-[syntaxis.kataware.dev](https://syntaxis.kataware.dev), with no server setup needed.
-It shares the self-hosted app's interface and works with files in browser storage or a local
-directory you select. Its tools run in a browser sandbox; the self-hosted app runs native
-terminals, Git, language servers, and Pi on your own machine. Browser AI uses your own provider
-API keys, with keys and chats kept in memory only until the tab is reloaded or closed.
-
-The sections below primarily describe the self-hosted app. For runtime details and development
-commands, see the [Runtime guide](docs/runtimes.md).
-
-## Is this for you?
+## Who it is for
 
 Syntaxis is for developers who:
 
@@ -49,24 +30,10 @@ It is not a good fit if you need:
 
 ### Projects
 
-<table>
-<tr>
-<td><img src="screenshots/home.jpg" alt="home" width="100%"></td>
-<td><img src="screenshots/home-new.jpg" alt="new project" width="100%"></td>
-</tr>
-</table>
-
 Open an existing server folder, clone a Git repository, or scaffold a new project in a live terminal.
 Projects remain normal directories and continue to work outside Syntaxis.
 
 ### Files and editor
-
-<table>
-<tr>
-<td><img src="screenshots/editor.jpg" alt="editor" width="100%"></td>
-<td><img src="screenshots/editor-sidebar.jpg" alt="editor sidebar" width="100%"></td>
-</tr>
-</table>
 
 Browse and search the project, open multiple files, find and replace text, view images, inspect diffs,
 and edit with syntax highlighting.
@@ -80,12 +47,6 @@ Mise configuration, it can infer a starting toolchain and language-server setup.
 
 ### Terminal
 
-<table>
-<tr>
-<td><img src="screenshots/terminal.jpg" alt="terminal" width="360"></td>
-</tr>
-</table>
-
 Create and reconnect to real shell sessions running on the server. The terminal includes touch
 scrolling, mobile control keys, and links from recognized source locations back to the editor.
 
@@ -94,25 +55,12 @@ close them.
 
 ### Git
 
-<table>
-<tr>
-<td><img src="screenshots/git-file.jpg" alt="git file review" width="100%"></td>
-<td><img src="screenshots/git-sidebar.jpg" alt="git sidebar" width="100%"></td>
-</tr>
-</table>
-
 Review staged and unstaged diffs, stage or discard files, commit, manage branches and tags, inspect
 history, work with remotes, pull, push, and handle common merge workflows.
 
 The supplied container can use SSH and GnuPG configuration deliberately mounted from the host.
 
 ### Preview
-
-<table>
-<tr>
-<td><img src="screenshots/preview.jpg" alt="preview" width="360"></td>
-</tr>
-</table>
 
 Start an HTTP development server from Terminal and open it through Syntaxis. On Linux, Syntaxis can
 detect listening processes associated with the current project.
@@ -121,13 +69,6 @@ The preview gateway supports HTTP and WebSockets, so common hot-reload setups co
 Previews are private by default and can optionally receive a separate revocable share link.
 
 ### Coding agent
-
-<table>
-<tr>
-<td><img src="screenshots/chat.jpg" alt="chat" width="100%"></td>
-<td><img src="screenshots/chat-settings-general.jpg" alt="chat settings" width="100%"></td>
-</tr>
-</table>
 
 Syntaxis includes an interface for the [Pi coding agent](https://pi.dev/). It uses Pi's
 native RPC mode and Pi's existing provider configuration, sessions, prompts, skills, and extensions.
@@ -175,6 +116,16 @@ The production image is published at:
 ghcr.io/katawaredev/syntaxis
 ```
 
+## Browser app
+
+The separate [browser app](apps/browser/README.md) is available at
+[syntaxis.kataware.dev](https://syntaxis.kataware.dev), with no server setup needed.
+It shares the interface and works with files in browser storage or a local directory
+you select. Its command console, Git, preview, and AI tools run in browser sandboxes
+with different capabilities from the self-hosted app. Browser AI uses your own
+provider API keys; keys and chats are cleared when the app reloads. See the
+[runtime guide](docs/runtimes.md) for a full comparison.
+
 ## Documentation
 
 - [Getting started](docs/getting-started.md)
@@ -182,5 +133,9 @@ ghcr.io/katawaredev/syntaxis
 - [Deployment](docs/deployment.md)
 - [Security model](docs/security.md)
 - [Pi integration](docs/pi-management.md)
+- [Browser app and its limitations](apps/browser/README.md)
+- [Runtime guide](docs/runtimes.md)
 - [Development and maintenance](docs/development.md)
+- [Experimental Android shell](apps/Android/README.md): requires Termux; device
+  acceptance is still in progress.
 - [Changelog](CHANGELOG.md)

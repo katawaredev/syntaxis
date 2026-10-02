@@ -12,8 +12,8 @@ review fixes. Product paths now use `server` and `browser`, with remote adapters
 - Migration baseline: `89c04e5` (`fix: git`)
 - Architecture-spec baseline: `d2df279`
 - Canonical product behavior and visuals: the `syntaxis` main application
-- Canonical screenshots: the tracked `screenshots/` references for Home, Files, Terminal, Git,
-  Preview, and AI at desktop widths
+- Visual baseline: the main application's Home, Files, Terminal, Git, Preview,
+  and AI surfaces at desktop widths
 
 The server-backed composition is `apps/server`, package `syntaxis-server`; its Dioxus output
 is `target/dx/syntaxis-server/`. The browser-only composition is `apps/browser`, package
@@ -101,9 +101,9 @@ budgets, and builds the production container.
 
 ## Browser and visual evidence
 
-The tracked `screenshots/` directory remains the canonical main visual reference; the extraction
-made no deliberate visual redesign. The existing main autoresearch workload passed against the
-optimized app for Home/Recent Projects, New Project, Files/editor readiness, and Git diff. Its
+The extraction made no deliberate visual redesign. The existing main autoresearch
+workload passed against the optimized app for Home/Recent Projects, New Project,
+Files/editor readiness, and Git diff. Its
 320x700 mobile and 1440x900 desktop audits found no horizontal overflow, console error, page error,
 or failed request. A focused optimized Chromium smoke also created a server terminal and verified
 that the versioned remote renderer bridge loaded and mounted xterm without browser failures.
@@ -153,7 +153,7 @@ limit, and `just bundle-check` builds both release clients before invoking that 
 
 | Phase | Result |
 | --- | --- |
-| 0 — Baseline | Source/routes/capabilities/screenshots characterized; guest smoke and reproducible release comparison added. |
+| 0 — Baseline | Source/routes/capabilities/visuals characterized; guest smoke and reproducible release comparison added. |
 | 1 — Explicit apps | Virtual workspace and two composition-only apps use one shared route, Home, shell, and navigation. |
 | 2 — Services/adapters | Typed service graph, errors, navigation intents, bounded event bus, main runtime, browser runtime, and in-memory test adapters established. |
 | 3 — Files | One shared Files/editor module owns startup, tree, documents, sessions, search, mutations, uploads/transfers, conflicts, and UI. Guest duplicate controllers were removed. |

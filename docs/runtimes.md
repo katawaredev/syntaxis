@@ -2,7 +2,7 @@
 
 This is the contributor and AI-agent reference for choosing the correct app.
 Both runtimes use the same Dioxus UI; seeing a browser window does not identify the runtime.
-The Android shell in `apps/Android` loads the server-backed UI from either an
+The experimental Android shell in `apps/Android` loads the server-backed UI from either an
 on-device Termux backend or a remote HTTPS server. It does not compose the
 standalone browser runtime.
 
@@ -41,7 +41,7 @@ and the distinction between Markdown guidance and executable capabilities.
 
 ## Android and Termux
 
-`apps/Android` is a native Android WebView connection coordinator, not a third
+`apps/Android` is an experimental native Android WebView connection coordinator, not a third
 workspace implementation. A paired Termux backend at `127.0.0.1:8787` is required
 before opening either local or remote projects. An optional HTTPS server is added
 through onboarding or Recent projects → Add Remote. The shared home page merges

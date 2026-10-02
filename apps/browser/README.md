@@ -1,14 +1,16 @@
 # Syntaxis Browser
 
-Syntaxis Browser is the backend-free, static sibling of the self-hosted
-application. It builds as a separate WebAssembly artifact, so its browser-only
-dependencies do not increase the server-backed Syntaxis bundle.
+Syntaxis Browser is a standalone workspace you can open without running a
+Syntaxis server. Try it at [syntaxis.kataware.dev](https://syntaxis.kataware.dev).
+It shares the [self-hosted app's](../../README.md) interface, but its files and
+tools run locally in your browser.
 
 It provides the browser-compatible Syntaxis workspace experience over the
 Origin Private File System (OPFS), with optional direct access to a
 user-selected local folder in browsers that support the File System Access API.
-It uses no server functions; small generated JavaScript bridges provide the
-browser-only ZIP, Git, and command runtimes.
+Its ZIP, Git, and command tools run in browser sandboxes. The
+[runtime guide](../../docs/runtimes.md) compares their capabilities with the
+self-hosted app.
 
 See [browser maintenance](../../docs/browser-maintenance.md) for security
 invariants and the recurring release checklist, and [Browser AI](../../docs/browser-ai.md)

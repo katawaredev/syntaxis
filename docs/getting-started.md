@@ -1,7 +1,8 @@
 # Getting started
 
-This guide installs one Syntaxis instance on Linux with Docker Compose. Read the
-[security model](security.md) before exposing it to a network.
+This guide installs the self-hosted server app on Linux with Docker Compose. For
+the standalone app without a server, see [Syntaxis Browser](../apps/browser/README.md).
+Read the [security model](security.md) before exposing the server to a network.
 
 ## Requirements
 

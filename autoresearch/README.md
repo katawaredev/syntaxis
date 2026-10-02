@@ -1,14 +1,17 @@
 # Syntaxis startup performance campaign
 
-This directory contains the repeatable evaluator and the evidence for the mobile
-cold-start campaign. It is intentionally separate from product code and does not
-contain benchmark-only behavior in the application.
+This directory contains the repeatable evaluator and historical evidence for the
+server app's mobile cold-start campaign. The measurements describe that campaign,
+not current performance. For the current app split, see the
+[runtime guide](../docs/runtimes.md). Benchmark code stays separate from product
+behavior.
 
 ## Architecture and performance map
 
-- **Runtime:** Syntaxis is a Dioxus 0.7 fullstack application. The browser client
-  is Rust compiled to WebAssembly; the server owns authentication, filesystem,
-  workspaces, Git, terminals, previews, language servers, and Pi integration.
+- **Runtime measured:** The server app is a Dioxus 0.7 fullstack application. Its
+  browser client is Rust compiled to WebAssembly; the server owns authentication,
+  filesystem, workspaces, Git, terminals, previews, language servers, and Pi
+  integration.
 - **Document path:** `apps/server/index.html` supplies the viewport. Its `maximum-scale=1`
   setting is an intentional mobile Safari workaround that prevents the focused
   code editor from auto-zooming; do not remove it to improve Lighthouse scores.

@@ -1,4 +1,10 @@
-# Mobile pull-with-rebase direction
+# Mobile pull-with-rebase design note
+
+This records the interaction design for the server-backed Git workflow. The
+basic pull, conflict, continue, skip, and abort actions are implemented; this
+page is a design reference rather than setup instructions. Browser Git does not
+support rebase. See [Features and limitations](features.md) and the
+[runtime guide](runtimes.md) for current capabilities.
 
 ## Product goal
 

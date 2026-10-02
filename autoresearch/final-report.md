@@ -1,5 +1,9 @@
 # Performance autoresearch report
 
+This is a historical measurement report for the server app. Its toolchain,
+validation status, and asset sizes describe the campaign, not the current build.
+See the [runtime guide](../docs/runtimes.md) for the current app split.
+
 ## Second-pass outcome
 
 The second pass found that syntax highlighting for Git diffs pulled every
@@ -19,8 +23,9 @@ is claimed.
 
 The candidate release build completed successfully. Browser checks found no
 console, page, or request failures and no horizontal overflow on Home or editor
-at 320x700 or 1440x900. Full repository QA remains to be run after explicit
-confirmation because it can rewrite Rust formatting and Clippy findings.
+at 320x700 or 1440x900. Full repository QA had not been run at the time of this
+report; it required explicit confirmation because it could rewrite Rust formatting
+and Clippy findings.
 
 ## Second-pass measurements
 

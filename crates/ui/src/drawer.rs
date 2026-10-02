@@ -1,5 +1,8 @@
 use dioxus::prelude::*;
-use dioxus_primitives::dialog::{DialogContent, DialogRoot, DialogTitle};
+use dioxus_primitives::alert_dialog::{
+    AlertDialogContent as DialogContent, AlertDialogRoot as DialogRoot,
+    AlertDialogTitle as DialogTitle,
+};
 
 use crate::{AppIcon, Icon};
 
@@ -13,8 +16,11 @@ pub fn Drawer(
     children: Element,
 ) -> Element {
     let restore_after_dismiss = restore_focus.clone();
+    let restore_after_backdrop = restore_focus.clone();
     let restore_after_button = restore_focus;
     rsx! {
+        // Dismiss on the backdrop itself. The light-dismiss dialog also closes on
+        // focus changes outside its content, including controls that use portals.
         DialogRoot {
             open: true,
             on_open_change: move |open: bool| {
@@ -24,8 +30,17 @@ pub fn Drawer(
                 }
             },
             class: "mobile-drawer-root fixed inset-0 z-100 grid touch-auto place-items-stretch overscroll-contain bg-background/75 backdrop-blur-sm",
+            div {
+                class: "absolute inset-0",
+                aria_hidden: "true",
+                onclick: move |_| {
+                    on_close.call(());
+                    restore_focus_after_drawer(&restore_after_backdrop);
+                },
+            }
             DialogContent {
-                class: "mobile-drawer-content flex min-h-0 flex-col overflow-hidden {content_class} max-w-[86vw] touch-auto overscroll-contain shadow-2xl",
+                role: "dialog",
+                class: "mobile-drawer-content relative flex min-h-0 flex-col overflow-hidden {content_class} max-w-[86vw] touch-auto overscroll-contain shadow-2xl",
                 "aria-label": label,
                 div { class: "flex h-12 shrink-0 items-center justify-between border-b border-border px-2.5",
                     DialogTitle { {title} }

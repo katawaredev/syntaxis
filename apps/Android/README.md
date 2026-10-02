@@ -1,5 +1,8 @@
 # Syntaxis for Android
 
+**Experimental.** Core setup and broader Local workflows still need acceptance
+testing on physical devices. Expect setup and compatibility issues.
+
 Android uses the shared server UI in a WebView, with a mandatory local backend in
 Termux and an optional HTTPS remote server. It never uses `runtime-browser`.
 Projects stay on their owning backend; the app combines their recent-project

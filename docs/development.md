@@ -7,6 +7,8 @@ Syntaxis has two Dioxus 0.7 applications with a shared UI: a server-backed app a
 a standalone browser app. Both compile browser UI to WebAssembly, but only the
 server-backed app uses the server's filesystem, native processes, and Pi RPC.
 Read the [Runtime guide](runtimes.md) before changing runtime-sensitive behavior.
+The experimental Android WebView shell uses the server app; its build and device
+setup are documented in [Android](../apps/Android/README.md).
 
 ## Repository layout
 

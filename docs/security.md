@@ -3,8 +3,11 @@
 Syntaxis can edit source code, open shells, use Git credentials, install tools, run project commands,
 and proxy development applications. Treat access to it much like shell access to the runtime.
 
-This page describes the intended trust model, not a guarantee that the software has no
-vulnerabilities.
+This page primarily describes the server app, including the experimental Android
+shell when it connects to a server or runs a backend in Termux. The standalone
+browser app has separate local storage and tool limits described in its
+[app guide](../apps/browser/README.md). This is the intended trust model,
+not a guarantee that the software has no vulnerabilities.
 
 ## Intended use
 

@@ -1,7 +1,8 @@
 # Features and limitations
 
-Syntaxis is a single-user workspace for projects on a trusted server. This page describes its
-modules and their main limits.
+This page describes the self-hosted server app. It is a single-user workspace for
+projects on a trusted server. The [browser app](../apps/browser/README.md) shares
+the interface but has different tools and limits; see the [runtime guide](runtimes.md).
 
 ## Projects
 

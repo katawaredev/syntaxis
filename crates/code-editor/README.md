@@ -6,7 +6,7 @@ bundled CodeMirror 6 view. Git-page diff fragments retain `dioxus-code`'s
 Arborium/tree-sitter renderer so their patch-relative line-number offsets stay
 intact.
 
-## Capability spike
+## Editor capabilities
 
 The CodeMirror bridge preserves the Rust-facing API required by Syntaxis:
 
