@@ -371,3 +371,130 @@ test("cancellation settles even when a tool response never arrives", async () =>
   });
   expect(events.at(-1).kind).toBe("completed");
 });
+
+test("Pi 1.0 stops at 20 turns and retains the last tool result for continuation", async () => {
+  let calls = 0;
+  let tool;
+  const events = [];
+  globalThis.fetch = async () => {
+    calls += 1;
+    return response([
+      {
+        delta: {
+          role: "assistant",
+          tool_calls: [
+            {
+              index: 0,
+              id: `read-${calls}`,
+              type: "function",
+              function: { name: "read", arguments: '{"path":"README.md","offset":2,"limit":1}' },
+            },
+          ],
+        },
+        finish_reason: null,
+      },
+      { delta: {}, finish_reason: "tool_calls" },
+    ]);
+  };
+  const input = request();
+  await bridge.run(input, {
+    send: async (event) => {
+      events.push(structuredClone(event));
+      if (event.kind === "tool") tool = event;
+    },
+    recv: async () => ({ id: tool.id, output: "2: project\n[Lines 2-2 of 3]" }),
+  });
+  expect(calls).toBe(20);
+  expect(tool.args).toEqual({ path: "README.md", offset: 2, limit: 1 });
+  expect(events.some((event) => event.event?.message?.includes("20 agent turns"))).toBe(true);
+  expect(events.at(-1).kind).toBe("completed");
+  const history = events.at(-1).history;
+  expect(history.at(-1).role).toBe("toolResult");
+  expect(history.at(-1).toolCallId).toBe("read-20");
+  globalThis.fetch = async (_url, options) => {
+    const body = JSON.parse(options.body);
+    expect(body.messages.some((message) => message.tool_call_id === "read-20")).toBe(true);
+    return response([
+      { delta: { role: "assistant", content: "Continued." }, finish_reason: "stop" },
+    ]);
+  };
+  await bridge.run(
+    { ...input, history, prompt: "Continue" },
+    {
+      send: async () => {},
+      recv: async () => {
+        throw new Error("Unexpected tool");
+      },
+    },
+  );
+});
+
+test("Pi validates and forwards batch edit arguments through the workspace channel", async () => {
+  let calls = 0;
+  let tool;
+  const edits = [
+    { old_text: "one", new_text: "two" },
+    { old_text: "two", new_text: "three" },
+  ];
+  globalThis.fetch = async (_url, options) => {
+    const body = JSON.parse(options.body);
+    expect(
+      body.tools.find((tool) => tool.function.name === "read").function.parameters.properties
+        .offset,
+    ).toBeDefined();
+    expect(
+      body.tools.find((tool) => tool.function.name === "edit").function.parameters.properties.edits,
+    ).toBeDefined();
+    calls += 1;
+    return calls === 1
+      ? response([
+          {
+            delta: {
+              role: "assistant",
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "batch-edit",
+                  type: "function",
+                  function: { name: "edit", arguments: JSON.stringify({ path: "app.js", edits }) },
+                },
+              ],
+            },
+            finish_reason: null,
+          },
+          { delta: {}, finish_reason: "tool_calls" },
+        ])
+      : response([{ delta: { role: "assistant", content: "Edited." }, finish_reason: "stop" }]);
+  };
+  await bridge.run(request(), {
+    send: async (event) => {
+      if (event.kind === "tool") tool = event;
+    },
+    recv: async () => ({ id: tool.id, output: "Edited app.js" }),
+  });
+  expect(calls).toBe(2);
+  expect(tool.args).toEqual({ path: "app.js", edits });
+});
+
+test("provider cache routing is stable within a chat and separate between chats", async () => {
+  const cacheKeys = [];
+  globalThis.fetch = async (_url, options) => {
+    cacheKeys.push(JSON.parse(options.body).prompt_cache_key);
+    return response([{ delta: { role: "assistant", content: "Hello." }, finish_reason: "stop" }]);
+  };
+  const input = request({ endpoint: "https://api.openai.com/v1" });
+  const channel = {
+    send: async () => {},
+    recv: async () => {
+      throw new Error("Unexpected tool");
+    },
+  };
+  await bridge.run(input, channel);
+  await bridge.run({ ...input, prompt: "Continue" }, channel);
+  await bridge.run({ ...input, conversationId: crypto.randomUUID() }, channel);
+  expect(typeof cacheKeys[0]).toBe("string");
+  expect(cacheKeys[0].length).toBeGreaterThan(0);
+  expect(cacheKeys[1]).toBe(cacheKeys[0]);
+  expect(cacheKeys[2]).not.toBe(cacheKeys[0]);
+  expect(cacheKeys.join()).not.toContain("test-key");
+});

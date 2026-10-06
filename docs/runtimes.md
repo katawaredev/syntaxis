@@ -12,8 +12,8 @@ standalone browser runtime.
 | Adapter | `crates/runtime-remote` and host crates | `crates/runtime-browser` and browser crates |
 | Launch | `just serve-server` | `just serve-browser` |
 | Workspace | Ordinary server directories | Browser-private storage or an explicitly selected local directory |
-| Terminal | Native server processes | Limited just-bash sandbox, rooted at `/workspace` |
-| AI | Pi coding-agent process over RPC | Pi AI/agent-core browser libraries with workspace tools |
+| Terminal | Native server processes | just-bash plus optional Wasmer WASI/WASIX tools, rooted at `/workspace`; guest network disabled |
+| AI | Pi coding-agent process over RPC (packaged pin: 1.0.0) | Pi 1.0.0 AI/agent-core browser libraries with workspace tools |
 | Provider login | Pi-managed API keys and supported OAuth/subscriptions | API keys held in app memory; no subscription/OAuth login |
 | AI state | Pi server sessions/configuration | Chats, credentials, preferences, defaults held in memory; reload clears them |
 | AI resources | Project and global Pi instructions, skills, prompts, extensions | Workspace Markdown instructions, skills and templates; no native extensions/global resources |
@@ -25,6 +25,13 @@ app into the server-backed runtime. Browser workspace files, including Markdown 
 resources, persist with the workspace even though browser chat state does not.
 See [Browser AI](browser-ai.md) for exact paths, limits, model refresh behavior,
 and the distinction between Markdown guidance and executable capabilities.
+Browser file tools include ranged reads and atomic batches of exact edits.
+Pi's built-in MCP/codemode are server features. [Wasmer browser execution](browser-wasmer.md)
+adds optional language runtimes and packaged tools through the existing browser
+command port. Pi Durable remains an assessment in [Pi adoption review](pi-adoption.md).
+Browser Wasmer aliases are declared in workspace `.syntaxis/wasmer.json` and
+persist/export with workspace files. `wasmer tools` discovers them without a
+download; `wasmer prepare` fills the package cache without guest execution.
 
 ## Rules for changes
 
@@ -121,6 +128,11 @@ enabled. Its build script provisions Rust/WASM and Dioxus CLI, builds the browse
 JavaScript bundles, and stages `apps/browser/dist`. See the
 [browser deployment instructions](../apps/browser/README.md#deploy-on-vercel).
 This deployment does not run the server app.
+Wasmer commands require cross-origin isolation: the browser Vercel configuration
+sets COOP `same-origin` and COEP `require-corp`, and `serve-browser` enables the
+matching Dioxus policy. Other static hosts need equivalent headers. Ordinary
+shell commands remain available without isolation. SDK/package caches are
+origin-scoped browser data, separate from workspace files and in-memory AI keys.
 The Vercel build injects Web Analytics only into the browser deployment artifact
 when `VERCEL=1`; enable Web Analytics in that Vercel project's dashboard.
 Ordinary browser builds and the server app have no analytics integration.

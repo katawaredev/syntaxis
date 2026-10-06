@@ -5,7 +5,7 @@ provider API keys and browser workspace tools. For Pi running on your server,
 see [Pi integration](pi-management.md).
 
 The standalone browser runtime uses `@earendil-works/pi-ai` and
-`@earendil-works/pi-agent-core`, pinned to the same release as the server's Pi
+`@earendil-works/pi-agent-core` 1.0.0, pinned to the same release as the server's Pi
 coding agent. The shared Dioxus UI provides model selection, reasoning controls,
 favourites, provider accounts, streaming messages, tool activity, and token usage.
 
@@ -68,6 +68,18 @@ traversal are rejected. Reading a nested file also loads its ancestor directorie
 `AGENTS.md` files and returns them with the file. Failed tool calls are displayed
 as failed; shell and file output preserve line breaks.
 
+`read` accepts an optional 1-based `offset` and positive `limit` in lines. Ranged
+reads return numbered lines and the total line count, reducing repeated context
+when inspecting a file. The 256 KiB file limit still applies to the entire file;
+directory instructions accompany ranged reads too. Without these arguments,
+reads preserve the complete original text.
+
+`edit` accepts either `old_text` / `new_text` or an `edits` array containing
+1–100 such replacements. Batch replacements run in order against the evolving
+text, and each must match exactly once. The adapter validates the entire batch
+and resulting size before one version-checked write, so a failed replacement
+does not save earlier edits. Both forms preserve the editor's change events.
+
 ## Workspace instructions, skills, and templates
 
 Browser AI resources are ordinary workspace files, persisted with the workspace
@@ -102,13 +114,32 @@ Each resource is limited to 128 KiB; resource directories allow 100 entries.
 Combined automatically loaded instructions and expanded prompts each have a
 128 KiB limit. Large resources fail explicitly rather than being silently truncated.
 
-`bash` uses the existing just-bash browser sandbox. It does not provide native
-processes, arbitrary package installation, or a server filesystem. The agent is
-told these limits. It stops after 20 turns per prompt, and response/event limits
+`bash` uses the just-bash browser shell and optional [Wasmer tools](browser-wasmer.md).
+The agent can inspect `wasmer help` / `wasmer status` and run
+`wasmer run python|node|rg|bash -- arguments`, pinned registry packages, or local
+WASI modules. First use downloads the runtime/package; guest network access is
+disabled. Workspace changes still pass the terminal's path, protection, conflict,
+and editor-notification checks. Wasmer receives no provider keys or filesystem
+handles, and its package cache is separate from AI state. Native processes,
+arbitrary package installation, and a server filesystem remain unavailable.
+The agent can discover project tool aliases with `wasmer tools` and prefetch packages
+without guest execution using `wasmer prepare`. Aliases and default arguments
+live in workspace `.syntaxis/wasmer.json`; see the Wasmer guide for its schema.
+The agent is told these limits. It stops after 20 turns per prompt, and response/event limits
 also apply. Pi's tool transcript is retained when continuing or branching chats.
+The loop uses Pi 1.0's `finishTurn` hook to stop after a completed turn, preserving
+its finalized tool results for continuation. Provider requests receive a stable
+cache session ID per chat, isolated across browser app instances; this is a cache
+routing hint, not persistent chat storage.
 
 The full coding-agent CLI, server extensions, session compaction, and background
 execution are not emulated. Leaving the chat cancels its browser agent run.
+The browser catalog remains chat-only even though Pi 1.0 also supports image
+generation and classifier models. Built-in MCP and codemode belong to the full
+coding agent and are not provided by the browser's `Agent` loop.
+
+See [Pi adoption review](pi-adoption.md) for the Wasmer browser CLI example and
+Pi Durable assessment, including their networking and persistence requirements.
 
 The experimental Android shell uses the server app: Local runs Pi in Termux and
 Remote uses the selected server's Pi. Its projects do not share Pi credentials or

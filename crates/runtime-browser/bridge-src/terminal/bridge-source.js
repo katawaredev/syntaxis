@@ -1,8 +1,10 @@
-import { Bash } from "just-bash/browser";
+import { Bash, defineCommand } from "just-bash/browser";
+import { createWasmerCommand } from "./wasmer-command.js";
 
 const ROOT = "/workspace";
 let shell = null;
 let activeController = null;
+let syncFailure;
 const MAX_OUTPUT_CHARS = 2 * 1024 * 1024;
 
 function boundedOutput(value) {
@@ -15,6 +17,7 @@ function workspacePath(path) {
 }
 
 async function initialize(snapshot) {
+  syncFailure = undefined;
   const files = {};
   for (const file of snapshot.files) {
     files[workspacePath(file.path)] = new Uint8Array(file.content);
@@ -22,9 +25,17 @@ async function initialize(snapshot) {
   shell = new Bash({
     files,
     cwd: "/",
+    customCommands: [
+      defineCommand(
+        "wasmer",
+        createWasmerCommand(undefined, (message) => {
+          syncFailure = message;
+        }),
+      ),
+    ],
     executionLimitProfile: "hardened",
     executionLimits: {
-      maxExecutionTimeMs: 10_000,
+      maxExecutionTimeMs: 120_000,
       maxFileSystemBytes: 32 * 1024 * 1024,
       maxOutputSize: 512 * 1024,
     },
@@ -59,12 +70,21 @@ async function collectSnapshot() {
 }
 
 async function execute(command, snapshot) {
-  await initialize(snapshot);
+  if (activeController)
+    return { stdout: "", stderr: "Another browser command is running.\n", exitCode: 75, snapshot };
   const controller = new AbortController();
   activeController = controller;
   try {
+    await initialize(snapshot);
     const result = await shell.exec(command, { cwd: ROOT, signal: controller.signal });
     if (controller.signal.aborted) return cancelledResult(snapshot);
+    if (syncFailure)
+      return {
+        stdout: result.stdout,
+        stderr: `${result.stderr}\n${syncFailure}; command file changes discarded.\n`,
+        exitCode: 1,
+        snapshot,
+      };
     return {
       stdout: boundedOutput(result.stdout),
       stderr: boundedOutput(result.stderr),

@@ -126,7 +126,12 @@ async fn discover_commands(
         .iter()
         .map(|entry| entry.name.clone())
         .collect::<Vec<_>>();
-    let mut commands = Vec::new();
+    let mut commands = vec![RunCommand {
+        id: "browser:wasmer-help".to_owned(),
+        label: "Wasmer · browser tools and examples".to_owned(),
+        command: "wasmer help".to_owned(),
+        custom: false,
+    }];
     let mut seen = HashSet::new();
     for entry in entries {
         if entry.kind != EntryKind::File {

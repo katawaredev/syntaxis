@@ -83,7 +83,7 @@ struct BridgeResult {
     exit_code: i32,
     snapshot: WorkspaceSnapshot,
 }
-/// Executes a command in `just-bash` and applies its filesystem changes.
+/// Executes a command in the browser shell and applies its filesystem changes.
 ///
 /// The browser shell is recreated from a bounded workspace snapshot for each
 /// command. This mirrors `just-bash`'s isolated shell-state semantics while
@@ -186,8 +186,8 @@ pub fn bridge_ready() -> bool {
 }
 /// Requests cancellation of the currently running browser-shell command.
 ///
-/// Cancellation is cooperative: just-bash stops at its next statement
-/// boundary, and the resulting snapshot is discarded by the bridge.
+/// Cancellation is cooperative for built-in shell statements; Wasmer guests
+/// receive an immediate kill request. The resulting snapshot is discarded.
 pub fn cancel() -> Result<(), String> {
     cancel_bridge().map_err(bridge_error)
 }

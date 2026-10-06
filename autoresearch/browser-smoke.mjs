@@ -33,6 +33,8 @@ if (process.env.BROWSER_DIST) {
       response.writeHead(200, {
         "content-type": contentType(path),
         "cache-control": "no-store",
+        "cross-origin-opener-policy": "same-origin",
+        "cross-origin-embedder-policy": "require-corp",
       });
       response.end(content);
     } catch (error) {
@@ -262,6 +264,66 @@ try {
   await page.waitForFunction(() => document.body.innerText.includes("Command cancelled."), {
     timeout: 30_000,
   });
+
+  if (process.env.BROWSER_WASMER_SMOKE === "1") {
+    stage = "Wasmer OPFS reconciliation";
+    const submitTerminal = async (command) => {
+      await page.waitForSelector(terminalInput, { timeout: 30_000 });
+      const recordCount = await page.$$eval(
+        'section[aria-label="Browser terminal"] article',
+        (records) => records.length,
+      );
+      await setInputValue(page, terminalInput, command);
+      await page.$eval('section[aria-label="Browser terminal"] form', (form) =>
+        form.requestSubmit(),
+      );
+      await page.waitForFunction(
+        (count) =>
+          document.querySelectorAll('section[aria-label="Browser terminal"] article').length >
+          count,
+        { timeout: 120_000 },
+        recordCount,
+      );
+      await page.waitForSelector(terminalInput, { timeout: 30_000 });
+    };
+    await submitTerminal(
+      'wasmer run python -- -c \'from pathlib import Path; Path("wasmer-smoke.txt").write_text("guest persisted"); print("wasmer-ready")\'',
+    );
+    const fileText = await page.evaluate(async () => {
+      const root = await navigator.storage.getDirectory();
+      const handle = await root.getFileHandle("wasmer-smoke.txt");
+      return (await handle.getFile()).text();
+    });
+    if (fileText !== "guest persisted") throw new Error("Wasmer file changes did not reach OPFS.");
+    await submitTerminal("cat wasmer-smoke.txt");
+    await page.waitForFunction(() => document.body.innerText.includes("guest persisted"), {
+      timeout: 30_000,
+    });
+    await submitTerminal("mkdir -p node_modules; echo original > preserved.txt");
+    await submitTerminal(
+      'wasmer run python -- -c \'from pathlib import Path; Path("node_modules/blocked.txt").write_text("blocked"); Path("preserved.txt").write_text("invalid update")\'',
+    );
+    await page.waitForFunction(
+      () => document.body.innerText.includes("Generated or internal workspace paths are read-only"),
+      { timeout: 30_000 },
+    );
+    const protection = await page.evaluate(async () => {
+      const root = await navigator.storage.getDirectory();
+      const preserved = await root.getFileHandle("preserved.txt");
+      const generated = await root.getDirectoryHandle("node_modules");
+      let blocked = false;
+      try {
+        await generated.getFileHandle("blocked.txt");
+        blocked = true;
+      } catch (error) {
+        if (error.name !== "NotFoundError") throw error;
+      }
+      return { text: await (await preserved.getFile()).text(), blocked };
+    });
+    if (protection.text !== "original\n" || protection.blocked)
+      throw new Error("Wasmer protected-path rejection applied partial file changes.");
+    await submitTerminal("rm -rf node_modules preserved.txt wasmer-smoke.txt");
+  }
 
   stage = "Git initialization";
   await open("/workspaces/browser/git", "#workspace-main-content");

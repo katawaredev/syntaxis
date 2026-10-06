@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseSettingsMarkdown } from "./pi-settings-metadata.mjs";
 import {
   getDocsPath,
   getPackageDir,
@@ -64,20 +65,7 @@ const labels = new Map([
   ["retry.enabled", "Automatic retries"],
 ]);
 
-const documented = new Map();
-for (const line of documentation.split("\n")) {
-  const match = line.match(/^\|\s*`([^`]+)`\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*(.*?)\s*\|$/);
-  if (!match) continue;
-  const [, path, type, rawDefault, description] = match;
-  let defaultValue = rawDefault.trim() === "-" ? "" : rawDefault.trim().replace(/^`(.*)`$/, "$1");
-  if (type.trim() === "string") defaultValue = defaultValue.replace(/^"(.*)"$/, "$1");
-  if (type.trim() === "number" && !/^\d+$/.test(defaultValue)) defaultValue = "";
-  documented.set(path, {
-    type: type.trim(),
-    defaultValue,
-    description: description.trim().replaceAll("`", ""),
-  });
-}
+const documented = parseSettingsMarkdown(documentation);
 
 const label = (path) =>
   path

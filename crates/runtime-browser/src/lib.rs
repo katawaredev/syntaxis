@@ -4,6 +4,8 @@
 mod ai;
 #[cfg(any(target_arch = "wasm32", test))]
 mod ai_resource_format;
+#[cfg(any(target_arch = "wasm32", test))]
+mod ai_tool_text;
 #[cfg(target_arch = "wasm32")]
 mod ai_tools;
 #[cfg(target_arch = "wasm32")]

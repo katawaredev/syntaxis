@@ -15,6 +15,8 @@ self-hosted app.
 See [browser maintenance](../../docs/browser-maintenance.md) for security
 invariants and the recurring release checklist, and [Browser AI](../../docs/browser-ai.md)
 for the AI runtime's providers, tools, and limits.
+See [Wasmer browser execution](../../docs/browser-wasmer.md) for optional Python,
+Node-compatible JavaScript, real Bash/ripgrep, and local WASI tools.
 
 ## Run locally
 
@@ -33,6 +35,9 @@ dx build --package syntaxis-browser --platform web --release --locked --debug-sy
 
 The static deployment output is generated under
 `target/dx/syntaxis-browser/release/web/public`.
+Other static hosts must send COOP `same-origin` and COEP `require-corp` to enable
+Wasmer threads. `just serve-browser` and the included Vercel configuration supply
+these headers. Ordinary shell commands work when isolation is unavailable.
 
 ## Deploy on Vercel
 
@@ -84,6 +89,10 @@ See the [Vercel Web Analytics setup guide](https://vercel.com/docs/analytics/qui
 - Upload/download files and import/export the workspace as a bounded ZIP archive.
 - Run bounded `just-bash` commands locally and reconcile their file changes
   back to the active browser workspace.
+- Run optional Wasmer Python, Node-compatible JavaScript, Bash, ripgrep, pinned
+  registry packages, and workspace WASI modules through `wasmer run`.
+- Define project tool aliases in `.syntaxis/wasmer.json`, discover them with
+  `wasmer tools`, and prefetch packages with `wasmer prepare`.
 - Detect conflicting writes using the shared Syntaxis file-version model.
 - Reuse the shared CodeMirror editor, file-tree viewport, AI chrome, and terminal run menu.
 - Use a real local Git repository for status, staging, commits, history, branches,
@@ -98,6 +107,10 @@ remain visible but their contents are protected and omitted from the bounded
 snapshot. It is a command console rather than a PTY: shell variables and
 working-directory state reset between commands, interactive processes are
 unavailable, and network access is disabled.
+Wasmer runtime assets load on demand, and packages are downloaded and cached in
+browser-origin storage on first use. Guest processes remain offline and close
+after each command; their workspace files use the existing reconciliation checks.
+No application server or WISP proxy is required.
 
 The browser product stores and mutates ordinary `.git` metadata through isomorphic-git.
 It supports HTTPS clone, remote management, fetch, pull, publish, and push.

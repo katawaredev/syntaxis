@@ -29,6 +29,9 @@ for (const factory of [
   models.setProvider(factory());
 }
 const requests = new Map();
+// Rust chat IDs are scoped to this app instance. Keep provider cache keys separate
+// across tabs/reloads, while reusing one key for all turns of the same chat.
+const sessionPrefix = crypto.randomUUID();
 function validateCredential(key) {
   if (typeof key !== "string" || !/^[\x21-\x7e]+$/.test(key)) {
     throw new Error(
@@ -190,8 +193,12 @@ function catalog(endpoint, defaultModel) {
 const toolDefinitions = [
   [
     "read",
-    "Read a UTF-8 workspace file (up to 256 KiB) and applicable directory instructions. Paths may be workspace-relative or start with /workspace/.",
-    Type.Object({ path: Type.String() }),
+    "Read a UTF-8 workspace file (up to 256 KiB) and applicable directory instructions. Optional offset (1-based line) and limit select a numbered line range. Paths may be workspace-relative or start with /workspace/.",
+    Type.Object({
+      path: Type.String(),
+      offset: Type.Optional(Type.Union([Type.Integer({ minimum: 1 }), Type.Null()])),
+      limit: Type.Optional(Type.Union([Type.Integer({ minimum: 1 }), Type.Null()])),
+    }),
   ],
   [
     "list",
@@ -205,12 +212,25 @@ const toolDefinitions = [
   ],
   [
     "edit",
-    "Replace one exact, unique text occurrence in a workspace file.",
-    Type.Object({ path: Type.String(), old_text: Type.String(), new_text: Type.String() }),
+    "Apply exact, unique text replacements in a workspace file. Use old_text/new_text for one edit or edits for a sequential batch. The whole batch is saved once, only if every replacement succeeds.",
+    Type.Object({
+      path: Type.String(),
+      old_text: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+      new_text: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+      edits: Type.Optional(
+        Type.Union([
+          Type.Array(Type.Object({ old_text: Type.String(), new_text: Type.String() }), {
+            minItems: 1,
+            maxItems: 100,
+          }),
+          Type.Null(),
+        ]),
+      ),
+    }),
   ],
   [
     "bash",
-    "Run a command in the browser's just-bash sandbox. This is not a native shell: no native processes, package installation, or unrestricted network access.",
+    "Run a command in the browser workspace shell. Built-in shell tools and optional Wasmer tools run locally. Use `wasmer help`, `wasmer status`, or `wasmer tools` to discover built-ins and pinned workspace aliases from .syntaxis/wasmer.json. `wasmer prepare <tools>` downloads packages without executing guests. `wasmer run python|node|rg|bash|workspace-alias -- arguments` runs a pinned WebAssembly package. Local .wasm files and exact-version registry packages are supported. Guest networking is disabled; no native processes or npm/pip installation. Commands start in /workspace and workspace writes are conflict checked.",
     Type.Object({ command: Type.String() }),
   ],
 ];
@@ -249,6 +269,7 @@ async function run(request, channel) {
   let eventCount = 0;
   let bytes = 0;
   let turns = 0;
+  let turnLimitReached = false;
   let assistantId = crypto.randomUUID();
   let cancelled = false;
   let inputTokens = request.priorTokens ?? 0;
@@ -309,7 +330,15 @@ async function run(request, channel) {
     streamFn: (selected, context, options) =>
       models.streamSimple(selected, context, { ...options, apiKey: request.credential }),
     toolExecution: "sequential",
-    shouldStopAfterTurn: () => ++turns >= 20,
+    sessionId: `${sessionPrefix}:${request.conversationId}`,
+    finishTurn: ({ message }) => {
+      if (message.stopReason === "error" || message.stopReason === "aborted") return;
+      turns += 1;
+      if (turns >= 20) {
+        turnLimitReached = message.content.some((part) => part.type === "toolCall");
+        return { action: "end" };
+      }
+    },
   });
   requests.set(request.conversationId, {
     abort: () => {
@@ -383,7 +412,7 @@ async function run(request, channel) {
         mimeType: image.mime_type,
       })),
     );
-    if (turns >= 20)
+    if (turnLimitReached)
       await send({
         type: "failed",
         message: "Stopped after 20 agent turns. Send another message to continue.",

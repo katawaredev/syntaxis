@@ -20,6 +20,8 @@ The browser application now covers the browser-compatible product surface:
 - A bounded local `just-bash` command console with cancellation, history,
   workspace reconciliation, open-buffer conflict handling, and protected
   omission of generated dependency/build directory contents.
+- Optional [Wasmer execution](browser-wasmer.md) for language runtimes, pinned
+  registry packages and local WASI modules, with guest networking disabled.
 - Sandboxed static HTML preview with bounded local asset inlining.
 - An interoperable local `.git` repository with status, staging, commits,
   history, diffs, branch checkout, HTTPS clone, remote management, fetch, pull,
@@ -34,7 +36,8 @@ The browser application now covers the browser-compatible product surface:
 These are platform boundaries rather than unfinished browser features:
 
 - The terminal is a bounded command console, not a PTY. Interactive processes,
-  native executables, package installation, and network commands are absent.
+  native executables, npm/pip installation, and guest network commands are absent.
+  Wasmer can download and run exact-version WebAssembly registry packages.
   Generated directories remain visible as protected empty directories so large
   projects do not make ordinary browser-shell commands unusable.
 - Browser Git uses ordinary local `.git` metadata. HTTPS networking depends on
@@ -62,6 +65,8 @@ These are platform boundaries rather than unfinished browser features:
 - Keep file, workspace, archive, command-output, execution-time, history, and AI
   context limits in place.
 - Keep shell network access disabled.
+  Wasmer package acquisition uses browser HTTPS; never enable guest WISP egress
+  implicitly or share AI credentials with guest environments.
 - Never persist an AI API key or place it in workspace files, terminal state,
   logs, URLs, or error telemetry.
 - Start AI runs only through an explicit user request. A run may read workspace
@@ -87,6 +92,10 @@ possible, Firefox/Safari:
 4. ZIP round-trip, malformed archives, duplicate paths, and archive limits.
 5. Terminal readiness, mutation reconciliation, cancellation, timeout, output
    cap, and command-history navigation.
+   Run `bun run autoresearch:wasmer-smoke` for SDK checks; also exercise actual
+   OPFS/editor reconciliation, protected paths, workspace conflicts, cold/cached
+   package downloads, and deployed cross-origin isolation. Missing isolation must
+   preserve the ordinary shell. Check external assets/analytics under COEP.
 6. Multiple dirty tabs, save conflicts, terminal edits to active/inactive tabs,
    and navigation protection.
 7. HTML preview reload, local assets, unsupported references, and sandbox
@@ -128,6 +137,8 @@ builds the editor and all four browser bridges, and copies that static artifact
 to `apps/browser/dist`. It injects analytics into the staged artifact only when
 `VERCEL=1`; ordinary static builds contain no analytics integration. See the
 [Vercel deployment instructions](../apps/browser/README.md#deploy-on-vercel).
+The terminal build also stages the Wasmer SDK folder asset and license notices.
+Keep its internal worker/glue/Wasm paths together when deploying.
 
 Repository policy requires explicit user confirmation before running the full
 Rust/build validation workflow after code or build-configuration changes.

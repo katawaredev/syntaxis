@@ -1,26 +1,12 @@
 //! Pi tools backed by the same browser workspace services as the editor and terminal.
 
-use syntaxis_app_contracts::{AppError, AppErrorCode, ErrorSource, RetryAdvice, WorkspaceEventBus};
+use crate::ai_tool_text::{apply_edits, argument, invalid, read_range};
+use syntaxis_app_contracts::{AppError, WorkspaceEventBus};
 use syntaxis_module_terminal::TerminalCommandRunnerPort;
 use syntaxis_workspace::{WorkspaceFiles, WorkspaceRecord};
 use syntaxis_workspace_browser::OpfsWorkspaceFiles;
 
 const MAX_FILE_BYTES: u64 = 256 * 1024;
-
-fn invalid(message: &str) -> AppError {
-    AppError::new(
-        AppErrorCode::InvalidInput,
-        message,
-        RetryAdvice::Never,
-        ErrorSource::Ai,
-    )
-}
-
-fn argument<'a>(args: &'a serde_json::Value, name: &str) -> Result<&'a str, AppError> {
-    args.get(name)
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| invalid("A required tool argument is missing."))
-}
 
 pub(super) async fn execute(
     workspace: &WorkspaceRecord,
@@ -56,6 +42,7 @@ pub(super) async fn execute(
                 .read_text(workspace, &path, MAX_FILE_BYTES)
                 .await?
                 .content;
+            let content = read_range(&content, &args)?;
             let parts = path.as_str().split('/').collect::<Vec<_>>();
             if parts.len() > 64 {
                 return Err(invalid("Tool paths may have at most 64 components."));
@@ -109,15 +96,8 @@ pub(super) async fn execute(
             Ok(format!("Wrote {}", path.as_str()))
         }
         "edit" => {
-            let old = argument(&args, "old_text")?;
-            let new = argument(&args, "new_text")?;
             let file = files.read_text(workspace, &path, MAX_FILE_BYTES).await?;
-            if old.is_empty() || file.content.matches(old).count() != 1 {
-                return Err(invalid(
-                    "old_text must match exactly once. Read the file and retry.",
-                ));
-            }
-            let content = file.content.replacen(old, new, 1);
+            let content = apply_edits(&file.content, &args)?;
             files
                 .write_text(
                     workspace,

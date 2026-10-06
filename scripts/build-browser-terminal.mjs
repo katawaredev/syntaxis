@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildWasmerAssets } from "./build-browser-wasmer.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const source = resolve(root, "crates/runtime-browser/bridge-src/terminal/bridge-source.js");
@@ -14,14 +15,19 @@ const stamp = resolve(outputDir, "browser-terminal.bundle.stamp");
 const manifest = resolve(root, "package.json");
 const lockfile = resolve(root, "bun.lock");
 const script = fileURLToPath(import.meta.url);
+const wasmerSource = resolve(root, "crates/runtime-browser/bridge-src/terminal/wasmer-command.js");
 const cacheKey = createHash("sha256")
   .update("syntaxis-browser-terminal-v1\0")
   .update(readFileSync(script))
   .update(readFileSync(source))
+  .update(readFileSync(wasmerSource))
+  .update(readFileSync(resolve(root, "scripts/build-browser-wasmer.mjs")))
   .update(readFileSync(zlibShim))
   .update(readFileSync(manifest))
   .update(readFileSync(lockfile))
   .digest("hex");
+
+await buildWasmerAssets(root, cacheKey);
 
 if (
   existsSync(destination) &&

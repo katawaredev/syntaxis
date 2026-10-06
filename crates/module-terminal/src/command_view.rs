@@ -77,7 +77,7 @@ pub(crate) fn CommandTerminal(workspace: WorkspaceRecord) -> Element {
     let bridge_ready = bridge_status().is_some_and(|result| result.is_ok());
     let bridge_message = match bridge_status() {
         None => "Loading the browser shell…".to_owned(),
-        Some(Ok(())) => "just-bash · local sandbox".to_owned(),
+        Some(Ok(())) => "Local sandbox · wasmer help for more tools".to_owned(),
         Some(Err(error)) => error.message,
     };
 
@@ -332,7 +332,7 @@ pub(crate) fn CommandTerminal(workspace: WorkspaceRecord) -> Element {
             }
             TerminalStatusBar {
                 title: "Generated and internal directories are protected from the bounded browser shell.",
-                label: "Browser command console · local just-bash · generated folders protected",
+                label: "Browser command console · wasmer help for more tools · generated folders protected",
             }
         }
         if new_terminal_open() {
@@ -343,7 +343,7 @@ pub(crate) fn CommandTerminal(workspace: WorkspaceRecord) -> Element {
                 busy: false,
                 name_error: new_terminal_error(),
                 create_disabled: new_terminal_name().trim().is_empty(),
-                shell_label: "Browser just-bash",
+                shell_label: "Browser tools",
                 on_submit: move |()| {
                     let name = new_terminal_name().trim().to_owned();
                     if name.is_empty() {

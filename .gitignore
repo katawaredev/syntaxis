@@ -29,6 +29,7 @@
 # Generated browser just-bash bundle (build with: bun run build:browser-terminal)
 /crates/runtime-browser/assets/browser-terminal.bundle.js
 /crates/runtime-browser/assets/browser-terminal.bundle.stamp
+/crates/runtime-browser/assets/browser-wasmer-sdk/
 /crates/runtime-browser/assets/browser-ai.bundle.js
 /crates/runtime-browser/assets/browser-ai.bundle.stamp
 

@@ -269,7 +269,7 @@ server host=default_host port=default_port: (serve-server host port)
 
 # Start the browser-only development server.
 serve-browser host=default_host port=default_port: build-assets
-    dx serve --package syntaxis-browser --platform web --addr "{{ host }}" --port "{{ port }}"
+    dx serve --package syntaxis-browser --platform web --cross-origin-policy --addr "{{ host }}" --port "{{ port }}"
 
 # Short alias for the browser-only development server.
 browser host=default_host port=default_port: (serve-browser host port)

@@ -1,10 +1,12 @@
 use dioxus::prelude::{Asset, asset, document};
+use manganis::AssetOptions;
 use serde::Deserialize;
 
 const ARCHIVE_SCRIPT: Asset = asset!("/assets/browser-archive.bundle.js");
 const GIT_SCRIPT: Asset = asset!("/assets/browser-git.bundle.js");
 const TERMINAL_SCRIPT: Asset = asset!("/assets/browser-terminal.bundle.js");
 const AI_SCRIPT: Asset = asset!("/assets/browser-ai.bundle.js");
+const WASMER_ASSETS: Asset = asset!("/assets/browser-wasmer-sdk", AssetOptions::folder());
 const BRIDGE_VERSION: u32 = 1;
 
 #[derive(Clone, Copy)]
@@ -47,11 +49,14 @@ pub(super) async fn ensure_bridge(bridge: BrowserBridge) -> Result<(), String> {
         serde_json::to_string(bridge.global_name()).map_err(|error| error.to_string())?;
     let script_url =
         serde_json::to_string(&bridge.script().to_string()).map_err(|error| error.to_string())?;
+    let wasmer_assets =
+        serde_json::to_string(&WASMER_ASSETS.to_string()).map_err(|error| error.to_string())?;
     let mut eval = document::eval(&format!(
         r#"
         const globalName = {global_name};
         const scriptUrl = {script_url};
         const version = {BRIDGE_VERSION};
+        if (globalName === "SyntaxisBrowserBash") globalThis.SyntaxisWasmerAssets = {wasmer_assets};
         const ready = () => globalThis[globalName]?.version === version;
         const loadKey = `__syntaxisBridgeLoad:${{globalName}}`;
         try {{

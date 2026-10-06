@@ -76,6 +76,8 @@ native RPC mode and Pi's existing provider configuration, sessions, prompts, ski
 The standalone browser app uses Pi's browser libraries with API-key providers and
 tools for its local workspace. See [Browser AI](docs/browser-ai.md) for setup and
 the differences from the server runtime.
+Optional [Wasmer tools](docs/browser-wasmer.md) add Python, Node-compatible
+JavaScript, Bash, ripgrep, and local WASI execution to the browser workspace.
 
 ## How it runs
 
@@ -133,6 +135,7 @@ provider API keys; keys and chats are cleared when the app reloads. See the
 - [Deployment](docs/deployment.md)
 - [Security model](docs/security.md)
 - [Pi integration](docs/pi-management.md)
+- [Pi 1.0, Wasmer, and Pi Durable adoption review](docs/pi-adoption.md)
 - [Browser app and its limitations](apps/browser/README.md)
 - [Runtime guide](docs/runtimes.md)
 - [Development and maintenance](docs/development.md)
