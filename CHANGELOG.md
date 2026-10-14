@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/katawaredev/syntaxis/compare/v0.12.0...v0.13.0) (2026-10-06)
+
+
+### Features
+
+* **browser:** wasmer integration ([c194b73](https://github.com/katawaredev/syntaxis/commit/c194b7327dd267f4018a22cb695fb5c0cdf0380f))
+
 ## [0.12.0](https://github.com/katawaredev/syntaxis/compare/v0.11.2...v0.12.0) (2026-09-17)
 
 
