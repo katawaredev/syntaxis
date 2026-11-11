@@ -11,6 +11,8 @@ mod client_error;
 #[cfg(any(feature = "host", test))]
 mod files;
 mod git;
+#[cfg(feature = "server")]
+mod http;
 mod lsp;
 mod notifications;
 mod preview;

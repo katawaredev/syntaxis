@@ -495,6 +495,7 @@ pub(super) fn handle_tool_start(
         details: None,
         args_truncated,
         details_truncated: false,
+        duration_ms: None,
         status: ItemStatus::Running,
     };
     push_item(&mut lock(state).snapshot.items, item.clone());
@@ -520,6 +521,11 @@ pub(super) fn handle_tool_update(
         .and_then(|value| value.get("details"))
         .or_else(|| record.get("details"));
     let (next_details, next_details_truncated) = bounded_json(detail_source);
+    let next_duration_ms = if complete {
+        record.get("durationMs").and_then(Value::as_u64)
+    } else {
+        None
+    };
     let status = if complete {
         if record.get("isError").and_then(Value::as_bool) == Some(true) {
             ItemStatus::Failed
@@ -539,6 +545,7 @@ pub(super) fn handle_tool_update(
         details,
         args_truncated,
         details_truncated,
+        duration_ms,
         status: existing_status,
         ..
     }) = existing
@@ -548,6 +555,9 @@ pub(super) fn handle_tool_update(
         }
         existing_name.clone_from(&name);
         *existing_status = status;
+        if next_duration_ms.is_some() {
+            *duration_ms = next_duration_ms;
+        }
         if next_details.is_some() {
             details.clone_from(&next_details);
             *details_truncated = next_details_truncated;
@@ -561,6 +571,7 @@ pub(super) fn handle_tool_update(
             details: details.clone(),
             args_truncated: *args_truncated,
             details_truncated: *details_truncated,
+            duration_ms: *duration_ms,
             status,
         }
     } else {
@@ -573,6 +584,7 @@ pub(super) fn handle_tool_update(
             details: next_details,
             args_truncated: false,
             details_truncated: next_details_truncated,
+            duration_ms: next_duration_ms,
             status,
         }
     };

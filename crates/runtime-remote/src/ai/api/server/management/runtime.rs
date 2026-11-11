@@ -4,7 +4,7 @@ pub(super) const COMMAND_TIMEOUT: Duration = Duration::from_mins(3);
 const HTTP_TIMEOUT: Duration = Duration::from_secs(20);
 
 pub(super) fn http_client() -> Result<reqwest::Client, ServerFnError> {
-    reqwest::Client::builder()
+    crate::http::client_builder()
         .timeout(HTTP_TIMEOUT)
         .user_agent("syntaxis-pi-package-browser/0.1")
         .build()

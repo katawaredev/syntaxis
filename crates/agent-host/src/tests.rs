@@ -1,6 +1,24 @@
 use super::*;
 use syntaxis_workspace::{WorkspaceAvailability, WorkspaceIcon, WorkspaceIconSymbol};
 
+#[test]
+fn openrouter_automatic_routers_are_not_free_when_pi_reports_zero_prices() {
+    for id in [
+        "openrouter/auto",
+        "openrouter/auto-beta",
+        "openrouter/auto-code",
+        "openrouter/free",
+    ] {
+        let model = parse_model(&json!({
+            "provider": "openrouter",
+            "id": id,
+            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
+        }))
+        .unwrap();
+        assert_eq!(model.cost.is_free(), id == "openrouter/free");
+    }
+}
+
 fn starting_state() -> Arc<Mutex<RuntimeState>> {
     Arc::new(Mutex::new(RuntimeState {
         initial_responses: INITIAL_REQUESTS.iter().map(|(id, _)| *id).collect(),
@@ -243,7 +261,7 @@ fn history_maps_pi_messages_and_tool_results() {
         json!(
             { "role" : "toolResult", "toolCallId" : "tool-1", "toolName" : "read",
             "content" : [{ "type" : "text", "text" : "fn main() {}" }], "isError" :
-            false }
+            false, "durationMs": 1234 }
         ),
     ];
     let items = map_history(&messages);
@@ -256,9 +274,73 @@ fn history_maps_pi_messages_and_tool_results() {
     ),);
     assert!(matches!(
         &items[2],
-        ChatItem::Tool { output, .. }
+        ChatItem::Tool { output, duration_ms: Some(1234), .. }
         if output == "fn main() {}"
     ),);
+}
+
+#[test]
+fn live_tool_completion_keeps_pi_execution_time() {
+    let state = starting_state();
+    let (events, _receiver) = mpsc::unbounded_channel();
+    let (commands, _commands) = mpsc::channel(4);
+    handle_pi_record(
+        &json!({
+            "type": "tool_execution_start", "toolCallId": "tool-duration", "toolName": "bash"
+        }),
+        &state,
+        &events,
+        &commands,
+    );
+    handle_pi_record(
+        &json!({
+            "type": "tool_execution_update", "toolCallId": "tool-duration", "toolName": "bash",
+            "durationMs": 99, "partialResult": { "content": [{ "type": "text", "text": "running" }] }
+        }),
+        &state,
+        &events,
+        &commands,
+    );
+    assert!(matches!(
+        &lock(&state).snapshot.items[0],
+        ChatItem::Tool {
+            duration_ms: None,
+            ..
+        }
+    ));
+    handle_pi_record(
+        &json!({
+            "type": "tool_execution_end", "toolCallId": "tool-duration", "toolName": "bash",
+            "durationMs": 4321, "isError": true,
+            "result": { "content": [{ "type": "text", "text": "failed" }] }
+        }),
+        &state,
+        &events,
+        &commands,
+    );
+    assert!(matches!(
+        &lock(&state).snapshot.items[0],
+        ChatItem::Tool {
+            duration_ms: Some(4321),
+            status: ItemStatus::Failed,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn tool_history_without_pi_execution_time_keeps_it_unknown() {
+    let items = map_history(&[
+        json!({ "role": "assistant", "content": [{ "type": "toolCall", "id": "legacy", "name": "read", "arguments": {} }] }),
+        json!({ "role": "toolResult", "toolCallId": "legacy", "isError": false, "content": [] }),
+    ]);
+    assert!(matches!(
+        &items[0],
+        ChatItem::Tool {
+            duration_ms: None,
+            ..
+        }
+    ));
 }
 #[test]
 fn tool_output_is_bounded() {

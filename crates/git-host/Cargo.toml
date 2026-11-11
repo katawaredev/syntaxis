@@ -11,13 +11,13 @@ syntaxis-git = { path = "../git" }
 syntaxis-workspace = { path = "../workspace" }
 syntaxis-workspace-host = { path = "../workspace-host" }
 tempfile = "3.27.0"
-tokio = { version = "1.53.1", features = ["io-util", "macros", "process", "rt", "time"] }
-tokio-util = { version = "0.7.19", features = ["rt"] }
-zeroize = "1.9.0"
-uuid = { version = "1.24.1", features = ["v5"] }
+tokio = { version = "1.54.1", features = ["io-util", "macros", "process", "rt", "time"] }
+tokio-util = { version = "0.7.20", features = ["rt"] }
+zeroize = "1.9.1"
+uuid = { version = "1.29.2", features = ["v5"] }
 
 [dev-dependencies]
-tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread"] }
 
 [lints]
 workspace = true

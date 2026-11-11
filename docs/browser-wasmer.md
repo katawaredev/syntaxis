@@ -1,7 +1,7 @@
 # Wasmer browser execution
 
 The standalone browser app embeds [Wasmer SDK](https://github.com/wasmerio/wasmer-sdk)
-0.19.0 as an optional command executor. It adds language runtimes and packaged
+0.19.1 as an optional command executor. It adds language runtimes and packaged
 WASI/WASIX tools to the existing command console and Pi's `bash` tool. The server
 app continues to use its native terminal. Pi itself still uses the browser
 libraries and direct provider requests.

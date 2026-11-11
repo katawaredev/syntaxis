@@ -1,6 +1,33 @@
 use super::*;
 
 #[test]
+fn password_hash_upgrade_preserves_existing_argon2id_passwords() {
+    // Argon2 reference vector, also supported by the previous 0.5 release.
+    let encoded =
+        "$argon2id$v=19$m=65536,t=2,p=1$c29tZXNhbHQ$CTFhFdXPJO1aFaMaO6Mm5c8y7cJHAph8ArZWb2GRPPc";
+    let parsed = PasswordHash::new(encoded).unwrap();
+    assert!(
+        Argon2::default()
+            .verify_password(b"password", &parsed)
+            .is_ok()
+    );
+    assert!(
+        Argon2::default()
+            .verify_password(b"incorrect", &parsed)
+            .is_err()
+    );
+
+    let fresh = Argon2::default().hash_password(b"new password").unwrap();
+    let fresh_encoded = fresh.to_string();
+    let reparsed = PasswordHash::new(&fresh_encoded).unwrap();
+    assert!(
+        Argon2::default()
+            .verify_password(b"new password", &reparsed)
+            .is_ok()
+    );
+}
+
+#[test]
 fn cookie_parser_matches_complete_cookie_names() {
     let mut headers = HeaderMap::new();
     headers.insert(

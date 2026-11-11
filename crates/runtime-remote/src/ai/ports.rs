@@ -1934,6 +1934,7 @@ fn activity_from_item(item: &ChatItem) -> Option<AiActivity> {
             details,
             args_truncated,
             details_truncated,
+            duration_ms,
             status,
         } => Some(AiActivity::Tool {
             id: id.clone(),
@@ -1944,6 +1945,7 @@ fn activity_from_item(item: &ChatItem) -> Option<AiActivity> {
             details: details.as_ref().and_then(pretty_json),
             args_truncated: *args_truncated,
             details_truncated: *details_truncated,
+            duration_ms: *duration_ms,
             status: item_status_from_agent(*status),
         }),
         ChatItem::Custom {

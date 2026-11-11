@@ -5,7 +5,7 @@ provider API keys and browser workspace tools. For Pi running on your server,
 see [Pi integration](pi-management.md).
 
 The standalone browser runtime uses `@earendil-works/pi-ai` and
-`@earendil-works/pi-agent-core` 1.0.0, pinned to the same release as the server's Pi
+`@earendil-works/pi-agent-core` 1.5.2, pinned to the same release as the server's Pi
 coding agent. The shared Dioxus UI provides model selection, reasoning controls,
 favourites, provider accounts, streaming messages, tool activity, and token usage.
 
@@ -20,6 +20,11 @@ Supported built-in providers are OpenAI, Anthropic, Google, Mistral, Groq,
 OpenRouter, and xAI. Only providers with saved browser keys appear. OpenRouter's
 authenticated `/api/v1/models/user` endpoint filters the bundled Pi catalog to
 account-allowed, tool-capable models in the background when a model selector opens.
+It also applies the key's context and output limits and input/output/cache prices.
+Missing or malformed limits/rates retain Pi's bundled values. Prompt-length price
+tiers are preserved; conditional prices do not appear as free just because their
+base rate is zero. The next request uses the same account limits as the picker.
+These account snapshots stay in memory and never modify the bundled catalog.
 Selectors initially show the last successful list, or the configured providers'
 bundled catalog before the first successful discovery. Discovery errors retain
 that list and show an inline Retry action. Saving keys does not start discovery;
@@ -90,6 +95,10 @@ every message, including continuing existing chats. Missing files are optional;
 unreadable or oversized instruction files produce an error rather than silently
 omitting instructions. Guidance does not enforce security boundaries.
 
+Pi 1.5 records these instructions as a named transcript section. Changes replace
+that section on the next message, and deleting instruction files removes it;
+unchanged instructions reuse the existing transcript without another update.
+
 - **Prompt templates:** `.pi/prompts/<name>.md`, editable in Settings. Invoke with
   `/<name> arguments`. `$ARGUMENTS` and `$@` insert all arguments; `$1`, `$2`, etc.
   insert whitespace-separated arguments. Frontmatter supports `description` and
@@ -127,14 +136,20 @@ without guest execution using `wasmer prepare`. Aliases and default arguments
 live in workspace `.syntaxis/wasmer.json`; see the Wasmer guide for its schema.
 The agent is told these limits. It stops after 20 turns per prompt, and response/event limits
 also apply. Pi's tool transcript is retained when continuing or branching chats.
-The loop uses Pi 1.0's `finishTurn` hook to stop after a completed turn, preserving
+Completed and failed tool rows show Pi's recorded execution time when available;
+the value stays with the in-memory conversation and transcript.
+The loop uses Pi's `finishTurn` hook to stop after a completed turn, preserving
 its finalized tool results for continuation. Provider requests receive a stable
 cache session ID per chat, isolated across browser app instances; this is a cache
 routing hint, not persistent chat storage.
 
+Tool arguments use Pi's JSON Schema validator, with positive line offsets and
+limits and a maximum of 100 replacements per edit batch. Browser runs do not
+enable the full coding agent's background cache warming.
+
 The full coding-agent CLI, server extensions, session compaction, and background
 execution are not emulated. Leaving the chat cancels its browser agent run.
-The browser catalog remains chat-only even though Pi 1.0 also supports image
+The browser catalog remains chat-only even though Pi also supports image
 generation and classifier models. Built-in MCP and codemode belong to the full
 coding agent and are not provided by the browser's `Agent` loop.
 

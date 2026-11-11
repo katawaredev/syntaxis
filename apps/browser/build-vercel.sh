@@ -33,7 +33,7 @@ if ! command -v bun >/dev/null 2>&1; then
   export BUN_INSTALL="$tools_dir/bun"
   curl --fail --silent --show-error --location https://bun.sh/install \
     --output "$tools_dir/install-bun.sh"
-  bash "$tools_dir/install-bun.sh" bun-v1.3.14
+  bash "$tools_dir/install-bun.sh" bun-v1.4.4
   export PATH="$BUN_INSTALL/bin:$PATH"
 fi
 

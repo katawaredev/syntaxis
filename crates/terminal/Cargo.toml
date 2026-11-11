@@ -8,10 +8,10 @@ publish = false
 [dependencies]
 serde = { version = "1.0.229", features = ["derive"] }
 serde_bytes = "0.11.19"
-serde_json = "1.0.151"
+serde_json = "1.0.154"
 
 [dev-dependencies]
-serde_json = "1.0.151"
+serde_json = "1.0.154"
 
 [package.metadata.cargo-machete]
 ignored = ["serde_bytes"]

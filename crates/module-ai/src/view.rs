@@ -2037,6 +2037,14 @@ fn ordered_conversation_items(conversation: &AiConversation) -> Vec<OrderedConve
     items
 }
 
+fn format_tool_duration(millis: u64) -> String {
+    match millis {
+        0..1_000 => format!("{millis} ms"),
+        1_000..60_000 => format!("{}.{:01} s", millis / 1_000, (millis % 1_000) / 100),
+        _ => format!("{}m {}s", millis / 60_000, (millis % 60_000) / 1_000),
+    }
+}
+
 #[component]
 fn ConversationActivity(item: AiActivity) -> Element {
     match item {
@@ -2048,6 +2056,7 @@ fn ConversationActivity(item: AiActivity) -> Element {
             details,
             args_truncated,
             details_truncated,
+            duration_ms,
             status,
             ..
         } => {
@@ -2073,6 +2082,9 @@ fn ConversationActivity(item: AiActivity) -> Element {
                                 if added > 0 { span { class: "text-success", "+{added}" } }
                                 if removed > 0 { span { class: "ml-1 text-destructive", "-{removed}" } }
                             }
+                        }
+                        if let Some(duration_ms) = duration_ms {
+                            small { class: "shrink-0 text-[9px] tabular-nums text-muted-foreground", title: "Execution time", "{format_tool_duration(duration_ms)}" }
                         }
                         small { class: "shrink-0 text-[9px] capitalize text-muted-foreground", "{status:?}" }
                     }
@@ -4083,6 +4095,7 @@ mod event_tests {
             details: None,
             args_truncated: false,
             details_truncated: false,
+            duration_ms: None,
             status: AiMessageStatus::Running,
         };
         apply_event_to_conversation(&mut conversation, &AiEvent::ActivityUpdated(running));
@@ -4095,6 +4108,7 @@ mod event_tests {
             details: None,
             args_truncated: false,
             details_truncated: false,
+            duration_ms: Some(1234),
             status: AiMessageStatus::Failed,
         };
         apply_event_to_conversation(&mut conversation, &AiEvent::ActivityUpdated(failed));

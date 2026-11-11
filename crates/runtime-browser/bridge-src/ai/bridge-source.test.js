@@ -32,6 +32,143 @@ test("discovery errors do not fall back to an unverified catalog", async () => {
   );
 });
 
+test("OpenRouter account limits and prices update the picker and the actual request", async () => {
+  globalThis.fetch = async () =>
+    Response.json({
+      data: [
+        {
+          id: "openai/gpt-4.1-mini",
+          supported_parameters: ["tools"],
+          context_length: 128_000,
+          top_provider: { context_length: 64_000, max_completion_tokens: 1234 },
+          pricing: {
+            prompt: "0.00000125",
+            completion: "0.0000025",
+            input_cache_read: "0.000000125",
+          },
+        },
+      ],
+    });
+  const credentials = { openrouter: "account-pricing" };
+  const [model] = await bridge.availableModels("", "", credentials);
+  expect(model.context_window).toBe(64_000);
+  expect(model.max_tokens).toBe(1234);
+  expect(model.cost.input).toBe(1_250_000);
+  expect(model.cost.output).toBe(2_500_000);
+  expect(model.cost.cache_read).toBe(125_000);
+  expect(bridge.cachedModels("", "", credentials)).toEqual([model]);
+
+  let sent;
+  globalThis.fetch = async (_url, options) => {
+    sent = JSON.parse(options.body);
+    return response([{ delta: { role: "assistant", content: "Ready." }, finish_reason: "stop" }]);
+  };
+  await bridge.run(request({ model: model.id, credential: credentials.openrouter }), {
+    send: async () => {},
+    recv: async () => {
+      throw new Error("Unexpected tool");
+    },
+  });
+  expect(sent.max_tokens ?? sent.max_completion_tokens).toBe(1234);
+  await bridge.run(request({ model: model.id, credential: "different-account" }), {
+    send: async () => {},
+    recv: async () => {
+      throw new Error("Unexpected tool");
+    },
+  });
+  expect(sent.max_tokens ?? sent.max_completion_tokens).not.toBe(1234);
+  // Account metadata never mutates the bundled catalog or another key's first list.
+  expect(bridge.catalog("", "").find((entry) => entry.id === model.id).max_tokens).not.toBe(1234);
+  expect(
+    bridge
+      .cachedModels("", "", { openrouter: "another-account" })
+      .find((entry) => entry.id === model.id).max_tokens,
+  ).not.toBe(1234);
+});
+
+test("malformed account metadata retains safe catalog limits and prices", async () => {
+  const bundled = bridge
+    .catalog("", "")
+    .find((model) => model.id === "openrouter/openai/gpt-4.1-mini");
+  globalThis.fetch = async () =>
+    Response.json({
+      data: [
+        null,
+        {
+          id: "openai/gpt-4.1-mini",
+          supported_parameters: ["tools"],
+          context_length: -1,
+          top_provider: { context_length: 0, max_completion_tokens: "2000" },
+          pricing: { prompt: "Infinity", completion: "", input_cache_read: "-1", overrides: null },
+        },
+        { id: "unknown/new-model", supported_parameters: ["tools"] },
+      ],
+    });
+  const [model] = await bridge.availableModels("", "", { openrouter: "malformed-metadata" });
+  expect(model.context_window).toBe(bundled.context_window);
+  expect(model.max_tokens).toBe(bundled.max_tokens);
+  expect(model.cost).toEqual(bundled.cost);
+});
+
+test("account pricing preserves paid prompt tiers without calling zero base rates free", async () => {
+  globalThis.fetch = async () =>
+    Response.json({
+      data: [
+        {
+          id: "openai/gpt-4.1-mini",
+          supported_parameters: ["tools"],
+          pricing: {
+            prompt: "0",
+            completion: "0",
+            input_cache_read: "0",
+            input_cache_write: "0",
+            overrides: [{ min_prompt_tokens: 1000, prompt: "0.000002" }],
+          },
+        },
+      ],
+    });
+  const [model] = await bridge.availableModels("", "", { openrouter: "tier-pricing" });
+  expect(model.cost.input).toBe(0);
+  expect(model.cost.output).toBe(0);
+  expect(model.cost.has_paid_tier).toBe(true);
+});
+
+test("shared account discovery builds each caller's custom model separately", async () => {
+  let finish;
+  globalThis.fetch = () =>
+    new Promise((resolve) => {
+      finish = resolve;
+    });
+  const credentials = { openrouter: "shared-with-custom", custom: "custom-key" };
+  const first = bridge.availableModels("https://first.invalid/v1", "custom/first", credentials);
+  const second = bridge.availableModels("https://second.invalid/v1", "custom/second", credentials);
+  finish(Response.json({ data: [] }));
+  expect((await first).map((model) => model.id)).toEqual(["custom/first"]);
+  expect((await second).map((model) => model.id)).toEqual(["custom/second"]);
+});
+
+test("conditional account prices stay distinct from free models when Pi cannot express their schedule", async () => {
+  globalThis.fetch = async () =>
+    Response.json({
+      data: [
+        {
+          id: "openai/gpt-4.1-mini",
+          supported_parameters: ["tools"],
+          pricing: {
+            prompt: "0",
+            completion: "0",
+            input_cache_read: "0",
+            input_cache_write: "0",
+            overrides: [null, {}, { min_prompt_tokens: 0, utc_start: 12, prompt: "0.000002" }],
+          },
+        },
+      ],
+    });
+  const [model] = await bridge.availableModels("", "", { openrouter: "scheduled-pricing" });
+  expect(model.cost.input).toBe(0);
+  expect(model.cost.has_paid_tier).toBe(true);
+});
+
 test("invalid header credentials are rejected without exposing the secret", async () => {
   const credential = "private-key→invalid";
   globalThis.fetch = () => {
@@ -171,6 +308,86 @@ test("workspace instructions reach the provider before the user message", async 
   expect(system.content).toContain("/workspace");
 });
 
+test("continuing a chat replaces changed workspace instructions and removes deleted instructions", async () => {
+  let sent;
+  let history;
+  globalThis.fetch = async (_url, options) => {
+    sent = JSON.parse(options.body);
+    return response([{ delta: { role: "assistant", content: "Ready." }, finish_reason: "stop" }]);
+  };
+  const input = request();
+  const run = async (workspaceInstructions) => {
+    await bridge.run(
+      { ...input, history, workspaceInstructions },
+      {
+        send: async (event) => {
+          if (event.kind === "completed") history = structuredClone(event.history);
+        },
+        recv: async () => {
+          throw new Error("Unexpected tool");
+        },
+      },
+    );
+    return sent.messages
+      .filter((message) => message.role === "system" || message.role === "developer")
+      .map((message) => message.content)
+      .join("\n");
+  };
+  expect(await run("\nUse the old project rules.")).toContain("old project rules");
+  const updated = await run("\nUse the revised project rules.");
+  expect(updated).toContain("revised project rules");
+  expect(updated).not.toContain("old project rules");
+  const removed = await run("");
+  expect(removed).not.toContain("project rules");
+  expect(removed).toContain("/workspace");
+  const systemMessages = history.filter((message) => message.role === "system").length;
+  await run("");
+  expect(history.filter((message) => message.role === "system")).toHaveLength(systemMessages);
+  expect(sent.messages.filter((message) => message.role === "assistant")).toHaveLength(3);
+});
+
+test.each([
+  ["read", { path: "app.js", offset: 0 }],
+  ["edit", { path: "app.js", edits: [] }],
+  ["edit", { path: "app.js", edits: Array(101).fill({ old_text: "a", new_text: "b" }) }],
+])("Pi rejects invalid %s arguments before calling workspace tools", async (name, args) => {
+  let calls = 0;
+  const tools = [];
+  globalThis.fetch = async () => {
+    calls += 1;
+    return calls === 1
+      ? response([
+          {
+            delta: {
+              role: "assistant",
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "invalid-args",
+                  type: "function",
+                  function: { name, arguments: JSON.stringify(args) },
+                },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ])
+      : response([
+          { delta: { role: "assistant", content: "Invalid arguments." }, finish_reason: "stop" },
+        ]);
+  };
+  await bridge.run(request(), {
+    send: async (event) => {
+      if (event.kind === "tool") tools.push(event);
+    },
+    recv: async () => {
+      throw new Error("Invalid arguments must not reach the workspace");
+    },
+  });
+  expect(calls).toBe(2);
+  expect(tools).toEqual([]);
+});
+
 test("tool errors produce failed activity instead of successful completion", async () => {
   let calls = 0;
   globalThis.fetch = async () => {
@@ -255,7 +472,11 @@ test("OpenRouter variable prices are valid unsigned catalog values, not free mod
       expect(model.cost[field]).toBeGreaterThanOrEqual(0);
     }
   }
-  for (const id of ["openrouter/openrouter/auto", "openrouter/openrouter/auto-beta"]) {
+  for (const id of [
+    "openrouter/openrouter/auto",
+    "openrouter/openrouter/auto-beta",
+    "openrouter/openrouter/auto-code",
+  ]) {
     const model = catalog.find((model) => model.id === id);
     expect(model).toBeDefined();
     expect(model.cost.input).toBe(0);
@@ -317,6 +538,12 @@ test("Pi executes a tool and preserves its transcript for the next prompt", asyn
   ).toBe(true);
   const history = events.at(-1).history;
   expect(history.some((message) => message.role === "toolResult")).toBe(true);
+  const completed = events.find((event) => event.event?.type === "tool_completed").event;
+  expect(Number.isSafeInteger(completed.duration_ms)).toBe(true);
+  expect(completed.duration_ms).toBeGreaterThanOrEqual(0);
+  expect(history.find((message) => message.role === "toolResult").durationMs).toBe(
+    completed.duration_ms,
+  );
   await bridge.run(request({ history, prompt: "Continue" }), {
     send: async () => {},
     recv: async () => {
@@ -372,7 +599,7 @@ test("cancellation settles even when a tool response never arrives", async () =>
   expect(events.at(-1).kind).toBe("completed");
 });
 
-test("Pi 1.0 stops at 20 turns and retains the last tool result for continuation", async () => {
+test("Pi stops at 20 turns and retains the last tool result for continuation", async () => {
   let calls = 0;
   let tool;
   const events = [];

@@ -213,6 +213,7 @@ pub fn apply_event_to_conversation(conversation: &mut AiConversation, event: &Ai
             name,
             String::new(),
             AiMessageStatus::Running,
+            None,
         ),
         AiEvent::ToolUpdated { id, output } => upsert_tool(
             conversation,
@@ -220,20 +221,31 @@ pub fn apply_event_to_conversation(conversation: &mut AiConversation, event: &Ai
             "Tool",
             output.clone(),
             AiMessageStatus::Running,
+            None,
         ),
-        AiEvent::ToolCompleted { id, output } => upsert_tool(
+        AiEvent::ToolCompleted {
+            id,
+            output,
+            duration_ms,
+        } => upsert_tool(
             conversation,
             id,
             "Tool",
             output.clone(),
             AiMessageStatus::Complete,
+            *duration_ms,
         ),
-        AiEvent::ToolFailed { id, output } => upsert_tool(
+        AiEvent::ToolFailed {
+            id,
+            output,
+            duration_ms,
+        } => upsert_tool(
             conversation,
             id,
             "Tool",
             output.clone(),
             AiMessageStatus::Failed,
+            *duration_ms,
         ),
         AiEvent::ActivityUpdated(activity) => {
             if let Some(existing) = conversation
@@ -307,11 +319,13 @@ fn upsert_tool(
     fallback_name: &str,
     output: String,
     status: AiMessageStatus,
+    duration_ms: Option<u64>,
 ) {
     if let Some(AiActivity::Tool {
         name,
         output: current_output,
         status: current_status,
+        duration_ms: current_duration,
         ..
     }) = conversation
         .activity
@@ -323,6 +337,9 @@ fn upsert_tool(
         }
         *current_output = output;
         *current_status = status;
+        if duration_ms.is_some() {
+            *current_duration = duration_ms;
+        }
         return;
     }
     conversation.activity.push(AiActivity::Tool {
@@ -334,6 +351,7 @@ fn upsert_tool(
         details: None,
         args_truncated: false,
         details_truncated: false,
+        duration_ms,
         status,
     });
     conversation.item_order.push(id.into());
@@ -358,10 +376,11 @@ mod tests {
             &AiEvent::ToolFailed {
                 id: "read-1".into(),
                 output: "File missing".into(),
+                duration_ms: Some(1234),
             },
         );
         assert!(
-            matches!(&conversation.activity[0], AiActivity::Tool { name, status: AiMessageStatus::Failed, output, .. } if name == "read" && output == "File missing")
+            matches!(&conversation.activity[0], AiActivity::Tool { name, status: AiMessageStatus::Failed, output, duration_ms: Some(1234), .. } if name == "read" && output == "File missing")
         );
     }
 
@@ -409,6 +428,7 @@ mod tests {
             "bash",
             String::new(),
             AiMessageStatus::Running,
+            None,
         );
         finish_inflight(&mut conversation, AiMessageStatus::Failed);
         assert!(!conversation.running);

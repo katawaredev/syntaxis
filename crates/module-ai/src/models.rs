@@ -138,6 +138,8 @@ pub enum AiActivity {
         args_truncated: bool,
         #[serde(default)]
         details_truncated: bool,
+        #[serde(default)]
+        duration_ms: Option<u64>,
         status: AiMessageStatus,
     },
     Custom {
@@ -507,10 +509,14 @@ pub enum AiEvent {
     ToolCompleted {
         id: String,
         output: String,
+        #[serde(default)]
+        duration_ms: Option<u64>,
     },
     ToolFailed {
         id: String,
         output: String,
+        #[serde(default)]
+        duration_ms: Option<u64>,
     },
     ActivityUpdated(AiActivity),
     UsageUpdated {

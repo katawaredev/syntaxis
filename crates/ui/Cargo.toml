@@ -10,7 +10,7 @@ readme = "README.md"
 dioxus = "0.7.10"
 dioxus-devicons = "1.1.0"
 dioxus-icons = "=0.1.0"
-dioxus-primitives = { git = "https://github.com/DioxusLabs/dioxus-components", rev = "bf007c15d0cf4d04d3181cc46cf12325aa773955" }
+dioxus-primitives = { git = "https://github.com/DioxusLabs/dioxus-components", rev = "9a758255ea26e2b20c8cecf4c1c946feb9e71da7" }
 syntaxis-editor = { path = "../editor" }
 syntaxis-git = { path = "../git" }
 syntaxis-terminal = { path = "../terminal" }

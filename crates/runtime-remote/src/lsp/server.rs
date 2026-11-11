@@ -15,7 +15,6 @@ use axum::{
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use dioxus::prelude::ServerFnError;
 use futures_util::{SinkExt, StreamExt};
-use rand_core::{OsRng, RngCore};
 use serde::Deserialize;
 use syntaxis_editor::language_server_by_id;
 use syntaxis_lsp_host::{LanguageServer, resolve_language_server};
@@ -166,7 +165,7 @@ async fn proxy_language_server(
 
 fn issue_ticket(root: std::path::PathBuf, server_id: &str) -> String {
     let mut bytes = [0_u8; 32];
-    OsRng.fill_bytes(&mut bytes);
+    getrandom::fill(&mut bytes).expect("OS randomness unavailable");
     let ticket = URL_SAFE_NO_PAD.encode(bytes);
     let now = Instant::now();
     let mut tickets = tickets().lock().expect("LSP ticket mutex poisoned");

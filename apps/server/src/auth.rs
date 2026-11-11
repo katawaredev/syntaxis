@@ -7,7 +7,7 @@ use std::{
 
 use argon2::{
     Argon2,
-    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
+    password_hash::{PasswordHasher, PasswordVerifier, phc::PasswordHash},
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use dioxus::server::axum::{
@@ -21,7 +21,6 @@ use dioxus::server::axum::{
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
 };
-use rand_core::OsRng;
 use serde::Deserialize;
 use subtle::ConstantTimeEq;
 
@@ -481,18 +480,15 @@ fn no_store(content: impl IntoResponse) -> Response {
 }
 
 fn rand_bytes() -> [u8; 32] {
-    use rand_core::RngCore;
-
     let mut bytes = [0_u8; 32];
-    OsRng.fill_bytes(&mut bytes);
+    getrandom::fill(&mut bytes).expect("OS randomness unavailable");
     bytes
 }
 
 pub(crate) fn print_random_password_hash() -> Result<(), String> {
     let password = URL_SAFE_NO_PAD.encode(rand_bytes());
-    let salt = SaltString::generate(&mut OsRng);
     let hash = Argon2::default()
-        .hash_password(password.as_bytes(), &salt)
+        .hash_password(password.as_bytes())
         .map_err(|error| error.to_string())?;
     writeln!(io::stdout().lock(), "{hash}").map_err(|error| error.to_string())
 }
@@ -503,9 +499,8 @@ pub(crate) fn print_password_hash() -> Result<(), String> {
         return Err("password must not be empty".to_owned());
     }
 
-    let salt = SaltString::generate(&mut OsRng);
     let hash = Argon2::default()
-        .hash_password(password.as_bytes(), &salt)
+        .hash_password(password.as_bytes())
         .map_err(|error| error.to_string())?;
     writeln!(io::stdout().lock(), "{hash}").map_err(|error| error.to_string())
 }

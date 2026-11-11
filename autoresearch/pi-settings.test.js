@@ -11,6 +11,7 @@ test("Pi settings metadata keeps union types in their Markdown table cell", () =
   expect(settings.get("steeringMode").defaultValue).toBe("one-at-a-time");
   expect(settings.get("defaultProjectTrust").defaultValue).toBe("ask");
   expect(settings.get("defaultTools").type).toBe("string[]");
+  expect(settings.get("cacheWarming").defaultValue).toBe("idle");
 });
 
 test("Pi settings metadata preserves escaped description pipes and numeric defaults", () => {

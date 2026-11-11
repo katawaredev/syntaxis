@@ -138,6 +138,8 @@ pub enum ChatItem {
         details: Option<serde_json::Value>,
         args_truncated: bool,
         details_truncated: bool,
+        #[serde(default)]
+        duration_ms: Option<u64>,
         status: ItemStatus,
     },
     Custom {

@@ -1,4 +1,85 @@
-# Pi adoption review — 2026-10-02
+# Pi adoption review — 2026-11-11
+
+## Pi 1.5.2
+
+Reviewed the stable releases from 1.0.0 through
+[1.5.2](https://pi.dev/changelog/releases/1.5.2), including
+[1.5.0's schema migration](https://pi.dev/changelog/releases/1.5.0) and
+[1.5.1's cache warming and provider changes](https://pi.dev/changelog/releases/1.5.1).
+The AI, agent-core, coding-agent, and newly direct schema dependency are pinned
+together at 1.5.2. Docker and Android continue to derive their packaged CLI version
+from `package.json`; this does not update an existing host Pi installation.
+
+Adopted in Syntaxis:
+
+- **Server cache controls:** Essentials exposes Pi's `cacheWarming` setter with
+  `off`, `streaming`, and `idle`. Pi now defaults to `idle`, which can refresh
+  eligible prompt caches for up to 30 minutes between runs. These requests cost
+  tokens, are included in Pi's session totals, and require a sufficient estimated
+  saving. Older host installations disable just this control when its setter is
+  absent. The browser does not start background warming requests.
+- **Browser schemas:** removed the discontinued `Type` import from `pi-ai` and
+  use `pi-schema` builders. Optional fields rely on Pi's optional-null handling;
+  a nullable numeric union would let coercion turn an invalid line offset of zero
+  into null. Positive line bounds and the 1–100 edit batch bound remain enforced.
+- **Browser instruction updates:** Pi's transcript now owns system instructions.
+  A named workspace section replaces changed or deleted instructions on later
+  prompts, preserves tool results, and avoids adding a patch for unchanged content.
+- **Both model pickers:** OpenRouter automatic routers remain paid/variable-price
+  choices after Pi's catalog normalizes their negative price placeholders to zero.
+  The explicitly free router can still appear as free.
+- **Browser account catalogs:** adopted Pi's
+  [per-key OpenRouter limits and prices](https://pi.dev/changelog/releases/1.2.0).
+  The existing discovery request now updates context limits, maximum output, and
+  input/output/cache prices for supported tool-capable chat models. Pi's price
+  converter retains prompt-length tiers. Conditional prices remain marked as
+  paid even when their base is zero. Missing or invalid limits/rates retain the
+  bundled values. The actual next request uses the same account limits as the
+  picker, without changing the bundled catalog or sharing metadata across keys.
+  Cached reads, one-minute freshness, concurrent discovery, and explicit errors
+  remain intact; upstream's unfiltered 401/403/404 fallback is not adopted.
+- **Recorded tool execution times:** adopted Pi's
+  [`durationMs`](https://pi.dev/changelog/releases/1.1.0) in both runtimes. Tool
+  rows show execution time for completed and failed calls. Server history restores
+  the recorded value from Pi's tool results; browser chats retain it in memory.
+  Older sessions and skipped tools have no timing instead of a guessed duration.
+
+The upgrade also brings newer chat catalogs, cache-preserving thinking-level
+changes, cleaner model switches, Anthropic message threads, compaction fixes,
+safer subprocess limits,
+project-trust fixes, and hardened MCP OAuth handling where the upstream provider
+or full coding agent supports them. No additional Syntaxis credentials or proxy
+are needed. These inherited changes are not live-provider acceptance claims.
+
+Useful follow-ups, kept outside this dependency update:
+
+- [Configuration schemas](https://pi.dev/docs/latest/settings) could add structured
+  completion to Advanced JSON. Existing host installations may expose older
+  settings, so select documentation/schema compatibility by installed version.
+- `pi auth login` is useful for host provisioning without opening a session.
+  `selfUpdateCommand` can support package-manager-owned host installations. Neither
+  requires replacing the current provider UI or changing packaged update ownership.
+- Provider-reported versus estimated costs and nested codemode calls merit a
+  dedicated shared-UI change. Pi's RPC session stats expose one numeric total,
+  without the message-level billing-certainty flag; calling that entire total
+  provider-billed would require accounting for every contributing usage entry.
+  Classifiers, generated images, and Pi Durable still
+  need their own capability, rendering, persistence, and acceptance work.
+
+Verification: 63 JavaScript tests passed, including isolated Node and Bun RPC
+startup queries, public SettingsManager/ModelRuntime calls, mocked browser
+requests, instruction replacement/removal, schema bounds, cancellation, and the
+20-turn transcript boundary, account pricing/limits, request output limits,
+credential isolation, malformed metadata, conditional pricing, concurrent custom
+models, and tool timings matching Pi's retained transcript. Rust regression tests
+also cover live/saved tool timings, old sessions, and failed-tool projection;
+they remain pending QA confirmation. Node subprocess checks require execution outside
+this environment's sandbox: its plain Node stdin fixture fails there too. All
+JavaScript bundles and Pi settings metadata regenerated successfully. Rust QA,
+Android builds/device checks, real credentials, OAuth, and paid model calls have
+not run as part of this review.
+
+## Earlier Pi 1.0 review — 2026-10-02
 
 This review covers [Pi 1.0](https://pi.dev/changelog/releases/1.0.0),
 [wasmer.sh](https://www.wasmer.sh/?example=pi), and

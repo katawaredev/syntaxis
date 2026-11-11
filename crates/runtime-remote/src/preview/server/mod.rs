@@ -2,7 +2,6 @@ use std::path::PathBuf;
 
 use dioxus::{fullstack::HeaderMap, prelude::ServerFnError};
 use futures_util::StreamExt;
-use rand_core::{OsRng, RngCore};
 use syntaxis_workspace::WorkspaceId;
 use url::Url;
 
@@ -291,7 +290,7 @@ fn active_preview_share(lease: &Lease) -> Result<Option<PreviewShare>, ServerFnE
 fn random_hex(length: usize) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut bytes = vec![0_u8; length];
-    OsRng.fill_bytes(&mut bytes);
+    getrandom::fill(&mut bytes).expect("OS randomness unavailable");
     let mut output = String::with_capacity(length * 2);
     for byte in bytes {
         output.push(char::from(HEX[usize::from(byte >> 4)]));

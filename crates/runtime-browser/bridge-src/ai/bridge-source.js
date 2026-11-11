@@ -1,11 +1,12 @@
 import { Agent } from "@earendil-works/pi-agent-core";
+import { arr, int, obj, opt, str } from "@earendil-works/pi-schema";
 import {
-  Type,
   createModels,
   createProvider,
   getSupportedThinkingLevels,
   clampThinkingLevel,
   lazyApi,
+  getCurrentSystemMessage,
 } from "@earendil-works/pi-ai";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
@@ -13,6 +14,7 @@ import { googleProvider } from "@earendil-works/pi-ai/providers/google";
 import { mistralProvider } from "@earendil-works/pi-ai/providers/mistral";
 import { groqProvider } from "@earendil-works/pi-ai/providers/groq";
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
+import { openRouterCost } from "@earendil-works/pi-ai/providers/openrouter-api";
 import { xaiProvider } from "@earendil-works/pi-ai/providers/xai";
 
 // Explicit factories keep Node-only and OAuth providers out of this browser runtime.
@@ -55,10 +57,12 @@ function cachedModels(endpoint, defaultModel, credentials) {
     accountGeneration += 1;
     accountRefreshedAt = 0;
   }
-  return catalog(endpoint, defaultModel).filter(
-    (model) =>
-      Boolean(credentials[model.provider]) &&
-      (model.provider !== "openrouter" || !accountModels || accountModels.has(model.id)),
+  return configuredCatalog(endpoint, defaultModel, credentials, accountModels);
+}
+
+function configuredCatalog(endpoint, defaultModel, credentials, openrouterModels) {
+  return catalog(endpoint, defaultModel, openrouterModels).filter((model) =>
+    Boolean(credentials[model.provider]),
   );
 }
 
@@ -70,7 +74,7 @@ async function availableModels(endpoint, defaultModel, credentials) {
     return cachedModels(endpoint, defaultModel, credentials);
   }
   if (!pendingDiscovery) {
-    const discovery = discoverModels(endpoint, defaultModel, credentials);
+    const discovery = discoverOpenRouterModels(key);
     pendingDiscovery = discovery;
     discovery
       .finally(() => {
@@ -80,26 +84,22 @@ async function availableModels(endpoint, defaultModel, credentials) {
   }
   const available = await pendingDiscovery;
   if (accountKey === key && accountGeneration === generation) {
-    accountModels = new Set(
-      available.filter((model) => model.provider === "openrouter").map((model) => model.id),
-    );
+    accountModels = available;
     accountRefreshedAt = Date.now();
   } else {
-    return available;
+    return configuredCatalog(endpoint, defaultModel, credentials, available);
   }
   // Build each caller's result from its own custom model and configured providers.
   return cachedModels(endpoint, defaultModel, credentials);
 }
 
-async function discoverModels(endpoint, defaultModel, credentials) {
-  const configured = new Set(Object.keys(credentials));
-  let available = catalog(endpoint, defaultModel).filter((model) => configured.has(model.provider));
-  if (credentials.openrouter) {
-    validateCredential(credentials.openrouter);
+async function discoverOpenRouterModels(key) {
+  if (key) {
+    validateCredential(key);
     let response;
     try {
       response = await fetch("https://openrouter.ai/api/v1/models/user", {
-        headers: { Authorization: `Bearer ${credentials.openrouter}` },
+        headers: { Authorization: `Bearer ${key}` },
         signal: AbortSignal.timeout(15000),
       });
     } catch {
@@ -113,22 +113,94 @@ async function discoverModels(endpoint, defaultModel, credentials) {
       );
     }
     const result = await response.json();
-    if (!Array.isArray(result.data)) throw new Error("OpenRouter returned an invalid model list.");
+    if (!Array.isArray(result?.data)) throw new Error("OpenRouter returned an invalid model list.");
     // Intersect live account availability with models this installed Pi version supports.
-    const allowed = new Set(
+    const allowed = new Map(
       result.data
         .filter(
           (model) =>
+            typeof model?.id === "string" &&
             Array.isArray(model.supported_parameters) &&
             model.supported_parameters.includes("tools"),
         )
-        .map((model) => `openrouter/${model.id}`),
+        .map((model) => [model.id, model]),
     );
-    available = available.filter(
-      (model) => model.provider !== "openrouter" || allowed.has(model.id),
+    return new Map(
+      models
+        .getModels("openrouter")
+        .filter((model) => allowed.has(model.id))
+        .map((model) => [model.id, accountModel(model, allowed.get(model.id))]),
     );
   }
-  return available;
+}
+
+const priceFields = {
+  prompt: "input",
+  completion: "output",
+  input_cache_read: "cacheRead",
+  input_cache_write: "cacheWrite",
+};
+
+function validPrice(value) {
+  return (
+    typeof value === "string" &&
+    value.trim() !== "" &&
+    Number.isFinite(Number(value)) &&
+    Number(value) >= 0
+  );
+}
+
+function accountCost(original, pricing) {
+  if (!pricing || typeof pricing !== "object" || Array.isArray(pricing)) return original;
+  const normalized = Object.fromEntries(
+    Object.entries(priceFields).map(([api, field]) => [
+      api,
+      validPrice(pricing[api]) ? pricing[api] : String(original[field] / 1_000_000),
+    ]),
+  );
+  if (Array.isArray(pricing.overrides)) {
+    normalized.overrides = pricing.overrides
+      .filter(
+        (tier) =>
+          tier &&
+          Number.isSafeInteger(tier.min_prompt_tokens) &&
+          tier.min_prompt_tokens >= 0 &&
+          tier.utc_start === undefined &&
+          tier.utc_end === undefined &&
+          tier.utc_days === undefined,
+      )
+      .map((tier) => ({
+        min_prompt_tokens: tier.min_prompt_tokens,
+        ...Object.fromEntries(
+          Object.keys(priceFields)
+            .filter((field) => validPrice(tier[field]))
+            .map((field) => [field, tier[field]]),
+        ),
+      }));
+  }
+  const cost = openRouterCost(normalized);
+  if (!Array.isArray(pricing.overrides) && original.tiers) cost.tiers = original.tiers;
+  return cost;
+}
+
+function positiveLimit(value, fallback) {
+  return Number.isSafeInteger(value) && value > 0 ? value : fallback;
+}
+
+function accountModel(model, entry) {
+  return {
+    ...model,
+    contextWindow: positiveLimit(
+      entry.top_provider?.context_length,
+      positiveLimit(entry.context_length, model.contextWindow),
+    ),
+    maxTokens: positiveLimit(entry.top_provider?.max_completion_tokens, model.maxTokens),
+    cost: accountCost(model.cost, entry.pricing),
+    // Pi cannot express time-based price overrides. Keep conditional pricing
+    // distinct from a completely free model even when its base rates are zero.
+    hasVariablePricing:
+      Array.isArray(entry.pricing?.overrides) && entry.pricing.overrides.length > 0,
+  };
 }
 const zeroCost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 const zeroUsage = { ...zeroCost, totalTokens: 0, cost: { ...zeroCost, total: 0 } };
@@ -148,10 +220,14 @@ function customModel(endpoint, id) {
   };
 }
 
-function resolveModel(key, endpoint) {
+function resolveModel(key, endpoint, credential) {
   if (key.startsWith("custom/")) return customModel(endpoint, key.slice(7));
   const separator = key.indexOf("/");
-  const model = models.getModel(key.slice(0, separator), key.slice(separator + 1));
+  const provider = key.slice(0, separator);
+  const id = key.slice(separator + 1);
+  const model =
+    (provider === "openrouter" && credential === accountKey && accountModels?.get(id)) ||
+    models.getModel(provider, id);
   if (!model) throw new Error("Choose an available model in AI settings.");
   return model;
 }
@@ -161,8 +237,12 @@ function catalogRate(value) {
   return Number.isSafeInteger(rate) && rate >= 0 ? rate : 0;
 }
 
-function catalog(endpoint, defaultModel) {
-  const available = [...models.getModels()];
+function catalog(endpoint, defaultModel, openrouterModels) {
+  const available = models.getModels().flatMap((model) => {
+    if (model.provider !== "openrouter" || !openrouterModels) return [model];
+    const personalized = openrouterModels.get(model.id);
+    return personalized ? [personalized] : [];
+  });
   if (defaultModel.startsWith("custom/"))
     available.push(customModel(endpoint, defaultModel.slice(7)));
   return available.map((model) => ({
@@ -183,9 +263,17 @@ function catalog(endpoint, defaultModel) {
       // Keep that distinct from a genuinely free model in the unsigned Rust schema.
       has_paid_tier:
         model.provider === "custom" ||
-        Object.values(model.cost).some(
-          (value) => !Number.isSafeInteger(Math.round(value * 1_000_000)) || value < 0,
-        ),
+        model.hasVariablePricing === true ||
+        (model.provider === "openrouter" &&
+          ["openrouter/auto", "openrouter/auto-beta", "openrouter/auto-code"].includes(model.id)) ||
+        Object.values(priceFields).some((field) => {
+          const value = model.cost[field];
+          return !Number.isSafeInteger(Math.round(value * 1_000_000)) || value < 0;
+        }) ||
+        model.cost.tiers?.some((tier) =>
+          Object.values(priceFields).some((field) => tier[field] > 0),
+        ) ||
+        false,
     },
   }));
 }
@@ -194,44 +282,41 @@ const toolDefinitions = [
   [
     "read",
     "Read a UTF-8 workspace file (up to 256 KiB) and applicable directory instructions. Optional offset (1-based line) and limit select a numbered line range. Paths may be workspace-relative or start with /workspace/.",
-    Type.Object({
-      path: Type.String(),
-      offset: Type.Optional(Type.Union([Type.Integer({ minimum: 1 }), Type.Null()])),
-      limit: Type.Optional(Type.Union([Type.Integer({ minimum: 1 }), Type.Null()])),
+    obj({
+      path: str(),
+      offset: opt(int({ minimum: 1 })),
+      limit: opt(int({ minimum: 1 })),
     }),
   ],
   [
     "list",
     "List entries in a workspace directory. Use an empty path or /workspace for the root.",
-    Type.Object({ path: Type.String() }),
+    obj({ path: str() }),
   ],
   [
     "write",
     "Create or replace a UTF-8 workspace file (up to 256 KiB). Parent directories must exist.",
-    Type.Object({ path: Type.String(), content: Type.String() }),
+    obj({ path: str(), content: str() }),
   ],
   [
     "edit",
     "Apply exact, unique text replacements in a workspace file. Use old_text/new_text for one edit or edits for a sequential batch. The whole batch is saved once, only if every replacement succeeds.",
-    Type.Object({
-      path: Type.String(),
-      old_text: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-      new_text: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-      edits: Type.Optional(
-        Type.Union([
-          Type.Array(Type.Object({ old_text: Type.String(), new_text: Type.String() }), {
-            minItems: 1,
-            maxItems: 100,
-          }),
-          Type.Null(),
-        ]),
+    obj({
+      path: str(),
+      old_text: opt(str()),
+      new_text: opt(str()),
+      edits: opt(
+        arr(obj({ old_text: str(), new_text: str() }), {
+          minItems: 1,
+          maxItems: 100,
+        }),
       ),
     }),
   ],
   [
     "bash",
     "Run a command in the browser workspace shell. Built-in shell tools and optional Wasmer tools run locally. Use `wasmer help`, `wasmer status`, or `wasmer tools` to discover built-ins and pinned workspace aliases from .syntaxis/wasmer.json. `wasmer prepare <tools>` downloads packages without executing guests. `wasmer run python|node|rg|bash|workspace-alias -- arguments` runs a pinned WebAssembly package. Local .wasm files and exact-version registry packages are supported. Guest networking is disabled; no native processes or npm/pip installation. Commands start in /workspace and workspace writes are conflict checked.",
-    Type.Object({ command: Type.String() }),
+    obj({ command: str() }),
   ],
 ];
 
@@ -254,7 +339,7 @@ async function receiveTool(channel, signal) {
 async function run(request, channel) {
   validateCredential(request.credential);
   if (requests.has(request.conversationId)) throw new Error("This chat is already running.");
-  const model = resolveModel(request.model, request.endpoint);
+  const model = resolveModel(request.model, request.endpoint, request.credential);
   if (model.provider === "custom") {
     models.setProvider(
       createProvider({
@@ -287,8 +372,7 @@ async function run(request, channel) {
       model,
       thinkingLevel: clampThinkingLevel(model, request.thinkingLevel),
       systemPrompt:
-        "You are the Syntaxis coding assistant. Work only in the user's browser workspace using the provided tools. The workspace root is /workspace. File tools accept relative paths or /workspace/...; bash starts in /workspace on each call. Read files and applicable directory AGENTS.md instructions before editing. The bash tool is a limited browser sandbox, not a server terminal. Explain unsupported operations honestly. Workspace instructions below were loaded automatically for this turn. Markdown skills are guidance, not executable extensions. Do not claim that code was tested unless a tool actually ran the check." +
-        (request.workspaceInstructions ?? ""),
+        "You are the Syntaxis coding assistant. Work only in the user's browser workspace using the provided tools. The workspace root is /workspace. File tools accept relative paths or /workspace/...; bash starts in /workspace on each call. Read files and applicable directory AGENTS.md instructions before editing. The bash tool is a limited browser sandbox, not a server terminal. Explain unsupported operations honestly. Workspace instructions below were loaded automatically for this turn. Markdown skills are guidance, not executable extensions. Do not claim that code was tested unless a tool actually ran the check.",
       messages:
         request.history ??
         request.messages
@@ -340,6 +424,20 @@ async function run(request, channel) {
       }
     },
   });
+  // Pi 1.5 replays instructions from the transcript. Replace the named workspace
+  // section when files change, keeping the existing conversation/cache prefix.
+  const workspaceInstructions = request.workspaceInstructions ?? "";
+  if (
+    (getCurrentSystemMessage(agent.state.messages)?.sections?.workspace ?? "") !==
+    workspaceInstructions
+  ) {
+    agent.state.messages.push({
+      role: "system",
+      content: "",
+      sections: { workspace: workspaceInstructions || null },
+      timestamp: Date.now(),
+    });
+  }
   requests.set(request.conversationId, {
     abort: () => {
       cancelled = true;
@@ -394,6 +492,7 @@ async function run(request, channel) {
       await send({
         type: event.isError ? "tool_failed" : "tool_completed",
         id: event.toolCallId,
+        duration_ms: event.durationMs,
         output:
           (event.isError ? "Tool failed: " : "") +
           (event.result.content

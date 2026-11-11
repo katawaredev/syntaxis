@@ -257,7 +257,7 @@ fn process_name(process_path: &Path, pid: u32) -> String {
 pub(super) fn http_client() -> Result<&'static reqwest::Client, ServerFnError> {
     HTTP_CLIENT
         .get_or_init(|| {
-            reqwest::Client::builder()
+            crate::http::client_builder()
                 .connect_timeout(Duration::from_secs(3))
                 .redirect(reqwest::redirect::Policy::none())
                 .build()

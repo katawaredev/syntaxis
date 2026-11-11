@@ -47,6 +47,17 @@ pub(super) fn parse_model(value: &Value) -> Option<ModelSummary> {
         .get("input")
         .and_then(Value::as_array)
         .is_some_and(|inputs| inputs.iter().any(|input| input.as_str() == Some("image")));
+    let mut cost = parse_model_cost(value.get("cost"));
+    // Pi normalizes OpenRouter's variable-price sentinels to zero. Routers still
+    // incur the selected model's charges, so they must not appear as free.
+    if provider == "openrouter"
+        && matches!(
+            id.as_str(),
+            "openrouter/auto" | "openrouter/auto-beta" | "openrouter/auto-code"
+        )
+    {
+        cost.has_paid_tier = true;
+    }
     Some(ModelSummary {
         provider,
         id,
@@ -62,7 +73,7 @@ pub(super) fn parse_model(value: &Value) -> Option<ModelSummary> {
             .get("maxTokens")
             .and_then(Value::as_u64)
             .unwrap_or(0x4000),
-        cost: parse_model_cost(value.get("cost")),
+        cost,
     })
 }
 fn parse_thinking_levels(model: &Value, reasoning: bool) -> Vec<ThinkingLevel> {
@@ -230,6 +241,7 @@ pub(super) fn map_history(messages: &[Value]) -> Vec<ChatItem> {
                                     details: None,
                                     args_truncated,
                                     details_truncated: false,
+                                    duration_ms: None,
                                     status: ItemStatus::Complete,
                                 },
                             );
@@ -246,11 +258,13 @@ pub(super) fn map_history(messages: &[Value]) -> Vec<ChatItem> {
                         output: existing,
                         details,
                         details_truncated,
+                        duration_ms,
                         status,
                         ..
                     }) = items.iter_mut().find(|item| item.id() == id)
                     {
                         existing.clone_from(&output);
+                        *duration_ms = message.get("durationMs").and_then(Value::as_u64);
                         let (next_details, next_truncated) = bounded_json(message.get("details"));
                         if next_details.is_some() {
                             details.clone_from(&next_details);

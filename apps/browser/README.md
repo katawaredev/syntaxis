@@ -53,7 +53,7 @@ The script provisions Rust using `rust-toolchain.toml`, installs the WASM target
 and compiles the pinned Dioxus CLI 0.7.10 from source when a matching, runnable
 CLI is unavailable. Compiling on the build host avoids the newer glibc requirement
 of the upstream Linux release binaries. This adds several minutes to a cold build
-and requires a native C/C++ build toolchain. It also installs Bun 1.3.14 if missing and
+and requires a native C/C++ build toolchain. It also installs Bun 1.4.4 if missing and
 builds all browser bridges, including AI. Node.js must be available in the build
 image for the JavaScript build scripts. Tool downloads live under `target/vercel-tools`;
 the first build also downloads Rust and Cargo dependencies. No server runtime or

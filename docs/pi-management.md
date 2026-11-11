@@ -7,7 +7,7 @@ Syntaxis provides a graphical workspace for the
 [Pi coding agent](https://pi.dev/). It runs Pi directly through `pi --mode rpc`; it does not
 reimplement the agent, proxy model requests, or store provider keys in the browser.
 The supplied container, Android backend package, and browser libraries are pinned
-to Pi 1.0.0 through `package.json`; existing host installations and self-updated
+to Pi 1.5.2 through `package.json`; existing host installations and self-updated
 container installations keep their installed version until explicitly updated.
 
 ## Setup
@@ -68,6 +68,7 @@ The interface supports:
 - model selection and available usage information;
 - manual context compaction from the usage menu;
 - rendered tool output and structured tool details;
+- recorded tool execution times, also restored when reopening a saved session;
 - queued extension messages and dialogs.
 
 Commands requiring Pi's terminal-only interactive interface are rejected with an explanation. Run
@@ -84,6 +85,12 @@ and enables each control only when the installed Pi exposes its setter; an unrel
 longer disables the whole page. Advanced includes searchable documentation from the installed Pi,
 validates JSON, detects concurrent changes, writes atomically, and keeps one rolling
 `settings.json.syntaxis-backup` beside a file that it replaces.
+
+Essentials includes **Cache Warming** for Pi 1.5.2: `off`, `streaming` (active
+runs only), or `idle` (also between runs, for up to 30 minutes). Pi defaults to
+`idle` and refreshes only eligible caches when it estimates sufficient savings.
+Refreshes incur provider usage and count toward Pi's session totals. This global
+server setting does not enable warming in the standalone browser app.
 
 Global settings apply to the runtime user's Pi installation. Project settings live in `.pi` and Pi
 applies them according to project trust. Running chats keep the values they loaded until they reload
@@ -154,8 +161,8 @@ interactive `/mcp` management and OAuth flows; Syntaxis does not add an MCP
 connection-management screen. Ordinary RPC tool events feed existing activity
 rendering; generated-image rendering and nested-call hierarchy have not been
 verified in Syntaxis. None of these settings enable MCP or codemode in the
-standalone browser app. See [Pi's MCP documentation](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/mcp.md)
-and [codemode documentation](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/codemode.md).
+standalone browser app. See [Pi's MCP documentation](https://github.com/earendil-works/pi/blob/v1.5.2/packages/coding-agent/docs/mcp.md)
+and [codemode documentation](https://github.com/earendil-works/pi/blob/v1.5.2/packages/coding-agent/docs/codemode.md).
 
 ### Third-party packages
 
