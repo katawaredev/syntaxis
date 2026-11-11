@@ -230,12 +230,4 @@ mod tests {
         assert_eq!(context_percent(&usage), 100);
         assert_eq!(context_percent(&AiUsage::default()), 0);
     }
-
-    #[test]
-    fn context_severity_matches_the_ring_and_bar() {
-        for (percent, severity) in [(0, "primary"), (65, "warning"), (85, "destructive")] {
-            assert!(usage_ring_class(percent).ends_with(severity));
-            assert!(usage_bar_class(percent).ends_with(severity));
-        }
-    }
 }

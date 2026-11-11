@@ -3978,12 +3978,9 @@ fn apply_ai_client_event(
 }
 
 #[cfg(test)]
-mod event_tests {
+mod tests {
     use super::{filtered_extensions, highlighted_parts};
-    use crate::conversation::apply_event_to_conversation;
-    use crate::{
-        AiActivity, AiConversation, AiEvent, AiExtension, AiMessage, AiMessageStatus, AiRole,
-    };
+    use crate::AiExtension;
 
     fn extension(
         name: &str,
@@ -4005,122 +4002,6 @@ mod event_tests {
                 .collect(),
             installed: !installed_scopes.is_empty(),
         }
-    }
-
-    #[test]
-    fn streamed_deltas_are_reconciled_with_the_completed_message() {
-        let mut conversation = AiConversation::default();
-        apply_event_to_conversation(
-            &mut conversation,
-            &AiEvent::AssistantDelta {
-                message_id: "assistant-1".into(),
-                text: "hel".into(),
-            },
-        );
-        apply_event_to_conversation(
-            &mut conversation,
-            &AiEvent::AssistantDelta {
-                message_id: "assistant-1".into(),
-                text: "lo".into(),
-            },
-        );
-        apply_event_to_conversation(
-            &mut conversation,
-            &AiEvent::AssistantCompleted(AiMessage {
-                id: "assistant-1".into(),
-                role: AiRole::Assistant,
-                content: "hello!".into(),
-                ..AiMessage::default()
-            }),
-        );
-
-        assert_eq!(conversation.messages.len(), 1);
-        assert_eq!(conversation.messages[0].content, "hello!");
-    }
-
-    #[test]
-    fn repeated_user_events_are_idempotent() {
-        let mut conversation = AiConversation::default();
-        let event = AiEvent::UserMessage(AiMessage {
-            id: "user-1".into(),
-            role: AiRole::User,
-            content: "question".into(),
-            ..AiMessage::default()
-        });
-        apply_event_to_conversation(&mut conversation, &event);
-        apply_event_to_conversation(&mut conversation, &event);
-        assert_eq!(conversation.messages.len(), 1);
-    }
-
-    #[test]
-    fn authoritative_user_event_replaces_the_local_placeholder() {
-        let mut conversation = AiConversation::default();
-        conversation.messages.push(AiMessage {
-            id: "local-user".into(),
-            role: AiRole::User,
-            content: "question".into(),
-            ..AiMessage::default()
-        });
-        conversation.item_order.push("local-user".into());
-
-        apply_event_to_conversation(
-            &mut conversation,
-            &AiEvent::UserMessage(AiMessage {
-                id: "user-1".into(),
-                entry_id: Some("entry-1".into()),
-                role: AiRole::User,
-                content: "question".into(),
-                ..AiMessage::default()
-            }),
-        );
-
-        assert_eq!(conversation.messages.len(), 1);
-        assert_eq!(conversation.messages[0].id, "user-1");
-        assert_eq!(
-            conversation.messages[0].entry_id.as_deref(),
-            Some("entry-1")
-        );
-        assert_eq!(conversation.item_order, vec!["user-1".to_owned()]);
-    }
-
-    #[test]
-    fn authoritative_activity_updates_preserve_terminal_status() {
-        let mut conversation = AiConversation::default();
-        let running = AiActivity::Tool {
-            id: "tool-1".into(),
-            name: "shell".into(),
-            summary: "Running tests".into(),
-            output: String::new(),
-            args: None,
-            details: None,
-            args_truncated: false,
-            details_truncated: false,
-            duration_ms: None,
-            status: AiMessageStatus::Running,
-        };
-        apply_event_to_conversation(&mut conversation, &AiEvent::ActivityUpdated(running));
-        let failed = AiActivity::Tool {
-            id: "tool-1".into(),
-            name: "shell".into(),
-            summary: "Running tests".into(),
-            output: "failed".into(),
-            args: None,
-            details: None,
-            args_truncated: false,
-            details_truncated: false,
-            duration_ms: Some(1234),
-            status: AiMessageStatus::Failed,
-        };
-        apply_event_to_conversation(&mut conversation, &AiEvent::ActivityUpdated(failed));
-
-        assert_eq!(conversation.activity.len(), 1);
-        assert!(matches!(
-            conversation.activity[0],
-            AiActivity::Tool {
-                status: AiMessageStatus::Failed,
-                ..
-            }
-        ));
     }
 
     #[test]

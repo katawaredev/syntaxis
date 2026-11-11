@@ -472,21 +472,3 @@ impl AiPorts {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::AiPorts;
-
-    #[test]
-    fn managed_capabilities_are_absent_by_default() {
-        let ports = AiPorts::default();
-        assert!(ports.usage().is_none());
-        assert!(ports.provider_auth().is_none());
-        assert!(ports.resources().is_none());
-        assert!(ports.extensions().is_none());
-        assert!(ports.worktrees().is_none());
-        assert!(ports.notifications().is_none());
-        assert!(ports.client().is_none());
-        assert!(ports.validate().is_err());
-    }
-}

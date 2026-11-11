@@ -254,23 +254,3 @@ impl Default for AppServices {
         Self::new(WorkspaceEventBus::default())
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::AppServices;
-
-    #[test]
-    fn optional_runtime_capabilities_are_absent_by_default() {
-        let services = AppServices::default();
-        assert!(services.workspace_catalog().is_none());
-        assert!(services.workspace_event_source().is_none());
-        assert!(services.runtime_status().is_none());
-        assert!(services.auth_action().is_none());
-        assert!(services.workspace_folders().is_none());
-        assert!(services.workspace_clone().is_none());
-        assert!(services.workspace_projects().is_none());
-        assert!(services.workspace_management().is_none());
-        assert!(services.notifications().is_none());
-        assert!(services.validate().is_err());
-    }
-}

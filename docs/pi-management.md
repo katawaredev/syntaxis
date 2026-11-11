@@ -7,7 +7,7 @@ Syntaxis provides a graphical workspace for the
 [Pi coding agent](https://pi.dev/). It runs Pi directly through `pi --mode rpc`; it does not
 reimplement the agent, proxy model requests, or store provider keys in the browser.
 The supplied container, Android backend package, and browser libraries are pinned
-to Pi 1.5.2 through `package.json`; existing host installations and self-updated
+through `package.json`; existing host installations and self-updated
 container installations keep their installed version until explicitly updated.
 
 ## Setup
@@ -86,7 +86,7 @@ longer disables the whole page. Advanced includes searchable documentation from 
 validates JSON, detects concurrent changes, writes atomically, and keeps one rolling
 `settings.json.syntaxis-backup` beside a file that it replaces.
 
-Essentials includes **Cache Warming** for Pi 1.5.2: `off`, `streaming` (active
+Essentials includes **Cache Warming** when the installed Pi supports it: `off`, `streaming` (active
 runs only), or `idle` (also between runs, for up to 30 minutes). Pi defaults to
 `idle` and refreshes only eligible caches when it estimates sufficient savings.
 Refreshes incur provider usage and count toward Pi's session totals. This global
@@ -132,7 +132,7 @@ unavailable. Skills may contain executable code and instructions; review them be
 
 ## Packages and extensions
 
-### Built-in MCP and codemode (Pi 1.0)
+### Built-in MCP and codemode
 
 Pi now supplies MCP and codemode without a third-party integration package.
 Configure connections using Pi on the Syntaxis host, for example:
@@ -161,8 +161,8 @@ interactive `/mcp` management and OAuth flows; Syntaxis does not add an MCP
 connection-management screen. Ordinary RPC tool events feed existing activity
 rendering; generated-image rendering and nested-call hierarchy have not been
 verified in Syntaxis. None of these settings enable MCP or codemode in the
-standalone browser app. See [Pi's MCP documentation](https://github.com/earendil-works/pi/blob/v1.5.2/packages/coding-agent/docs/mcp.md)
-and [codemode documentation](https://github.com/earendil-works/pi/blob/v1.5.2/packages/coding-agent/docs/codemode.md).
+standalone browser app. See [Pi's MCP documentation](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/mcp.md)
+and [codemode documentation](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/codemode.md).
 
 ### Third-party packages
 
@@ -195,7 +195,7 @@ installation can no longer launch. This is one fixed fallback, not an accumulati
 Syntaxis does not keep a second authoritative copy of Pi data. Sessions, settings, prompts, skills,
 and packages remain in Pi's directories under the runtime home.
 Pi Durable is a separate experimental harness; upgrading the coding agent does
-not provide automatic crash recovery. See [Pi adoption review](pi-adoption.md).
+not provide automatic crash recovery. See [Pi maintenance](pi-maintenance.md).
 
 Removing a Syntaxis workspace stops its live Pi processes but does not delete saved chats. Back up
 the runtime home if they matter. See the

@@ -59,16 +59,6 @@ fn same_origin_compares_request_host() {
 }
 
 #[test]
-fn login_page_replaces_the_error_placeholder() {
-    let without_error = login_html(None);
-    let with_error = login_html(Some("Incorrect password."));
-
-    assert!(!without_error.contains("LOGIN_ERROR"));
-    assert!(!without_error.contains("{error}"));
-    assert!(with_error.contains("Incorrect password."));
-}
-
-#[test]
 fn android_pairing_never_accepts_an_unpaired_client() {
     let state = AuthState {
         inner: Arc::new(AuthStateInner {

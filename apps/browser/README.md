@@ -12,7 +12,7 @@ Its ZIP, Git, and command tools run in browser sandboxes. The
 [runtime guide](../../docs/runtimes.md) compares their capabilities with the
 self-hosted app.
 
-See [browser maintenance](../../docs/browser-maintenance.md) for security
+See [browser acceptance checks](../../docs/testing.md#browser-acceptance) for security
 invariants and the recurring release checklist, and [Browser AI](../../docs/browser-ai.md)
 for the AI runtime's providers, tools, and limits.
 See [Wasmer browser execution](../../docs/browser-wasmer.md) for optional Python,

@@ -1284,5 +1284,4 @@ fn set_success(mut toast: Signal<Option<ToastState>>, message: impl Into<String>
 }
 
 #[cfg(test)]
-#[path = "view_tests.rs"]
 mod tests;

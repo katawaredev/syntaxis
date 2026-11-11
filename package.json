@@ -24,7 +24,8 @@
     "autoresearch:browser-smoke:dist": "BROWSER_DIST=target/dx/syntaxis-browser/debug/web/public bun autoresearch/browser-smoke.mjs",
     "autoresearch:recent-projects": "bun autoresearch/recent-projects.mjs",
     "autoresearch:test": "bun test autoresearch/*.test.js",
-    "autoresearch:verify": "bun autoresearch/verify.mjs"
+    "autoresearch:verify": "bun autoresearch/verify.mjs",
+    "test:web": "bun test tests autoresearch/*.test.js crates"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.4",

@@ -138,6 +138,8 @@ mise run qa:server
 ```
 
 Documentation-only changes do not require the Rust workflow.
+See [Testing](testing.md) for focused commands and manual acceptance, and
+[Architecture](architecture.md) for source ownership.
 
 ### WASM bundle budgets
 
@@ -151,13 +153,6 @@ the normal release profile. This favors download size over execution speed, so a
 performance when changing it. Compare measured artifacts before increasing
 `scripts/bundle-budgets.json`; both raw and compressed sizes must fit their limits.
 
-On Rust 1.98.0 / Dioxus CLI 0.7.10, switching from Dioxus's default `s` to `z` reduced the
-browser client from 6,286,257 to 5,276,710 raw bytes and from 1,535,295 to 1,383,673 Brotli
-bytes. Its raw budget remains 5,500,000 bytes; the Brotli budget is 1,450,000 bytes, allowing
-about 5% headroom over that measurement. The server client measures 6,222,429 raw bytes and
-1,593,058 Brotli bytes, within its existing limits. The migration report records older,
-historical budgets.
-
 ## Lighthouse
 
 ```bash
@@ -166,7 +161,7 @@ just lighthouse-open
 ```
 
 The first command builds the optimized fullstack web release, starts it on `127.0.0.1:4173`, and runs
-three mobile-emulated audits. Reports are written to `lighthouse-reports/`; the second command opens
+five mobile-emulated audits. Reports are written to `lighthouse-reports/`; the second command opens
 the newest report.
 
 Local scores vary with hardware, load, and browser version. Compare repeated runs on the same machine

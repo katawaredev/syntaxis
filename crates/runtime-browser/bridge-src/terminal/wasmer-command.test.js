@@ -7,7 +7,7 @@ import {
   readGuestWorkspace,
   readShellWorkspace,
   reconcileGuestWorkspace,
-} from "../crates/runtime-browser/bridge-src/terminal/wasmer-command.js";
+} from "./wasmer-command.js";
 
 test("Wasmer packages require exact versions and local modules stay in the workspace", () => {
   const ctx = { fs: new InMemoryFs(), cwd: "/workspace/src" };

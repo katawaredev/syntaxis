@@ -148,6 +148,33 @@ mod tests {
 
     #[test]
     fn search_options_control_case_words_and_regex() {
+        assert_eq!(
+            find_matches("one two one", "one", SearchOptions::default()).unwrap(),
+            vec![(0, 3), (8, 11)]
+        );
+        assert_eq!(
+            find_matches(
+                "cat catalog cat_2 cat",
+                "cat",
+                SearchOptions {
+                    whole_word: true,
+                    ..SearchOptions::default()
+                }
+            )
+            .unwrap(),
+            vec![(0, 3), (18, 21)]
+        );
+        assert!(
+            find_matches(
+                "anything",
+                "[",
+                SearchOptions {
+                    regex: true,
+                    ..SearchOptions::default()
+                }
+            )
+            .is_err()
+        );
         let source = "cat scatter CAT";
         assert_eq!(
             find_matches(
@@ -179,9 +206,8 @@ mod tests {
     #[test]
     fn replace_supports_literal_and_capture_expansion() {
         assert_eq!(
-            replace_search_match("one two", "two", "three", SearchOptions::default(), (4, 7),)
-                .unwrap(),
-            "one three"
+            replace_search_match("cost $1", "$1", "$2", SearchOptions::default(), (5, 7),).unwrap(),
+            "cost $2"
         );
         assert_eq!(
             replace_all_search_matches(

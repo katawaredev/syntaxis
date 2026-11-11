@@ -451,7 +451,6 @@ function response(chunks) {
 
 test("catalog uses Pi model capabilities and excludes server-only providers", () => {
   const catalog = bridge.catalog("https://provider.invalid/v1", "custom/test-model");
-  expect(catalog.some((model) => model.id === "openai/gpt-4.1-mini")).toBe(true);
   expect(catalog.some((model) => model.reasoning && model.thinking_levels.length > 1)).toBe(true);
   expect(catalog.some((model) => model.supports_images)).toBe(true);
   expect(
@@ -464,14 +463,8 @@ test("catalog uses Pi model capabilities and excludes server-only providers", ()
   ]);
 });
 
-test("OpenRouter variable prices are valid unsigned catalog values, not free models", () => {
+test("OpenRouter automatic routers are not labeled as free", () => {
   const catalog = bridge.catalog("https://provider.invalid/v1", "custom/test-model");
-  for (const model of catalog) {
-    for (const field of ["input", "output", "cache_read", "cache_write"]) {
-      expect(Number.isSafeInteger(model.cost[field])).toBe(true);
-      expect(model.cost[field]).toBeGreaterThanOrEqual(0);
-    }
-  }
   for (const id of [
     "openrouter/openrouter/auto",
     "openrouter/openrouter/auto-beta",

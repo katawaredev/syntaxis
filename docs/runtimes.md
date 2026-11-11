@@ -13,7 +13,7 @@ standalone browser runtime.
 | Launch | `just serve-server` | `just serve-browser` |
 | Workspace | Ordinary server directories | Browser-private storage or an explicitly selected local directory |
 | Terminal | Native server processes | just-bash plus optional Wasmer WASI/WASIX tools, rooted at `/workspace`; guest network disabled |
-| AI | Pi coding-agent process over RPC (packaged pin: 1.5.2) | Pi 1.5.2 AI/agent-core browser libraries with workspace tools |
+| AI | Pi coding-agent process over RPC | Pi AI/agent-core browser libraries with workspace tools |
 | Provider login | Pi-managed API keys and supported OAuth/subscriptions | API keys held in app memory; no subscription/OAuth login |
 | AI state | Pi server sessions/configuration | Chats, credentials, preferences, defaults held in memory; reload clears them |
 | AI resources | Project and global Pi instructions, skills, prompts, extensions | Workspace Markdown instructions, skills and templates; no native extensions/global resources |
@@ -28,8 +28,8 @@ and the distinction between Markdown guidance and executable capabilities.
 Browser file tools include ranged reads and atomic batches of exact edits.
 Pi's built-in MCP/codemode are server features. [Wasmer browser execution](browser-wasmer.md)
 adds optional language runtimes and packaged tools through the existing browser
-command port. Pi Durable remains an assessment in [Pi adoption review](pi-adoption.md).
-Pi 1.5.2's cache-warming control is server-only; the browser keeps its bounded
+command port. Durable runs require a separate adapter; see [Pi maintenance](pi-maintenance.md).
+Pi's cache-warming control is server-only; the browser keeps its bounded
 foreground agent loop and refreshes workspace instructions through transcript sections.
 Both runtimes show Pi's recorded tool execution times when available. Server
 sessions restore them from disk; browser chats retain them only in app memory.

@@ -1,132 +1,61 @@
-# Syntaxis startup performance campaign
+# Performance harness
 
-This directory contains the repeatable evaluator and historical evidence for the
-server app's mobile cold-start campaign. The measurements describe that campaign,
-not current performance. For the current app split, see the
-[runtime guide](../docs/runtimes.md). Benchmark code stays separate from product
-behavior.
+This directory measures server-app startup and Home/editor/Git interactions. It
+also contains real-browser smoke harnesses; product unit tests live under `tests`
+and beside their owning bridges. See [Testing](../docs/testing.md) for that map.
 
-## Architecture and performance map
+## Measure a change
 
-- **Runtime measured:** The server app is a Dioxus 0.7 fullstack application. Its
-  browser client is Rust compiled to WebAssembly; the server owns authentication,
-  filesystem, workspaces, Git, terminals, previews, language servers, and Pi
-  integration.
-- **Document path:** `apps/server/index.html` supplies the viewport. Its `maximum-scale=1`
-  setting is an intentional mobile Safari workaround that prevents the focused
-  code editor from auto-zooming; do not remove it to improve Lighthouse scores.
-  Dioxus renders `apps/server/src/app.rs`, which installs global links, the Tailwind
-  stylesheet, and compatibility scripts, then mounts `syntaxis-app-shell`.
-- **Startup/UI path:** `crates/app-shell/src/route.rs` owns Home, the shared route
-  enum, and workspace route composition. `crates/app-shell/src/shell.rs` owns the
-  shared workspace chrome; Files/editor UI is under `crates/module-files/` and
-  `crates/code-editor/`.
-- **Editor boundary:** sources under `crates/code-editor/bridge-src/` are bundled by
-  `scripts/build-code-editor.mjs`. The generated bridge is a route-local Dioxus
-  ES module imported when the editor mounts; repeated mounts reuse the browser's
-  module cache. Language-server code is loaded separately by the browser bridge.
-- **Terminal boundary:** xterm sources under `crates/runtime-remote/bridge-src/terminal/` are bundled by
-  `scripts/build-terminal.mjs` into `runtime-remote` and loaded idempotently by the
-  renderer adapter only when an interactive terminal mounts.
-- **Server responsibilities:** the fullstack server and host crates perform
-  filesystem and process work. The Lighthouse server helper starts the optimized
-  web server at `127.0.0.1:4173` and is already used by `lighthouserc.json`.
-- **Existing evaluator:** `lighthouserc.json` runs five median-aggregated audits
-  at a 390x844 mobile viewport. `package.json`/`Justfile` build a release web app,
-  run LHCI, and write reports to `lighthouse-reports/`.
-- **Likely startup cost centers to measure:** HTML/server delivery, websocket and
-  Dioxus bootstrap, WASM transfer/compile/hydration, global CSS and scripts,
-  generated editor/terminal bundles, and eager workspace/runtime requests. No
-  product optimization is implied by this list.
-
-## Evaluator commands
-
-From a real benchmark machine, after the fixed fixture and toolchain are
-available:
+On the same benchmark machine with the repository toolchain installed:
 
 ```sh
 bun run autoresearch:benchmark
-bun run autoresearch:verify
-```
-
-The browser-only app has a separate shared-shell smoke harness. Start an optimized
-browser static server on port 4174, then run:
-
-```sh
-bun run autoresearch:browser-smoke
-```
-
-Set `BROWSER_URL` when using another origin. The smoke imports a real ZIP into OPFS,
-opens all shared module routes, renders a static HTML document and local stylesheet,
-executes and cancels a browser command, initializes Git, and exercises progressive,
-cancellable, size-bounded provider streaming. It also checks AI settings routing,
-captures unexpected browser failures, and fails if local browser flows attempt a
-Syntaxis `/api/` request.
-
-`benchmark` runs the existing release Lighthouse setup, collects raw audit
-reports, records the configured mobile inputs, computes medians/ranges, and
-writes `autoresearch/baseline.json` on the first run (or a timestamped result
-under `autoresearch/results/` on later runs). It also records release public
-asset sizes. The `interactive` Lighthouse audit is retained as the consistent
-proxy for application UI usability.
-
-When a release artifact was just built successfully but audit collection failed,
-`AUTORESEARCH_SKIP_BUILD=true bun run autoresearch:benchmark` reruns collection
-against that exact artifact. Normal baseline and candidate runs rebuild by default.
-
-Results are compared within a machine/workload pair, not by comparing absolute
-milliseconds across computers. Use the same PC, browser/tool versions, viewport,
-fixture, server mode, and repetition count for baseline versus candidate:
-
-```sh
 bun run autoresearch:compare -- autoresearch/baseline.json autoresearch/results/run-....json
 ```
 
-Each result carries tool versions and workload metadata so results from another
-PC can form an independent baseline. Cross-machine comparisons should use
-relative change from each machine's own baseline; asset-byte deltas are the most
-portable absolute metric.
+The first run writes `baseline.json`; later runs write timestamped `results/`.
+`AUTORESEARCH_SKIP_BUILD=true` reuses a release artifact only when its build already
+succeeded and collection needs retrying. Normal comparisons rebuild both sides.
+`bun run autoresearch:verify` delegates to the web/server checks and follows the
+root `AGENTS.md` validation approval rule.
 
-Recent Projects, its primary New Project interaction, and editor readiness are
-explicit parts of the workload. The benchmark uses the pinned `puppeteer-core`
-package with the machine's Chromium and a fresh browser process for every timed
-navigation. It records distribution statistics and collection-order samples,
-measures both interaction-only and navigation-to-completed-task time, and times
-the fixture file's mounted, editable CodeMirror textbox. It also checks the Home
-and editor routes for browser failures and horizontal overflow at 320x700 and
-1440x900. A focused Git audit temporarily changes the runtime fixture, opens the
-diff, waits for route-local syntax highlighting, checks mobile overflow, and
-restores the file. The standalone `bun run autoresearch:recent-projects` command
-is useful while validating those rules against an already-running benchmark
-server.
+The harness uses the pinned Puppeteer with the machine's Chromium, fresh browser
+processes, alternating route order and a fixed mobile workload. It records raw
+collection order, distributions, tool versions, source state and asset sizes.
+Compare repeated runs within one machine/workload pair. Use relative changes for
+cross-machine comparisons and compressed asset bytes for portable size comparisons.
+Do not discard cold-process outliers or promote a change on one Lighthouse score.
 
-The release server uses a dedicated ignored runtime directory and a deterministic
-registry generated by `autoresearch/provision.mjs`. Provisioning copies the
-source fixture into that directory and initializes a deterministic standalone Git
-repository, so Git measurements cannot observe or modify the Syntaxis worktree.
-The fixture is exposed through the normal workspace registry and API; product
-code contains no fixture or benchmark special cases. Lighthouse and browser
-measurements authenticate through the normal bearer-token path with a local
-evaluator-only token.
+## Fixture and readiness
 
-`verify` delegates to the repository's existing non-mutating web and server
-checks (`mise run check` and `mise run check:server`).
+`provision.mjs` copies `fixture/` into ignored `runtime/fixture` and initializes an
+independent deterministic Git repository. Measurements must never mutate the source
+fixture or the Syntaxis worktree. The normal registry/API and evaluator-only bearer
+token expose that copy; product code must not special-case the benchmark.
 
-## Fixed workload
+Keep fixture contents, viewport, repetition count and readiness selectors stable
+between baseline and candidate. Home is ready when the Recent Projects section
+exists and its loading indicator is gone. Editor readiness requires the mounted,
+editable CodeMirror textbox. The paired Home task includes navigation and the New
+Project interaction. A focused Git check edits only the runtime copy and restores
+it after diff/highlighting and overflow checks.
 
-`fixture/` is the small, deterministic representative project used to provision
-one workspace. The harness copies it into `runtime/fixture`; do not point the
-registry at the source fixture. Keep the fixture contents and URL constant across
-baseline and experiments. Use a second larger realistic project periodically to
-check that a result generalizes.
+`bun run autoresearch:recent-projects` runs these interaction checks against an
+already-running benchmark server. `lighthouserc.json` owns audit settings;
+`scripts/bundle-budgets.json` owns the current WASM limits. Generated results,
+profiles and baseline files are ignored. Establish a fresh baseline after toolchain
+or workload changes; old campaign numbers belong in Git history.
 
-## Generated evidence
+## Lessons worth preserving
 
-- `baseline.json`: the first local measurement.
-- `results/`: subsequent local measurements.
-- `profiles/`: browser and request-timing profiles.
-- `final-report.md`: the durable summary of the completed campaign.
+- Route-local editor, terminal and AI loading reduce initial work. Diff highlighting
+  should reuse CodeMirror rather than pulling a separate parser stack into WASM.
+- LTO, a single codegen unit and the WASM `z` profile trade build/runtime costs for
+  download size. Measure interaction latency as well as raw and Brotli bytes.
+- Moving work past FCP can worsen blocking and task completion. Evaluate the full
+  interaction rather than a paint metric alone.
+- Workspace enumeration was cheap in the earlier campaign; SSR seeding increased
+  hydration cost. Re-profile before optimizing that path.
 
-Raw measurements and profiles are ignored because they are machine- and
-tool-version-specific. Establish a fresh baseline for each future campaign; keep
-only conclusions with continuing engineering value in `final-report.md`.
+Keep new findings actionable: the changed source path, reproducible workload,
+observed tradeoff and a comparison artifact. Avoid permanent per-run status diaries.

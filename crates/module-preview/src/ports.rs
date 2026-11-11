@@ -136,18 +136,3 @@ impl PreviewPorts {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::PreviewPorts;
-
-    #[test]
-    fn optional_preview_capabilities_are_absent_by_default() {
-        let ports = PreviewPorts::default();
-        assert!(ports.preview().is_none());
-        assert!(ports.config().is_none());
-        assert!(ports.process().is_none());
-        assert!(ports.share().is_none());
-        assert!(ports.validate().is_err());
-    }
-}

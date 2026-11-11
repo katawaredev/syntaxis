@@ -625,7 +625,7 @@ test-cargo platform=default_platform: build-assets
 
 # Run authored JavaScript and browser-harness unit tests.
 test-web: build-assets
-    bun test autoresearch/*.test.js crates/runtime-remote/bridge-src/terminal/source-links.test.js crates/runtime-browser/bridge-src/ai/bridge-source.test.js
+    bun run test:web
 
 # Run doctests, which cargo-nextest does not replace.
 test-doc platform=default_platform: build-assets

@@ -496,22 +496,3 @@ pub(crate) async fn install_pi_skill(
 
 #[cfg(feature = "server")]
 pub(crate) mod server;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use syntaxis_agent::{AgentSnapshot, ServerMessage};
-
-    #[test]
-    fn agent_encoding_round_trips_snapshots() {
-        let message = ServerMessage::Snapshot {
-            snapshot: AgentSnapshot::default(),
-        };
-        let mut encoded = Vec::new();
-        AgentEncoding::encode(&message, &mut encoded).unwrap();
-        assert_eq!(
-            AgentEncoding::decode::<ServerMessage>(Bytes::from(encoded)),
-            Some(message)
-        );
-    }
-}

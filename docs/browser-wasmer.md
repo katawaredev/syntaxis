@@ -1,7 +1,7 @@
 # Wasmer browser execution
 
 The standalone browser app embeds [Wasmer SDK](https://github.com/wasmerio/wasmer-sdk)
-0.19.1 as an optional command executor. It adds language runtimes and packaged
+as an optional command executor, pinned in `package.json`. It adds language runtimes and packaged
 WASI/WASIX tools to the existing command console and Pi's `bash` tool. The server
 app continues to use its native terminal. Pi itself still uses the browser
 libraries and direct provider requests.
@@ -153,35 +153,13 @@ Direct Pi HTTP requests continue to use browser CORS. Local TCP between Wasmer
 sandboxes and guest HTTP previews can use its `http` mode without WISP.
 Neither network mode is enabled by this integration.
 
-## Where Wasmer fits next
-
-These are opportunities based on the [upstream SDK examples](https://github.com/wasmerio/wasmer-sdk/blob/main/js/README.md),
-not additional implemented Syntaxis capabilities.
-
-| Area | Useful adoption or replacement | Additional work |
-| --- | --- | --- |
-| Scripting and checks | Python/Edge.js scripts, generators, language-specific checks, packaged formatters | Commands can use the current executor; verify each package and its dependencies |
-| Search | Real ripgrep semantics for AI and terminal work; potentially replace the bounded file-search engine | Connect query/results to search ports and benchmark snapshot/download costs |
-| Compilers and media | Local WASI tools, packaged clang, FFmpeg or image processing | Validate packages, binary output, resource budgets and download size; longer jobs need richer lifecycle controls |
-| Rich shell | Real Bash/Unix packages as an optional alternative to emulated commands | Interactive terminal requires streaming, resize, persistent state, and cancellation ports |
-| Web previews | Run framework or PHP guest servers and replace static preview for capable projects | Persistent process ownership, save synchronization, port routing, cleanup, and a separate preview origin with a service worker |
-| Databases | Browser PostgreSQL for sample apps and SQL tools | Shared client and linked guest lifetimes, durable workspace storage, recovery and migration; upstream pglite example accepts one connection per process |
-| Dependency management | npm/pnpm/pip inside guest environments | Explicit trusted WISP configuration, storage policy for protected dependency folders, download budgets and package compatibility |
-
-Python/JavaScript project checks and packaged formatters are the smallest next
-extensions. Live previews offer a larger product gain but require a process and
-preview adapter. Wasmer's default HTTP preview origin is hosted by Wasmer;
-Syntaxis should make any such origin explicit or host its own isolated static
-preview origin. A second static origin does not require an application backend.
-Keep the existing restrictive static preview available.
-
 ## Verification and maintenance
 
 Build via `bun run build:browser-terminal`; it also stages the SDK assets.
 Focused checks:
 
 ```sh
-bun test autoresearch/wasmer-command.test.js
+bun test crates/runtime-browser/bridge-src/terminal/wasmer-command.test.js
 bun run autoresearch:wasmer-smoke
 ```
 

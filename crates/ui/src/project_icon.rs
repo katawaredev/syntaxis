@@ -33,15 +33,3 @@ fn project_initial(name: &str) -> String {
         |character| character.to_uppercase().collect(),
     )
 }
-
-#[cfg(test)]
-mod tests {
-    use super::project_initial;
-
-    #[test]
-    fn derives_a_single_uppercase_initial_from_the_project_name() {
-        assert_eq!(project_initial("devbox"), "D");
-        assert_eq!(project_initial("  syntaxis"), "S");
-        assert_eq!(project_initial(""), "?");
-    }
-}

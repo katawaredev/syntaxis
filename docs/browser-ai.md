@@ -5,7 +5,7 @@ provider API keys and browser workspace tools. For Pi running on your server,
 see [Pi integration](pi-management.md).
 
 The standalone browser runtime uses `@earendil-works/pi-ai` and
-`@earendil-works/pi-agent-core` 1.5.2, pinned to the same release as the server's Pi
+`@earendil-works/pi-agent-core`, pinned in `package.json` to the same release as the server's Pi
 coding agent. The shared Dioxus UI provides model selection, reasoning controls,
 favourites, provider accounts, streaming messages, tool activity, and token usage.
 
@@ -95,7 +95,7 @@ every message, including continuing existing chats. Missing files are optional;
 unreadable or oversized instruction files produce an error rather than silently
 omitting instructions. Guidance does not enforce security boundaries.
 
-Pi 1.5 records these instructions as a named transcript section. Changes replace
+Pi records these instructions as a named transcript section. Changes replace
 that section on the next message, and deleting instruction files removes it;
 unchanged instructions reuse the existing transcript without another update.
 
@@ -153,8 +153,8 @@ The browser catalog remains chat-only even though Pi also supports image
 generation and classifier models. Built-in MCP and codemode belong to the full
 coding agent and are not provided by the browser's `Agent` loop.
 
-See [Pi adoption review](pi-adoption.md) for the Wasmer browser CLI example and
-Pi Durable assessment, including their networking and persistence requirements.
+See [Pi maintenance](pi-maintenance.md) for the decision to keep the browser
+library loop and the requirements for a separate durable-run adapter.
 
 The experimental Android shell uses the server app: Local runs Pi in Termux and
 Remote uses the selected server's Pi. Its projects do not share Pi credentials or

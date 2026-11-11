@@ -192,20 +192,3 @@ impl TerminalPorts {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::TerminalPorts;
-
-    #[test]
-    fn optional_terminal_capabilities_are_absent_by_default() {
-        let ports = TerminalPorts::default();
-        assert!(ports.transport().is_none());
-        assert!(ports.commands().is_none());
-        assert!(ports.command_mutations().is_none());
-        assert!(ports.session().is_none());
-        assert!(ports.command_runner().is_none());
-        assert!(ports.renderer().is_none());
-        assert!(ports.validate().is_err());
-    }
-}

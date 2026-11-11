@@ -1,44 +1,21 @@
-# Syntaxis `dioxus-code-editor` fork
+# Syntaxis code editor
 
-This crate is the narrow, application-owned editor surface used by Syntaxis.
-Editable documents and the Files route's read-only unified diff mode use a
-bundled CodeMirror 6 view. Git-page diff fragments retain `dioxus-code`'s
-Arborium/tree-sitter renderer so their patch-relative line-number offsets stay
-intact.
+Application-owned CodeMirror 6 integration for editable files and unified diffs.
+Git diff fragments preserve patch-relative line numbers and load highlighting from
+the same route-local JavaScript module; plain diff text renders while it loads.
 
-## Editor capabilities
+CodeMirror owns immediate editing state, history, IME, selection, incremental
+parsing, completion and LSP document synchronization. Rust owns the workspace
+buffer/save lifecycle. Transactions cross the bridge as UTF-16 deltas; keep
+surrogate boundaries and edits made during pending saves covered by regressions.
+Imperative commands are consumed once so remounting cannot replay an edit.
 
-The CodeMirror bridge preserves the Rust-facing API required by Syntaxis:
+The LSP bridge loads separately and supports a primary server plus supplementary
+clients such as Tailwind. Filename-based language selection uses CodeMirror's
+catalog and falls back to plain text. Workspace search remains application-owned.
+The Files module enforces its text-size limit before mounting the editor.
 
-- controlled external values and edit events while CodeMirror owns immediate
-  browser editing state;
-- cursor/selection reporting, caret-follow scrolling, focus, go-to-line, and
-  select commands;
-- Tab/Shift-Tab indentation, enter indentation, paired delimiters, and pair
-  deletion/skip behavior;
-- native multiple selections and vertical cursors;
-- line-number and word-wrap modes with the Syntaxis theme integration point;
-- viewport-only DOM rendering and incremental Lezer parsing for large files;
-- native unified diffs with collapsed unchanged regions and bounded diff work;
-- native language-aware and document-word completion;
-- optional, lazy-loaded LSP completion and diagnostics through CodeMirror's
-  official language-client package, including bounded supplementary clients
-  such as Tailwind alongside a primary language server;
-- filename-based language detection through CodeMirror's maintained language
-  catalog, with plain text for unknown files;
-- deterministic event-listener cleanup when the component is dropped.
-
-CodeMirror owns history, input methods, selection painting, incremental syntax
-state, and LSP document synchronization. Edit transactions cross the Rust
-bridge as UTF-16-relative deltas instead of full document snapshots.
-Imperative commands are consumed once, preventing mutations from replaying when
-an editor remounts. Per-file search and completion remain inside CodeMirror;
-workspace search remains application-owned. The product separately refuses
-text files over 4 MiB and renders a clear large-file state.
-
-Run `bun run build:editor` after changing
-`crates/code-editor/bridge-src/bridge-source.js`, `package.json`, or `bun.lock`. Standard
-`just` build, serve, QA, and pre-commit recipes build the cached bundle
-automatically.
-
-Validated targets are Linux native Cargo compilation and the Dioxus web client.
+`bun run build:editor` rebuilds the cached bundles from `bridge-src` and the locked
+JavaScript dependencies. Build, serve and pre-commit recipes invoke it automatically.
+Keep parser/highlighter dependencies out of initial client WASM and measure both
+first-mount latency and compressed asset size when changing this boundary.

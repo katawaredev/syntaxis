@@ -135,10 +135,12 @@ provider API keys; keys and chats are cleared when the app reloads. See the
 - [Deployment](docs/deployment.md)
 - [Security model](docs/security.md)
 - [Pi integration](docs/pi-management.md)
-- [Pi 1.0, Wasmer, and Pi Durable adoption review](docs/pi-adoption.md)
+- [Pi integration maintenance](docs/pi-maintenance.md)
 - [Browser app and its limitations](apps/browser/README.md)
 - [Runtime guide](docs/runtimes.md)
 - [Development and maintenance](docs/development.md)
+- [Architecture](docs/architecture.md)
+- [Testing](docs/testing.md)
 - [Experimental Android shell](apps/Android/README.md): requires Termux; device
   acceptance is still in progress.
 - [Changelog](CHANGELOG.md)
